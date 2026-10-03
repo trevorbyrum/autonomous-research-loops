@@ -30,14 +30,27 @@ Definitions
   Cycles. Strongly connected sets of more than one node, at file level and at
   component level (a Python circular import and a package-layering cycle are
   different things; both are reported).
-  Implicit collaboration. For every class that inherits (by name, resolved
-  through the file's imports) a project class defined in another file - the
-  Router and its six mixins - the `self.<method>(...)` call sites, in any
-  member class, whose method is defined in another member class's file. The
-  method is resolved the way the composed class resolves it (its own class,
-  then its bases depth-first). Counted by directed file pair. Gate D #1/#2
-  measured the Router with a fixed list of mixin names; this finds the same
-  family without one (it also finds `Response(SealedAnswer)` in the gateway).
+  Implicit collaboration. For every class with a project ancestor defined in
+  another file - the Router and its six mixins - the `self.<method>(...)` call
+  sites, in any member class, whose method is defined in another member
+  class's file. The bases are resolved over a stated surface (`Classes`):
+  module-level classes and names bound by `class`, `import m`, `import m.n`,
+  `import m as x`, `from m import n [as x]` and `from m import *`, relative
+  imports resolved, followed through any number of re-exports, a base being a
+  name, an attribute chain (`gen2.router.lifecycle.Lifecycle`), `Outer.Inner`
+  or any of them subscripted. A base outside the measured files (a builtin, a
+  standard-library or third-party module) is external. A base the tool cannot
+  follow to a class or to something outside - a call, a name bound twice, a
+  measured module that defines no such name, a first-party module that is not
+  measured, an inconsistent hierarchy - is UNRESOLVED: reported by name and
+  reason and a regression (below) unless an exemption classifies it; it is
+  never read as "no collaboration". The method is resolved the way Python
+  resolves it, through the C3 linearization of the family (not a depth-first
+  walk: a diamond `D(B, C)` with `B(A)`, `C(A)` and `C.f` overriding `A.f`
+  binds a call in `B` to `C.f`). A call site is counted once however many
+  families contain it, by (site, defining file). Gate D #1/#2 measured the
+  Router with a fixed list of mixin names; this finds the same family without
+  one (it also finds `Response(SealedAnswer)` in the gateway).
   `super()` calls, `self.<attr>.method()` and attribute reads are not counted.
   Cyclomatic proxy. 1 + one per if / ternary / for / while / except handler /
   assert, + (operands - 1) per Boolean operator, + 1 + conditions per
@@ -86,6 +99,8 @@ fails the check unless a reviewed, reasoned exemption entry covers it")
       dimensions first and the thresholds only decide the new offenders (task
       2q-a-repair F2), so an offender cannot leave by falling under one
       threshold while the other score grows;
+    - a class base is unresolved (never baselined: an exemption naming the
+      base is the only classification);
     - an import edge joins the engine and the gateway (baseline: none).
   Anything else is reported, not gated (edges, fan-in/out, instability,
   reach, counts, lines). The thresholds are read from the baseline, so
@@ -122,6 +137,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import builtins
 import collections
 import csv
 import hashlib
@@ -159,7 +175,7 @@ LOOSER_IS = {  # which direction of each threshold flags fewer things
 }
 SMELL_KINDS = ("hub_like", "unstable_dependency", "god_component")
 METRICS_NUMERIC = ("propagation_file", "propagation_component", "self_calls", "function_cyclomatic", "function_cognitive")
-METRICS_SET = ("cycle_file", "cycle_component", "cross_service_import", "smell_hub_like", "smell_unstable_dependency", "smell_god_component")
+METRICS_SET = ("cycle_file", "cycle_component", "cross_service_import", "unresolved_base", "smell_hub_like", "smell_unstable_dependency", "smell_god_component")
 METRICS = METRICS_NUMERIC + METRICS_SET
 
 
@@ -296,81 +312,219 @@ def component_graph(graph: dict[str, set[str]]) -> dict[str, set[str]]:
 
 # --- implicit collaboration: self-calls between the classes of one inheritance family ---------------------------------
 
-def class_index(trees: dict[str, ast.Module]) -> dict[tuple[str, str], ast.ClassDef]:
-    return {(path, node.name): node for path, tree in trees.items() for node in tree.body if isinstance(node, ast.ClassDef)}
+Ref = tuple  # ("class", file, qualified name) | ("module", dotted) | ("package", dotted) | ("external",) | ("unresolved", why)
+_COMPOUND = tuple(t for t in (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try, getattr(ast, "TryStar", None)) if t)
 
 
-def project_bases(path: str, cls: ast.ClassDef, trees: dict[str, ast.Module], names: dict[str, str],
-                  index: dict[tuple[str, str], ast.ClassDef]) -> list[tuple[str, str]]:
-    """The project classes `cls` names as bases, in order, resolved through the imports of its own file."""
-    local: dict[str, tuple[str, str]] = {}
-    modules: dict[str, str] = {}
-    for node in ast.walk(trees[path]):
-        if isinstance(node, ast.ImportFrom):
-            base = import_targets(path, node)[0]
-            for alias in node.names:
-                if base in names and (names[base], alias.name) in index:
-                    local[alias.asname or alias.name] = (names[base], alias.name)
-                elif f"{base}.{alias.name}" in names:
-                    modules[alias.asname or alias.name] = names[f"{base}.{alias.name}"]
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name in names:
-                    modules[alias.asname or alias.name] = names[alias.name]
-    found = []
-    for base in cls.bases:
-        if isinstance(base, ast.Name):
-            if (path, base.id) in index:
-                found.append((path, base.id))
-            elif base.id in local:
-                found.append(local[base.id])
-        elif isinstance(base, ast.Attribute) and isinstance(base.value, ast.Name) and base.value.id in modules \
-                and (modules[base.value.id], base.attr) in index:
-            found.append((modules[base.value.id], base.attr))
-    return found
-
-
-def family_order(root_key: tuple[str, str], trees: dict[str, ast.Module], names: dict[str, str],
-                 index: dict[tuple[str, str], ast.ClassDef]) -> list[tuple[str, str]]:
-    """The class and its project bases, transitively, depth-first left to right: how its own methods resolve."""
-    order: list[tuple[str, str]] = []
-
-    def visit(key: tuple[str, str]) -> None:
-        if key in order:
-            return
-        order.append(key)
-        for base in project_bases(key[0], index[key], trees, names, index):
-            visit(base)
-
-    visit(root_key)
+def c3_merge(sequences: list[list]) -> list:
+    """Python's C3 merge of the linearizations of the bases and the list of the bases themselves; ValueError when none is consistent."""
+    sequences = [list(seq) for seq in sequences if seq]
+    order: list = []
+    while sequences:
+        head = next((seq[0] for seq in sequences if not any(seq[0] in other[1:] for other in sequences)), None)
+        if head is None:
+            raise ValueError("no consistent method resolution order")
+        order.append(head)
+        for seq in sequences:
+            if seq[0] == head:
+                del seq[0]
+        sequences = [seq for seq in sequences if seq]
     return order
 
 
-def self_calls(trees: dict[str, ast.Module], names: dict[str, str]) -> dict:
-    """{"sites": n, "pairs": {"a->b": n}, "families": {"Class (file)": {"sites": n, "pairs": {...}}}}"""
-    index = class_index(trees)
-    families: dict[str, dict] = {}
-    for key in sorted(index):
-        bases = project_bases(key[0], index[key], trees, names, index)
-        if not any(base_path != key[0] for base_path, _ in bases):
+class Classes:
+    """What a class base expression names, resolved statically over the measured files (task 2q-a-repair F1).
+
+    The supported surface: classes defined at module level (nested classes by `Outer.Inner`), and names bound at module level, also under
+    `if`/`try`/`with`/loops, by `class`, `import m`, `import m.n`, `import m as x`, `from m import n [as x]` (relative imports resolved) and
+    `from m import *` of a measured module. A base is a name, a dotted attribute chain (`pkg.mod.Class`) or either subscripted (`Generic[T]`).
+    Names resolve through any number of re-exports. A base from outside the measured files (a standard-library or third-party module, a
+    builtin) is EXTERNAL; anything else the tool cannot follow to a class - a call, a name bound twice or by assignment, a measured module
+    that defines no such name, an import of a first-party module that is not measured - is UNRESOLVED, and an unresolved base is reported
+    (never read as "no collaboration")."""
+
+    def __init__(self, trees: dict[str, ast.Module], names: dict[str, str]) -> None:
+        self.names = names
+        self.packages = {".".join(m.split(".")[:i]) for m in names for i in range(1, len(m.split(".")))} - set(names)
+        self.tops = {m.partition(".")[0] for m in names}
+        self.scope = {path: self._bindings(path, tree) for path, tree in trees.items()}
+        self.classes = {path: self._classes(tree) for path, tree in trees.items()}
+        self._mro: dict[tuple[str, str], list] = {}
+
+    @staticmethod
+    def _classes(tree: ast.Module) -> dict[str, ast.ClassDef]:
+        found: dict[str, ast.ClassDef] = {}
+
+        def walk(node: ast.AST, scope: list[str]) -> None:
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, ast.ClassDef):
+                    found[".".join(scope + [child.name])] = child
+                    walk(child, scope + [child.name])
+                else:
+                    walk(child, scope + [getattr(child, "name", "?"), "<locals>"] if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else scope)
+
+        walk(tree, [])
+        return found
+
+    @staticmethod
+    def _bindings(path: str, tree: ast.Module) -> dict[str, set[tuple]]:
+        found: dict[str, set[tuple]] = collections.defaultdict(set)
+
+        def visit(statements: list[ast.stmt]) -> None:
+            for node in statements:
+                if isinstance(node, ast.ClassDef):
+                    found[node.name].add(("class", node.name))
+                elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    found[node.name].add(("other",))
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        found[alias.asname or alias.name.partition(".")[0]].add(("module", alias.name if alias.asname else alias.name.partition(".")[0]))
+                elif isinstance(node, ast.ImportFrom):
+                    base = import_targets(path, node)[0]
+                    for alias in node.names:
+                        found["*" if alias.name == "*" else alias.asname or alias.name].add(("star", base) if alias.name == "*" else ("from", base, alias.name))
+                elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                    for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                        for leaf in ast.walk(target):
+                            if isinstance(leaf, ast.Name):
+                                found[leaf.id].add(("other",))
+                elif isinstance(node, _COMPOUND):
+                    for block in ("body", "orelse", "finalbody"):
+                        visit(getattr(node, block, []))
+                    for handler in getattr(node, "handlers", []):
+                        visit(handler.body)
+
+        visit(tree.body)
+        return found
+
+    def module(self, dotted: str) -> Ref:
+        if dotted in self.names:
+            return ("module", dotted)
+        if dotted in self.packages:
+            return ("package", dotted)
+        return ("unresolved", f"{dotted} is not a measured module") if dotted.partition(".")[0] in self.tops else ("external",)
+
+    def member(self, ref: Ref, attr: str, seen: frozenset = frozenset()) -> Ref:
+        """The attribute `attr` of a module, package or class."""
+        if ref[0] in ("external", "unresolved"):
+            return ref
+        if ref[0] == "class":
+            nested = f"{ref[2]}.{attr}"
+            return ("class", ref[1], nested) if nested in self.classes[ref[1]] else ("unresolved", f"{ref[2]} defines no class {attr}")
+        dotted = ref[1]
+        if ref[0] == "module":
+            path = self.names[dotted]
+            if (path, attr) in seen:
+                return ("unresolved", f"{dotted}.{attr} is imported through itself")
+            if attr in self.scope[path]:
+                return self.bound(path, attr, seen | {(path, attr)})
+            for star in sorted(b[1] for b in self.scope[path].get("*", ()) if self.module(b[1])[0] in ("module", "package")):
+                found = self.member(self.module(star), attr, seen | {(path, attr)})
+                if found[0] != "unresolved":
+                    return found
+        sub = f"{dotted}.{attr}"
+        return self.module(sub) if sub in self.names or sub in self.packages else ("unresolved", f"{dotted} defines no {attr}")
+
+    def bound(self, path: str, name: str, seen: frozenset = frozenset()) -> Ref:
+        """What the module-level name `name` of file `path` is bound to."""
+        options = self.scope[path].get(name, set())
+        if not options:
+            return ("external",) if hasattr(builtins, name) else ("unresolved", f"{name} is neither defined nor imported in {path}")
+        if len(options) > 1:
+            return ("unresolved", f"{name} is bound more than once in {path}")
+        kind, *rest = next(iter(options))
+        if kind == "class":
+            return ("class", path, rest[0])
+        if kind == "module":
+            return self.module(rest[0])
+        if kind == "from":
+            return self.member(self.module(rest[0]), rest[1], seen)
+        return ("unresolved", f"{name} is not a class or an import in {path}")
+
+    def expr(self, path: str, node: ast.expr) -> Ref:
+        if isinstance(node, ast.Name):
+            return self.bound(path, node.id)
+        if isinstance(node, ast.Attribute):
+            return self.member(self.expr(path, node.value), node.attr)
+        if isinstance(node, ast.Subscript):
+            return self.expr(path, node.value)
+        return ("unresolved", f"{ast.unparse(node)} is not a name")
+
+    def bases(self, path: str, qual: str) -> list[tuple[str, Ref]]:
+        """(source text, what it resolves to) for each base of a class, in order."""
+        out = []
+        for node in self.classes[path][qual].bases:
+            ref = self.expr(path, node)
+            out.append((ast.unparse(node), ("unresolved", f"{ast.unparse(node)} is a module, not a class") if ref[0] in ("module", "package") else ref))
+        return out
+
+    def mro(self, key: tuple[str, str], building: tuple = ()) -> list:
+        """C3 linearization of a class: project classes are (file, name); a base outside them is an opaque ("base", text) entry."""
+        if key in self._mro:
+            return self._mro[key]
+        if key in building:
+            raise ValueError("inheritance cycle")
+        sequences, direct = [], []
+        for text, ref in self.bases(*key):
+            node = (ref[1], ref[2]) if ref[0] == "class" else ("base", text)
+            direct.append(node)
+            sequences.append(self.mro(node, building + (key,)) if ref[0] == "class" else [node])
+        self._mro[key] = [key] + c3_merge(sequences + [direct])
+        return self._mro[key]
+
+
+def self_call_nodes(cls: ast.ClassDef):
+    """Every `self.<name>(...)` call in the class's own methods, closures included, nested classes not (their `self` is another object)."""
+    stack = list(cls.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, ast.ClassDef):
             continue
-        order = family_order(key, trees, names, index)
-        defined: dict[str, str] = {}  # method name -> the file of the first class in resolution order that defines it
-        for member in order:
-            for item in index[member].body:
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    defined.setdefault(item.name, member[0])
-        pairs: collections.Counter = collections.Counter()
-        for member in order:
-            for node in ast.walk(index[member]):
-                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) \
-                        and node.func.value.id == "self" and node.func.attr in defined and defined[node.func.attr] != member[0]:
-                    pairs[f"{member[0]}->{defined[node.func.attr]}"] += 1
-        families[f"{key[1]} ({key[0]})"] = {"sites": sum(pairs.values()), "pairs": dict(sorted(pairs.items()))}
-    total: collections.Counter = collections.Counter()
-    for family in families.values():
-        total.update(family["pairs"])
-    return {"sites": sum(total.values()), "pairs": dict(sorted(total.items())), "families": families}
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == "self":
+            yield node
+        stack.extend(ast.iter_child_nodes(node))
+
+
+def self_calls(resolver: Classes, files: list[str]) -> dict:
+    """{"sites": n, "pairs": {"a->b": n}, "families": {"Class (file)": {"sites": n, "pairs": {...}}}, "unresolved": {"file::Class(base)": why}}
+
+    A family is rooted at every class with a project ancestor defined in another file (a same-file intermediate base does not hide it). Its
+    methods resolve the way Python resolves them, through
+    the C3 order of its project classes. A call site is counted once however many families contain it: by (site, defining file), so a site
+    that two compositions bind to different files counts once for each file. `families` shows each root's own view."""
+    in_service = set(files)
+    sites: set[tuple[str, int, int, str]] = set()
+    families: dict[str, dict] = {}
+    unresolved: dict[str, str] = {}
+    for path in sorted(files):
+        for qual, node in resolver.classes[path].items():
+            bases = resolver.bases(path, qual)
+            for text, ref in bases:
+                if ref[0] == "unresolved" or (ref[0] == "class" and ref[1] not in in_service):
+                    unresolved[f"{path}::{qual}({text})"] = ref[1] if ref[0] == "unresolved" else f"{text} is defined in {ref[1]}, outside this service"
+            if not any(ref[0] == "class" for _, ref in bases):
+                continue
+            try:
+                order = [member for member in resolver.mro((path, qual)) if member[0] != "base"]
+            except ValueError as exc:
+                unresolved[f"{path}::{qual}({', '.join(text for text, _ in bases)})"] = str(exc)
+                continue
+            if not any(member[0] != path for member in order):
+                continue
+            defined: dict[str, str] = {}  # method name -> the file of the first class in resolution order that defines it
+            for member in order:
+                for item in resolver.classes[member[0]][member[1]].body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        defined.setdefault(item.name, member[0])
+            mine: set[tuple[str, int, int, str]] = set()
+            for member in order:
+                for call in self_call_nodes(resolver.classes[member[0]][member[1]]):
+                    if call.func.attr in defined and defined[call.func.attr] != member[0]:
+                        mine.add((member[0], call.lineno, call.col_offset, defined[call.func.attr]))
+            sites |= mine
+            families[f"{qual} ({path})"] = {"sites": len(mine), "pairs": dict(sorted(collections.Counter(f"{src}->{dst}" for src, _, _, dst in mine).items()))}
+    pairs = collections.Counter(f"{src}->{dst}" for src, _, _, dst in sites)
+    return {"sites": len(sites), "pairs": dict(sorted(pairs.items())), "families": families, "unresolved": dict(sorted(unresolved.items()))}
 
 
 # --- function complexity (Gate D's proxies) -----------------------------------------------------------------------------
@@ -499,6 +653,7 @@ def measure(root: Path, thresholds: dict | None = None) -> Measurement:
     names = {module_name(p): p for p in every}
     graph, edge_lines = build_graph(trees, names)
     functions = [fn for path in every for fn in functions_of(path, trees[path])]
+    resolver = Classes(trees, names)
     services: dict[str, dict] = {}
     for service in SERVICES:
         files = paths[service]
@@ -522,7 +677,7 @@ def measure(root: Path, thresholds: dict | None = None) -> Measurement:
             "cycles_file": stats["cycles"], "cycles_component": cstats["cycles"],
             "components": components,
             "modules": {row["module"]: {k: row[k] for k in ("fan_in", "fan_out", "instability", "out_reach", "in_reach")} for row in rows},
-            "self_calls": self_calls({p: trees[p] for p in files}, names),
+            "self_calls": self_calls(resolver, files),
             "smells": smells_of(own, rows, components, thresholds),
             "functions": {"count": len(mine), "over_cyclomatic": sum(fn.cyclomatic > thresholds["function_cyclomatic"] for fn in mine),
                           "over_cyclomatic_50": sum(fn.cyclomatic > 50 for fn in mine),
@@ -557,6 +712,7 @@ def gated(measurement: Measurement, tracked: dict[str, set[str]] | None = None) 
             "propagation_component": {"reach_pairs": s["propagation_component"]["reach_pairs"], "nodes": s["propagation_component"]["nodes"]},
             "cycles_file": s["cycles_file"], "cycles_component": s["cycles_component"],
             "self_calls": dict(s["self_calls"]["pairs"]),
+            "unresolved_bases": dict(s["self_calls"]["unresolved"]),
             "smells": {kind: list(s["smells"][kind]) for kind in SMELL_KINDS},
             "functions": dict(sorted(functions.items())),
         }
@@ -596,7 +752,10 @@ def load_baseline(path: Path) -> dict:
 
 
 def make_baseline(measurement: Measurement, thresholds: dict) -> dict:
-    return {"version": BASELINE_VERSION, "pin": measurement.report["pin"], "thresholds": dict(sorted(thresholds.items())), **gated(measurement)}
+    body = gated(measurement)
+    for service in SERVICES:
+        del body["services"][service]["unresolved_bases"]  # an unresolved base is never baselined: only an exemption classifies it
+    return {"version": BASELINE_VERSION, "pin": measurement.report["pin"], "thresholds": dict(sorted(thresholds.items())), **body}
 
 
 # --- the comparison ------------------------------------------------------------------------------------------------
@@ -654,6 +813,8 @@ def compare(baseline: dict, current: dict) -> tuple[list[Violation], list[str]]:
         for pair, was in old["self_calls"].items():
             if new["self_calls"].get(pair, 0) < was:
                 improvements.append(f"self_calls {service}:{pair}: {new['self_calls'].get(pair, 0)} sites, baseline {was}")
+        for item, why in new["unresolved_bases"].items():
+            violations.append(Violation("unresolved_base", where(service, item), 1, f"0; {why}"))
         for kind in SMELL_KINDS:
             for item in new["smells"][kind]:
                 if item not in old["smells"][kind]:
@@ -972,7 +1133,7 @@ def summary_lines(report: dict) -> list[str]:
         lines.append(
             f"{service}: {s['files']} files, {s['edges']} edges, propagation {float(gated_cost(s['propagation_file'])):.4%} "
             f"(components {float(gated_cost(s['propagation_component'])):.4%}), file cycles {len(s['cycles_file'])}, component cycles {len(s['cycles_component'])}, "
-            f"cross-file self-calls {s['self_calls']['sites']} over {len(s['self_calls']['pairs'])} file pairs, "
+            f"cross-file self-calls {s['self_calls']['sites']} over {len(s['self_calls']['pairs'])} file pairs, unresolved bases {len(s['self_calls']['unresolved'])}, "
             f"smells hub/unstable/god {len(s['smells']['hub_like'])}/{len(s['smells']['unstable_dependency'])}/{len(s['smells']['god_component'])}, "
             f"{s['functions']['count']} functions, {len(s['functions']['offenders'])} over the thresholds")
     return lines
