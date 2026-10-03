@@ -25,7 +25,7 @@ from unittest import mock
 from gen2.gateway_client import observe
 from gen2.gateway_client import client as gateway
 from gen2.gateway_client.client import GatewayClient, http_transport
-from gen2.tests.gateway_wire import CAPTURED, EMPTY_LANE, FIND, INV, STAMP, gateway_answer, job, lookup, reply
+from gen2.tests.gateway_wire import CAPTURED, EMPTY_LANE, FIND, INV, STAMP, admitted, gateway_answer, job, lookup, reply
 from gen2.tests.loopback import Loopback, ThreadsJoined
 from gen2.tests.router_fixtures import RouterTestCase
 
@@ -65,7 +65,7 @@ class ExchangeTest(ThreadsJoined):
 
     def exchange(self, server: Loopback, body: bytes | None = None, deadline: float = DEADLINE, method: str = "GET", scheme: str | None = None):
         url = server.url if scheme is None else f"{scheme}://127.0.0.1:{server.port}"
-        return self.timed(lambda: http_transport(method, url + "/v1/jobs/1", {"Accept": "application/json"}, body, deadline))
+        return self.timed(lambda: http_transport(method, url + "/v1/jobs/1", {"Accept": "application/json"}, body, deadline, admitted=admitted(server.port)))
 
     def poll(self, server: Loopback, deadline: float = DEADLINE):
         c = GatewayClient(server.url, "synthetic", deadline=deadline, timeout=130)
@@ -125,7 +125,7 @@ class EveryBlockingStepIsBounded(ExchangeTest):
         with self.assertRaises(TimeoutError, msg="this machine completes a connect to a full queue: the case cannot be made"):
             probe.connect(listener.getsockname())
         (status, headers, raw, error), elapsed = self.timed(lambda: http_transport(
-            "GET", f"http://127.0.0.1:{listener.getsockname()[1]}/v1/jobs/1", {}, None, DEADLINE))
+            "GET", f"http://127.0.0.1:{listener.getsockname()[1]}/v1/jobs/1", {}, None, DEADLINE, admitted=admitted(listener.getsockname()[1])))
         self.assertEqual((status, raw, error), (None, b"", "timeout"))
         self.assertEndsAtTheDeadline(elapsed)
 
@@ -154,7 +154,7 @@ class EachCallIsGivenWhatIsLeft(ExchangeTest):
     def connected(self, server: Loopback) -> tuple:
         started = time.monotonic()
         deadline = gateway._Deadline(self.DEADLINE)
-        sock = gateway._connect(("127.0.0.1", server.port), deadline)
+        sock = gateway._connect(deadline, admitted(server.port))
         self.addCleanup(sock.close)
         time.sleep(self.IDLE)
         return sock, deadline, started
@@ -178,7 +178,7 @@ class EachCallIsGivenWhatIsLeft(ExchangeTest):
         """The accepted path through `recv` (task 2b-repair-15; Astra's control for the recv-not-armed mutant, which she supplied by hand because no exchange calls it: http.client reads through
         recv_into): a peer that sends inside the deadline is read, whole, by a call armed with what is left."""
         server = self.serve(lambda s, conn, h, b: s.send(conn, [(0, b"OK")]), read=False)
-        sock = gateway._connect(("127.0.0.1", server.port), gateway._Deadline(5.0))
+        sock = gateway._connect(gateway._Deadline(5.0), admitted(server.port))
         self.addCleanup(sock.close)
         self.assertEqual(sock.recv(2), b"OK")
 
@@ -199,7 +199,7 @@ class EachCallIsGivenWhatIsLeft(ExchangeTest):
             received.append(conn.recv(2))
             got.set()
         server = self.serve(read_two, read=False)
-        sock = gateway._connect(("127.0.0.1", server.port), gateway._Deadline(5.0))
+        sock = gateway._connect(gateway._Deadline(5.0), admitted(server.port))
         self.addCleanup(sock.close)
         self.assertEqual(sock.send(b"OK"), 2)
         self.assertTrue(got.wait(5.0), "the peer never read it")
@@ -214,7 +214,7 @@ class EachCallIsGivenWhatIsLeft(ExchangeTest):
             time.sleep(0.2)
             real(sock, target)
         with mock.patch.object(gateway._DeadlineSocket, "connect", slow_connect):
-            sock = gateway._connect(("127.0.0.1", server.port), gateway._Deadline(0.5))
+            sock = gateway._connect(gateway._Deadline(0.5), admitted(server.port))
         self.addCleanup(sock.close)
         self.assertLess(sock.gettimeout(), 0.31)
 
@@ -414,12 +414,12 @@ class NoExchangeResolvesAName(ExchangeTest):
         server = self.serve(lambda s, conn, h, b: (seen.append(h), s.send(conn, [(0, reply(job("done")))])))
         resolve = lookup("127.0.0.1", port=server.port)
         c = GatewayClient(f"http://Gateway.Test:{server.port}", "synthetic", resolver=resolve)
-        self.assertEqual(resolve.calls, [("GATEWAY.TEST".lower(), server.port)], "looked up once, at construction, under the name it was given (lower-cased: the cache key)")
+        self.assertEqual(resolve.calls, [("gateway.test", server.port)], "looked up once, at construction, under the name it was given in its canonical (lower-case) form")
         for _ in range(3):
             status, doc, error = c._exchange("GET", "/v1/jobs/1", None, "synthetic")
             self.assertEqual((status, error, doc["status"]), (200, None, "done"))
         self.assertEqual(len(resolve.calls), 1, "three exchanges made no lookup")
-        self.assertTrue(all(f"Host: Gateway.Test:{server.port}".encode() in head for head in seen), "the request still names the host, not the address")
+        self.assertTrue(all(f"Host: gateway.test:{server.port}".encode() in head for head in seen), "the request still names the host (as the canonical origin spells it), not the address")
         self.assertEqual((c.last_resolution.host, c.last_resolution.addresses, c.last_resolution.error), ("gateway.test", ("127.0.0.1",), None))
 
     def test_the_deployment_contracts_gateway_url_is_looked_up_once_at_construction_and_a_given_transport_is_not_the_clients_to_resolve_for(self):

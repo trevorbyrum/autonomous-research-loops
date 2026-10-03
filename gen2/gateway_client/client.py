@@ -37,13 +37,18 @@ only outcome, but `failed`, of a request that does not page — resolve, enrich,
 end to know: 2b-repair-13d); and `failed`. The cursor is kept on the observation, so neither the cap
 nor an unfollowed continuation hides that more remains.
 
-THE CLIENT CONTRACT (Gate D #3, task 2b-repair-17; INVARIANTS H-6). One owner, `_Endpoint`, holds every fact that decides whether this client may do I/O; nothing else authorizes anything.
+THE CLIENT CONTRACT (Gate D #3, tasks 2b-repair-17 and -18; INVARIANTS H-6). One owner, `_Endpoint`, holds every fact that decides whether this client may do I/O; nothing else authorizes anything.
 
   Guarantee. A durable observation states only what a request to the currently authorized endpoint actually returned, within its deadline. The authorized endpoint is the configured
   scheme, host and port with the addresses its owner's last lookup found for a name (an IP literal is its own address, always authorized). It does not authenticate the process
   listening there: a plain-HTTP gateway's address reused before any failure is indistinguishable from the gateway, and bytes already sent cannot be revoked.
-  Endpoint forms. `base_url` is an `http` or `https` URL whose host is a name or an IP literal (v4 or v6), with no credentials; anything else is a ValueError at construction, before
-  any I/O, and the endpoint is fixed for the client's life.
+  Endpoint forms. `base_url` is one origin form (`_origin`): an `http` or `https` scheme, a host that is a DNS name of LDH labels or an IP literal (v4, or v6 in brackets), an optional decimal port and at most
+  a final `/`. Anything else is a ValueError at construction, before any I/O: credentials, a path, query or fragment, percent-encoding, anything not ASCII, and every spelling that a resolver, urlsplit or
+  urllib could read as another host than the owner does (`127.0.0.%31`, `2130706433`, `0x7f.1`, `127.1`, an IPv6 zone). The canonical origin (lower case, the default port left off) is stored, fixed
+  for the client's life, and is the only text a request URL is built from.
+  Authority. The canonical origin and the owner's admitted addresses are the only connection authority. A literal's own address is admitted once, at construction, and a name's are the ones its owner's
+  last lookup found; `_connect` takes its targets from those addresses alone (`admitted`), never from the host urllib reads out of the request, and classifies no host string. A name that is withdrawn has no
+  targets, however it is spelled.
   Ownership. A GatewayClient is SERIAL: it runs one public operation at a time — a `search` (every page and poll of it), a `grant`, or a `resolve` — and every exchange is part of one. A call that
   overlaps a running one (another thread) or re-enters it (a hook) raises `ClientBusy` before any lookup, connection or byte, and changes nothing: refused, never waited on (so no wait can
   outlast a bound), and never an observation (nothing was asked of the gateway). Separate instances share nothing (no lock, no opener, no module state) and run fully concurrently: a
@@ -53,7 +58,7 @@ THE CLIENT CONTRACT (Gate D #3, task 2b-repair-17; INVARIANTS H-6). One owner, `
   request or token, so the rest of a search's pages and polls end unknown, until a `resolve()` finds addresses. Only the owner's `resolve()` looks a name up, between operations and
   at construction, never an exchange, a poll or a search (getaddrinfo cannot be interrupted in-process and the client may not leave a thread running or start a process: BOUNDARIES,
   the supervisor owns every lifecycle). Its time is the caller's, outside every deadline here and not bounded by this client (see `resolve`).
-  Routes. The client builds its own opener from the HTTP handlers alone (`_opener`) and connects only to an address the endpoint authorizes (`_connect`), keeping the NAME for the TLS server
+  Routes. The client builds its own opener from the HTTP handlers alone (`_opener`) and connects only to an address the endpoint admits (`_connect`), keeping the NAME for the TLS server
   name and the certificate check: so ambient proxy variables (any case, `no_proxy`, CGI), redirects (a reply is never a destination), challenge-driven authentication, cookies, the global opener and
   the FTP, file, data and unknown-scheme handlers do not exist for it. Hooks (transport, resolver, clock) are trusted code and test seams, not a second production route.
   Attribution. One connection per exchange, closed with it and never reused: a reply read on it answers the one request written on it by the one operation running, and is attributed to its
@@ -72,23 +77,26 @@ import contextlib
 import functools
 import http.client
 import ipaddress
+import re
 import socket
 import ssl
 import threading
 import time
-import types
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from typing import Callable, Mapping, NamedTuple, Sequence
+from typing import Callable, NamedTuple, Sequence
 
 from gen2.core import canonical, pagination
 from gen2.gateway_client import observe
 
 REQUEST_TYPES = pagination.REQUEST_TYPES
 POLL_SECONDS = 0.5
-NO_NAMES: Mapping = types.MappingProxyType({})   # no name was looked up beforehand: only an IP literal can be connected to
+DEFAULT_PORTS = {"http": 80, "https": 443}
+_ORIGIN = re.compile(r"(https?)://(?:\[([0-9a-f:.]+)\]|([a-z0-9.-]+))(?::([0-9]{1,5}))?/?", re.ASCII | re.IGNORECASE)   # scheme, host and port: nothing urlsplit or urllib could read otherwise
+_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", re.ASCII | re.IGNORECASE)   # one LDH label of a DNS name (RFC 1123)
+_NUMBER = re.compile(r"[0-9]+|0x[0-9a-f]*", re.ASCII | re.IGNORECASE)   # a last label inet_aton reads as a number: `2130706433`, `0x7f.1`, `0177.0.0.1`, `127.1` are addresses, whatever they look like
 
 
 def utc_now() -> str:
@@ -165,13 +173,36 @@ def _literal(host: str, port: int) -> list | None:
     return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (host, port))]
 
 
-def _connect(address: tuple, deadline: _Deadline, resolved: Mapping = NO_NAMES) -> _DeadlineSocket:
-    """A connected socket, whose connect took only the time left. It never resolves a name: an IP literal is its own address, and a name must
-    have been looked up beforehand (`resolved`: (lower-case host, port) -> getaddrinfo's results); one that was not is a failed connect."""
-    host, port = address
-    error: OSError = OSError(f"{host}:{port} has no resolved address: an exchange never resolves a name")
+def _origin(url: str) -> tuple:
+    """(scheme, host, port, the addresses a literal host is: none for a name) of the one form of gateway origin this client accepts, or a ValueError, before anything is looked up or connected to
+    (2b-repair-18, Astra R17-1: the owner read `127.0.0.%31` as a name and urllib decoded it to the address 127.0.0.1, two readings of one string). The form is an http or https scheme, a host, an
+    optional decimal port and at most a final `/`: no credentials, path, query or fragment, no whitespace or control character, nothing but ASCII, and no percent-encoding anywhere. The host is an IP
+    literal (`ipaddress`: four plain decimal fields, or an IPv6 address in brackets, with no zone) or a DNS name of RFC 1123 LDH labels (no empty label, so no trailing dot; an IDN only in its ASCII
+    `xn--` form) whose last label is no number: a resolver reads `2130706433`, `0x7f.1`, `0177.0.0.1` and `127.1` as addresses, so they are refused, not taken for names. Everything is returned in
+    its canonical form (lower case, an IPv6 address compressed, the port a number), the one representation the client then holds."""
+    parts = _ORIGIN.fullmatch(url)
+    if parts is None:
+        raise ValueError(f"{url!r} is not an http or https origin: a scheme, a DNS name or IP literal, an optional decimal port and at most a final '/' (no credentials, path, query, fragment or percent-encoding)")
+    scheme, v6, name, digits = parts.groups()
+    scheme, port = scheme.lower(), int(digits) if digits else DEFAULT_PORTS[scheme.lower()]
+    try:
+        ip = ipaddress.IPv6Address(v6) if v6 else ipaddress.IPv4Address(name)
+    except ValueError:
+        ip = None
+    labels = (name or "").split(".")
+    if not 0 < port < 65536 or (ip is None and (v6 or len(name) > 253 or not all(_LABEL.fullmatch(label) for label in labels) or _NUMBER.fullmatch(labels[-1]))):
+        raise ValueError(f"{url!r} is not an http or https origin with a port from 1 to 65535 and a host that is an IP literal or a DNS name of LDH labels no resolver can read as a number")
+    host = str(ip) if ip is not None else name.lower()
+    return scheme, host, port, _literal(host, port)
+
+
+def _connect(deadline: _Deadline, admitted: Sequence) -> _DeadlineSocket:
+    """A connected socket, whose connect took only the time left. Its targets are the endpoint owner's admitted addresses (`_Endpoint.addresses`: getaddrinfo's results) and nothing else: the host
+    the request names is the Host header and the TLS name, never a target (urllib reads it through its own parser, and may read another host than the owner holds), no host string is read as an
+    address here, and no name is resolved. None admitted is a failed connect."""
+    error: OSError = OSError("the endpoint admits no address: an exchange connects only to what its owner admitted, and never resolves a name")
     deadline.remaining()
-    for family, kind, proto, _, target in _literal(host, port) or resolved.get((host.lower(), port), ()):
+    for family, kind, proto, _, target in admitted:
         sock = _DeadlineSocket(family, kind, proto)
         sock.deadline = deadline
         try:
@@ -186,17 +217,17 @@ def _connect(address: tuple, deadline: _Deadline, resolved: Mapping = NO_NAMES) 
 
 
 class _DeadlineHTTPConnection(http.client.HTTPConnection):
-    def __init__(self, *args, deadline: _Deadline, resolved: Mapping = NO_NAMES, **kwargs) -> None:
+    def __init__(self, *args, deadline: _Deadline, admitted: Sequence = (), **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._deadline = deadline
-        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline, resolved)
+        self._create_connection = lambda address, timeout, source_address: _connect(deadline, admitted)
 
 
 class _DeadlineHTTPSConnection(http.client.HTTPSConnection):
-    def __init__(self, *args, deadline: _Deadline, resolved: Mapping = NO_NAMES, **kwargs) -> None:
+    def __init__(self, *args, deadline: _Deadline, admitted: Sequence = (), **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._deadline = deadline
-        self._create_connection = lambda address, timeout, source_address: _connect(address, deadline, resolved)
+        self._create_connection = lambda address, timeout, source_address: _connect(deadline, admitted)
         self._context.sslsocket_class = _DeadlineSSLSocket
 
     def connect(self) -> None:
@@ -204,33 +235,34 @@ class _DeadlineHTTPSConnection(http.client.HTTPSConnection):
         self.sock.deadline = self._deadline
 
 
-def _opener(deadline: _Deadline, resolved: Mapping) -> urllib.request.OpenerDirector:
+def _opener(deadline: _Deadline, admitted: Sequence) -> urllib.request.OpenerDirector:
     """The client's own opener, and only the HTTP handlers (2b-repair-17, Gate D #3 routes): none of build_opener's defaults (the proxy handler that reads the environment, redirects, the FTP, file, data and unknown-scheme
     handlers). A status that is not a success reaches the default error handler and is an HTTPError, a 3xx included: no reply is ever followed."""
     class Http(urllib.request.HTTPHandler):
         def http_open(self, req):
-            return self.do_open(lambda host, **kw: _DeadlineHTTPConnection(host, deadline=deadline, resolved=resolved, **kw), req)
+            return self.do_open(lambda host, **kw: _DeadlineHTTPConnection(host, deadline=deadline, admitted=admitted, **kw), req)
 
     class Https(urllib.request.HTTPSHandler):
         def https_open(self, req):
-            return self.do_open(lambda host, **kw: _DeadlineHTTPSConnection(host, deadline=deadline, resolved=resolved, **kw), req, context=self._context)
+            return self.do_open(lambda host, **kw: _DeadlineHTTPSConnection(host, deadline=deadline, admitted=admitted, **kw), req, context=self._context)
     opener = urllib.request.OpenerDirector()
     for handler in (Http(), Https(), urllib.request.HTTPDefaultErrorHandler(), urllib.request.HTTPErrorProcessor()):
         opener.add_handler(handler)
     return opener
 
 
-def http_transport(method: str, url: str, headers: dict, body: bytes | None, timeout: float, resolved: Mapping | None = None) -> tuple:
-    """(status, headers, body, error): one HTTP exchange that never raises, never follows a redirect and goes nowhere but straight to the host of `url` (no proxy), over http or https only.
+def http_transport(method: str, url: str, headers: dict, body: bytes | None, timeout: float, admitted: Sequence = ()) -> tuple:
+    """(status, headers, body, error): one HTTP exchange that never raises, never follows a redirect and goes nowhere but straight to an address its caller admitted (no proxy), over http or https only.
 
     `timeout` is the whole exchange's: one absolute deadline, taken when the call starts, over the connect, the
     request, the status line and headers, and the body. Every blocking socket operation is given what is left of it
     (_DeadlineSocket) and an operation that would start after it does not, so no reply can outlast it by arriving a
     chunk at a time. The exchange resolves no name (2b-repair-15, Astra F2: getaddrinfo cannot be interrupted
-    in-process, so a lookup inside the deadline can run past it by the resolver's own time): the host of `url` is an IP
-    literal, or a name in `resolved` ((lower-case host, port) -> getaddrinfo's results, looked up beforehand by the
-    caller: GatewayClient.resolve), and a name that is in neither is a transport failure at once. The name stays the
-    host of the request: it is what the TLS server name and the certificate check use, and the Host header says."""
+    in-process, so a lookup inside the deadline can run past it by the resolver's own time), and it reads no address out of `url`
+    (2b-repair-18, Astra R17-1): it connects to `admitted`, getaddrinfo's results as the endpoint's owner holds them (GatewayClient's
+    `_Endpoint.addresses`: an IP literal's own address, or what GatewayClient.resolve found for a name), and with none admitted it is a
+    transport failure at once. The host of `url` stays the host of the request: what the TLS server name and the certificate check use,
+    and the Host header says; it chooses no target, however urllib spells or decodes it."""
     try:
         supported = urllib.parse.urlsplit(url).scheme in ("http", "https")
     except ValueError:
@@ -239,7 +271,7 @@ def http_transport(method: str, url: str, headers: dict, body: bytes | None, tim
         return None, {}, b"", "transport_failure"   # nothing but http and https has a handler: any other scheme is refused before anything is built
     req = urllib.request.Request(url, data=body, method=method, headers=headers)
     try:
-        with _opener(_Deadline(timeout), NO_NAMES if resolved is None else resolved).open(req, timeout=timeout) as resp:
+        with _opener(_Deadline(timeout), admitted).open(req, timeout=timeout) as resp:
             return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read(), None
     except urllib.error.HTTPError as e:
         try:
@@ -283,22 +315,21 @@ class ClientBusy(RuntimeError):
 
 class _Endpoint:
     """The one owner of whether this client may do I/O (2b-repair-17, Gate D #3: it had been four facts that could disagree: a mapping of cached addresses, a stale flag, the address list a connection already
-    running held on to, and urllib's own proxy choice). It holds the endpoint's configured origin, fixed at construction; the addresses a lookup found for a name (none: withdrawn); and the lease of the one
-    operation running on it. `Resolution` history, `last_resolution`, authorizes nothing."""
+    running held on to, and urllib's own proxy choice; 2b-repair-18, Astra R17-1: and the host urllib decoded from the URL). It holds the endpoint's one canonical origin (`_origin`, validated and fixed at construction:
+    the only text a request URL is built from), the addresses it admits (a literal's own, admitted here, once; or what a lookup found for a name, none once withdrawn), and the lease of the one operation running
+    on it. Nothing else names a target: not the request's host as urllib reads it, and not `Resolution` history, `last_resolution`, which authorizes nothing."""
 
     def __init__(self, base_url: str) -> None:
-        parts = urllib.parse.urlsplit(base_url)
-        port = parts.port   # a ValueError for a port that is no number
-        if parts.scheme not in ("http", "https") or not parts.hostname or parts.username is not None or parts.password is not None:
-            raise ValueError(f"{base_url!r} is not an http or https URL with a host and no credentials: the gateway's endpoint forms")
-        self.host, self.port = parts.hostname.lower(), port or (443 if parts.scheme == "https" else 80)
+        self.scheme, self.host, self.port, literal = _origin(base_url)
+        self.origin = f"{self.scheme}://{f'[{self.host}]' if ':' in self.host else self.host}" + ("" if self.port == DEFAULT_PORTS[self.scheme] else f":{self.port}")
+        self.literal: tuple = tuple(literal or ())   # the address an IP literal is, admitted at construction and never classified again
         self._found: tuple = ()
         self._lease, self._holder = threading.Lock(), None   # per instance: no lock is shared between clients
 
     @property
     def addresses(self) -> tuple:
-        """What an exchange may connect to, read when it starts: an IP literal is its own address; a name has the ones its last lookup found, and none once it was withdrawn."""
-        return tuple(_literal(self.host, self.port) or self._found)
+        """What an exchange may connect to, read when it starts: an IP literal's own address, admitted at construction; a name has the ones its last lookup found, and none once it was withdrawn."""
+        return self.literal or self._found
 
     def publish(self, found) -> None:
         """The one transition: the addresses a lookup found, or none, which withdraws the endpoint (a literal's address is its own: nothing to revoke)."""
@@ -341,15 +372,15 @@ class GatewayClient:
         the name is looked up HERE, once (`resolve`), outside any exchange: a failed lookup does not fail the construction (a dependency's failure is a capability fact, not an outage of the engine:
         DEPLOYMENT-CONTRACT 1.2), it leaves the endpoint withdrawn (`endpoint_stale`), and every exchange then fails at once as a transport failure until the owner's `resolve()` succeeds. A transport
         handed in (a test's) is not the client's to resolve for or to withdraw an endpoint of, and an IP literal needs no lookup. `resolver` is getaddrinfo's signature (socket.getaddrinfo when None,
-        looked up at each call). A `base_url` that is not an http or https URL with a host and no credentials is a ValueError."""
-        self._base_url = base_url.rstrip("/")
+        looked up at each call). A `base_url` that is not the one origin form of `_origin` is a ValueError, before anything else is done."""
+        self._endpoint = _Endpoint(base_url)   # a ValueError for any other origin, before anything else is done
+        self._base_url = self._endpoint.origin
         self.token, self.timeout, self.deadline = token, timeout, deadline
         self._clock, self._sleep, self._monotonic, self._resolver = clock, sleep, monotonic, resolver
-        self._endpoint = _Endpoint(self._base_url)
         self.last_resolution = None
         self._real = transport is None or transport is http_transport
         self._transport = self._direct if self._real else transport
-        if self._real and _literal(self._endpoint.host, self._endpoint.port) is None:
+        if self._real and not self._endpoint.literal:
             self.resolve()
 
     @property
@@ -358,7 +389,7 @@ class GatewayClient:
 
     def _direct(self, method: str, url: str, headers: dict, body: bytes | None, timeout: float) -> tuple:
         """The real transport, over the addresses the endpoint authorizes as this exchange starts."""
-        return http_transport(method, url, headers, body, timeout, resolved={(self._endpoint.host, self._endpoint.port): self._endpoint.addresses})
+        return http_transport(method, url, headers, body, timeout, admitted=self._endpoint.addresses)
 
     @property
     def endpoint_stale(self) -> bool:
@@ -377,8 +408,8 @@ class GatewayClient:
         which the job's deadline terminates) must place it under a bound it owns."""
         host, port = self._endpoint.host, self._endpoint.port
         began, at = self._monotonic(), self._clock()
-        found, error = _literal(host, port), None   # an address needs no lookup
-        if found is None:
+        found, error = list(self._endpoint.literal), None   # an address needs no lookup
+        if not self._endpoint.literal:
             try:
                 found = list((self._resolver or socket.getaddrinfo)(host, port, 0, socket.SOCK_STREAM))
                 error = None if found else f"{host}:{port} resolved to no address"

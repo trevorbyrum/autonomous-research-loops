@@ -55,6 +55,11 @@ def lookup(*addresses: str, port: int = 0):
     return find
 
 
+def admitted(port: int, host: str = "127.0.0.1") -> list:
+    """What an endpoint's owner admits for a loopback listener: getaddrinfo's one result, as the transport is handed it (written out here, not asked of the client's own `_Endpoint`)."""
+    return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (host, port))]
+
+
 def observed(out: dict) -> tuple:
     """(coverage, completeness, count, page outcome, error class) of the one observation of a one-lane search."""
     [only] = out["observations"]

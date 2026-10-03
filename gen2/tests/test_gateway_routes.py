@@ -20,8 +20,8 @@ from unittest import mock
 
 from gen2.gateway_client import client as gateway
 from gen2.gateway_client.client import GatewayClient, http_transport
-from gen2.tests.gateway_wire import (EMPTY_AND_EXHAUSTED, EMPTY_LANE, FIND, INV, STAMP, TOKEN, Recorder, gateway_script, job, lookup, observed, queued_answer, reply,
-                                     unobserved)
+from gen2.tests.gateway_wire import (EMPTY_AND_EXHAUSTED, EMPTY_LANE, FIND, INV, STAMP, TOKEN, Recorder, admitted, gateway_script, job, lookup, observed, queued_answer,
+                                     reply, unobserved)
 from gen2.tests.loopback import ThreadsJoined
 
 SEARCH = dict(invocation_id=INV, attempt=1, policy_version="gw-policy/1")
@@ -209,7 +209,7 @@ class DirectHttpOnly(RouteTest):
         """The fixed handler inventory: HTTP and HTTPS, the default error handler (a status that is not a success is an HTTPError) and the error processor. Nothing that reads the environment,
         follows, authenticates, keeps cookies, or speaks FTP, file, data or an unknown scheme."""
         with environment({"http_proxy": "http://127.0.0.1:9", "https_proxy": "http://127.0.0.1:9", "ftp_proxy": "http://127.0.0.1:9"}, 9):   # a proxy handler registers itself only for what the environment names
-            handlers = gateway._opener(gateway._Deadline(1), {}).handlers
+            handlers = gateway._opener(gateway._Deadline(1), ()).handlers
         self.assertEqual(sorted(type(h).__name__ for h in handlers), ["HTTPDefaultErrorHandler", "HTTPErrorProcessor", "Http", "Https"])
         for kind in (urllib.request.ProxyHandler, urllib.request.HTTPRedirectHandler, urllib.request.UnknownHandler, urllib.request.FTPHandler, urllib.request.FileHandler,
                      urllib.request.DataHandler, urllib.request.HTTPCookieProcessor, urllib.request.AbstractBasicAuthHandler, urllib.request.AbstractDigestAuthHandler):
@@ -239,7 +239,8 @@ class DirectHttpOnly(RouteTest):
                         self.fail(f"raised {e!r}")
                     self.assertEqual(got, failure)
         self.assertEqual((names.calls, [path for path in opened if str(secret) in path], listener.count), ([], [], 0))
-        self.assertEqual(http_transport("GET", f"HTTP://127.0.0.1:{Recorder(self, gateway_script()).port}/v1/jobs/1", {"Accept": "application/json"}, None, 1.0)[0], 200,
+        port = Recorder(self, gateway_script()).port
+        self.assertEqual(http_transport("GET", f"HTTP://127.0.0.1:{port}/v1/jobs/1", {"Accept": "application/json"}, None, 1.0, admitted=admitted(port))[0], 200,
                          "the control: an http URL, in any case, is the transport's business")
 
 
@@ -258,7 +259,7 @@ class TheEndpointForms(ThreadsJoined):
                 self.fail(f"{url!r}: {e!r}, not a ValueError")
             self.fail(f"{url!r} was accepted")
         refused = ("ftp://gateway:8765", "file:///etc/hosts", "data:text/plain,x", "gopher://gateway", "ws://gateway:8765", "gateway:8765", "gateway", "", "//gateway:8765",
-                   "http://", "https://:8443", "http://user@gateway:8765", "http://user:secret@gateway:8765", "http://gateway:99999", "http://gateway:eight")
+                   "http://", "https://:8443", "http://user@gateway:8765", "http://user:secret@gateway:8765", "http://gateway:99999", "http://gateway:eight", "https://gateway.test:8443/api/")
         with mock.patch.object(gateway._DeadlineSocket, "connect", side_effect=AssertionError("a connection was made")) as connect, NoNameIsLookedUp():
             for url in refused:
                 for transport in (None, lambda *a: (200, {}, b"", None)):
@@ -268,7 +269,7 @@ class TheEndpointForms(ThreadsJoined):
         connect.assert_not_called()
 
     def test_the_supported_forms_are_accepted_and_fixed(self):
-        for url, base in (("http://gateway:8765", "http://gateway:8765"), ("HTTP://GATEWAY:8765/", "HTTP://GATEWAY:8765"), ("https://gateway.test:8443/api/", "https://gateway.test:8443/api"),
+        for url, base in (("http://gateway:8765", "http://gateway:8765"), ("HTTP://GATEWAY:8765/", "http://gateway:8765"), ("https://gateway.test:8443/", "https://gateway.test:8443"),
                           ("http://127.0.0.1:1", "http://127.0.0.1:1"), ("http://[::1]:8765", "http://[::1]:8765"), ("http://gateway", "http://gateway")):
             with self.subTest(url=url):
                 c = GatewayClient(url, TOKEN, resolver=lookup("10.0.0.5"), **FAST)
