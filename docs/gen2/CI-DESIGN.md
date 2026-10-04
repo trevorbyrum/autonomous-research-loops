@@ -1,255 +1,367 @@
-# gen-2 CI design — proposal for Astra review
+# gen-2 CI design — revision 2
 
-Status: **PROPOSAL** (orchestrator, 2026-10-04). Nothing here is enabled or merged until the operator rules on §8.
+Status: **PROPOSAL, revision 2** (orchestrator, 2026-10-04). Nothing is enabled until the operator rules on §9.
 
-This design builds on the existing platform and does not replace it:
-- `trevorbyrum/ci-cd`: `ARCHITECTURE.md`, `PLAN.md`, `docs/archgate.md`, `docs/agent-ci-guide.md`, `lib/vars/standardPipeline.groovy`;
-- the `gen2` Jenkinsfile merged in PR #1 (`ea5a699`).
+- **Revision 1:** `5ae3d49` plus the §3.9 addendum `d087225`. Astra reviewed it with verdict **SOUND-WITH-CHANGES** (`private/reviews/gen2-ci-design-astra-review-20261004.md`; evidence in `private/evidence/astra-ci-design/`).
+- **This revision** adopts all ten of Astra's findings, its research corrections, its changes to the gaps list and its implementation order. §10 maps each finding to where it is addressed.
 
-The platform's trust model is adopted unchanged: the ci-manager and ci-worker VMs, the App-pinned required check, and agents with no merge rights.
+**Builds on the existing platform**, `trevorbyrum/ci-cd`: two VMs (ci-manager and ci-worker), the `std` library, archgate, and the Zones G/M/W/A trust model, in which agents have no merge, Replay or write rights. Nothing here changes that topology or trust model.
 
-The operator asked for three things:
-- do not just put the current verification routine onto CI;
-- use the evidence to decide what CI should do for *this* build;
-- note what we don't cover yet.
+**The operator's requirements:**
+1. Don't just move the current routine onto CI. Decide from evidence what CI should do for this build.
+2. Note what we don't cover.
+3. Put architecture complexity and coupling checks in **every** tier, light where speed matters and deeper where time allows, and produce what helps the architecture review (Gate D).
 
-## 0. What exists today
+**What CI will and will not claim.** CI reduces duplicated execution and gives earlier, clearer feedback. It does **not** close structural defect families, prove future code correct, validate the oracle, or replace Astra's semantic and adversarial review or the fresh-session Gate D.
 
-| Thing | State | Observation |
+## 0. What exists today (verified)
+
+| Thing | Verified state |
+|---|---|
+| **Jenkins gen2 job** | The `Jenkinsfile` makes one `standardPipeline` call: image `ci-py312-noble:1`, a *mutable tag*; lint `gen2-boundaries gen2-size`; build `gen2-venv`; unit `gen2-check`; 50-minute timeout. Build #1 at `ea5a699` took **31.94 min**: engine tests 644 s, mutation 1,209 s. **No gateway target runs.** Mutation used **7 workers under a 2-CPU quota**, because `tools/gen2_mutations.py:595` takes the default from host-visible `os.cpu_count()`. |
+| **Status names** | `continuous-integration/jenkins/pr-merge` and `continuous-integration/jenkins/branch`. `ci/std` is a future name in the platform design. PR builds run the **merge commit** (JCasC strategy), not the PR head. |
+| **Library and workspace** | JCasC loads library `main`, not an immutable tag; build #1 actually ran library revision `716e6de`. `checkout scm` has no explicit workspace reset. `HOME=$WORKSPACE/.ci-home` persists across builds of a branch. The venv marker is keyed on requirements timestamps, not on the interpreter or image. `ci-results/v0` has stages but no source identity. Only three named JSON artifacts are archived. |
+| **GitHub Actions `gen2-check.yml`** | Runs every push on `ubuntu-latest`, Python **3.12.14**, and **fails** on `TheEndpointForms`. 3.12.14's `IPv6Address.__str__` renders IPv4-mapped addresses as dotted quads; 3.12.3 does not. The failure is confirmed as a representation/acceptance defect in `gen2/gateway_client/client.py:195` (`str(ip)`). It is not a wrong-destination or token leak. |
+| **Orchestrator reruns** | Manual, about 45–60 min per landing, on the shared tree. |
+| **Astra target reruns** | About 35–40 min per review round, on top of its probes. |
+
+## 1. Problems this build has hit → requirements
+
+Each requirement below is tied to a recorded problem. R8 and R11 are **preventive**: no incident occurred, so they are justified by the standing charter rule and the Gate D principle respectively.
+
+| # | Recorded problem | Requirement |
 |---|---|---|
-| Jenkins (`ci/std` check) | `Jenkinsfile` calls `standardPipeline(image: 'ci-py312-noble:1', lint: 'make gen2-boundaries gen2-size', build: 'make gen2-venv', unit: 'make gen2-check', timeoutMinutes: 50)` | Runs the whole 13-target `gen2-check` as one "unit" stage, about 32 min on 2 CPU / 4 GB. It produces no JUnit XML. **`make gen2-gateway` is not run at all**, because the image has no PostgreSQL binaries. The platform's `arch-gate` also runs, but in observe mode, because gen2 has no `archgate.toml`. |
-| GitHub Actions `gen2-check.yml` | Runs on every push to the public repo, on `ubuntu-latest` | **It fails today.** On a newer Python 3.12 patch release, `test_gateway_routes.TheEndpointForms` expects `::ffff:7f00:1` but gets `::ffff:127.0.0.1` (run 37178375414). The Jenkins PR's dry run found the same thing on 3.12.15. Two CI systems are running one job on two different interpreters, and only one of them matches ENVIRONMENT.md. |
-| Orchestrator reruns | For every coder landing, I re-run both targets by hand (about 45–60 min) before or alongside Astra | This is the de facto verifier of record. It runs on the developer machine against the shared working tree and blocks the next coder while it runs. |
-| Astra reviews | Each review re-runs both targets in a disposable checkout (about 35–40 min) on top of its adversarial probes | This doubles the target runtime per round and spends Codex budget on work a machine can do. |
+| R1 | Coder claims needed an independent check that cost about 45–60 min of manual work and occupied the shared tree. | CI becomes the **authoritative record of the specified executions**, after the qualification in §4. Independent execution does not validate the oracle. |
+| R2 | The oracle needed hand-run diff checks each round. Tests encoded rejected exemptions (2q-a-repair R5). | Protected-path and test-integrity **review signals** (§3.4). Authorisation and semantic review stay human/Astra. |
+| R3 | Mutants were "killed" by subprocess crashes that an outer test's assertion reported (2q-a-repair-2 R4; reproduced in Astra's `nested-crash-probe.json`). | **Mutation-outcome validity at the subprocess boundary** (§3.5). |
+| R4 | A review reproduction existed only as a probe until a coder rebuilt it. Already practice, but untraced. | Accepted reproductions are tests with **durable finding/family IDs** and owners, traced in CI evidence. Tests alone did not stop the circling; the charter's family rule did. |
+| R5 | Full runs on every change (about 32 min engine, about 16 min gateway). | Earlier, bounded feedback with a **full backstop that comes first** (§3.3). |
+| R6 | Timing races found by chance: supervisor start-grace, recorder startup, readiness. | No auto-retry; flips recorded as *candidates*; scheduled stress runs with recorded seeds; quarantine is a **mitigation** (§3.7). |
+| R7 | The canonical-origin defect was invisible on the pinned interpreter. | A pinned **reference gate**, plus a controlled, report-only drift qualification that is routed to tasks with response deadlines. |
+| R8 | *Preventive*: "no live calls" is enforced only by briefs and a Python guard. | **No external provider egress from the defined execution boundary** (§3.6). This is not a claim to confine every future agent or dependency. |
+| R9 | The gateway suite isn't in CI. | Run the gateway suites, without and with a database, in CI, with the required prerequisites pinned (§3.2). |
+| R10 | The metrics analyser met Python forms it couldn't model (three BLOCKs on 2q-a). | CI enforces **whatever Gate D #4 rules**. It does not pre-accept the blocked analyser and does not silently permit under-approximation. |
+| R11 | *Preventive*: two complexity measures (gen2-metrics and archgate/lizard) for one property. | **One authoritative ratchet per property**. Today archgate is observe-only, so there aren't two blocking ratchets. |
+| R12 | Evidence was lost from `/tmp` on the 2026-10-01 reboot. | A **controller-bound, retained evidence bundle**, including raw and failure evidence (§3.8). |
+| R13 | *(new)* Review/authority transitions were remembered by people, not recorded. These are: Gate D triggers, the third-BLOCK rule, family redesign. | CI and the workflow **preserve and record the charter state machine** (§5). |
 
-## 1. What this build taught us → CI requirements
+## 2. Principles
 
-Each issue below happened during the 2a–2q work and is recorded in REVIEW-LOG. Each maps to a requirement (R#).
-
-1. **Coder self-reports need an independent check; the check has to be cheap and automatic.** The orchestrator's reruns always matched, but each cost about 45–60 min and occupied the shared tree.
-   - **R1:** CI on a clean checkout of the exact SHA is the *verifier of record*. Coder claims are compared with CI results, not with a hand rerun.
-   - Research: intrinsic self-correction without an external oracle degrades, while external execution feedback works (`llm-performance-evidence`: self-correction findings; Reflexion).
-2. **Agents iterate against tests and can game them.** Test-driven iteration raises both genuine pass rates and reward-hacking rates (`llm-performance-evidence`, Conflicting-SWE-bench finding; EvilGenie benchmark). Observed here: the "independent oracle" had to be protected by hand-run `git diff` checks every round. Mutants were "killed" by `KeyError` crashes rather than by assertions (2q-a-repair-2, R4). Tests encoded rejected exemptions (2q-a-repair, R5).
-   - **R2:** protected paths and test-integrity diffs are checked by CI, not by people.
-   - **R3:** mutation kills are classified, and a crash is not a kill.
-3. **Review rounds circled when each finding was fixed in isolation.** The family-level rule and Gate D fixed the process. But each finding also existed only as a reviewer's probe until a coder rebuilt it.
-   - **R4:** every accepted review reproduction becomes a permanent regression that runs in CI, with an owner and a trace to its finding ID, so a fixed family cannot quietly reopen.
-4. **Feedback was slow and came at the wrong moment.**
-   - Full mutation runs every time (about 20 min engine, 15 min gateway).
-   - Research: the same static analysis had a near-zero fix rate as a nightly batch but above 70% when delivered at diff/review time (`codegraph-evidence`, Infer at Facebook).
-   - Research: mutation testing should be scoped to changed code per PR, with a full run kept as the backstop (`agentic` Branch 14; mutants.rs and Mull docs: "not a substitute for a full run").
-   - **R5:** tiered pipeline: fast gates in seconds; tests and diff-scoped mutation per change; full mutation on integration and nightly.
-5. **Timing-dependent tests appeared repeatedly.** Examples: the supervisor start-grace race, the recorder-startup race, and readiness helpers. Each was found by chance, and "a green rerun is not a fix" had to be argued every time.
-   - **R6:** no automatic retries; flips on an identical SHA are recorded; scheduled stress runs look for timing and order dependence on purpose; quarantine only via PR, with a cap (platform F4).
-6. **The environment drifts silently.** The reference environment is pinned at Python 3.12.3 / SQLite 3.45.1, yet a portability defect in the gateway client's canonical origin passed every review because nobody ran another patch release.
-   - **R7:** the reference environment stays the *gate*. A scheduled drift job runs current 3.12.x / 3.13 and reports, so drift is found before deployment, not after.
-7. **The no-live-calls rule was enforced in software only** (Python audit guards, "make no live provider calls" in every brief).
-   - **R8:** test and mutation containers run with **no network** (`--network none`). The rule then holds by construction, for any agent, any test, and any future dependency.
-8. **The gateway database suite isn't in CI**, and the static analysis behind the metrics ratchet keeps meeting Python forms it can't model (2q-a, three BLOCKs).
-   - **R9:** CI runs the PostgreSQL gateway suite.
-   - **R10:** CI enforces whatever supported-source contract Gate D #4 sets, so the analyser only has to be exact inside it. This matches the "soundy" practice: a sound core, plus explicit refusal or under-approximation of named hard features (`codegraph-evidence`, soundiness findings; PyCG recall about 70% on dynamic constructs).
-9. **There are two architecture mechanisms for one job.** gen2 has `gen2-metrics` (ratcheted, ledgered, mutation-tested). The platform adds `archgate` (lizard CCN, its own graph and boundary rules). The same function would get two complexity numbers. This is exactly the "two mechanisms for one job" smell Gate D looks for.
-   - **R11:** one authoritative ratchet per repository. The platform's slot runs gen2's checker as the adapter, as `ARCHITECTURE.md` Layer 2 already allows for repos with "gen2-grade needs".
-10. **Evidence lived in ad hoc directories**, and `/tmp` evidence was lost on reboot.
-    - **R12:** CI archives a per-SHA evidence bundle with a stable schema, and the orchestrator and Astra link to it.
-
-## 2. Principles (with evidence)
-
-- **P1 — An external oracle, not self-report.** The coder never certifies their own work. The verdict comes from CI on a clean checkout and from Astra. (`llm-performance-evidence`)
-- **P2 — Deliver findings when the change happens.** Fast gates run on every push. Expensive gates still run per change but scoped to the change, with full runs as a backstop. (`codegraph-evidence`, Infer delivery-timing finding)
-- **P3 — Determinism over retries.** A failure is real until shown otherwise. A flake is a recorded defect with a deadline. (Platform F4; `agentic` Branch 14 quarantine with a hard cap; Fowler on non-determinism)
-- **P4 — Guarantees by construction where it's cheap.** Network isolation, read-only protected paths, and clean checkouts. Promises in briefs are not guarantees.
-- **P5 — A soundy analysis with an explicit boundary.** An analysis that is exact on a declared subset and refuses what it can't model. Don't grow an analyser to cover all of Python. (`codegraph-evidence`)
-- **P6 — One mechanism per job.** If two checks measure the same property, one must be authoritative and the other removed or explicitly advisory.
-- **P7 — Findings become tests.** A fixed review finding is a permanent, traced regression (R4).
+- **P1 — External execution evidence, plus independent semantic review.** CI supplies the execution; Astra and Gate D supply the judgment.
+- **P2 — Feedback at diff time, never at the expense of the backstop.** Reduced per-change coverage only after a full pre-merge or integration backstop exists and is interlocked.
+- **P3 — Determinism.** Failures are real until shown otherwise; flake candidates are recorded, not assumed.
+- **P4 — Guarantees by construction where cheap, with stated boundaries.** Each guarantee states its exact scope.
+- **P5 — An explicit analysis boundary.** An exact analysis inside a declared subset, with refusal outside it, is a *proposed* contract that has to be established independently. It is not the same as the industry's "soundy" practice.
+- **P6 — One authoritative mechanism per property.** Different measures can coexist when one is explicitly diagnostic.
+- **P7 — Findings become traced tests.**
+- **P8 — Signals are not authorisation.** Machine-generated banners draw review attention. They never grant permission.
 
 ## 3. Design
 
-### 3.1 CI's role in the build loop (what changes)
+### 3.1 Identity and environment, the foundation for everything else
 
-| Today | Proposed |
-|---|---|
-| Coders commit directly to `gen2` on the one shared working tree; one coder at a time. | Each task is a branch `<agent>/<task>` in its **own git worktree**, opened as a PR into `gen2`. `ci/std` is a required check on `gen2`, and Astra reviews the PR's head SHA. The operator, or the orchestrator under an explicit operator policy, merges. Disjoint tasks could then run in parallel. Under the client-model ruling this only matters for coders; CI capacity limits it (§3.7). |
-| The orchestrator re-runs both targets by hand for every landing. | The orchestrator reads the CI result for the PR head SHA. It re-runs locally only if CI is unavailable or disagrees with the coder. |
-| Astra re-runs both targets in every review. | Astra cites the CI evidence bundle for the pinned SHA and spends the time on adversarial probes. It still may (not must) re-run any target it doubts. *Saves about 35 min and a large share of Codex budget per round. The trade-off is independence from CI's environment, which is acceptable because CI runs the reviewed reference image. Decision D3.* |
-| Review probes live in `private/evidence/astra-*`. | Accepted probes are turned into tests by the next coder (already the practice). CI then tags them with their finding ID (R4), and `ci-results.json` lists the finding-regression set that passed. |
+Every run records these separately:
+- source head, target head, merge base and the executed merge/tree SHA;
+- the run attempt;
+- library revision;
+- image **digest**;
+- the resolved interpreter, SQLite, PostgreSQL, psycopg/libpq and openssl versions.
 
-### 3.2 Pipeline tiers
+The run starts from **fresh source and runtime state**:
+- workspace cleaned;
+- an explicit cache boundary: a wheelhouse or image-provided dependencies, never a persisted `HOME` venv;
+- venv identity keyed on the interpreter and image as well as the requirements.
 
-All tiers run in the pinned reference image `ci-py312-noble`. It is extended to include the PostgreSQL server binaries, so `gen2-gateway` runs. Network is `none` from tier 1 on.
+Required git history is fetched (`gateway/tests/test_provenance.py:370` uses `git archive` on an old commit, and the hotspot report needs history). A target-branch update invalidates any earlier integration result. Status names stay the platform's real ones until the platform migrates them deliberately.
 
-| Tier | When | Contents | Target time | Blocking |
-|---|---|---|---|---|
-| **T0 fast gates** | every push and PR update | `gen2-sqlite`, `gen2-boundaries`, `gen2-size`, `gen2-schemas`, `gen2-ddl`, `gen2-catalog-check`, `gen2-metrics`, `gen2-debt`, `gen2-locators`, the **protected-path policy** (§3.3), the **test-integrity diff** (§3.3), secret/personal-data scan | < 3 min | yes |
-| **T1 tests** | every PR update | engine tests (`gen2-test`) and the gateway suite without a DB, in parallel; JUnit XML for both | about 12 min at 2 CPU | yes |
-| **T2 gateway DB** | every PR update | gateway suite against a throwaway PostgreSQL inside the container | about 4 min | yes |
-| **T3 diff-scoped mutation** | every PR update | the engine and gateway mutants whose target files changed against the merge base, *plus* mutants whose killer tests are in changed test files; trigger-order check if DDL changed | scales with the diff (typically < 10 min) | yes |
-| **T4 full verification** | on merge to `gen2`, and nightly | full `gen2-mutation`, full gateway mutants, `gen2-trigger-order`, absolute metrics audit (no ratchet credit), `gen2-hotspots` report | about 45 min | a failure blocks the **next** merge until fixed (the "main is red" rule) |
-| **T5 hardening (nightly)** | nightly | randomized test order with a recorded seed; *N=5* repeat runs of process, timing and lease tests (supervisor, recorder, readiness, deadline); environment-drift matrix (latest 3.12.x, 3.13; latest SQLite); dependency audit (`pip-audit` on the hash-locked requirements) | about 60 min, off-peak | report-only; each finding becomes a task |
+**Reference gate:** ENVIRONMENT.md's environment through a **digest-pinned** image with versioned packages. The image adds:
+- PostgreSQL 16 server binaries;
+- pinned psycopg/libpq for the gateway interpreter, which resolves ENVIRONMENT.md's open gateway lock;
+- `openssl`.
 
-Why T3 is enough per PR: mutation measures how strong the tests are where the code changed, and the research and tooling consensus is "PR-scoped plus a full backstop". T4 catches the case where an edit in one file weakens tests for another.
+A missing required capability is a **failure**, not an extra skip.
 
-### 3.3 New gen-2 gates (not covered today)
+### 3.2 Command graph (modes)
 
-1. **Protected-path policy (T0).** Each of these paths has a declared owner:
-   - the oracle: `gateway/tests/oracle/**`, `gateway/tests/test_oracle.py`;
-   - the metrics state: `docs/gen2/metrics-baseline.json`, `metrics-ledger.md`, `metrics-exemptions.md`;
-   - `DEBT-REGISTER.md`, `phase-status.json`;
-   - `gen2/boundaries.toml`, INVARIANTS, BUILD-CHARTER;
-   - the mutation-controls JSON;
-   - `Jenkinsfile`, `.github/**`.
+Each mode is a defined workload. They are alternatives, not cumulative layers, so the 60-minute ceiling is judged per mode.
 
-   A PR that touches one must carry an explicit declaration (a trailer such as `Protected-Change: <path> — <reason> — <review>`). CI prints the diff as **PROTECTED CHANGE**, the same way the platform prints CONTRACT CHANGE. The oracle stays **immutable** except through a separately authored oracle task.
-2. **Test-integrity diff (T0).** Compared with the merge base, CI reports:
-   - test methods removed or renamed;
-   - new `skip`/`skipIf`/`expectedFailure`;
-   - assertions removed from an existing method (AST count per method);
-   - a test file deleted;
-   - a mutant's killer or control list changed.
-
-   Each of these needs a declared reason, as with protected paths. This turns "your agent will pass any test it is allowed to edit" (EvilGenie, and the reports of tests being rewritten into tautologies) into a reviewable diff instead of a silent change.
-3. **Mutation kill-reason classification (T3/T4).** The mutation runners record *why* each mutant died: assertion failure, error or crash, timeout, or import failure. Only assertion failures and expected-exception tests count as kills. A crash-kill counts as a **survivor**, unless the mutant is declared `kill: error` with a reason. This fixes the 2q-a-repair-2 R4 class permanently, in the harness instead of per mutant.
-4. **Network isolation (T1–T5).** Containers run with `--network none`. PostgreSQL is reached over its Unix socket inside the same container, and loopback still works. Any test that needs the network fails loudly. This replaces reliance on the Python offline guard for CI runs; the guard stays for local runs.
-5. **Secret and personal-data scan (T0).** The repo is **public**. Scan the diff (gitleaks-style rules plus repo rules: operator email, home-directory names beyond the existing allow-list, tokens, `.env` content). The charter's no-personal-data rule is currently enforced only by briefs.
-6. **Evidence bundle (all tiers).** `ci-results.json` (platform schema) plus `gen2-evidence.json`, with:
-   - per-target exit, duration and counts;
-   - test totals and the skip list;
-   - mutants: total, killed by assertion, crash-kills, survivors, and which have paired controls;
-   - the metrics delta and ledger entries;
-   - the protected-path and test-integrity reports;
-   - the finding-regression set.
-
-   Artifacts are kept per SHA, so `/tmp` loss can't recur.
-
-### 3.4 The architecture ratchet: one mechanism
-
-- **gen2-metrics stays authoritative.** It is already ratcheted, ledgered, mutation-tested and reviewed. In the platform's arch-gate slot it should run as gen2's adapter, as `ARCHITECTURE.md` Layer 2 allows. Platform `archgate` either stays observe-only for gen2 with its report marked *advisory, superseded by gen2-metrics*, or is disabled for gen2 if the library supports a documented per-repo adapter. **Ask to ci-cd (C3).**
-- **CI enforces whatever supported-source contract Gate D #4 rules on.** If Gate D chooses a declared subset, the refusal guard is a T0 gate. CI doesn't settle that question; it gives the ruling a gate to live in.
-- The ledger's reasoned admissions appear in the PR check output as **LEDGER CHANGE**, so review attention lands on them.
-
-### 3.5 Flakes
-
-- **No automatic retries** (platform T7).
-- When a test fails and then passes on the same SHA, that is recorded in `gen2-evidence.json`.
-- Nightly T5 repeat runs score process and timing tests over time, giving a reliability number, not a yes/no flaky label (`agentic`: "how flaky, not whether").
-- **Quarantine only via a PR** that moves the test to a quarantine suite. The cap is the platform default (5 tests or 14 days). Each quarantine entry becomes a DEBT-REGISTER item with its owning task, so the existing phase-close check prevents permanent quarantine.
-
-### 3.6 Environment
-
-- **Gate:** ENVIRONMENT.md's reference (Python 3.12.3, SQLite 3.45.1) via the digest-pinned `ci-py312-noble` image, extended with PostgreSQL 16 server binaries.
-- **Drift (T5, report-only):** latest 3.12.x, 3.13, and latest SQLite. A failure becomes a task, not a red gate.
-- **Immediate finding, outside CI:** the gateway client's canonical-origin and IPv4-mapped formatting depends on `ipaddress.__str__`, which changed across 3.12 patch releases. That makes the 2b acceptance specific to the patch version. It should go to a small engine task whose root fix is to canonicalize independently of `__str__`, or else ENVIRONMENT.md must pin the patch version explicitly (operator choice, D5).
-
-### 3.7 Platform constraints and change requests to `ci-cd`
-
-`ci-cd` is the trust root and is changed only by human merge. gen2's needs exceed the current single-call contract.
-
-| # | Constraint today | Ask |
+| Mode | Runs | Budget (to be **measured** at real caps before it is relied on) |
 |---|---|---|
-| C1 | One `unit` stage; no repo-defined stages; no nightly per repo yet (`.ci.yaml` is phase 2) | Allow tiered commands, e.g. `stages: [fast, tests, gateway_db, mutation_diff]`, plus a nightly command (T4/T5) through `.ci.yaml`. |
-| C2 | Caps of 2 CPU / 4 GB and a 60-minute ceiling | Raise gen2's caps for T4/T5 (tower headroom is large), or allow parallel containers per tier. T4 at 2 CPU is close to the ceiling. |
-| C3 | archgate always runs; it is configured only through `archgate.toml` | A documented "repo adapter" mode that runs gen2's checker in the arch-gate slot (P6). |
-| C4 | Containers have network access | A `network: none` option for test stages (R8), at the Layer-0 level if the platform agrees it is a good default. |
-| C5 | `ci-results.json` v0 has no place for repo evidence | A sanctioned extension point (`extensions.gen2`), or archiving `gen2-evidence.json` alongside it. |
-| C6 | No support for the protected-path or test-integrity policy | Either a library stage (it is generic and useful fleet-wide) or gen2 runs it in T0. |
+| **push** | T0 gates (§3.3) | a few minutes |
+| **PR** (phase 1 — 3) | T0 + **full** engine acceptance + **full** gateway acceptance (no DB, then DB) | measured. Build #1 plus the local gateway figure gives roughly 48 min, mixing environments, so it isn't a bound. Split across executions if needed. |
+| **PR** (phase 6+, after selection is validated) | T0 + full test suites + **conservative diff-selected mutation** | measured |
+| **integration** (merge into `gen2`) | the full acceptance workload, with an **interlock**: a pending, failed, aborted or missing integration result blocks the next merge | measured; must not be aborted by later merges |
+| **nightly** | full acceptance + bounded stress + drift + absolute audit + deep architecture analyses + Gate D pack | bounded, with room for cleanup and publication |
 
-Until those land, a **minimum viable** version fits the current single-call contract:
-- `lint`: the T0 commands, including the new protected-path, test-integrity and scan tools;
-- `build`: the venv;
-- `unit`: a new `make gen2-ci` that runs T1, T2 and T3 and writes JUnit;
-- T4/T5: a separate scheduled job owned by the platform.
+Engine work fixes **worker budgeting**: mutation jobs come from the container's CPU quota, not `os.cpu_count()`, and the engine and gateway get an explicit aggregate budget. The gateway command is split into explicit modes (no-DB suite, DB suite, mutants), each with **one DB owner per shard**.
 
-### 3.8 GitHub Actions
+### 3.3 Tiers and the mutation selector
 
-Two CI systems for one job is the P6 smell. `gen2-check.yml` also runs on an interpreter ENVIRONMENT.md does not declare. **Recommendation:** delete it once `ci/std` is the required check, *or* turn it into the T5 drift job (non-required, scheduled, latest 3.12/3.13), since free GitHub runners suit report-only drift. Decision D4.
+- **T0 (every push):**
+  - `gen2-sqlite`, `gen2-boundaries`, `gen2-size`, `gen2-schemas`, `gen2-ddl`, `gen2-catalog-check`, `gen2-metrics`, `gen2-debt`, `gen2-locators`;
+  - the supported-source guard, once Gate D #4 rules;
+  - the protected-path and test-integrity reports;
+  - a secret and personal-data scan.
 
-### 3.9 Architecture checks in every tier (operator requirement, 2026-10-04)
+  It runs inside the no-egress boundary (§3.6), because these are candidate-controlled checkers.
+- **Acceptance tests:** the engine suite, the gateway suite without a DB and the gateway suite with a DB. JUnit for each. A report of **executed test identities and unexpected skips**, compared against the expected set.
+- **Mutation:** full in phases 1–5. Conservative diff selection only from phase 6, *after* it has been validated against full runs (§7). The **selector contract** (versioned):
+  - It computes over **both base and candidate inventories**. A mutant is selected when any of these changed: an edited target, a killer, a control, an explicit fixture dependency, its own definition, or its pairing record.
+  - Gateway-relative paths are normalised. Multi-file targets are expanded (35 gateway mutants edit several files). Symbolic engine targets (`ddl`, `connection`, special-loading files) are mapped explicitly. Deletes and renames are handled.
+  - **Full affected inventory, or both inventories when impact is unclear**, on any change to shared fixtures, loaders, runners, controls generation, toolchains, dependencies, broad contracts or unclassified paths.
+  - Trigger-order testing follows changes to store tests, fixtures and connection behaviour as well as DDL.
+  - Unmutated baselines, every selected killer and control, child attestation and global inventory-integrity checks are all kept. (`--only` currently suppresses the engine's full trigger-coverage check; the selector must not.)
+  - Selected and omitted IDs are recorded with reasons. Unknown IDs and an unavailable comparison base are **rejected**. "No applicable mutants" is reported distinctly from a broken selector. Engine `--only` currently matches prefixes and gateway `--only` matches exact IDs; both are normalised.
+  - **High-risk changes always get the full run.** "High-risk" is defined in the selector policy.
+  - The map cannot prove complete transitive impact. The integration and nightly full runs exist to catch what it misses.
 
-The operator's requirement: CI should cover as much architectural complexity and coupling as it realistically can, with some architecture checking in **every** tier, light where speed matters and deeper where time allows. It should also produce whatever helps the architecture review (Gate D).
+### 3.4 Protected-path and test-integrity review signals (R2)
 
-The scaling rule:
-- **cheap, diff-scoped checks run when the change is made**, and they block (Infer's evidence: findings delivered at diff time get fixed, nightly batches don't);
-- **deep, whole-system checks run on merge and nightly**, and they feed Gate D and the trend record.
+- **Protected set:** exact repository-relative paths with owners. Changes are evaluated against the **trusted base policy**, so a candidate can't silently change what is protected. The set:
+  - the oracle (`gateway/tests/oracle/**`, `gateway/tests/test_oracle.py`);
+  - metrics state (`metrics-baseline.json`, `metrics-ledger.md`, `metrics-exemptions.md`);
+  - `DEBT-REGISTER.md`, `phase-status.json`;
+  - `gen2/boundaries.toml`, `docs/gen2/BOUNDARIES.md`, INVARIANTS, BUILD-CHARTER, ENVIRONMENT.md and the supported-source contract;
+  - the Makefile, test discovery and runners, mutant definitions and controls JSON;
+  - the policy checker and its config, requirements and the image contract;
+  - `Jenkinsfile`, `.github/**`.
 
-| Tier | Architecture checks | Blocking? | Status today |
+  Deletions and renames count as changes.
+- **Test-integrity report:**
+  - methods removed or renamed;
+  - new skips or expected failures;
+  - assertion-count drops;
+  - test files deleted;
+  - killer/control list changes;
+  - changes to discovery or runner configuration;
+  - the executed set against the expected set.
+
+  Known limits, stated: this misses changed expectations, tautologies, early returns, altered fixtures, mocks, discovery filters, dynamic tests and failures swallowed by helpers. **Semantic review of changed assertions, fixtures and mutation intent stays with Astra.**
+- **Trailers are explanations, not approval.** Approval and oracle-task separation are verified from reviewed task/PR metadata bound to the current SHA.
+- **The secret/personal-data scan** also covers artifacts **before publication**. Private deny-list values never go into this public repo; they live in the controller's credentials or private config.
+
+### 3.5 Mutation-outcome validity (R3)
+
+- Outcomes are classified **at the subprocess/tool boundary**: tools invoked by tests emit structured termination evidence (exit cause, exception type, signal, timeout, malformed result, behaviour reached), and the mutation verdict consumes it.
+- A **valid kill** is a policy refusal or the intended behavioural counterexample. An unexpected exception, a signal, a timeout, a malformed result or failure to reach the target behaviour is **INVALID**: distinct from SURVIVED, and also failing acceptance.
+- **Repair the six 2q-a-repair-2 crash mutants into executable behavioural counterfactuals.** Relabelling them as crashes is not a repair.
+- **Narrow, reviewed expectations** cover deliberately tested process failures and the engine's documented non-setup SQLite `IntegrityError` case. There is **no** generic `kill: error` escape.
+- This belongs with 2q-a's harness work, and its owner is the mutation harness.
+
+### 3.6 No-egress execution boundary (R8)
+
+- The **trusted library** creates the execution container: no external network; only the workspace and artifact mounts it needs; **no usable host-control sockets** (Docker socket, forwarding Unix sockets) or credentials; bounded privileges.
+- The effective mounts and permissions of the current `--volumes-from` agent arrangement must be **established before** any isolation is claimed. Platform C4.
+- It covers **all candidate-controlled execution**, T0 checkers included.
+- **Dependency provisioning is separate:** a controlled build step or an image/wheelhouse, not inside the isolated container. The vulnerability audit uses a separately acquired or dated offline advisory database.
+- **IPv6:** Docker's `none` network has no IPv6 loopback. Tests that need IPv6 sockets are listed, and their skips are declared expected, or the library provides IPv6 loopback.
+- A gen2-side wrapper that launches sibling containers through Docker is **ruled out**, because it would undermine both isolation and resource caps.
+- The Python offline guard stays as defence in depth and for local runs.
+
+### 3.7 Flakes and quarantine (R6)
+
+- No automatic retries. A same-SHA flip is a **candidate**, not proof of a harmless flake.
+- Nightly stress keeps denominators, schedules and seeds. Five repeats is a stress sample, not a reliability estimate.
+- **Quarantine is a mitigation under the charter.** It needs the operator's acceptance, an owner, a removal condition and a DEBT-REGISTER entry.
+- Quarantined tests **keep running**. Losing a mutant's required killer or control stays visible and non-passing unless explicitly waived. (The platform's 5-test / 14-day cap is a proposal, not implemented behaviour.)
+
+### 3.8 Evidence bundle (R12)
+
+- **Contents:**
+  - `gen2-evidence.json` (versioned);
+  - raw logs and JUnit;
+  - the selector manifest;
+  - **per-mutant outcomes** with their validity class;
+  - executed tests and skips;
+  - subprocess failure evidence;
+  - the protected and integrity reports;
+  - metrics deltas and ledger entries;
+  - the finding-regression set;
+  - artifact checksums.
+
+  Incomplete and aborted runs are included.
+- **The controller binds the bundle** to its build identity (§3.1) and final result, through a manifest. Repository reports supply the measurements. **Missing required evidence prevents acceptance.**
+- **Retention and durable export:** evidence for accepted reviews is exported to durable storage beyond Jenkins rotation. The platform needs a C5 sanctioned artifact set, and publication must sit outside the timeout that would cut it off.
+
+### 3.9 Architecture checks in every tier (operator requirement)
+
+Every check below has an **owner**, a **measured cost**, an **exact claim**, its **known omissions**, and **promotion criteria**. Promotion means calibration on representative good changes and known violations, not just "a few merges" in observe mode. Measurements are computed once per mode and reused across tiers.
+
+| Tier | Checks | Claim / limit | Blocking |
 |---|---|---|---|
-| **T0 (every push, seconds)** | (a) boundary graph (`gen2-boundaries`); (b) ratchet of import edges, fan-in/out, reach, propagation cost, cycles, smells and per-function complexity (`gen2-metrics`); (c) the supported-source guard Gate D #4 decides; (d) file-size rule; (e) **a change-impact summary** in the check output: edges added or removed, components touched, the *blast radius* (files that transitively depend on the changed files), and complexity deltas for changed functions; (f) CONTRACT, LEDGER and PROTECTED CHANGE banners | (a)–(d) and (f) yes; (e) informational | (a), (b), (d) exist; (c) pending Gate D #4; (e) and (f) new |
-| **T1 (per PR, minutes)** | (g) **interface-stability diff**: each component's public surface (exported names and signatures, the JSON schemas under `gen2/schemas`, DDL tables and columns, the gateway HTTP/MCP routes) compared with the merge base, flagged as INTERFACE CHANGE; (h) **observed runtime coupling**: while the test suite runs, an import and call recorder logs the cross-component module edges that actually happen. Any runtime edge between components that the static graph lacks is a **blind-spot finding**, meaning the static analysis missed coupling. This is the backstop for the 2q-a problem, where static analysis can't see some Python forms. Research: static and dynamic graphs miss different edges, combining them gives the best recall, and dynamic traces are only as good as test coverage, so they supplement the static graph and are never treated as ground truth; (i) **test locality**: which components each test module exercises. A unit test that pulls in unrelated components is a coupling smell, and the same map gives test-impact analysis (`agentic` Branch 7: regressions cut by 70%) | (g) yes, unless declared; (h) yes for blind spots, which need an analyser fix or a declared exemption; (i) informational | all new |
-| **T3 (per PR)** | (j) architecture-rule mutants: the mutation harness already includes mutants that weaken the boundary and metrics checkers, so a PR that changes those tools is mutation-tested on the changed rules | yes | exists for gen2-metrics |
-| **T4 (merge and nightly, deep)** | (k) **absolute audit**: every function, file and component is held to absolute ceilings, with no ratchet credit, so baselines can't become permanent permission; (l) **change coupling and hotspots** (`gen2-hotspots`): files that change together with no static edge are *hidden coupling*, and churn × complexity gives a ranked hotspot list. Research: network centrality predicts defects better than complexity alone (Zimmermann & Nagappan, `software-architecture` F113); (m) **duplication detection**: token- and AST-based clone detection across the engine and gateway, ratcheted. Agent-written code measurably duplicates more and reuses less (GitClear 2025; *More Code, Less Reuse*, arXiv 2601.21276); (n) **dead code** (vulture-style, with a reviewed allow-list); agents leave dead code behind; (o) **cohesion**: classes or modules whose methods share no state or callers, a split candidate; (p) **type-contract coverage** at component boundaries: are the public functions crossing a boundary annotated, and do they type-check (mypy/pyright on boundary modules only, ratcheted)? Untyped boundaries are where implicit coupling hides; (q) **layering and stability**: Martin's stable-dependencies and stable-abstractions measures per component, reported as a trend | (k) yes; (l), (m), (n), (p) ratcheted once a baseline exists; (o), (q) report-only | (k), (l) partly exist (`gen2-hotspots` report-only); (m)–(q) new |
-| **T5 (nightly) and the Gate D pack** | (r) **trend series**: every merge appends the T0–T4 numbers to a time series, so Gate D sees how they move, not single snapshots; (s) **traceability**: each flow-document stage and INVARIANTS entry is mapped to its code locators and tests (the locator check already parses these), giving an implemented / scheduled / missing table; (t) **a Gate D input bundle**, generated, not hand-assembled: the trend series, current smells, hotspots, hidden coupling, blind-spot findings, interface changes since the last Gate D, duplication and dead-code deltas, the traceability table, the defect-family history (REVIEW-LOG findings grouped by family) and the debt register; (u) freshly regenerated scaffolding views (CodeGraphContext, Emerge) attached as non-gating artifacts | report-only (they feed Gate D) | (u) exists manually; the rest are new |
+| **T0** | `gen2-boundaries` (import boundaries), `gen2-size`, `gen2-metrics` (edges, fan-in/out, reach, propagation cost, cycles, smells, per-function complexity, ledgered), and the Gate D #4 supported-source guard. **Change-impact summary:** edges added or removed, components touched, reverse-reach (blast radius) of changed files, complexity deltas. **CONTRACT / LEDGER / PROTECTED** banners. | The import graph is gen2-metrics' declared semantics; it excludes injected protocols and calls (`gen2_metrics.py:15–20`). Blast radius is reverse import reach, not runtime impact. | the existing gates yes; the summary and banners are signals |
+| **Acceptance (PR)** | **Interface-change report:** each component's public surface (exported names and signatures), `gen2/schema` JSON schemas, DDL tables and columns, gateway HTTP/MCP routes, diffed against the merge base. A compatibility policy has to be defined before it can block. **Observed runtime coupling:** cross-component *module import* edges recorded during tests, compared like-for-like with the static import graph. A runtime-only *call* through injection is a separately classified observation, not a blind spot. **Test locality / impact map.** | Dynamic traces are coverage-bound: they supplement the static graph and are never ground truth or a complete test-selection oracle. They are **not** the 2q-a root repair, which stays the supported-source contract plus adversarial analyser fixtures. Tracing overhead on timing-sensitive tests is measured first. | reports first; promotion per criteria. A runtime-only import edge not in the static graph is an analyser finding that needs a fix or a reviewed rule amendment. |
+| **T2 (gateway DB)** | Contracts for gateway database authority and schema (roles, `servable_records` view, DDL), with their integration-test evidence linked into the bundle. | Covers what the DB suite exercises. | the DB suite yes |
+| **Mutation** | Rule mutants for the boundary and metrics checkers (they already exist for gen2-metrics). | Measures checker test strength. | yes |
+| **Integration / nightly (deep)** | **Absolute audit** report, under its own policy: thresholds, accepted historical debt, escalation. Making existing debt a blocker is an amendment. **Change coupling and hotspots:** a review lead, *not* proof of hidden coupling, since shared task commits and generated files co-change. **Duplication** (token/AST clones; scope and exclusions defined). **Dead code** (reviewed allow-list). **Boundary type contracts** (annotation coverage and type-checking of boundary modules; `Any` and unchecked dependencies don't count as proof). **Stability:** reuse gen2-metrics' existing measures (`gen2_metrics.py:22, :69–74`). **Abstractness/cohesion:** new, advisory. | Detectors produce false positives, and a baseline controls old findings only. Each has scope, exclusions, reviewed exceptions and evidence of being actionable. | absolute audit report-only until its policy is approved. Hotspots stay **advisory** per BUILD-CHARTER:27 unless the operator amends it. The others are report-only until calibrated. |
+| **Nightly Gate D pack** | **Trend series** (every merge's numbers). **Traceability table** generated from a **reviewed mapping** with pinned document identities, separating *declared implementation* from *verified coverage*. The locator check only proves that locators exist. A **sourced Gate D input bundle:** trends, smells, hotspots, observed-coupling findings, interface changes since the last Gate D, duplication/dead-code deltas, the traceability table, defect-family history from REVIEW-LOG, and the debt register. | **Gate D keeps its fresh-session semantic judgment.** The pack lists deltas and explanations; Gate D judges completeness and adequacy. Private flow documents are not published. | report-only |
+| **Scaffolding** | CodeGraphContext and Emerge, regenerated in a **separately provisioned advisory job** that is never a product-build dependency (BUILD-CHARTER:29–33), with source, tool and config identities attached. | Approximate views; any finding must be confirmed in code. | never |
 
-Gate D keeps its judgment. The bundle replaces the measurement work each Gate D session has redone by hand (Gate D #1 and #2 each re-ran `measure.py`, cgc and emerge). The reviewer spends its budget on interpretation. The same bundle also makes the charter's "every regression since the last Gate D explained" requirement mechanical.
+**Start with** the impact and interface reports and the sourced Gate D pack. Add deeper detectors as they prove their value.
 
-**Realism limits, stated:**
-- Static and dynamic coupling measurements are both partial (soundiness; dynamic recall is bounded by test coverage).
-- Duplication and dead-code detectors produce false positives, so they ratchet against a reviewed baseline rather than gate on absolute counts.
-- Cohesion and stability metrics are proxies, reported as trends, never as pass/fail truths.
-- Every new check starts in observe mode for a few merges before it is allowed to block (platform F2).
+### 3.10 The architecture ratchet: one authority per property (R11)
 
-## 4. What we don't cover today (beyond the above)
+- gen2's `gen2-boundaries`, `gen2-size` and `gen2-metrics` stay **blocking in lint** under the current contract. They enforce different properties: gen2-metrics does not replace boundaries or size.
+- Platform archgate stays **observe-only**, with its lizard CCN marked **advisory, a different measure**. Its tool and config errors are handled as infrastructure failures, separately from findings.
+- A **narrow, library-owned adapter contract (C3)** is requested only after the gen2 checker is accepted. It names the required checks, normalises reports and exit semantics, and keeps the platform's enforcement slot. There will be **no** general per-repo "disable archgate" switch.
+- **CI never folds ledger entries or rebaselines** (Makefile:57). Only reviewed changes do.
 
-1. **Supply chain:** no dependency vulnerability audit; no SBOM; no provenance for anything built (SLSA is out of scope until there is a deployable artifact, in 2e1/Phase 4; self-hosted runners top out near Build L2).
-2. **Documentation and claim drift:** BUILD-STATE and REVIEW-LOG test counts are written by hand and can't be checked. CI could publish the counts and a doc check could compare them.
-3. **Coder attribution metrics:** the platform's per-agent failure and revert metrics (`agentic` Branch 17) aren't wired for gen2. Coders changed model three times this week (Opus → Sonnet → Sol); per-agent failure profiles would show which model needs which scrutiny.
-4. **Performance regression:** decode-cost numbers (Crossref, BEA) are measured by hand once per task; there is no regression budget.
-5. **Migration and DDL rehearsal:** the pre-change store is refused but untested in CI. The Phase 4 migration needs a CI rehearsal on synthetic old stores.
-6. **Review-loop economics:** nothing measures rounds per task or Codex/Claude spend per round. A CI-side "round counter" per task branch would make the charter's three-BLOCK Gate D trigger mechanical rather than remembered.
-7. **Deployment smoke:** 2e1 brings a dedicated gen-2 gateway and runner. CI will need an integration environment (compose-based, network-isolated except for the internal network) before 2f.
-8. **Code review assist:** platform T8 (advisory LLM review) could run on every gen2 PR as a non-required check. Astra stays the gate.
+## 4. Qualification before CI becomes the verifier of record (R1)
 
-## 5. Rollout
+The original criterion of five agreeing landings is replaced by a **qualification checklist plus a shadow-run window**:
+1. **Identity, cleanliness and evidence (§3.1, §3.8) are implemented and checked.**
+2. **Failure-path drills**, each producing the correct non-passing, evidenced result:
+   - a missing DB or TLS prerequisite;
+   - omitted tests;
+   - a bad selector;
+   - a crash-kill;
+   - a protected edit;
+   - a stale result after a target update;
+   - a timeout or abort;
+   - a publication failure.
+3. **Full-target equivalence at the same execution pin.** Expected test and mutant **identities and outcomes** match the orchestrator's run. Totals or durations alone don't count.
+4. **A shadow window.** The orchestrator's reruns continue in parallel and the agreement record is kept. Five agreeing landings is *supporting* evidence only.
 
-1. **Phase A (no code change to gen2's process):**
-   - fix the `ipaddress` portability defect (task);
-   - extend the image with PostgreSQL;
-   - `make gen2-ci` running T1–T3;
-   - T0 gates added in observe mode;
-   - deal with GitHub Actions (D4).
-2. **Phase B:**
-   - enable the protected-path and test-integrity gates in block mode;
-   - mutation kill-reason classification;
-   - `--network none` (with C4 or a gen2-side wrapper);
-   - evidence bundle.
-3. **Phase C:**
-   - move coders to task branches, worktrees and PRs with `ci/std` required on `gen2`;
-   - the orchestrator stops manual reruns after **5 consecutive landings** where CI and the orchestrator's rerun agree exactly (a measured hand-over, not assumed);
-   - Astra cites CI evidence (D3).
-4. **Phase D:** nightly T4/T5 via `.ci.yaml` (C1); drift matrix; flake scoring; dependency audit.
+After qualification, routine local reruns stop. The orchestrator re-runs when CI is unavailable, disagrees, or the harness, selection, environment or evidence is suspect.
 
-Each phase is a build-out: a branch, tests, then operator confirmation before merging into `gen2`.
+**Astra after qualification (D3).** Astra may cite complete, pinned CI runs instead of re-running targets. What is lost is an independent checkout, environment, invocation and interpretation of results. What Astra keeps:
+- Gate C's independent semantic and oracle review;
+- independent reproductions and controls;
+- **mandatory reruns** whenever the verification machinery is suspect.
 
-## 6. Risks
+Gate D stays fresh-session. A CI pass is never acceptance of the tests or of the task's scope.
 
-- **Trusting CI as the verifier of record makes CI a single point of failure.** Mitigations: the platform's trust model (an App-pinned check; agents with no Jenkins write access); the five-run agreement hand-over; Astra keeps the right to re-run.
-- **Diff-scoped mutation can miss cross-file weakening.** T4 runs on every merge, and the "main is red" rule blocks further merges.
-- **Protected-path declarations can become rubber stamps.** They are only a signal; Astra and the operator still review. CI prints them prominently.
-- **Parallel coders** bring merge conflicts and contention for reviews. Start at 2 concurrent tasks, at most.
+## 5. Workflow and the charter state machine (R13)
 
-## 7. Evidence used
+- **Task branches and worktrees with PRs into `gen2`.** **One coder** to start. **The operator merges**: platform ARCHITECTURE.md denies agents merge rights, and any change to that is a separate trust-policy decision.
+- **Stable task and family IDs.** Astra issues verdicts against reviewed SHAs. A CI failure or PR update is not an Astra BLOCK, and renaming or replacing a branch doesn't reset a task's history. The third-BLOCK Gate D trigger, the family redesign rule and the fresh-session rule are recorded per task and family ID, not remembered.
+- **The orchestrator owns shared state** (BUILD-STATE, REVIEW-LOG, phase-status) and **serialises** acceptance, integration and phase transitions.
+- After a rebase onto the accepted integration head, mutation controls and metrics state are **regenerated**. Baselines are never mechanically merged, identity serials are never reused, and stale traces are never accepted.
+- **WIP limit** on the review queue.
+- **A second coder** only after measuring review and CI capacity, and only for tasks that are disjoint in *contracts and shared metadata*, not just file paths.
+- **Recorded:** review rounds, family reopenings, queue time, compute time and agent usage as each agent reports it. Account-wide subscription-window changes are never attributed to a single review (per the usage-attribution rule). The product's usage obligations (2e1 capture, the Phase 3 estimator) stay separately owned.
 
-**GraphRAG corpora:**
-- `llm-performance-evidence`: test-feedback reward hacking (Conflicting-SWE-bench); intrinsic self-correction degrading without an external oracle; static-analysis feedback loops; test-oracle strength (EvalPlus).
-- `codegraph-evidence`: soundiness as industry practice; PyCG recall limits on dynamic Python; Infer's diff-time versus nightly fix rates; compositional incremental analysis.
-- `agentic`:
-  - Branch 7 (test impact analysis cut regressions 6.08% → 1.82%);
-  - Branch 14 (mutation score over coverage; scope mutation to changed code; flaky quarantine with a hard cap);
-  - Branch 17 (CI with coding agents: test-health classification for agents; a cheap check per push with the expensive suite once in the queue; per-agent failure profiles and attribution).
-- `software-architecture`: build/CI enforcement turns silent routing-around into a reviewable diff (F109); fitness functions for ADRs.
+## 6. Platform requests (revised, in priority order)
 
-**Web:**
-- mutants.rs and Mull incremental mutation docs (diff-scoped runs are not a substitute for full runs);
-- EvilGenie (arXiv 2511.21654) and practitioner reports on agents editing tests;
-- SLSA provenance notes for self-hosted runners;
-- Jenkins docs and issues on docker agents and parallel stages (JENKINS-47103).
+1. **C4 — the execution boundary.** Library-created no-egress containers, an audit of the effective mounts and privileges, and dependency provisioning kept separate.
+2. **C5 — evidence.** A sanctioned artifact set for a versioned `gen2-evidence.json` and raw evidence, a controller-bound manifest with the final result and incomplete states, retention and export, and publication outside the cut-off.
+3. **Prerequisites:**
+   - workspace and cache cleanliness;
+   - an immutable library and image identity recorded per run;
+   - correct check-to-SHA binding (merge commit against head);
+   - durable failure artifacts;
+   - the **integration interlock**, which must not be aborted by `abortPrevious`.
+4. **C1 (minimal) — a platform-owned scheduled mode** with gen2 opt-in for nightly. Arbitrary repo-defined stages aren't needed: repository orchestration runs under the fixed lint/build/unit order, with JUnit.
+5. **C2 — resource class or shards**, only after worker budgeting is fixed and costs are measured. Tower capacity is not the worker's 8 vCPU / 16 GB and two executors.
+6. **C3 — a narrow boundary/metrics adapter**, after gen2's checker is accepted.
+7. **C6 — none initially.** The policy reports are repository logic under lint, compared against a trusted base policy. Common mechanics move to the library only after experience with them.
 
-**Platform:** `trevorbyrum/ci-cd` ARCHITECTURE.md (F1–F6, Layer 0–2), docs/archgate.md, docs/agent-ci-guide.md, and the PR #1 description (environment findings).
+## 7. Implementation order (Astra's order, adopted)
 
-## 8. Decisions for the operator
+1. **Ratify the execution/acceptance boundary** and keep the charter's authority over acceptance. **Fix the canonical-origin defect** (§8) and settle the reference environment versus the supported environments.
+2. **A reproducible, complete CI environment:**
+   - gateway dependency lock, PostgreSQL, psycopg/libpq, openssl;
+   - clean runtime state and the required history;
+   - explicit worker budgets, including the `os.cpu_count()` fix;
+   - split gateway modes.
+3. **Evidence and trust:** evidence publication, correct status/SHA binding, no-egress execution (C4), and failure-path drills. **Full engine and gateway acceptance on every PR.**
+4. **Review signals and early architecture reports:**
+   - protected-path and test-integrity reports;
+   - **subprocess-aware mutation validity**, including repairing the six crash mutants;
+   - the architecture impact and interface reports;
+   - the sourced Gate D pack, including the T2 contribution.
 
-- **D1:** Adopt CI as the verifier of record (R1), with the five-landing agreement hand-over?
-- **D2:** Move coders to task branches, worktrees and PRs into `gen2`, with `ci/std` required? Allow parallel coders on disjoint tasks (cap 2)?
-- **D3:** Let Astra cite CI evidence for target runs instead of re-running them every review (re-runs optional)?
-- **D4:** GitHub Actions: delete it, or repurpose it as the report-only drift job?
-- **D5:** Fix `ipaddress` canonicalization at the root (recommended), or pin the Python patch version in ENVIRONMENT.md?
-- **D6:** File change requests C1–C6 against `ci-cd` (human-merged trust root)?
+   New checks are observed and calibrated before reviewed enforcement.
+5. **Workflow:** task branches and worktrees, one coder, operator merges, a serialised review and integration queue. Complete the §4 qualification and shadow window, then retire routine local reruns.
+6. **Integration interlock:** full integration verification with its pending/red/aborted interlock. **Validate conservative diff selection against full runs**, then use it to cut eligible PR-update work.
+7. **Nightly work:** bounded nightly stress, drift and absolute-audit jobs, and progressively deeper architecture analyses. Settle the absolute-audit and hotspot policy and the scaffolding boundary. Consider higher caps, the adapter and a second coder only when the measurements justify them.
+
+Each step is a build-out on a branch, tested there, and merged into `gen2` only after operator confirmation.
+
+## 8. Immediate finding: canonical origin (outside the CI work)
+
+`gen2/gateway_client/client.py:195` renders addresses with `str(ip)`, and CPython 3.12.14 changed that output for IPv4-mapped IPv6 addresses.
+- **Root fix:** a **project-owned canonical serialisation** of each parsed address's value and family. Use it consistently for the origin, the host and the admitted-address representation, and keep the accepted spelling unless the contract is deliberately amended.
+- **Not a fix:** `.compressed` also delegates to string rendering, and changing the expected string just swaps which interpreter the code depends on.
+- **Test:** equivalent dotted and hex mapped inputs, and the other accepted and refused forms, on the reference interpreter and on newer ones.
+- **Also pin the reference environment precisely.** Pinning serves reproducibility; on its own it would be a portability **mitigation**.
+- **Severity:** a representation/acceptance defect only. It doesn't cause a wrong-destination connection or a token leak.
+
+## 9. Decisions for the operator
+
+| # | Decision | Recommendation (Astra and orchestrator agree) |
+|---|---|---|
+| D1 | CI as the authoritative execution record | **Yes, after the §4 qualification.** |
+| D2 | Task branches/worktrees/PRs | **Yes, with one coder and operator merges.** Concurrency and merge authority are separate, later decisions. |
+| D3 | Astra cites CI runs instead of rerunning | **Yes, after D1's prerequisites.** Gate C/Gate D independence kept, with mandatory reruns when the machinery is suspect. |
+| D4 | GitHub Actions | **Repurpose as scheduled, non-required drift**, once Jenkins covers the reference workload. Stop duplicate full runs on every push after qualification. |
+| D5 | Canonical origin | **Root fix and pin the reference.** |
+| D6 | Platform requests | **The revised, prioritised set in §6.** |
+| D7 | Pre-merge full verification and the integration interlock | **Approve.** |
+| D8 | Owners of protected paths, oracle amendments, and who can authorise quarantine | **Operator** for the oracle and quarantine; owners named per path. |
+| D9 | Evidence retention and drift-response deadlines | to set |
+| D10 | CI/review WIP and spend budgets before any parallel coding | to set |
+| D11 | Which §3.9 architecture measures may become blocking, and under what reviewed thresholds; the absolute-ceiling and hotspot policy against BUILD-CHARTER:27; the scaffolding boundary | to set after calibration data exists |
+
+## 10. Disposition of Astra's findings and corrections
+
+**Findings:**
+
+| Astra finding | Where addressed |
+|---|---|
+| 1 HIGH: T3 selector and backstop ordering | §3.2 modes, §3.3 selector contract, §7 steps 3 and 6 |
+| 2 HIGH: crash-kills are subprocess-boundary failures | §3.5 |
+| 3 HIGH: identity, cleanliness, evidence; five landings not enough | §3.1, §3.8, §4 |
+| 4 HIGH: network isolation scope | §3.6, R8 rescoped, §6 item 1 |
+| 5 MED: signals, not authorisation | §3.4, P8 |
+| 6 MED: adapter reading too broad; absolute audit and hotspot policy | §3.9, §3.10, D11 |
+| 7 MED: timings are budgets; gateway env underspecified; `cpu_count` | §0, §3.1, §3.2, §7 step 2 |
+| 8 MED: preserve the charter state machine | §5, R13, D2, D8, D10 |
+| 9 MED: canonical-origin root fix | §8, D5 |
+| 10 MED: overclaimed §3.9 conclusions; T2 missing; `gen2/schema` path | §3.9 rewritten |
+
+**Research corrections**, absorbed throughout:
+- TDAD's regression cut is test-level only, so no expected reduction is imported.
+- PyCG's recall is specific to its evaluation.
+- Soundiness is distinct from the proposed exact-subset contract (P5).
+- F109 and F113 qualifications are kept: low-to-moderate confidence, and defect prediction rather than a blocking threshold.
+- JENKINS-47103 is not load-bearing.
+- **The SLSA "self-hosted ⇒ L2 ceiling" claim is deleted.** Levels depend on provenance and isolation properties; this platform hasn't demonstrated L3.
+- §11 now gives URLs and corpus keys with the inference drawn from each.
+
+## 11. What we don't cover today (revised gap list)
+
+1. **Supply chain:**
+   - dependency audit across gen2's locked packages, **the gateway interpreter's packages, OS packages and CI tools**;
+   - record build inputs and image provenance now; formal SLSA attestation waits for release needs.
+2. **Claim drift:** generate execution counts and check *current* claims against them. Historical review counts are never rewritten automatically.
+3. **Performance budgets:** decode-cost and run-time regressions, measured, not assumed.
+4. **Migration rehearsal:** refusal of altered schemas is already tested (`test_sqlite_gate.py:305`). The gap is a named **historical-store migration rehearsal contract** on synthetic old stores, for Phase 4.
+5. **Deployment integration:** `deploy/gen2` already has an image, compose and an auth demo. What's missing is network-isolated compose-based integration verification before 2f.
+6. **CI self-tests:**
+   - omitted work;
+   - corrupted or stale evidence;
+   - cancellation and cleanup;
+   - failure publication;
+   - fixture and oracle provenance;
+   - schema and version compatibility of evidence;
+   - an **owned response deadline and routing** for drift and stress findings.
+7. **Operational claims stay phase-owned:** provider qualification (Phase 4), actual runner isolation (2e1), usage/budget accounting (2e1 and Phase 3), retrieval-audit evidence (2e2). Offline CI can't settle them.
+8. **Deferred:** blanket advisory LLM review and model leaderboards. Attribution and cost data are collected first, because cross-task, cross-harness model comparisons are confounded.
+
+## 12. Evidence used
+
+| Inference | Source |
+|---|---|
+| External execution feedback beats self-correction; test-feedback loops raise both genuine passes and cheating | GraphRAG `llm-performance-evidence`: self-correction findings (`method:finding:f108eff0…`); Conflicting-SWE-bench (`method:finding:100fabe9…`); primary: ImpossibleBench §5.3, https://arxiv.org/html/2510.20270v1. EvilGenie, https://arxiv.org/abs/2511.21654 (a deliberately gameable benchmark: supports oracle ownership, not a claim about this build's coders). |
+| Diff-time delivery of analysis findings | `codegraph-evidence` `cg:finding:ffece4b7…` (Infer at Facebook; primary CACM page returned 403, so the stored record was verified). Does not establish selector correctness. |
+| Diff-scoped mutation needs full backstops | cargo-mutants https://mutants.rs/in-diff.html; Mull incremental docs, https://mull.readthedocs.io/en/latest/IncrementalMutationTesting.html; `agentic` Branch 14 (`96179b10…`). |
+| Test-impact context | TDAD, https://arxiv.org/html/2603.17973v1, Table 4 (test-level regression only; instance-level not improved); `agentic` `32d049f7…`. |
+| Limits of static analysis; static and dynamic graphs complement each other | `codegraph-evidence` soundiness (`057df12d…`, `4b09b961…`; https://yanniss.github.io/Soundiness-CACM.pdf); PyCG (`cac73dae…`, https://arxiv.org/abs/2103.00587; its benchmark's recall only); dynamic baselines are coverage-bound (`64f4de3f…`); combining tools (`10f70b31…`). |
+| Flake discipline | `agentic` Branch 14 (`18df2bc7…`) and Branch 17 (`a326f662…`); platform ARCHITECTURE F4. |
+| Agent code duplicates more, reuses less | *More Code, Less Reuse*, https://arxiv.org/abs/2601.21276; GitClear 2025, https://gitclear-public.s3.us-west-2.amazonaws.com/AI-Copilot-Code-Quality-2025.pdf (aggregate trends, not per-change cause). |
+| Network centrality as an investigation priority | Zimmermann & Nagappan; `software-architecture` ORIG-4.10/SRC-115 (F113); defect prediction on Windows Server 2003, not a blocking threshold. |
+| Enforcement turns routing-around into reviewable diffs | `software-architecture` ORIG-4.1 F109 (low-to-moderate confidence, single practitioner source). |
+| SLSA | https://slsa.dev/spec/v1.2/build-requirements. |
+| Docker `none` network has no IPv6 loopback; Jenkins Docker volume inheritance | https://docs.docker.com/engine/network/drivers/none/; https://www.jenkins.io/doc/book/pipeline/docker/. |
+| Platform facts | `trevorbyrum/ci-cd` at `3a8d29f`: ARCHITECTURE.md (Zones, F1–F6, Layers 0–2), `standardPipeline.groovy`, `docs/archgate.md`, `docs/agent-ci-guide.md`, `infra/cim/casc/jenkins.yaml`. Jenkins gen2 build #1 console and results (in Astra's evidence). GitHub Actions run 37178375414 (Python 3.12.14). |
