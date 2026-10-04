@@ -1,6 +1,6 @@
 # gen-2 CI design — revision 2
 
-Status: **PROPOSAL, revision 2** (orchestrator, 2026-10-04). Nothing is enabled until the operator rules on §9.
+Status: **PROPOSAL, revision 2.1** (orchestrator, 2026-10-04). Revision 2 was re-reviewed by Astra and judged **SOUND-WITH-CHANGES** (`private/reviews/gen2-ci-design-rev2-astra-review-20261004.md`). 2.1 applies RR1–RR3 and its first-slice additions. Nothing is enabled until the operator rules on §9.
 
 - **Revision 1:** `5ae3d49` plus the §3.9 addendum `d087225`. Astra reviewed it with verdict **SOUND-WITH-CHANGES** (`private/reviews/gen2-ci-design-astra-review-20261004.md`; evidence in `private/evidence/astra-ci-design/`).
 - **This revision** adopts all ten of Astra's findings, its research corrections, its changes to the gaps list and its implementation order. §10 maps each finding to where it is addressed.
@@ -197,7 +197,23 @@ Every check below has an **owner**, a **measured cost**, an **exact claim**, its
 | **Nightly Gate D pack** | **Trend series** (every merge's numbers). **Traceability table** generated from a **reviewed mapping** with pinned document identities, separating *declared implementation* from *verified coverage*. The locator check only proves that locators exist. A **sourced Gate D input bundle:** trends, smells, hotspots, observed-coupling findings, interface changes since the last Gate D, duplication/dead-code deltas, the traceability table, defect-family history from REVIEW-LOG, and the debt register. | **Gate D keeps its fresh-session semantic judgment.** The pack lists deltas and explanations; Gate D judges completeness and adequacy. Private flow documents are not published. | report-only |
 | **Scaffolding** | CodeGraphContext and Emerge, regenerated in a **separately provisioned advisory job** that is never a product-build dependency (BUILD-CHARTER:29–33), with source, tool and config identities attached. | Approximate views; any finding must be confirmed in code. | never |
 
-**Start with** the impact and interface reports and the sourced Gate D pack. Add deeper detectors as they prove their value.
+**Gate D pack freshness (RR2).**
+- The pack is prepared nightly, but it is **assembled or refreshed on every Gate D trigger**: task acceptance, phase end and the third BLOCK.
+- It is bound to:
+  - the declared review SHA;
+  - the previous Gate D comparison pin;
+  - the identities of the documents and the reviewed mapping;
+  - the analyser, tool and config versions.
+- An existing result is reused only when all of those identities match. Absent or stale optional analyses are shown explicitly, never as clean results. Required inputs are refreshed, or obtained independently, before Gate D issues its verdict.
+- Scaffolding (CodeGraphContext/Emerge) is refreshed **for the same review pin**, as BUILD-CHARTER:33 requires.
+
+**First-slice additions (from the re-review):**
+- **Non-import coupling.** Include deltas of gen2-metrics' implicit collaboration (C3-attributed self-calls) alongside import reach, keeping the two edge meanings distinct. Compute impact over **both base and candidate** graphs, so deleted edges don't erase their former dependents.
+- **Support for Gate D's semantic questions.** A short, reviewed change/risk note and a **release-scenario table** covering crash, replay, fencing, stale lease and outage: the boundaries affected, the named test evidence, and remaining risks or the later phases that own them. Add prompts for duplicate mechanisms, parallel representations and special cases created by repairs. Clone counts and import graphs can't answer these questions.
+- **Trend comparability.** Annotate changes to the analyser, contracts and baseline. Compare on a common analyser version where needed. A discontinuity caused by a change in measurement is never reported as an architectural improvement.
+- **Complexity of the verification tooling,** as a separate **advisory** view: the metrics analyser, the mutation runners and the CI harness. 2q-a showed complexity accumulating there. This is never folded into the production ratchet.
+
+**Start with** the impact and interface reports and the sourced Gate D pack, kept advisory and calibrated on known violations and legitimate changes. The pack is useful from day one, with sections that aren't available yet marked as such. Add deeper detectors (tracing, clones, dead code, boundary typing) as they prove their value.
 
 ### 3.10 The architecture ratchet: one authority per property (R11)
 
@@ -235,6 +251,19 @@ Gate D stays fresh-session. A CI pass is never acceptance of the tests or of the
 
 - **Task branches and worktrees with PRs into `gen2`.** **One coder** to start. **The operator merges**: platform ARCHITECTURE.md denies agents merge rights, and any change to that is a separate trust-policy decision.
 - **Stable task and family IDs.** Astra issues verdicts against reviewed SHAs. A CI failure or PR update is not an Astra BLOCK, and renaming or replacing a branch doesn't reset a task's history. The third-BLOCK Gate D trigger, the family redesign rule and the fresh-session rule are recorded per task and family ID, not remembered.
+- **Charter transitions, recorded rather than remembered (RR1).** The charter governs. This table records it:
+
+| Event | Required action | What stops | Who records it | What permits continuation |
+|---|---|---|---|---|
+| Task accepted (Astra PASS at the reviewed SHA) | A fresh-session **Gate D** (unless an operator sequencing ruling says otherwise, e.g. the post-2b one) | the next task's dispatch | orchestrator: task ID, reviewed SHA, Gate D session ID | Gate D PASS / PASS-WITH-FINDINGS, or an operator ruling |
+| Phase end | A fresh-session **Gate D**, then an **operator phase-transition approval** | all next-phase work | orchestrator | Gate D verdict **and** operator approval |
+| Third consecutive reviewer **BLOCK** on a task (CI failures, PR updates and branch replacement don't count and don't reset) | A fresh-session **Gate D** before the next repair | repair dispatch for that task | orchestrator, against the **task ID** | the Gate D verdict and its finish line |
+| Third round in a **defect family** | A **family-level redesign** brief (not another narrow repair) | narrow repairs in that family | orchestrator, against the **family ID**, kept separately from the task's BLOCK history | the redesign brief is dispatched and reviewed |
+
+  Each record carries the reviewed SHA and, for Gate D, the fresh session's identity.
+
+  When D2 is approved, the charter's "branch `gen2` only" coder line is narrowly amended to allow task branches and worktrees. That amendment does not authorise extra coders or agent merges.
+
 - **The orchestrator owns shared state** (BUILD-STATE, REVIEW-LOG, phase-status) and **serialises** acceptance, integration and phase transitions.
 - After a rebase onto the accepted integration head, mutation controls and metrics state are **regenerated**. Baselines are never mechanically merged, identity serials are never reused, and stale traces are never accepted.
 - **WIP limit** on the review queue.
@@ -301,7 +330,7 @@ Each step is a build-out on a branch, tested there, and merged into `gen2` only 
 | D8 | Owners of protected paths, oracle amendments, and who can authorise quarantine | **Operator** for the oracle and quarantine; owners named per path. |
 | D9 | Evidence retention and drift-response deadlines | to set |
 | D10 | CI/review WIP and spend budgets before any parallel coding | to set |
-| D11 | Which §3.9 architecture measures may become blocking, and under what reviewed thresholds; the absolute-ceiling and hotspot policy against BUILD-CHARTER:27; the scaffolding boundary | to set after calibration data exists |
+| D11 | Which §3.9 architecture measures may become blocking, and under what reviewed thresholds | **New blocking thresholds are deferred until calibration.** These apply now: hotspots stay advisory (BUILD-CHARTER:27), scaffolding stays external (BUILD-CHARTER:29–33), and Gate D freshness follows §3.9 RR2. |
 
 ## 10. Disposition of Astra's findings and corrections
 
@@ -327,7 +356,7 @@ Each step is a build-out on a branch, tested there, and merged into `gen2` only 
 - F109 and F113 qualifications are kept: low-to-moderate confidence, and defect prediction rather than a blocking threshold.
 - JENKINS-47103 is not load-bearing.
 - **The SLSA "self-hosted ⇒ L2 ceiling" claim is deleted.** Levels depend on provenance and isolation properties; this platform hasn't demonstrated L3.
-- §11 now gives URLs and corpus keys with the inference drawn from each.
+- §12 gives URLs, full corpus keys, the capture date and links to the retained records, with the inference drawn from each (RR3).
 
 ## 11. What we don't cover today (revised gap list)
 
@@ -351,14 +380,16 @@ Each step is a build-out on a branch, tested there, and merged into `gen2` only 
 
 ## 12. Evidence used
 
+Corpus records were queried on 2026-10-04 through homelab GraphRAG `hybrid_search`. Astra's retained copies, hashes and its read-only Cypher verification are in `private/evidence/astra-ci-design/` (start with `input-manifest.json`).
+
 | Inference | Source |
 |---|---|
-| External execution feedback beats self-correction; test-feedback loops raise both genuine passes and cheating | GraphRAG `llm-performance-evidence`: self-correction findings (`method:finding:f108eff0…`); Conflicting-SWE-bench (`method:finding:100fabe9…`); primary: ImpossibleBench §5.3, https://arxiv.org/html/2510.20270v1. EvilGenie, https://arxiv.org/abs/2511.21654 (a deliberately gameable benchmark: supports oracle ownership, not a claim about this build's coders). |
-| Diff-time delivery of analysis findings | `codegraph-evidence` `cg:finding:ffece4b7…` (Infer at Facebook; primary CACM page returned 403, so the stored record was verified). Does not establish selector correctness. |
-| Diff-scoped mutation needs full backstops | cargo-mutants https://mutants.rs/in-diff.html; Mull incremental docs, https://mull.readthedocs.io/en/latest/IncrementalMutationTesting.html; `agentic` Branch 14 (`96179b10…`). |
-| Test-impact context | TDAD, https://arxiv.org/html/2603.17973v1, Table 4 (test-level regression only; instance-level not improved); `agentic` `32d049f7…`. |
-| Limits of static analysis; static and dynamic graphs complement each other | `codegraph-evidence` soundiness (`057df12d…`, `4b09b961…`; https://yanniss.github.io/Soundiness-CACM.pdf); PyCG (`cac73dae…`, https://arxiv.org/abs/2103.00587; its benchmark's recall only); dynamic baselines are coverage-bound (`64f4de3f…`); combining tools (`10f70b31…`). |
-| Flake discipline | `agentic` Branch 14 (`18df2bc7…`) and Branch 17 (`a326f662…`); platform ARCHITECTURE F4. |
+| External execution feedback beats self-correction; test-feedback loops raise both genuine passes and cheating | GraphRAG `llm-performance-evidence`: self-correction findings (`method:finding:f108eff0-7a2e-5bdd-9cff-5fb0a69bb670`); Conflicting-SWE-bench (`method:finding:100fabe9-4067-57a1-9fbb-7b200bf8afd7`); primary: ImpossibleBench §5.3, https://arxiv.org/html/2510.20270v1. EvilGenie, https://arxiv.org/abs/2511.21654 (a deliberately gameable benchmark: supports oracle ownership, not a claim about this build's coders). |
+| Diff-time delivery of analysis findings | `codegraph-evidence` `cg:finding:ffece4b7-1ffd-50e4-acd8-e531b18f42d6` (Infer at Facebook; primary CACM page returned 403, so the stored record was verified). Does not establish selector correctness. |
+| Diff-scoped mutation needs full backstops | cargo-mutants https://mutants.rs/in-diff.html; Mull incremental docs, https://mull.readthedocs.io/en/latest/IncrementalMutationTesting.html; `agentic` Branch 14 (`96179b10-1a16-516f-8525-20996a08986f`). |
+| Test-impact context | TDAD, https://arxiv.org/html/2603.17973v1, Table 4 (test-level regression only; instance-level not improved); `agentic` `32d049f7-224d-5b97-9ed2-308904596693`. |
+| Limits of static analysis; static and dynamic graphs complement each other | `codegraph-evidence` soundiness (`cg:finding:057df12d-17af-5c2b-a6f1-bf4791749ce4`, `cg:finding:4b09b961-69c2-5a05-a9c3-2f8265848990`; https://yanniss.github.io/Soundiness-CACM.pdf); PyCG (`cg:finding:cac73dae-e89b-5f43-ab2f-7b0b456a75d5`, https://arxiv.org/abs/2103.00587; its benchmark's recall only); dynamic baselines are coverage-bound (`cg:finding:64f4de3f-911d-5b0c-a011-1999f015d5bf`); combining tools (`cg:finding:10f70b31-6bc6-5a57-898f-4166d782c631`). |
+| Flake discipline | `agentic` Branch 14 (`18df2bc7-bde0-5159-b3f3-2f15e2774cca`) and Branch 17 (`a326f662-810c-588d-9fa5-403e3ebca027`); platform ARCHITECTURE F4. |
 | Agent code duplicates more, reuses less | *More Code, Less Reuse*, https://arxiv.org/abs/2601.21276; GitClear 2025, https://gitclear-public.s3.us-west-2.amazonaws.com/AI-Copilot-Code-Quality-2025.pdf (aggregate trends, not per-change cause). |
 | Network centrality as an investigation priority | Zimmermann & Nagappan; `software-architecture` ORIG-4.10/SRC-115 (F113); defect prediction on Windows Server 2003, not a blocking threshold. |
 | Enforcement turns routing-around into reviewable diffs | `software-architecture` ORIG-4.1 F109 (low-to-moderate confidence, single practitioner source). |
