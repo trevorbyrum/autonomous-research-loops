@@ -24,7 +24,9 @@ python3 -m venv --clear .venv-gen2
 - `venv --clear` starts from an empty environment every time either lock changes. The target is keyed on both files.
 - A venv does not see the base interpreter's site-packages or the user site (`~/.local`), so a package installed on the host can neither satisfy nor shadow a locked one.
 
-Every check target (`gen2-sqlite`, `gen2-boundaries`, `gen2-schemas`, `gen2-ddl`, `gen2-catalog`, `gen2-catalog-check`, `gen2-test`, `gen2-trigger-order`, `gen2-mutation`, `gen2-size`, `gen2-linecount`) depends on `gen2-venv` and runs with `PYTHON = .venv-gen2/bin/python`. The only host input is the interpreter the venv is created from: `PYTHON_BOOTSTRAP`, default `python3`, Python 3.12. The standard-library `sqlite3` comes with it, so the SQLite version the DDL runs on is still the interpreter's. `make gen2-check` reports it.
+Every check target (`gen2-sqlite`, `gen2-boundaries`, `gen2-schemas`, `gen2-ddl`, `gen2-catalog`, `gen2-catalog-check`, `gen2-test`, `gen2-trigger-order`, `gen2-mutation`, `gen2-size`, `gen2-linecount`) depends on `gen2-venv` and runs with `PYTHON = .venv-gen2/bin/python`. The only host input is the interpreter the venv is created from: `PYTHON_BOOTSTRAP`, default `python3`. The **reference environment is CPython 3.12.3 with SQLite 3.45.1**, pinned exactly for reproducibility. The standard-library `sqlite3` comes with the interpreter; `make gen2-check` reports the linked SQLite version.
+
+The reference pin does not establish portability. The gateway client's project-owned address serializer preserves the accepted address spelling from value and family across Python patch releases, with interpreter-independent regression tests (task 2b-repair-20; CI design D5). The planned report-only drift qualification is a **Jenkins nightly**, not GitHub Actions (operator-approved CI design D4); it remains planned until that CI work is implemented.
 
 ## SQLite version floor
 

@@ -162,12 +162,33 @@ class _DeadlineSSLSocket(ssl.SSLSocket):
         return super().send(*args)
 
 
+def _canonical_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str:
+    """Serialize the value and family in the accepted spelling, independently of ipaddress rendering.
+
+    IPv6 uses lowercase hex (including mapped IPv4), compressing the first longest run of at least two zero groups.
+    """
+    value = int(ip)
+    if ip.version == 4:
+        return ".".join(str((value >> shift) & 255) for shift in (24, 16, 8, 0))
+    groups = [format((value >> shift) & 65535, "x") for shift in range(112, -1, -16)]
+    best_start = best_end = run_start = 0
+    for end, group in enumerate((*groups, "1")):   # the sentinel ends a trailing run, including the all-zero address
+        if group != "0":
+            if end - run_start > best_end - best_start:
+                best_start, best_end = run_start, end
+            run_start = end + 1
+    if best_end - best_start < 2:
+        return ":".join(groups)
+    return ":".join(groups[:best_start]) + "::" + ":".join(groups[best_end:])
+
+
 def _literal(host: str, port: int) -> list | None:
     """The address a host that IS an address (an IPv4 or IPv6 literal) stands for, as getaddrinfo would give it; None for a name."""
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
         return None
+    host = _canonical_address(ip)
     if ip.version == 6:
         return [(socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (host, port, 0, 0))]
     return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (host, port))]
@@ -192,7 +213,7 @@ def _origin(url: str) -> tuple:
     labels = (name or "").split(".")
     if not 0 < port < 65536 or (ip is None and (v6 or len(name) > 253 or not all(_LABEL.fullmatch(label) for label in labels) or _NUMBER.fullmatch(labels[-1]))):
         raise ValueError(f"{url!r} is not an http or https origin with a port from 1 to 65535 and a host that is an IP literal or a DNS name of LDH labels no resolver can read as a number")
-    host = str(ip) if ip is not None else name.lower()
+    host = _canonical_address(ip) if ip is not None else name.lower()
     return scheme, host, port, _literal(host, port)
 
 

@@ -53,10 +53,14 @@ MUTATIONS: list[Mutation] = [
     Mutation("2B18-a-path-query-or-fragment-is-accepted", "2b-18", "a path, query or fragment after the origin is accepted and dropped", (SPELLINGS,), target=CLI,
              old="(?::([0-9]{1,32}))?/?\"", new="(?::([0-9]{1,32}))?(?:[/?#].*)?\""),
     Mutation("2B18-the-host-is-not-lower-cased", "2b-18", "the owner holds the host as it was spelled (`GATEWAY` and `gateway` are two origins)", (CANONICAL,), target=CLI,
-             old="host = str(ip) if ip is not None else name.lower()", new="host = str(ip) if ip is not None else name"),
+             old="host = _canonical_address(ip) if ip is not None else name.lower()", new="host = _canonical_address(ip) if ip is not None else name"),
     Mutation("2B18-the-request-is-built-from-the-callers-spelling", "2b-18", "requests are built from the URL as given, not from the canonical origin the owner holds", (CANONICAL,), target=CLI,
              old="        self._base_url = self._endpoint.origin\n", new='        self._base_url = base_url.rstrip("/")\n'),
     # task 2b-repair-19 (Astra R18-1): the port is checked by its value, not its width
     Mutation("2B19-the-port-is-limited-to-five-digits", "2b-19", "a port is at most five characters, so a zero-padded decimal port (`:000080`, `:065535`, `:037433`) is refused though its value is in 1..65535",
              (PORT_VALUE, PORT_WIRE), target=CLI, old="(?::([0-9]{1,32}))?/?\"", new="(?::([0-9]{1,5}))?/?\""),
+    # task 2b-repair-20 (CI design D5 / Astra finding 9): Python's rendering is not the address contract
+    Mutation("2B20-the-address-spelling-depends-on-the-interpreter", "2b-20", "canonical address serialization delegates to str(ip), restoring the dotted mapped-IPv6 spelling on newer Python",
+             (FORMS + "test_mapped_addresses_keep_the_accepted_spelling_under_newer_rendering",), target=CLI,
+             old="    value = int(ip)\n", new="    return str(ip)\n    value = int(ip)\n"),
 ]

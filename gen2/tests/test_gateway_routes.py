@@ -55,6 +55,18 @@ def environment(env: dict, port: int):
     return mock.patch.dict(os.environ, {name: value.replace(WHERE, str(port)) for name, value in env.items()}, clear=True)
 
 
+def newer_address_rendering():
+    """Simulate CPython 3.12.14's dotted IPv4-mapped IPv6 rendering on any interpreter."""
+    original = gateway.ipaddress.IPv6Address.__str__
+
+    def render(ip):
+        value = int(ip)
+        if value >> 32 == 0xffff:
+            return "::ffff:" + ".".join(str((value >> shift) & 255) for shift in (24, 16, 8, 0))
+        return original(ip)
+    return mock.patch.object(gateway.ipaddress.IPv6Address, "__str__", render)
+
+
 class NoNameIsLookedUp:
     """The ways a name could be looked up by the standard library during an exchange (`socket.gethostbyname` is what its FTP handler calls; getaddrinfo what everything else does): each raises at
     once, so that an exchange that tries is a failed test, and each call is recorded."""
@@ -369,6 +381,9 @@ class TheEndpointForms(ThreadsJoined):
 
     def test_every_spelling_a_reader_could_take_another_way_is_refused_before_any_io(self):
         """Each, with the real transport and with a stand-in one, is a ValueError at construction with no lookup made and no socket asked to connect; so is the same spelling with a path after it."""
+        self.assert_refused_spellings()
+
+    def assert_refused_spellings(self):
         self.resolver = mock.Mock(side_effect=AssertionError("a lookup was made"))
         with mock.patch.object(gateway._DeadlineSocket, "connect", side_effect=AssertionError("a connection was made")) as connect, NoNameIsLookedUp():
             for kind, spellings in self.REFUSED_SPELLINGS.items():
@@ -383,6 +398,9 @@ class TheEndpointForms(ThreadsJoined):
         """The other half of the one-representation claim. Each accepted spelling comes out as its canonical origin (lower case; an IPv6 literal compressed; the scheme's default port left off; a number
         for the port; no trailing slash), and for each, the standard library's own reading of a request URL built from it (urlsplit's hostname and port, and the host urllib's Request hands the
         connection after it unquotes it) is what the owner holds: nothing in it for urllib to decode into another host. A literal's address is admitted at construction; a name admits none until its lookup."""
+        self.assert_canonical_origins()
+
+    def assert_canonical_origins(self):
         accepted = (("http://gateway:8765", "http://gateway:8765", "gateway", 8765, ()), ("HTTP://GATEWAY:8765/", "http://gateway:8765", "gateway", 8765, ()),
                     ("https://Gateway.Test:8443", "https://gateway.test:8443", "gateway.test", 8443, ()), ("http://gateway", "http://gateway", "gateway", 80, ()),
                     ("https://gateway:443/", "https://gateway", "gateway", 443, ()), ("http://gateway:80", "http://gateway", "gateway", 80, ()), ("http://gateway:08765", "http://gateway:8765", "gateway", 8765, ()),
@@ -392,7 +410,8 @@ class TheEndpointForms(ThreadsJoined):
                     ("http://" + ".".join(["a" * 63] * 3 + ["b" * 61]) + ":3", "http://" + ".".join(["a" * 63] * 3 + ["b" * 61]) + ":3", ".".join(["a" * 63] * 3 + ["b" * 61]), 3, ()),
                     ("http://127.0.0.1:1", "http://127.0.0.1:1", "127.0.0.1", 1, (("127.0.0.1", 1),)), ("http://255.255.255.255", "http://255.255.255.255", "255.255.255.255", 80, (("255.255.255.255", 80),)),
                     ("http://[::1]:8765", "http://[::1]:8765", "::1", 8765, (("::1", 8765, 0, 0),)), ("https://[0:0:0:0:0:0:0:1]:443/", "https://[::1]", "::1", 443, (("::1", 443, 0, 0),)),
-                    ("http://[FE80::ABCD]:2", "http://[fe80::abcd]:2", "fe80::abcd", 2, (("fe80::abcd", 2, 0, 0),)), ("http://[::ffff:127.0.0.1]:5", "http://[::ffff:7f00:1]:5", "::ffff:7f00:1", 5, (("::ffff:7f00:1", 5, 0, 0),)))
+                    ("http://[FE80::ABCD]:2", "http://[fe80::abcd]:2", "fe80::abcd", 2, (("fe80::abcd", 2, 0, 0),)), ("http://[::ffff:127.0.0.1]:5", "http://[::ffff:7f00:1]:5", "::ffff:7f00:1", 5, (("::ffff:7f00:1", 5, 0, 0),)),
+                    ("http://[::ffff:7f00:1]:5", "http://[::ffff:7f00:1]:5", "::ffff:7f00:1", 5, (("::ffff:7f00:1", 5, 0, 0),)))
         for url, base, host, port, targets in accepted:
             with self.subTest(url=url):
                 c = GatewayClient(url, TOKEN, resolver=lookup(), **FAST)   # a lookup that finds nothing: a name has no address until one is found
@@ -403,6 +422,63 @@ class TheEndpointForms(ThreadsJoined):
                 split = urllib.parse.urlsplit(c.base_url + "/v1/find")
                 self.assertEqual(((split.hostname, split.port or connection.default_port), (connection.host, connection.port), urllib.parse.unquote(request.host) == request.host),
                                  ((host, port), (host, port), True), "urlsplit and http.client read the host and port the owner holds, and urllib has nothing to decode")
+
+    def assert_address_state(self, spelling, expected, family):
+        """Literal admission, the endpoint owner, resolution reporting and the request use one spelling."""
+        authority = f"[{spelling}]" if family == socket.AF_INET6 else spelling
+        origin = f"http://[{expected}]:5" if family == socket.AF_INET6 else f"http://{expected}:5"
+        target = (expected, 5, 0, 0) if family == socket.AF_INET6 else (expected, 5)
+        admitted_address = ((family, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", target),)
+        self.assertEqual(tuple(gateway._literal(spelling, 5)), admitted_address)
+        resolver = mock.Mock(side_effect=AssertionError("a literal was looked up"))
+        c = GatewayClient(f"HTTP://{authority}:00005/", TOKEN, resolver=resolver, **FAST)
+        self.assertEqual((c.base_url, c._endpoint.origin, c._endpoint.host, c._endpoint.literal, c._endpoint.addresses),
+                         (origin, origin, expected, admitted_address, admitted_address))
+        resolution = c.resolve()
+        self.assertEqual((resolution.host, resolution.addresses, c._endpoint.addresses), (expected, (expected,), admitted_address))
+        resolver.assert_not_called()
+        c._transport = mock.Mock(return_value=(None, {}, b"", "timeout"))
+        c._exchange("GET", "/v1/jobs/1", None, TOKEN)
+        self.assertEqual(c._transport.call_args.args[1], origin + "/v1/jobs/1")
+
+    def test_mapped_addresses_keep_the_accepted_spelling_under_newer_rendering(self):
+        """Finding 9 / 2b-repair-20: equivalent dotted and hex inputs stay hex on newer Python."""
+        with newer_address_rendering():
+            self.assertEqual(str(gateway.ipaddress.IPv6Address("::ffff:7f00:1")), "::ffff:127.0.0.1", "the simulated drift is active")
+            for spelling, expected in (("::ffff:127.0.0.1", "::ffff:7f00:1"), ("::ffff:7f00:1", "::ffff:7f00:1"),
+                                       ("0:0:0:0:0:FFFF:7F00:0001", "::ffff:7f00:1"), ("::ffff:192.0.2.1", "::ffff:c000:201"),
+                                       ("::ffff:c000:201", "::ffff:c000:201")):
+                with self.subTest(spelling=spelling):
+                    self.assert_address_state(spelling, expected, socket.AF_INET6)
+
+    def test_control_unmapped_addresses_keep_the_accepted_spelling_under_newer_rendering(self):
+        """The paired control reaches the serializer with values whose library rendering has not drifted."""
+        with newer_address_rendering():
+            for spelling, expected, family in (("127.0.0.1", "127.0.0.1", socket.AF_INET), ("0:0:0:0:0:0:0:1", "::1", socket.AF_INET6),
+                                               ("FE80::ABCD", "fe80::abcd", socket.AF_INET6)):
+                with self.subTest(spelling=spelling):
+                    self.assert_address_state(spelling, expected, family)
+
+    def test_all_accepted_and_refused_endpoint_forms_hold_under_newer_rendering(self):
+        with newer_address_rendering():
+            self.assert_canonical_origins()
+            self.assert_refused_spellings()
+
+    def test_address_serialization_uses_only_the_value_and_family(self):
+        """No library rendering, even for unmapped addresses; compress only the first longest run of at least two zeros."""
+        with mock.patch.object(gateway.ipaddress.IPv4Address, "__str__", side_effect=AssertionError("IPv4 rendering used")), \
+             mock.patch.object(gateway.ipaddress.IPv6Address, "__str__", side_effect=AssertionError("IPv6 rendering used")), \
+             mock.patch.object(gateway.ipaddress.IPv4Address, "compressed", new_callable=mock.PropertyMock, side_effect=AssertionError("compressed used")), \
+             mock.patch.object(gateway.ipaddress.IPv6Address, "compressed", new_callable=mock.PropertyMock, side_effect=AssertionError("compressed used")):
+            for spelling, expected, family in (("0.0.0.0", "0.0.0.0", socket.AF_INET), ("255.255.255.255", "255.255.255.255", socket.AF_INET),
+                                               ("0:0:0:0:0:0:0:0", "::", socket.AF_INET6), ("0:0:0:0:0:0:0:1", "::1", socket.AF_INET6),
+                                               ("1:0:0:0:0:0:0:0", "1::", socket.AF_INET6), ("1:0:0:2:0:0:3:4", "1::2:0:0:3:4", socket.AF_INET6),
+                                               ("1:0:2:0:0:0:3:4", "1:0:2::3:4", socket.AF_INET6), ("1:2:3:4:5:6:0:8", "1:2:3:4:5:6:0:8", socket.AF_INET6),
+                                               ("0001:0002:0003:0004:0005:0006:ABCD:FFFF", "1:2:3:4:5:6:abcd:ffff", socket.AF_INET6),
+                                               ("::127.0.0.1", "::7f00:1", socket.AF_INET6), ("::ffff:0.0.0.0", "::ffff:0:0", socket.AF_INET6),
+                                               ("::ffff:127.0.0.1", "::ffff:7f00:1", socket.AF_INET6), ("::ffff:7f00:1", "::ffff:7f00:1", socket.AF_INET6)):
+                with self.subTest(spelling=spelling):
+                    self.assert_address_state(spelling, expected, family)
 
     def test_a_decimal_port_is_checked_by_its_value_not_by_its_width(self):
         """Astra's R18-1: H-6 specifies a decimal port from 1 to 65535 (RFC 3986 `port = *DIGIT`), and `:08765` was already accepted, but a regex of at most five digits refused `:000080`, `:065535` and

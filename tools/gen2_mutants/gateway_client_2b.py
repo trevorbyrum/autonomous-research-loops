@@ -441,7 +441,7 @@ MUTATIONS: list[Mutation] = [
            "    def read(self, *args):\n        self._arm()\n", "    def read(self, *args):\n"),
           ("tls-send-not-armed", "a TLS socket's send keeps the timeout the handshake ran under",
            (TL + "test_a_tls_request_the_server_never_reads_stops_at_the_deadline_after_a_slow_handshake",),
-           "    def send(self, *args):\n        self._arm()\n        return super().send(*args)\n\n\ndef _literal(", "    def send(self, *args):\n        return super().send(*args)\n\n\ndef _literal("),
+           "        return super().read(*args)\n\n    def send(self, *args):\n        self._arm()\n        return super().send(*args)", "        return super().read(*args)\n\n    def send(self, *args):\n        return super().send(*args)"),
           ("tls-socket-class-unset", "a TLS exchange wraps its socket in the standard class, which has no deadline",
            (TL + "test_a_tls_reply_that_trickles_stops_at_the_deadline", TL + "test_a_tls_request_the_server_never_reads_stops_at_the_deadline_after_a_slow_handshake"),
            "        self._context.sslsocket_class = _DeadlineSSLSocket\n", ""),

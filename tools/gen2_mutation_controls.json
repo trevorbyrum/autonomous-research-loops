@@ -7719,6 +7719,12 @@
   ],
   "why": "gen2/gateway_client/client.py: executes line 183"
  },
+ "2B20-the-address-spelling-depends-on-the-interpreter": {
+  "controls": [
+   "test_gateway_routes.TheEndpointForms.test_control_unmapped_addresses_keep_the_accepted_spelling_under_newer_rendering"
+  ],
+  "why": "By hand (2b-repair-20 / CI design D5): exercises the same canonical serializer, literal admission, endpoint owner, resolution and request construction under simulated newer rendering with unmapped IPv4 and IPv6 values; their accepted spellings still hold when the mutant delegates to str(ip)."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"
