@@ -330,6 +330,18 @@ class QualifiedScopeTest(unittest.TestCase):
         repo.write({"gen2/tests/p/a.py": "class Meta(type): pass\nclass Base(metaclass=Meta):\n    def f(self): return 1\n"})
         self.assertIn("not a supported owner", self.check(repo, 1).stderr)
 
+    def test_an_owner_is_judged_by_the_identity_of_its_decorator_and_not_by_its_spelling(self) -> None:
+        """The locator asks the one resolver (docs/gen2/SOURCE-CONTRACT.md, "Binding identity"): a recorded decorator imported under another name, through a module alias or
+        re-exported by a production module is still that decorator, and an unrecorded one re-exported the same way is still unrecorded."""
+        shim = "from dataclasses import dataclass as record\nfrom functools import cache as memo\n"
+        repo = self.repo({"gen2/p/__init__.py": "", "gen2/p/shim.py": shim, "gen2/tests/__init__.py": "", "gen2/tests/p/__init__.py": "", DOC: "`gen2.tests.p.a.Base.f`\n"})
+        for decorator, imports, supported in (("record", "from gen2.p.shim import record", True), ("shim.record", "import gen2.p.shim as shim", True), ("dc.dataclass", "import dataclasses as dc", True),
+                                              ("memo", "from gen2.p.shim import memo", False), ("Helper.wrap", "class Helper:\n    wrap = staticmethod(lambda cls: cls)", False)):
+            with self.subTest(decorator=decorator):
+                repo.write({"gen2/tests/p/a.py": f"{imports}\n@{decorator}\nclass Base:\n    def f(self): return 1\n"})
+                result = self.check(repo, 0 if supported else 1)
+                self.assertEqual("not a supported owner" in result.stderr, not supported)
+
     def test_a_star_import_in_the_module_leaves_every_name_uncertain(self) -> None:
         repo = self.repo({"gen2/tests/__init__.py": "", "gen2/tests/p/__init__.py": "", "gen2/tests/p/b.py": "x = 1\n", "gen2/tests/p/a.py": "from gen2.tests.p.b import *\ndef f(): return 1\n", DOC: "`gen2.tests.p.a.f`\n"})
         self.assertIn("star import", self.check(repo, 1).stderr)

@@ -458,9 +458,40 @@ MANUAL: dict[str, dict] = {
     # task 2q-a-repair-4: a test written for the mutant after the trace (a write through an assignment expression that binds data): the walrus base is data on the accepted path, which
     # the mutant's `return "data"` leaves unchanged; the refusal fixtures (a walrus that binds a class) are the killer
     "2QC-con-walrus-base-is-data": {
-        "controls": ["test_source_closure.ClosureAcceptanceTest.test_accepts_stores_the_contract_does_not_restrict"],
-        "why": "tools/gen2_source_contract.py Contract.kind_of's NamedExpr branch: writes an attribute through an assignment expression whose value is a call (data, written after the trace "
-               "in the family's fixtures) among the accepted stores: the mutant, which says data for every such expression, accepts the same"},
+        "controls": ["test_source_closure.ClosureAcceptanceTest.test_accepts_ordinary_data_stores"],
+        "why": "a narrow control and nothing more (task 2q-a-repair-5, 2026-10-05): it exercises only tools/gen2_source_contract.py Contract.kind_of's NamedExpr branch, with an attribute written "
+               "through an assignment expression whose value is an ordinary call (`(obj := make()).value = 1`), which the mutant that says data for every such expression accepts as well. It does "
+               "not show that such a value cannot hold a module or a class (call-time owner effects, slice 2), and its family is no closure evidence (ordinary_data_stores)"},
+    # task 2q-a-repair-5: the nonlocal owner, the pairing of an unpacking and the consumers of the one resolver. Their killers are tests written for them after the trace, so none is
+    # traced for them; each control is a test of the same family that takes another path through the same code and passes under the mutant
+    **{mid: {"controls": [control], "why": why} for control, why, mids in (
+        ("test_source_closure.ClosureAcceptanceTest.test_accepts_aliases_and_scopes",
+         "accepts a nonlocal write whose nearest enclosing function binds the name (tools/gen2_source_index.py _Builder.nonlocal_owner): the nearest function and the nearest one that binds the "
+         "name are the same function there, so the mutant that takes the nearest function leaves it as it was",
+         ("2QB-idx-nonlocal-binds-the-nearest-function",)),
+        ("test_source_binding.NonlocalOwnerTest.test_the_write_skips_a_function_that_does_not_bind_the_name",
+         "records a nonlocal write past a function that binds nothing, to the one function that binds the name: the outermost binder the mutant picks is that function",
+         ("2QB-idx-nonlocal-skips-the-function-that-binds-the-name",)),
+        ("test_source_binding.NonlocalOwnerTest.test_the_write_stops_at_the_nearest_function_that_binds_the_name",
+         "records nonlocal writes that have an enclosing binding and asserts where they go; the refusal of a nonlocal name no function binds is not on its path",
+         ("2QB-idx-nonlocal-without-a-binding-accepted",)),
+        ("test_source_binding.UnpackingTest.test_a_loop_target_takes_the_elements_of_what_it_iterates_and_not_the_values_beside_it",
+         "binds the targets of a loop over a literal, which an unpacking's pairing never touches (tools/gen2_source_index.py paired_values: an assignment only): the mutants that change the "
+         "pairing of an assignment's names leave it as it was",
+         ("2QB-idx-unpacking-binds-no-value", "2QB-idx-unpacking-binds-every-name-to-the-first-value")),
+        ("test_source_binding.UnpackingTest.test_each_name_takes_the_value_at_its_position_and_a_chain_is_an_alias",
+         "pairs the names of an assignment with literals that have no starred element, the same count and a position each: the mutants that pair a loop's target, a starred literal or a "
+         "literal of another count change none of them",
+         ("2QB-idx-unpacking-pairs-a-loop-target", "2QB-idx-unpacking-pairs-a-starred-value", "2QB-idx-unpacking-pairs-a-different-count")),
+        ("test_source_closure.ClosureRefusalTest.test_refuses_global_redirect_of_every_kind_of_binding",
+         "refuses rebindings through `global` (no alias, no decorator, no call identity on its path): the mutants of an alias's cycle and of a consumer that reads a spelling leave these "
+         "refusals as they were",
+         ("2QB-idx-alias-cycle-is-external", "2QB-con-decorator-identity-is-its-spelling", "2QB-con-call-identity-is-its-spelling")),
+        ("test_source_contract.RefusalTest.test_refuses_src_base_subscript",
+         "refuses a subscripted base (tools/gen2_source_contract.py Contract.base's subscript branch, which resolves its own `assignments=False` line): the mutant that lets a base follow an "
+         "assignment changes the other resolution line",
+         ("2QB-con-base-follows-an-assignment",)),
+    ) for mid in mids},
     "2QS-con-all-mutation-unreported": {
         "controls": ["test_source_contract.AcceptanceTest.test_accepts_imports_and_exports"],
         "why": "reads an __all__ without changing it (tools/gen2_source_contract.py Contract.exports' changed elif is evaluated and false for a Load that is no method call and no "

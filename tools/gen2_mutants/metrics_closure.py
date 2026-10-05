@@ -25,7 +25,7 @@ WALRUS, GLOBAL, HOOKS, ALIAS = (CLR + f for f in ("walrus_in_every_header_and_ex
 FORMS, BODY = CLR + "unrecognised_forms", CLR + "class_body_bindings_of_every_kind"
 MODS, CLASSES, DICTS = CLR + "stores_on_modules_and_packages", CLR + "stores_on_classes_through_names", CLR + "namespace_dictionaries_and_sys_modules"
 ALL, EXTERNAL, ALIASES, DATACLASS = (CLR + f for f in ("all_not_only_mutated_but_passed_on", "external_classes_through_ancestors", "aliases_carry_the_identity", "dataclass_forms_the_record_does_not_allow"))
-DATA, BODIES, MEMBERS, AFTER, SCOPES = (CLA + f for f in ("stores_the_contract_does_not_restrict", "class_bodies_that_bind_data", "implicit_and_generated_members",
+DATA, BODIES, MEMBERS, AFTER, SCOPES = (CLA + f for f in ("ordinary_data_stores", "class_bodies_that_bind_data", "implicit_and_generated_members",
                                                           "external_classes_after_every_project_class", "aliases_and_scopes"))
 
 
@@ -74,9 +74,9 @@ MUTATIONS: list[Mutation] = [
     c("idx-global-redirect-skips-targets", "a `global` declaration does not redirect a loop, with or except target", (GLOBAL,), IDX,
       "        if name in scope.declared:\n            kind = scope.declared[name]", '        if name in scope.declared and role != "target":\n            kind = scope.declared[name]'),
     c("idx-alias-identity-not-recorded", "a name bound to another name carries no alias reference", (CLR + "aliases_carry_the_identity", SCOPES), IDX,
-      '        elif role == "assign" and direct and chain_text(source) is not None:', "        elif False:"),
-    c("idx-alias-identity-not-followed", "an alias does not take the identity of what it aliases", (ALIASES, SCOPES), IDX,
-      '            alias = bindings[0].role == "assign" and bindings[0].ref[:1] == ("alias",) and (id(candidate), node.id) not in seen', "            alias = False"),
+      '        if role == "assign" and direct and chain_text(source) is not None:', "        if False:"),
+    c("idx-alias-identity-not-followed", "an alias does not take the identity of what it aliases", (ALIASES, SCOPES, "test_source_binding.BindingTest.test_each_probe"), IDX,
+      '        if binding.ref[:1] == ("alias",) and assignments:', "        if False:"),
     c("idx-object-not-implicit", "`object` is not the implicit last base of a class", (PR + "test_each_probe", EXTERNAL), IDX, "if direct else [OBJECT])", "if direct else [])"),
     c("idx-external-base-has-no-object", "an external base's order does not end with `object`", (EXTERNAL,), IDX, "else [node] if node == OBJECT else [node, OBJECT])", "else [node])"),
     c("idx-attribute-stores-not-recorded", "an attribute written or deleted is not a store site", (MODS, CLASSES), IDX,
@@ -108,8 +108,8 @@ MUTATIONS: list[Mutation] = [
     c("con-loop-over-classes-is-data", "the target of a loop over a literal collection of classes denotes data", (CLASSES,), CON,
       "        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):\n            kinds = {self.value_kind", "        if False:\n            kinds = {self.value_kind"),
     c("con-loop-over-a-name-is-data", "the target of a loop over a name bound to classes denotes data", (CLASSES,), CON,
-      "        if isinstance(node, ast.Name):\n            holder = next((s for s in source.lexical_chain(scope) if node.id in s.bindings), None)\n            if holder is not None and (id(holder), node.id) not in seen:\n                kinds = {self.element_kind",
-      "        if False:\n            holder = next((s for s in source.lexical_chain(scope) if node.id in s.bindings), None)\n            if holder is not None and (id(holder), node.id) not in seen:\n                kinds = {self.element_kind"),
+      "        if isinstance(node, ast.Name):\n            holder = source.holder_of(scope, node.id)\n            if holder is not None and (id(holder), node.id) not in seen:\n                kinds = {self.element_kind",
+      "        if False:\n            holder = source.holder_of(scope, node.id)\n            if holder is not None and (id(holder), node.id) not in seen:\n                kinds = {self.element_kind"),
     c("con-conditional-alias-is-data", "a name bound by a conditional expression denotes data", (CLASSES,), CON,
       "        branches = {ast.IfExp: lambda n: [n.body, n.orelse], ast.BoolOp: lambda n: n.values, ast.NamedExpr: lambda n: [n.value]}",
       "        branches = {ast.BoolOp: lambda n: n.values, ast.NamedExpr: lambda n: [n.value]}"),
@@ -155,7 +155,7 @@ MUTATIONS: list[Mutation] = [
     c("con-fields-not-collected", "a dataclass has no fields", (BODY,), CON,
       "                if binding.annotated is not None and not self.not_a_field(cls, binding.annotated):\n                    cls.fields.append((name, binding.line))", "                pass"),
     c("con-classvar-is-a-field", "an annotation of ClassVar, InitVar or KW_ONLY makes an instance field", (MEMBERS,), CON,
-      "            return source.identify(cls.path, cls.parent, node) in FIELD_MARKERS", "            return False"),
+      "            return self.facts.identity(cls.path, cls.parent, node) in FIELD_MARKERS", "            return False"),
     c("con-slots-written-twice-accepted", "a __slots__ written twice is accepted", (FORMS,), CON, "        if len(bindings) != 1 or bindings[0].role != \"assign\"", "        if bindings[0].role != \"assign\""),
     c("con-annotation-alone-binds", "an annotation without a value is a member of the class", (BODIES,), CON,
       '            elif any(b.role != "annotation" for b in bindings):', "            elif bindings:"),

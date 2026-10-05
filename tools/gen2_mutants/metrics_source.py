@@ -85,9 +85,9 @@ MUTATIONS: list[Mutation] = [
     # --- decorators and descriptors --------------------------------------------------------------------------------------
     s("con-unknown-decorator-accepted", "a decorator with no record is accepted as a recorded one", (RT + "src_decorator_unknown",), CON,
       "    record = BY_IDENTITY.get(identity)\n", "    record = BY_IDENTITY.get(identity) or TRANSFORMS[1]\n"),
-    s("src-decorator-shadowing-read-as-unknown", "a decorator name bound by an assignment or a parameter is read as its own identity", (RT + "src_decorator_shadowed",), IDX,
-      '            if len({(b.role, b.ref) for b in bindings}) > 1 or all(b.conditional for b in bindings) or (bindings[0].role not in ("import", "from", "def", "class") and not alias):',
-      "            if False:"),
+    s("src-decorator-shadowing-read-as-unknown", "a decorator name that is rebound, conditional or bound by an assignment or a parameter is reported as unknown, not as shadowed", (RT + "src_decorator_shadowed",), IDX,
+      '            raise Unresolved("SRC-DECORATOR-SHADOWED" if exc.category in ("SRC-BINDING-COMPETING", "SRC-BASE-ALIAS") else "SRC-DECORATOR-UNKNOWN", exc.why) from None',
+      '            raise Unresolved("SRC-DECORATOR-UNKNOWN", exc.why) from None'),
     s("con-decorator-arguments-unchecked", "a recorded decorator is accepted with any arguments", (RT + "src_decorator_args",), CON, "    if not record.allowed(node):", "    if False:"),
     s("con-dataclass-slots-allowed", "a dataclass with slots=True is a recorded form", (RT + "src_decorator_args",), CON,
       '(not node.args and all(k.arg == "frozen" and isinstance(k.value, ast.Constant) and k.value.value is True for k in node.keywords))' if False else
@@ -133,7 +133,7 @@ MUTATIONS: list[Mutation] = [
     s("con-globals-write-unreported", "a namespace written through globals() is accepted", (RT + "src_reflective",), CON,
       '        if identity in ("builtins.globals", "builtins.locals") or (identity == "builtins.vars" and not node.args):\n            return "ns_dict"',
       '        if identity in ("builtins.globals", "builtins.locals") or (identity == "builtins.vars" and not node.args):\n            return "data"'),
-    s("con-sys-modules-write-unreported", "sys.modules written is accepted", (RT + "src_reflective",), CON, '            if _identity(index, scope, node) == "sys.modules":', "            if False:"),
+    s("con-sys-modules-write-unreported", "sys.modules written is accepted", (RT + "src_reflective",), CON, '            if self.identity(index, scope, node) == "sys.modules":', "            if False:"),
     s("con-setattr-class-unreported", "setattr on a class is accepted", (RT + "src_reflective",), CON,
       '        if kind == "class":\n            self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{text}` writes an attribute of a class"', '        if False:\n            self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{text}` writes an attribute of a class"'),
     s("con-setattr-computed-name-unreported", "setattr under a computed name is accepted", (RT + "src_reflective",), CON, "        elif not literal:", "        elif False:"),
@@ -249,7 +249,7 @@ MUTATIONS: list[Mutation] = [
     # --- locators --------------------------------------------------------------------------------------------------------
     s("loc-owner-keywords-ignored", "a class with a metaclass is a supported owner", (MQ + "test_an_owner_a_decorator_may_have_replaced_satisfies_nothing",), CON, "    if cls.node.keywords:\n        return False", "    if False:\n        return False"),
     s("loc-owner-decorators-ignored", "a class with an unrecorded decorator is a supported owner", (MQ + "test_an_owner_a_decorator_may_have_replaced_satisfies_nothing",), CON,
-      '            decorator_transform(index.path, cls.parent, decorator, "class")\n    except Unresolved:', '            pass\n    except Unresolved:'),
+      '            decorator_transform(facts, index.path, cls.parent, decorator, "class")\n    except Unresolved:', '            pass\n    except Unresolved:'),
     s("loc-star-import-uncertainty-ignored", "a module with a star import certifies its qualified names", (MQ + "test_a_star_import_in_the_module_leaves_every_name_uncertain",), IDX, "    if index.star_imports:", "    if False:"),
     # --- Repo.run's judgment of a child as a program -----------------------------------------------------------------------
     s("run-signal-is-complete", "a child killed by a signal is a completed run", (CP["DidNotCompleteTest"] + "test_a_signal_is_not_a_completed_run",), FIX, "    if done.returncode < 0:", "    if False:"),

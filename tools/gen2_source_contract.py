@@ -171,10 +171,10 @@ class SourceRefused(Exception):
 
 # --- decorators ----------------------------------------------------------------------------------------------------
 
-def decorator_transform(path: str, scope, node: ast.expr, applies: str) -> Transform:
-    """The record of one decorator, or Unresolved with the refusal category."""
+def decorator_transform(facts: Facts, path: str, scope, node: ast.expr, applies: str) -> Transform:
+    """The record of one decorator, or Unresolved with the refusal category. The decorator is recognised by the identity the one resolver gives it."""
     target = node.func if isinstance(node, ast.Call) else node
-    identity = source.identify(path, scope, target)
+    identity = facts.identity(path, scope, target)
     record = BY_IDENTITY.get(identity)
     if record is None or applies not in record.applies_to and not (applies == "method" and "function" in record.applies_to):
         raise Unresolved("SRC-DECORATOR-UNKNOWN", f"{identity} is not a transformation the contract records for a {applies}")
@@ -183,13 +183,13 @@ def decorator_transform(path: str, scope, node: ast.expr, applies: str) -> Trans
     return record
 
 
-def class_owner_ok(index: FileIndex, cls: ClassFact) -> bool:
+def class_owner_ok(facts: Facts, index: FileIndex, cls: ClassFact) -> bool:
     """Whether a class is an owner a qualified locator may descend through: no metaclass or other keyword, and only recorded class decorators."""
     if cls.node.keywords:
         return False
     try:
         for decorator in cls.node.decorator_list:
-            decorator_transform(index.path, cls.parent, decorator, "class")
+            decorator_transform(facts, index.path, cls.parent, decorator, "class")
     except Unresolved:
         return False
     return True
@@ -323,7 +323,7 @@ class Contract:
             self.base(index, cls, base)
         for decorator in node.decorator_list:
             try:
-                record = decorator_transform(path, cls.parent, decorator, "class")
+                record = decorator_transform(self.facts, path, cls.parent, decorator, "class")
             except Unresolved as exc:
                 self.refuse(exc.category, path, decorator.lineno, f"class {cls.qual} is decorated {ast.unparse(decorator)}: {exc.why}", REMEDY[exc.category])
                 continue
@@ -335,12 +335,12 @@ class Contract:
         path, text = index.path, ast.unparse(node)
         try:
             if isinstance(node, ast.Subscript):
-                inner = self.facts.expr(path, cls.parent, node.value)
+                inner = self.facts.expr(path, cls.parent, node.value, assignments=False)
                 if inner[0] != "external" or inner[1] not in MODELLED_TYPING:
                     raise Unresolved("SRC-BASE-SUBSCRIPT", f"{text} is subscripted and {ast.unparse(node.value)} is not a modelled typing form ({', '.join(MODELLED_TYPING)})")
                 ref = inner
             else:
-                ref = self.facts.expr(path, cls.parent, node)
+                ref = self.facts.expr(path, cls.parent, node, assignments=False)
             if ref[0] in ("module", "package"):
                 raise Unresolved("SRC-BASE-ALIAS", f"{text} names a module, not a class")
             if ref[0] == "function":
@@ -382,7 +382,7 @@ class Contract:
         applies = "method" if in_class else "function"
         for decorator in fn.node.decorator_list:
             try:
-                record = decorator_transform(index.path, fn.parent, decorator, applies)
+                record = decorator_transform(self.facts, index.path, fn.parent, decorator, applies)
             except Unresolved as exc:
                 self.refuse(exc.category, index.path, decorator.lineno, f"{fn.qual} is decorated {ast.unparse(decorator)}: {exc.why}", REMEDY[exc.category])
                 continue
@@ -481,14 +481,13 @@ class Contract:
                 if binding.annotated is not None and not self.not_a_field(cls, binding.annotated):
                     cls.fields.append((name, binding.line))
 
-    @staticmethod
-    def not_a_field(cls: ClassFact, annotation: ast.expr) -> bool:
+    def not_a_field(self, cls: ClassFact, annotation: ast.expr) -> bool:
         """An annotation that does not make an instance field: `ClassVar[...]`, `InitVar[...]` and `KW_ONLY` (also written as a string)."""
         node = annotation.value if isinstance(annotation, ast.Subscript) else annotation
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             return node.value.partition("[")[0].strip().rpartition(".")[2] in ("ClassVar", "InitVar", "KW_ONLY")
         try:
-            return source.identify(cls.path, cls.parent, node) in FIELD_MARKERS
+            return self.facts.identity(cls.path, cls.parent, node) in FIELD_MARKERS
         except Unresolved:
             return False
 
@@ -597,14 +596,13 @@ class Contract:
                 self.refuse("SRC-ALL-DYNAMIC", index.path, node.lineno, f"`{ast.unparse(up)[:60]}` passes __all__ on as a value, not as one of the recognised reads",
                             "read __all__ by index, comparison, iteration, copy, or len, sorted, list, tuple, set or frozenset: a list passed on can be changed where it lands")
 
-    @staticmethod
-    def reads_only(index: FileIndex, node: ast.expr, up: ast.AST | None) -> bool:
+    def reads_only(self, index: FileIndex, node: ast.expr, up: ast.AST | None) -> bool:
         """Whether `__all__` at `node`, inside `up`, is one of the recognised reads."""
         if isinstance(up, ast.Subscript):
             return up.value is node
         if isinstance(up, ast.Call):
             site = next((s for s in index.calls if s.node is up), None)
-            return node in up.args and site is not None and _identity(index, site.scope, up.func) in PURE_READERS
+            return node in up.args and site is not None and self.identity(index, site.scope, up.func) in PURE_READERS
         if isinstance(up, ast.Attribute):
             return up.value is node and up.attr in READ_METHODS
         if isinstance(up, (ast.For, ast.AsyncFor, ast.comprehension)):
@@ -612,6 +610,13 @@ class Contract:
         return isinstance(up, (ast.Compare, ast.Starred, ast.BinOp))
 
     # -- what an expression denotes: the base of a store, the first argument of setattr ---------------------------------------------
+
+    def identity(self, index: FileIndex, scope: source.Scope, node: ast.expr) -> str | None:
+        """The identity the one resolver gives a name or an attribute chain, or None where it has none certain: a call through it is then no recognised site."""
+        try:
+            return self.facts.identity(index.path, scope, node)
+        except Unresolved:
+            return None
 
     def context(self, scope: source.Scope) -> tuple:
         """What the code in `scope` knows of its receiver: (the class, the receiver's name, the method's role) inside a method, however deeply a closure, lambda or
@@ -632,7 +637,7 @@ class Contract:
         if isinstance(node, ast.Name):
             return self.name_kind(index, scope, node, context, seen)
         if isinstance(node, ast.Attribute):
-            if _identity(index, scope, node) == "sys.modules":
+            if self.identity(index, scope, node) == "sys.modules":
                 return "ns_dict"
             base = self.kind_of(index, scope, node.value, context, seen)
             if node.attr in STRUCTURAL and node.attr != "__dict__":
@@ -657,14 +662,13 @@ class Contract:
             ref = self.facts.expr(index.path, scope, node)
         except Unresolved as exc:
             return "data" if exc.category == "SRC-BASE-ALIAS" else "unknown"
-        except KeyError:
-            return "unknown"
         return "class" if ref[0] == "class" else "namespace"
 
     def call_kind(self, index: FileIndex, scope: source.Scope, node: ast.Call, context: tuple, seen: frozenset) -> str:
         """What a call returns. The calls that hand out a class or a namespace are the recognised producers (`type(x)`, `globals()`, `locals()`, `vars(x)`, `getattr(x, ...)` and a
-        method of a namespace's dictionary); any other call returns a new object, which is data."""
-        identity = _identity(index, scope, node.func)
+        method of a namespace's dictionary); any other call is READ as data, which is not a finding that it is: whether a call may hand out a class or a module is open (docs/gen2/
+        SOURCE-CONTRACT.md, "What the contract does not establish"; call-time owner effects, slice 2 of the F1 repair)."""
+        identity = self.identity(index, scope, node.func)
         if identity == "builtins.type" and len(node.args) == 1:
             return "class"
         if identity in ("builtins.globals", "builtins.locals") or (identity == "builtins.vars" and not node.args):
@@ -681,7 +685,7 @@ class Contract:
     def name_kind(self, index: FileIndex, scope: source.Scope, node: ast.Name, context: tuple, seen: frozenset) -> str:
         if context and node.id == context[1]:
             return "class" if context[2] == "class" else "receiver"
-        holder = next((s for s in source.lexical_chain(scope) if node.id in s.bindings), None)
+        holder = source.holder_of(scope, node.id)
         if holder is None:
             return "namespace" if hasattr(builtins, node.id) else "unknown"
         if (id(holder), node.id) in seen:
@@ -725,7 +729,7 @@ class Contract:
             kinds = {self.value_kind(index, scope, part, context, seen) for part in node.elts}
             return next((kind for kind in KINDS if kind in kinds and kind in ("namespace", "class", "ns_dict", "instance_dict")), "data")
         if isinstance(node, ast.Name):
-            holder = next((s for s in source.lexical_chain(scope) if node.id in s.bindings), None)
+            holder = source.holder_of(scope, node.id)
             if holder is not None and (id(holder), node.id) not in seen:
                 kinds = {self.element_kind(index, holder, b.source, context, seen | {(id(holder), node.id)}) for b in holder.bindings[node.id] if b.role == "assign" and b.source is not None}
                 return next((kind for kind in KINDS if kind in kinds and kind != "data"), "data")
@@ -769,7 +773,7 @@ class Contract:
                 "instance_dict": "writes the receiver's own namespace through its __dict__"}[kind].format(name=getattr(node, "attr", "an item"))
         if kind == "ns_dict" and isinstance(node.value, ast.Call):
             what = "writes a namespace through globals(), locals() or vars()"
-        elif kind == "ns_dict" and _identity(index, site.scope, node.value) == "sys.modules":
+        elif kind == "ns_dict" and self.identity(index, site.scope, node.value) == "sys.modules":
             what = "writes sys.modules"
         elif kind == "ns_dict" and isinstance(node.value, ast.Attribute) and node.value.attr == "__dict__":
             what = "writes the namespace of a class"
@@ -778,7 +782,7 @@ class Contract:
     def call(self, index: FileIndex, site: source.CallSite) -> None:
         node, scope = site.node, site.scope
         context = self.context(scope)
-        identity = _identity(index, scope, node.func)
+        identity = self.identity(index, scope, node.func)
         if identity == "builtins.type" and len(node.args) == 3 or identity in ("types.new_class", "builtins.__build_class__"):
             self.refuse("SRC-CLASS-DYNAMIC", index.path, node.lineno, f"`{ast.unparse(node)[:80]}` makes a class by a call", "write a class statement")
         elif identity in SET_CALLS:
@@ -815,7 +819,7 @@ class Contract:
             self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{text}` writes an attribute under a computed name", "write the attribute with a literal name")
         elif kind == "unknown":
             self.refuse("SRC-FORM-UNRECOGNISED", index.path, node.lineno, f"`{text}` writes through {ast.unparse(first)}, which nothing in the source says what it is", FORM_REMEDY)
-        elif self.hides_a_family_method(context, kind, name, _identity(index, scope, node.func)):
+        elif self.hides_a_family_method(context, kind, name, self.identity(index, scope, node.func)):
             self.override(index.path, node.lineno, f"`{text}`" + (f" in {context[0].qual}" if context else ""), name)
 
     def hides_a_family_method(self, context: tuple, kind: str, name: str, identity: str | None) -> bool:
@@ -904,13 +908,6 @@ REMEDY = {   # what to do about a refusal the resolver explains (`Unresolved.why
     "SRC-DECORATOR-ARGS": "use the argument shape the transformation's record allows",
     "SRC-FORM-UNRECOGNISED": FORM_REMEDY,
 }
-
-
-def _identity(index: FileIndex, scope: source.Scope, node: ast.expr) -> str | None:
-    try:
-        return source.identify(index.path, scope, node)
-    except Unresolved:
-        return None
 
 
 def _literal_strings(node: ast.expr) -> bool:

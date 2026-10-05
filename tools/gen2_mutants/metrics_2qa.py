@@ -64,8 +64,8 @@ MUTATIONS: list[Mutation] = [
     m("collab-same-file-family", "a class with a base in its own file is a family", (MCO + "test_a_base_in_the_same_file_or_outside_the_project_is_no_family",),
       "            if not any(member[0] != path for member in order):\n                continue", "            if False:\n                continue"),
     m("collab-module-attribute-base", "a base named through a module attribute is not resolved", (MCO + "test_a_base_named_through_a_module_attribute_is_found",),
-      "        if isinstance(node, ast.Attribute):\n            return self.member(self.expr(path, scope, node.value), node.attr)",
-      "        if False:\n            return self.member(self.expr(path, scope, node.value), node.attr)", "tools/gen2_source_index.py"),
+      "        if isinstance(node, ast.Attribute):\n            return self.member(self.expr(path, scope, node.value, seen, assignments), node.attr, seen, assignments)",
+      "        if False:\n            return self.member(self.expr(path, scope, node.value, seen, assignments), node.attr, seen, assignments)", "tools/gen2_source_index.py"),
     # --- function complexity -------------------------------------------------------------------------------------------
     m("cc-branch-increment", "a branch adds nothing to the cyclomatic proxy", (MX + "test_the_branches_nesting_and_comprehensions_of_one_function",
       MX + "test_a_ternary_an_assert_and_a_while"), "            cyclomatic += 1\n        if isinstance(node, ast.BoolOp):", "            pass\n        if isinstance(node, ast.BoolOp):"),

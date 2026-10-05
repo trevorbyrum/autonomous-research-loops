@@ -12,7 +12,8 @@ recognised form with a recorded effect, and anything else is refused. These test
     compared with it.
 
 What this cannot show: that the recognised set is the whole of Python (it is closed on purpose; a form outside it is a refusal fixture, not an extension), or that a store through a call
-the contract does not name as a producer of a namespace (a function that returns a class) is caught: that is indirection, which the contract excludes.
+the contract does not name as a producer of a namespace (a function that returns a class, a container's element, a parameter) is caught: that is OPEN, not excluded (call-time owner effects,
+slice 2 of the F1 repair; docs/gen2/SOURCE-CONTRACT.md, "What the contract does not establish").
 """
 from __future__ import annotations
 
@@ -253,11 +254,10 @@ class WalkerUnitTest(unittest.TestCase):
 
 # --- Astra's probes, each with its interpreter control -----------------------------------------------------------------------------
 
-class ProbeTest(ClosureCase):
-    """Every probe of the review, in both services: the interpreter's control prints what Python does, and the contract's verdict agrees with it."""
-
-    def test_each_probe(self) -> None:
-        for probe in PROBES:
+class ProbeCase(ClosureCase):
+    def check_each_probe(self, probes: list[Probe]) -> None:
+        """Each probe in both services: the interpreter's control prints what Python does, and the contract's verdict agrees with it."""
+        for probe in probes:
             for service, (prefix, _) in SERVICES.items():
                 if probe.only not in (None, service):
                     continue
@@ -274,6 +274,13 @@ class ProbeTest(ClosureCase):
                         self.assertEqual((status, found), (0, []), msg=f"{probe.name} is inside the contract")
                         if probe.sites is not None:
                             self.assertEqual(measured_sites(repo, service), probe.sites, msg=f"the cross-file self-call sites measured for {probe.name}")
+
+
+class ProbeTest(ProbeCase):
+    """Every probe of the 2q-a-repair-3 review, in both services."""
+
+    def test_each_probe(self) -> None:
+        self.check_each_probe(PROBES)
 
     def test_the_probe_files_are_astras(self) -> None:
         names = [p.name for p in PROBES]

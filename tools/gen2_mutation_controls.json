@@ -8686,6 +8686,90 @@
   ],
   "why": "tools/gen2_metrics.py: executes line 420 (else 418)"
  },
+ "2QB-con-base-follows-an-assignment": {
+  "by_hand": true,
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_base_subscript"
+  ],
+  "why": "refuses a subscripted base (tools/gen2_source_contract.py Contract.base's subscript branch, which resolves its own `assignments=False` line): the mutant that lets a base follow an assignment changes the other resolution line"
+ },
+ "2QB-con-call-identity-is-its-spelling": {
+  "by_hand": true,
+  "controls": [
+   "test_source_closure.ClosureRefusalTest.test_refuses_global_redirect_of_every_kind_of_binding"
+  ],
+  "why": "refuses rebindings through `global` (no alias, no decorator, no call identity on its path): the mutants of an alias's cycle and of a consumer that reads a spelling leave these refusals as they were"
+ },
+ "2QB-con-decorator-identity-is-its-spelling": {
+  "by_hand": true,
+  "controls": [
+   "test_source_closure.ClosureRefusalTest.test_refuses_global_redirect_of_every_kind_of_binding"
+  ],
+  "why": "refuses rebindings through `global` (no alias, no decorator, no call identity on its path): the mutants of an alias's cycle and of a consumer that reads a spelling leave these refusals as they were"
+ },
+ "2QB-idx-alias-cycle-is-external": {
+  "by_hand": true,
+  "controls": [
+   "test_source_closure.ClosureRefusalTest.test_refuses_global_redirect_of_every_kind_of_binding"
+  ],
+  "why": "refuses rebindings through `global` (no alias, no decorator, no call identity on its path): the mutants of an alias's cycle and of a consumer that reads a spelling leave these refusals as they were"
+ },
+ "2QB-idx-nonlocal-binds-the-nearest-function": {
+  "by_hand": true,
+  "controls": [
+   "test_source_closure.ClosureAcceptanceTest.test_accepts_aliases_and_scopes"
+  ],
+  "why": "accepts a nonlocal write whose nearest enclosing function binds the name (tools/gen2_source_index.py _Builder.nonlocal_owner): the nearest function and the nearest one that binds the name are the same function there, so the mutant that takes the nearest function leaves it as it was"
+ },
+ "2QB-idx-nonlocal-skips-the-function-that-binds-the-name": {
+  "by_hand": true,
+  "controls": [
+   "test_source_binding.NonlocalOwnerTest.test_the_write_skips_a_function_that_does_not_bind_the_name"
+  ],
+  "why": "records a nonlocal write past a function that binds nothing, to the one function that binds the name: the outermost binder the mutant picks is that function"
+ },
+ "2QB-idx-nonlocal-without-a-binding-accepted": {
+  "by_hand": true,
+  "controls": [
+   "test_source_binding.NonlocalOwnerTest.test_the_write_stops_at_the_nearest_function_that_binds_the_name"
+  ],
+  "why": "records nonlocal writes that have an enclosing binding and asserts where they go; the refusal of a nonlocal name no function binds is not on its path"
+ },
+ "2QB-idx-unpacking-binds-every-name-to-the-first-value": {
+  "by_hand": true,
+  "controls": [
+   "test_source_binding.UnpackingTest.test_a_loop_target_takes_the_elements_of_what_it_iterates_and_not_the_values_beside_it"
+  ],
+  "why": "binds the targets of a loop over a literal, which an unpacking's pairing never touches (tools/gen2_source_index.py paired_values: an assignment only): the mutants that change the pairing of an assignment's names leave it as it was"
+ },
+ "2QB-idx-unpacking-binds-no-value": {
+  "by_hand": true,
+  "controls": [
+   "test_source_binding.UnpackingTest.test_a_loop_target_takes_the_elements_of_what_it_iterates_and_not_the_values_beside_it"
+  ],
+  "why": "binds the targets of a loop over a literal, which an unpacking's pairing never touches (tools/gen2_source_index.py paired_values: an assignment only): the mutants that change the pairing of an assignment's names leave it as it was"
+ },
+ "2QB-idx-unpacking-pairs-a-different-count": {
+  "by_hand": true,
+  "controls": [
+   "test_source_binding.UnpackingTest.test_each_name_takes_the_value_at_its_position_and_a_chain_is_an_alias"
+  ],
+  "why": "pairs the names of an assignment with literals that have no starred element, the same count and a position each: the mutants that pair a loop's target, a starred literal or a literal of another count change none of them"
+ },
+ "2QB-idx-unpacking-pairs-a-loop-target": {
+  "by_hand": true,
+  "controls": [
+   "test_source_binding.UnpackingTest.test_each_name_takes_the_value_at_its_position_and_a_chain_is_an_alias"
+  ],
+  "why": "pairs the names of an assignment with literals that have no starred element, the same count and a position each: the mutants that pair a loop's target, a starred literal or a literal of another count change none of them"
+ },
+ "2QB-idx-unpacking-pairs-a-starred-value": {
+  "by_hand": true,
+  "controls": [
+   "test_source_binding.UnpackingTest.test_each_name_takes_the_value_at_its_position_and_a_chain_is_an_alias"
+  ],
+  "why": "pairs the names of an assignment with literals that have no starred element, the same count and a position each: the mutants that pair a loop's target, a starred literal or a literal of another count change none of them"
+ },
  "2QC-con-alias-of-a-class-is-data": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_writes_through_data_to_a_family_methods_name"
@@ -8937,7 +9021,7 @@
  },
  "2QC-con-setattr-through-data-to-a-family-name-accepted": {
   "controls": [
-   "test_source_closure.ClosureAcceptanceTest.test_accepts_stores_the_contract_does_not_restrict"
+   "test_source_closure.ClosureAcceptanceTest.test_accepts_ordinary_data_stores"
   ],
   "why": "tools/gen2_source_contract.py: executes line 825"
  },
@@ -8998,9 +9082,9 @@
  "2QC-con-walrus-base-is-data": {
   "by_hand": true,
   "controls": [
-   "test_source_closure.ClosureAcceptanceTest.test_accepts_stores_the_contract_does_not_restrict"
+   "test_source_closure.ClosureAcceptanceTest.test_accepts_ordinary_data_stores"
   ],
-  "why": "tools/gen2_source_contract.py Contract.kind_of's NamedExpr branch: writes an attribute through an assignment expression whose value is a call (data, written after the trace in the family's fixtures) among the accepted stores: the mutant, which says data for every such expression, accepts the same"
+  "why": "a narrow control and nothing more (task 2q-a-repair-5, 2026-10-05): it exercises only tools/gen2_source_contract.py Contract.kind_of's NamedExpr branch, with an attribute written through an assignment expression whose value is an ordinary call (`(obj := make()).value = 1`), which the mutant that says data for every such expression accepts as well. It does not show that such a value cannot hold a module or a class (call-time owner effects, slice 2), and its family is no closure evidence (ordinary_data_stores)"
  },
  "2QC-con-write-through-data-to-a-family-name-accepted": {
   "controls": [

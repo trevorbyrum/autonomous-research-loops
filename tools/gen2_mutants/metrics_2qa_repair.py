@@ -47,7 +47,7 @@ MUTATIONS: list[Mutation] = [
     r("collab-subscripted-base", "a subscripted project base is accepted by erasure", (CONT + "test_refuses_src_base_subscript",),
       '                if inner[0] != "external" or inner[1] not in MODELLED_TYPING:', "                if False:", CON),
     r("collab-from-import-unbound", "a name brought in by `from m import n` is not followed to its class", (SPELL, REEXPORT),
-      '        if binding.role == "from":\n            return self.member(self.module_ref(binding.ref[1]), binding.ref[2], seen)', '        if binding.role == "from":\n            return ("external", "x")', IDX),
+      '        if binding.role == "from":\n            return self.member(self.module_ref(binding.ref[1]), binding.ref[2], seen, assignments)', '        if binding.role == "from":\n            return ("external", "x")', IDX),
     r("collab-import-alias-unbound", "a name bound by `import m` or `import m as x` is not followed to its module", (SPELL, CR + "test_the_composed_class_has_the_hand_counted_inventory_however_its_bases_are_written"),
       '        if binding.role == "import":\n            return self.module_ref(binding.ref[1])', '        if binding.role == "import":\n            return ("external", "x")', IDX),
     r("collab-module-members-unread", "the names a measured module defines or imports are not looked up", (SPELL, REEXPORT),
@@ -57,7 +57,7 @@ MUTATIONS: list[Mutation] = [
     r("collab-submodule-not-an-attribute", "a submodule is not an attribute of its package", (SPELL, REEXPORT),
       "        if sub in self.names or sub in self.packages:\n            return self.module_ref(sub)", "        if False:\n            return self.module_ref(sub)", IDX),
     r("collab-nested-class-unfound", "a nested class is not found through its outer class", (CS + "test_a_nested_class_is_named_through_its_outer_class",),
-      "            if attr not in scope.bindings:\n                raise Unresolved(\"SRC-NAME-UNRESOLVED\", f\"class {ref[2]} defines no {attr}\")", "            if True:\n                raise Unresolved(\"SRC-NAME-UNRESOLVED\", f\"class {ref[2]} defines no {attr}\")", IDX),
+      "            if fact is None or attr not in fact.scope.bindings:\n                raise Unresolved(\"SRC-NAME-UNRESOLVED\", f\"class {ref[2]} defines no {attr}\")", "            if True:\n                raise Unresolved(\"SRC-NAME-UNRESOLVED\", f\"class {ref[2]} defines no {attr}\")", IDX),
     r("collab-namespace-package-unknown", "a package without an __init__ is not a package", (SPELL, CR + "test_the_composed_class_has_the_hand_counted_inventory_however_its_bases_are_written"),
       '        if dotted in self.packages:\n            return ("package", dotted)', '        if False:\n            return ("package", dotted)', IDX),
     # --- F1: the order, the count, what cannot be followed ---------------------------------------------------------------

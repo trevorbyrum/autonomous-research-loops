@@ -9,7 +9,8 @@ that the closed accounting then preserved. This module parses every production f
   * binding roles: every occurrence that binds a name in a scope, with its role (class, def, import, import from, star, assign, annotation, augmented
     assign, target, walrus, delete, parameter, global/nonlocal write) and whether it is conditional, and the expression whose value it binds;
   * store sites (an attribute or an item written or deleted) and call sites, each with the scope that holds it;
-  * class bases, resolved by the one name resolver below, and the C3 order over the project classes (`object` implicit and last, as Python has it);
+  * class bases, resolved by the one name resolver below (`Facts.expr`, which every consumer asks: bases, decorator, loader and call identities, store kinds, field markers, locator owners;
+    task 2q-a-repair-5), and the C3 order over the project classes (`object` implicit and last, as Python has it);
   * method ownership: the methods a class declares directly, and each method's receiver;
   * diagnostics: every construct the structural rows of the source contract refuse (a duplicate definition, a conditional class or method, a
     rebound definition, a star import, an unresolvable base, a syntax form the walker has no record of ...), each naming file, line, construct and
@@ -302,12 +303,24 @@ def chain_text(node: ast.AST | None) -> str | None:
 class _Builder:
     def __init__(self, index: FileIndex) -> None:
         self.index = index
+        self.nonlocals: list[tuple[Scope, str, Binding]] = []   # the `nonlocal` writes, placed once every function has its bindings (Python decides what a function binds over its whole body)
 
     def run(self) -> None:
         index = self.index
         self.block(index.tree.body, index.module, False)
+        for scope, name, binding in self.nonlocals:
+            owner = self.nonlocal_owner(scope, name)
+            if owner is None:
+                self.diagnose("SRC-FORM-UNRECOGNISED", binding.line, f"`nonlocal {name}` names no binding of an enclosing function", "bind the name in the enclosing function: Python refuses this source")
+            else:
+                owner.bind(name, binding)
         for scope in index.scopes:
             self.structure(scope)
+
+    def nonlocal_owner(self, scope: Scope, name: str) -> Scope | None:
+        """The function a `nonlocal` write belongs to: the nearest enclosing function that binds the name itself (a parameter, an assignment, an import ...), skipping a function
+        that only passes it through and a class body, as Python's compiler does. Another `nonlocal` write binds nothing there."""
+        return next((outer for outer in self._enclosing(scope) if outer.kind == "function" and any(b.role != "nonlocal_write" for b in outer.bindings.get(name, ()))), None)
 
     # -- the dispatcher ----------------------------------------------------------------------------------------------
 
@@ -337,14 +350,17 @@ class _Builder:
              annotated: ast.AST | None = None) -> None:
         """The one place a binding is recorded. A `global` or `nonlocal` declaration sends EVERY kind of binding (an import and a definition as much as an assignment)
         to the scope it names."""
-        origin = scope
         if name in scope.declared:
             kind = scope.declared[name]
-            target = self.index.module if kind == "global" else next((s for s in self._enclosing(scope) if s.kind == "function"), scope)
-            role, scope, ref = f"{kind}_write", target, ()
-        elif role == "assign" and direct and chain_text(source) is not None:
+            binding = Binding(f"{kind}_write", line, conditional, (), source, direct, annotated, scope)
+            if kind == "global":
+                self.index.module.bind(name, binding)
+            else:
+                self.nonlocals.append((scope, name, binding))
+            return
+        if role == "assign" and direct and chain_text(source) is not None:
             ref = ("alias", chain_text(source))   # a name bound to a name or an attribute chain forwards that identity
-        scope.bind(name, Binding(role, line, conditional, ref, source, direct, annotated, origin))
+        scope.bind(name, Binding(role, line, conditional, ref, source, direct, annotated, scope))
 
     @staticmethod
     def _enclosing(scope: Scope):
@@ -514,8 +530,13 @@ class _Builder:
                       annotated=target.annotated)
 
     def form_container(self, node, scope: Scope, nested: bool, target: Target | None) -> None:
-        inner = replace_target(target) if target is not None and isinstance(node.ctx, (ast.Store, ast.Del)) else None
-        self.each(ast.iter_child_nodes(node), scope, nested, inner)
+        if target is None or not isinstance(node.ctx, (ast.Store, ast.Del)):
+            self.each(ast.iter_child_nodes(node), scope, nested)
+        elif (values := paired_values(node, target)) is not None:   # `a, b = x, y` binds a to x and b to y: each name is bound to a whole value of its own
+            for element, value in zip(node.elts, values):
+                self.visit(element, scope, nested, Target(target.role, value, target.annotated))
+        else:
+            self.each(ast.iter_child_nodes(node), scope, nested, replace_target(target))
 
     def form_attribute(self, node: ast.Attribute, scope: Scope, nested: bool, target) -> None:
         if isinstance(node.ctx, (ast.Store, ast.Del)):
@@ -554,6 +575,15 @@ def replace_target(target: Target) -> Target:
     return Target(target.role, target.source, target.annotated, False)
 
 
+def paired_values(node: ast.AST, target: Target) -> list[ast.expr] | None:
+    """The values a literal tuple or list assigned to a literal tuple or list of targets gives them one by one, or None (a starred element, a different count, a value that
+    is no literal: the names are then elements of one value). Only an assignment pairs: a loop's or a `with`'s target takes elements of what it iterates."""
+    source = target.source
+    if target.role != "assign" or not isinstance(node, (ast.Tuple, ast.List)) or not isinstance(source, (ast.Tuple, ast.List)) or len(node.elts) != len(source.elts):
+        return None
+    return None if any(isinstance(e, ast.Starred) for e in (*node.elts, *source.elts)) else source.elts
+
+
 def index_text(path: str, text: str) -> FileIndex:
     """The facts of any Python text (the locator checker indexes tests and tools this way); a SyntaxError propagates."""
     return FileIndex(path, ast.parse(text, filename=path))
@@ -578,6 +608,11 @@ def lexical_chain(scope: Scope) -> list[Scope]:
             chain.append(outer)
         outer = outer.parent
     return chain
+
+
+def holder_of(scope: Scope, name: str) -> Scope | None:
+    """The scope whose namespace holds the name a use in `scope` means, or None: the one lookup rule, in lexical order, that the resolver and its consumers share."""
+    return next((candidate for candidate in lexical_chain(scope) if name in candidate.bindings), None)
 
 
 Ref = tuple   # ("class", path, qual) | ("function", path, qual) | ("module", dotted) | ("package", dotted) | ("external", dotted identity)
@@ -643,16 +678,15 @@ class Facts:
             raise Unresolved("SRC-BINDING-COMPETING", f"{name} has competing or conditional bindings in {where} (lines {', '.join(str(b.line) for b in bindings)})")
         return next((b for b in bindings if not b.conditional), bindings[0])
 
-    def bound(self, path: str, scope: Scope, name: str, seen: frozenset = frozenset()) -> Ref:
+    def bound(self, path: str, scope: Scope, name: str, seen: frozenset = frozenset(), assignments: bool = True) -> Ref:
         """A name used in `scope`: its own namespace first, then each enclosing function's and the module's (a class body is not enclosing)."""
-        for candidate in lexical_chain(scope):
-            if name in candidate.bindings:
-                return self.follow(path, candidate, name, self.certain(name, candidate.bindings[name], candidate.qual or path), seen)
+        if (candidate := holder_of(scope, name)) is not None:
+            return self.follow(path, candidate, name, self.certain(name, candidate.bindings[name], candidate.qual or path), seen, assignments)
         if hasattr(builtins, name):
             return ("external", f"builtins.{name}")
         raise Unresolved("SRC-NAME-UNRESOLVED", f"{name} is neither defined nor imported in {path}")
 
-    def follow(self, path: str, scope: Scope, name: str, binding: Binding, seen: frozenset) -> Ref:
+    def follow(self, path: str, scope: Scope, name: str, binding: Binding, seen: frozenset, assignments: bool = True) -> Ref:
         if binding.role == "class":
             return ("class", path, scope.named(name))
         if binding.role == "def":
@@ -660,20 +694,24 @@ class Facts:
         if binding.role == "import":
             return self.module_ref(binding.ref[1])
         if binding.role == "from":
-            return self.member(self.module_ref(binding.ref[1]), binding.ref[2], seen)
+            return self.member(self.module_ref(binding.ref[1]), binding.ref[2], seen, assignments)
+        if binding.ref[:1] == ("alias",) and assignments:   # a name bound once to a name or an attribute chain (`loader = import_module`, `a, b = x, y`) is what that chain is
+            if (id(scope), name) in seen:
+                raise Unresolved("SRC-BINDING-COMPETING", f"{name} is an alias of itself")
+            return self.expr(path, scope, binding.source, seen | {(id(scope), name)}, assignments)
         raise Unresolved("SRC-BASE-ALIAS", f"{name} is bound by {binding.role}, not by a class, a function or an import")
 
-    def member(self, ref: Ref, attr: str, seen: frozenset = frozenset()) -> Ref:
+    def member(self, ref: Ref, attr: str, seen: frozenset = frozenset(), assignments: bool = True) -> Ref:
         """The attribute `attr` of a module, package or class; a re-export is followed through its one certain binding."""
         if ref[0] == "external":
             return ("external", f"{ref[1]}.{attr}")
         if ref[0] == "function":
             raise Unresolved("SRC-NAME-UNRESOLVED", f"{ref[2]} is a function, which has no attribute {attr} the contract recognises")
         if ref[0] == "class":
-            scope = self.classes[(ref[1], ref[2])].scope
-            if attr not in scope.bindings:
+            fact = self.classes.get((ref[1], ref[2]))   # a class of a file outside the production inventory (a test, a tool) is not in the facts
+            if fact is None or attr not in fact.scope.bindings:
                 raise Unresolved("SRC-NAME-UNRESOLVED", f"class {ref[2]} defines no {attr}")
-            return self.follow(ref[1], scope, attr, self.certain(attr, scope.bindings[attr], ref[2]), seen)
+            return self.follow(ref[1], fact.scope, attr, self.certain(attr, fact.scope.bindings[attr], ref[2]), seen, assignments)
         dotted = ref[1]
         if ref[0] == "module":
             path = self.names[dotted]
@@ -681,18 +719,34 @@ class Facts:
             if attr in module.bindings:
                 if (path, attr) in seen:
                     raise Unresolved("SRC-BINDING-COMPETING", f"{dotted}.{attr} is imported through itself")
-                return self.follow(path, module, attr, self.certain(attr, module.bindings[attr], dotted), seen | {(path, attr)})
+                return self.follow(path, module, attr, self.certain(attr, module.bindings[attr], dotted), seen | {(path, attr)}, assignments)
         sub = f"{dotted}.{attr}"
         if sub in self.names or sub in self.packages:
             return self.module_ref(sub)
         raise Unresolved("SRC-NAME-UNRESOLVED", f"{dotted} defines no {attr}")
 
-    def expr(self, path: str, scope: Scope, node: ast.expr) -> Ref:
+    def expr(self, path: str, scope: Scope, node: ast.expr, seen: frozenset = frozenset(), assignments: bool = True) -> Ref:
+        """THE binding-identity resolver (task 2q-a-repair-5). A name or an attribute chain used in `scope` is followed through explicit imports, aliases (a name bound once
+        to another name or chain, however it is written: `x = y`, `x, = (y,)`), qualified module chains and re-exports across files, to the class, function, module or external
+        identity it certainly has, or Unresolved with the refusal category. Every consumer asks this method: the bases of a class (and so the metrics' families), the identity
+        of a decorator, a loader or any call (`identity`), the kind of what a store is written through, a field marker and the owner a locator may descend through. A base
+        passes `assignments=False`: the contract refuses a base bound by an assignment (SRC-BASE-ALIAS) and every other consumer follows it."""
         if isinstance(node, ast.Name):
-            return self.bound(path, scope, node.id)
+            return self.bound(path, scope, node.id, seen, assignments)
         if isinstance(node, ast.Attribute):
-            return self.member(self.expr(path, scope, node.value), node.attr)
+            return self.member(self.expr(path, scope, node.value, seen, assignments), node.attr, seen, assignments)
         raise Unresolved("SRC-BASE-SHAPE", f"{ast.unparse(node)} is not a name or an attribute chain")
+
+    def identity(self, path: str, scope: Scope, node: ast.expr) -> str:
+        """The dotted identity a name or attribute chain certainly has (`importlib.import_module`, `builtins.exec`, `gen2.gateway_client.client._serial`), from the one resolver:
+        decorators, the contract's loader and `setattr` sites and the field markers are recognised by it, never by their spelling, so an alias or a re-export of a loader is the
+        loader. A name that has no certain identity is Unresolved with the decorator categories (SRC-DECORATOR-UNKNOWN: nothing says what it is; SRC-DECORATOR-SHADOWED: it is
+        rebound, conditional, competing or no import or definition)."""
+        try:
+            ref = self.expr(path, scope, node)
+        except Unresolved as exc:
+            raise Unresolved("SRC-DECORATOR-SHADOWED" if exc.category in ("SRC-BINDING-COMPETING", "SRC-BASE-ALIAS") else "SRC-DECORATOR-UNKNOWN", exc.why) from None
+        return ref[1] if ref[0] in ("module", "package", "external") else f"{module_name(ref[1])}.{ref[2]}"
 
     # -- class bases and the C3 order ------------------------------------------------------------------------------------
 
@@ -714,36 +768,6 @@ class Facts:
     def family(self, key: tuple[str, str]) -> list[tuple[str, str]]:
         """The project classes in a class's method-resolution order (itself first)."""
         return [member for member in self.mro(key) if member[0] != "base"]
-
-
-def identify(path: str, scope: Scope, node: ast.expr, seen: frozenset = frozenset()) -> str:
-    """The dotted identity a name or attribute chain certainly has in `scope`, from the file's own bindings alone: an import binds `module` or `module.name`, a
-    definition `<module of this file>.<qualified name>`, an unbound builtin `builtins.<name>`, and a name bound ONCE, directly, to another name or attribute chain
-    (`loader = import_module`) has the identity of that chain. A name with competing, conditional or other bindings (an assignment of a call, a parameter, a loop target
-    ...) has no certain identity: Unresolved, SRC-DECORATOR-SHADOWED. Decorators and the contract's loader sites are recognised by this identity, never by their
-    spelling, so an alias of a loader is the loader."""
-    if isinstance(node, ast.Attribute):
-        return f"{identify(path, scope, node.value, seen)}.{node.attr}"
-    if not isinstance(node, ast.Name):
-        raise Unresolved("SRC-DECORATOR-UNKNOWN", f"{ast.unparse(node)} is not a name or an attribute chain")
-    for candidate in lexical_chain(scope):
-        if node.id in candidate.bindings:
-            bindings = candidate.bindings[node.id]
-            alias = bindings[0].role == "assign" and bindings[0].ref[:1] == ("alias",) and (id(candidate), node.id) not in seen
-            if len({(b.role, b.ref) for b in bindings}) > 1 or all(b.conditional for b in bindings) or (bindings[0].role not in ("import", "from", "def", "class") and not alias):
-                raise Unresolved("SRC-DECORATOR-SHADOWED", f"{node.id} is not bound once, unconditionally, by an import or a definition (it is {', '.join(sorted({b.role for b in bindings}))}, "
-                                 f"line {bindings[0].line})")
-            binding = bindings[0]
-            if alias:
-                return identify(path, candidate, binding.source, seen | {(id(candidate), node.id)})
-            if binding.role == "import":
-                return binding.ref[1]
-            if binding.role == "from":
-                return f"{binding.ref[1]}.{binding.ref[2]}"
-            return f"{module_name(path)}.{candidate.named(node.id)}"
-    if hasattr(builtins, node.id):
-        return f"builtins.{node.id}"
-    raise Unresolved("SRC-DECORATOR-UNKNOWN", f"{node.id} is neither defined nor imported in {path}")
 
 
 # --- queries the locator checker asks, over the same facts -----------------------------------------------------------

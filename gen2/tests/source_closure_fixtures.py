@@ -96,6 +96,17 @@ CLOSURE_REFUSALS: dict[str, list[Fixture]] = {
     "nonlocal_and_global_inside_closures": [
         refuse("a closure's global import rebinds the module's class", "SRC-DEF-REBOUND",
                {"a.py": A + py("", "def outer():", "    def inner():", "        global A", "        import os as A", "    return inner")}, ("a.py", 8), "bound again as global_write"),
+        # a `nonlocal` write belongs to the nearest enclosing function that binds the name, not to the nearest function: `middle` binds nothing, so `outer`'s definition is rebound
+        refuse("a nonlocal assignment through a function that does not bind the name rebinds the outer function's definition", "SRC-DEF-REBOUND",
+               {"a.py": py("def outer():", "    def helper():", "        return 1", "    def middle():", "        def replace():", "            nonlocal helper", "            helper = None", "        replace()",
+                           "    middle()")}, ("a.py", 7), "bound again as nonlocal_write"),
+        refuse("a nonlocal import through two functions that do not bind the name rebinds the outer function's class", "SRC-DEF-REBOUND",
+               {"a.py": py("def outer():", "    class Helper:", "        pass", "    def middle():", "        def inner():", "            def replace():", "                nonlocal Helper", "                import os as Helper",
+                           "            replace()", "        inner()", "    middle()")}, ("a.py", 8), "bound again as nonlocal_write"),
+        refuse("a nonlocal deletion rebinds the outer function's definition", "SRC-DEF-REBOUND",
+               {"a.py": py("def outer():", "    def helper():", "        return 1", "    def replace():", "        nonlocal helper", "        del helper", "    replace()")}, ("a.py", 6), "bound again as nonlocal_write"),
+        refuse("a nonlocal name that no enclosing function binds", "SRC-FORM-UNRECOGNISED",
+               {"a.py": py("def outer():", "    def inner():", "        nonlocal missing", "        missing = 1", "    inner()")}, ("a.py", 4), "names no binding of an enclosing function"),
     ],
     "unrecognised_forms": [
         refuse("a type alias statement", "SRC-FORM-UNRECOGNISED", {"a.py": py("type Alias = int")}, ("a.py", 1), "TypeAlias"),
@@ -274,7 +285,15 @@ CLOSURE_REFUSALS: dict[str, list[Fixture]] = {
                {"a.py": py("from importlib import import_module", "first = import_module", "second = first", "value = second('math')")}, ("a.py", 4), "importlib.import_module"),
         refuse("a loader aliased inside a function", "SRC-LOADER-UNINVENTORIED",
                {"a.py": py("import importlib", "", "def load():", "    fn = importlib.import_module", "    return fn('math')")}, ("a.py", 5), "importlib.import_module"),
+        refuse("a loader unpacked from a tuple, at the position it has", "SRC-LOADER-UNINVENTORIED",
+               {"a.py": py("from importlib import import_module", "size, loader = (len, import_module)", "value = loader('math')")}, ("a.py", 3), "importlib.import_module"),
+        refuse("a loader re-exported by another module", "SRC-LOADER-UNINVENTORIED",
+               {"a.py": py("from importlib import import_module as load"), "b.py": py("from {pkg}.a import load", "value = load('math')")}, ("b.py", 2), "importlib.import_module"),
+        refuse("a loader re-exported through an alias assignment and a qualified module chain", "SRC-LOADER-UNINVENTORIED",
+               {"a.py": py("from importlib import import_module", "load = import_module"), "b.py": py("import {pkg}.a as a", "value = a.load('math')")}, ("b.py", 2), "importlib.import_module"),
         refuse("exec aliased", "SRC-LOADER-UNINVENTORIED", {"a.py": py("run = exec", "run('x = 1')")}, ("a.py", 2), "builtins.exec"),
+        refuse("a decorator that is an alias of itself through a swap has no identity", "SRC-DECORATOR-SHADOWED",
+               {"a.py": py("first, second = second, first", "", "class A:", "    @first", "    def f(self):", "        return 1")}, ("a.py", 4), "an alias of itself"),
         refuse("a class made by an aliased three-argument type", "SRC-CLASS-DYNAMIC", {"a.py": py("make = type", "A = make('A', (), {})")}, ("a.py", 2), "makes a class by a call"),
         refuse("setattr aliased and aimed at a class", "SRC-REFLECTIVE", {"a.py": A + py("", "put = setattr", "put(A, 'f', 1)")}, ("a.py", 6), "writes an attribute of a class"),
         refuse("a decorator that is an alias of an unrecorded one", "SRC-DECORATOR-UNKNOWN",
@@ -291,7 +310,14 @@ CLOSURE_REFUSALS: dict[str, list[Fixture]] = {
 }
 
 
-def stores_that_are_data() -> list[Fixture]:
+def ordinary_data_stores() -> list[Fixture]:
+    """Ordinary data processing that must not be over-refused: attributes and items written on parameters, locals, call results and the elements of containers.
+
+    NOTE 2026-10-05 (task 2q-a-repair-5): these fixtures are NOT closure evidence, and the family is no longer named for one. Astra's 2q-a-repair-4 review (F1, Gate C) showed that a
+    parameter, a call result or the element of a container can hold a module or a class (`def replace(ns): ns.A = object` called with a module), and a store through it changes the
+    owner of a later direct call. Which of those values may be such an owner is decided by CALL-TIME OWNER EFFECTS, slice 2 of the F1 repair, which slice 1 (binding identity) does not do:
+    until then they say only that the stores below are accepted, not that accepting them is sound. Slice 2 replaces the expectations it cannot keep with owner-escape cases that
+    the interpreter controls (gen2/tests/source_binding_fixtures.py shows the shape)."""
     return [
         accept("a name no family has as a method may be written on data, and so may a name only a single class has",
                {"a.py": py("class Solo:", "    def only(self):", "        return 1"), "b.py": py("def change(obj):", "    obj.only = 2", "    obj.other = 3", "    delattr(obj, 'only')", "    del obj.only")}, functions=["a.py::Solo.only", "b.py::change"]),
@@ -321,7 +347,7 @@ def stores_that_are_data() -> list[Fixture]:
 
 
 CLOSURE_ACCEPTS: dict[str, list[Fixture]] = {
-    "stores_the_contract_does_not_restrict": stores_that_are_data(),
+    "ordinary_data_stores": ordinary_data_stores(),   # not closure evidence: see the note on ordinary_data_stores
     "class_bodies_that_bind_data": [
         accept("a class body binds data by any recorded statement without colliding with a method",
                {"a.py": py("class A:", "    one = 1", "    two: int = 2", "    three: int", "    for four in range(2):", "        pass", "    with open('x') as five:", "        pass", "    from os import path as six",
@@ -374,6 +400,9 @@ CLOSURE_ACCEPTS: dict[str, list[Fixture]] = {
         accept("a walrus in a class body annotation binds in the class, not in the module", {"a.py": A + py("", "class Other:", "    marker: (A := object)")}, classes=["a.py::A", "a.py::Other"]),
         accept("a lambda and a comprehension keep their own bindings", {"a.py": py("class A:", "    pass", "", "key = lambda A: A", "rows = [A for A in range(2)]", "pairs = {A: A for A in range(2)}")}, classes=["a.py::A"]),
         accept("a global declared for a name the module only reads is no rebinding of a definition", {"a.py": py("COUNT = 0", "", "def bump():", "    global COUNT", "    COUNT += 1")}, functions=["a.py::bump"]),
+        accept("a nonlocal write belongs to the nearest function that binds the name, so the outer function's definition is not rebound",
+               {"a.py": py("def outer():", "    def helper():", "        return 1", "    def middle():", "        helper = 2", "        def replace():", "            nonlocal helper", "            helper = 3", "        replace()",
+                           "    middle()")}, functions=["a.py::outer", "a.py::outer.helper", "a.py::outer.middle", "a.py::outer.middle.replace"]),
         accept("a global that is a data name and a nonlocal in a closure", {"a.py": py("TOTAL = 0", "", "def outer():", "    seen = 0", "    def inner():", "        global TOTAL", "        nonlocal seen", "        TOTAL += 1", "        seen += 1",
                                                                                          "    return inner")}, functions=["a.py::outer", "a.py::outer.inner"]),
     ],

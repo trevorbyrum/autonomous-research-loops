@@ -36,7 +36,7 @@ MUTATIONS = [
     Mutation("2QI-class-scope-occurrences", "2q-repair-2", "a defined name that is bound again is not refused", (B + "test_class_scope_assignment_cannot_leave_a_stale_nested_class_binding",),
              target=IDX, old='            if defs and others:', new='            if False:'),
     Mutation("2QI-lexical-base-scope", "2q-repair-2", "a nested class base guesses the module namespace", (B + "test_a_nested_class_base_uses_its_enclosing_class_namespace", B + "test_a_function_local_class_base_accounts_for_local_writes_and_parameters"),
-             target=CON, old='                ref = self.facts.expr(path, cls.parent, node)', new='                ref = self.facts.expr(path, index.module, node)'),
+             target=CON, old='                ref = self.facts.expr(path, cls.parent, node, assignments=False)', new='                ref = self.facts.expr(path, index.module, node, assignments=False)'),
     Mutation("2QI-locator-owner-binding", "2q-repair-2", "a qualified method survives replacement of its owning class", (Q + "test_a_replaced_class_owner_cannot_leave_a_stale_qualified_method",),
              target=IDX, old='        if len(bindings) != 1 or bindings[0].conditional or bindings[0].role not in CERTAIN:', new='        if not bindings or bindings[0].conditional or bindings[0].role not in CERTAIN:'),
 ]

@@ -179,7 +179,7 @@ def why_not(sources: Sources, path: str, name: str, *, qualified: bool = False) 
         if index is None:
             return "the file does not parse"
         if qualified or "." in name:
-            return source.module_attribute(index, name.split("."), lambda cls: contract.class_owner_ok(index, cls))
+            return source.module_attribute(index, name.split("."), lambda cls: contract.class_owner_ok(sources.facts, index, cls))
         return None if source.declares(index, name) else "no def, class or assignment of that name anywhere in the file"
     text = (sources.root / path).read_text(encoding="utf-8", errors="replace")
     if path.endswith(".sql"):
