@@ -147,3 +147,18 @@ None. As of 2026-10-03 the operator has accepted no mitigation. The record: the 
 - what: Given a topic profile and a cadence, estimate the API cost and the subscription-plan share (for example, the percent of a weekly window) that the cadence brings. It is calibrated from the Phase 2+ usage records (task 2e1 captures them per invocation and attempt: tokens, model, provider-reported cost when there is one, wall time, correlated gateway calls and credits, kind, topic and cadence), by fitting tokens per percent-of-window from quiet-account windows, and it reports RANGES with the calibration's uncertainty, never a bare point; an unreported value is `unknown`, not zero. A provider's subscription window is account-wide, shared by everything that uses the account, so the before and after readings 2e1 stores are context and never per-run attribution: the estimator may use them only through the quiet-account calibration and must not present a per-run (or per-agent) share read from them. One Phase 2 run cannot calibrate it, which is why it waits for Phase 3.
 - source: operator request 2026-09-29, "OPERATOR REQUEST: per-run usage metrics sufficient to estimate cadence cost (API and subscription share)" (REVIEW-LOG.md; BUILD-STATE.md "Carried to Phase 3 - usage estimator"); recorded by Astra's 2q-a review F3 (private/reviews/gen2-2q-a-astra-review-20261003.md)
 - removal: Phase 3 delivers the estimator with its calibration method, reporting ranges and the uncertainty of the fit, and with account-wide readings never attributed to a run; the Phase 3 review confirms it before Phase 3 closes.
+
+### DEBT-016 - 2q-a non-blocking review findings (2q)
+- kind: obligation
+- status: open
+- owner: task 2q
+- what: Non-blocking findings from Astra's 2q-a-repair-4 review, classified under the charter's "Review throughput" rule (operator 2026-10-05). The operator accepts these entries in advance through that rule. They are:
+  - (1) the loader fingerprint omits the definition-time effects of other definitions in the loader module (defaults and class bodies), so qualify the fingerprint claim and guard or document the bound;
+  - (2) the transformation composition `property(classmethod(...))` is not recognised;
+  - (3) `test_the_probe_files_are_astras` checks names and counts, not source identity;
+  - (4) `test_a_masking_member_is_data_for_every_name_and_not_only_hash` claims slots and data but exercises only a property and a method;
+  - (5) the loader tests' closure claim overstates their listed edits;
+  - (6) the "tracer-only failure" disclosure is wrong, because both supervisor tests skip in plain and traced runs;
+  - (7) the completion record detects accidental incomplete execution, not deliberate same-process forgery (trust model B), so state that boundary in the docs.
+- source: private/reviews/gen2-2q-a-repair-4-astra-review-20261005.md (Gate C, F2, F3, completion validity, and "Follow-up 2026-10-05")
+- removal: a 2q tooling and documentation slice corrects the claims and guards or documents each bounded limitation, and its review confirms it before 2q closes.
