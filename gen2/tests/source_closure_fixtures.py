@@ -297,6 +297,7 @@ def stores_that_are_data() -> list[Fixture]:
                {"a.py": py("class Solo:", "    def only(self):", "        return 1"), "b.py": py("def change(obj):", "    obj.only = 2", "    obj.other = 3", "    delattr(obj, 'only')", "    del obj.only")}, functions=["a.py::Solo.only", "b.py::change"]),
         accept("deleting an attribute named like a method of a family hides nothing",
                {"a.py": A, "b.py": py("from {pkg}.a import A", "", "class B(A):", "    pass"), "c.py": py("def drop(obj):", "    delattr(obj, 'f')", "    del obj.f")}, functions=["a.py::A.f", "c.py::drop"]),
+        accept("an attribute written through an assignment expression that binds data", {"a.py": py("def change(make):", "    (obj := make()).value = 1", "    return obj")}, functions=["a.py::change"]),
         accept("an attribute written on a parameter", {"a.py": py("def change(obj):", "    obj.value = 1", "    obj.value += 1", "    del obj.value")}, functions=["a.py::change"]),
         accept("an item written on a parameter, a local and a module-level container",
                {"a.py": py("REGISTRY = {}", "", "def put(key, value, rows):", "    REGISTRY[key] = value", "    rows[0] = value", "    local = {}", "    local[key] = value", "    del local[key]", "    return local")},

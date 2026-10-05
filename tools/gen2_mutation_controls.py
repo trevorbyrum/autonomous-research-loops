@@ -455,6 +455,12 @@ MANUAL: dict[str, dict] = {
         "why": "the mutant makes every lookup of a nested class through its outer class a refusal (tools/gen2_source_index.py Facts.member's class branch): the accepted path is the "
                "lookup itself, and the one traced test that takes it beyond the killer (a class-scope assignment after the nested class) fails under the mutant, which changes "
                "what the accepted path does rather than removing a refusal. There is no accepted alternative through it to pair"},
+    # task 2q-a-repair-4: a test written for the mutant after the trace (a write through an assignment expression that binds data): the walrus base is data on the accepted path, which
+    # the mutant's `return "data"` leaves unchanged; the refusal fixtures (a walrus that binds a class) are the killer
+    "2QC-con-walrus-base-is-data": {
+        "controls": ["test_source_closure.ClosureAcceptanceTest.test_accepts_stores_the_contract_does_not_restrict"],
+        "why": "tools/gen2_source_contract.py Contract.kind_of's NamedExpr branch: writes an attribute through an assignment expression whose value is a call (data, written after the trace "
+               "in the family's fixtures) among the accepted stores: the mutant, which says data for every such expression, accepts the same"},
     "2QS-con-all-mutation-unreported": {
         "controls": ["test_source_contract.AcceptanceTest.test_accepts_imports_and_exports"],
         "why": "reads an __all__ without changing it (tools/gen2_source_contract.py Contract.exports' changed elif is evaluated and false for a Load that is no method call and no "
