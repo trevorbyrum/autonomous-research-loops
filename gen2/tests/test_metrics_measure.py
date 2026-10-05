@@ -123,13 +123,16 @@ class GraphTest(RepoTestCase):
         self.assertEqual((table["gen2/sub/m.py"]["fan_out"], table["gen2/a.py"]["fan_in"], table["gen2/__init__.py"]["fan_in"]), ("2", "1", "1"))
         self.assertEqual((table["gen2/sub/n.py"]["fan_out"], table["gen2/sub/__init__.py"]["fan_in"], table["gen2/sub/m.py"]["fan_in"]), ("2", "1", "1"))
 
-    def test_an_untracked_file_and_a_tracked_file_missing_from_disk_are_not_measured(self) -> None:
+    def test_a_tracked_file_missing_from_disk_is_not_measured_and_an_untracked_candidate_is_refused(self) -> None:
         repo = self.repo({"gen2/a.py": "x = 1\n", "gen2/gone.py": "y = 1\n"})
         repo.write({"gen2/gone.py": None}, commit=False)
-        repo.write({"gen2/new.py": "import gen2.a\n"}, commit=False)
         summary, out = measured(repo)
         self.assertEqual(set(by_module(out)), {"gen2/a.py"})
         self.assertEqual(summary["services"]["engine"]["edges"], 0)
+        repo.write({"gen2/new.py": "import gen2.a\n"}, commit=False)   # present but neither tracked nor ignored: a local run would claim a completeness it lacks
+        done = repo.run("report", str(repo.root / "out"))
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("SRC-INV-UNTRACKED: gen2/new.py is a production candidate that git does not track", done.stderr)
 
     def test_the_engine_and_the_gateway_are_measured_separately_and_tests_by_neither(self) -> None:
         files = {"gen2/a.py": py("import gen2.b"), "gen2/b.py": "x = 1\n", "gen2/tests/test_a.py": py("import gen2.a"),

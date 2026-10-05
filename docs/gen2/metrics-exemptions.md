@@ -36,11 +36,10 @@ One `###` section per entry, headed `### EX-<id>` and any title, then `- key: va
 | `smell_hub_like` | `<service>:<file>` | none |
 | `smell_unstable_dependency` | `<service>:<importing file>-><imported file>` | none |
 | `smell_god_component` | `<service>:<component>` | none |
-| `function_cyclomatic`, `function_cognitive` | `<service>:<file>::<qualified name>` (`#2` for a second function of the same name in a file) | an integer |
+| `function_cyclomatic`, `function_cognitive` | `<service>:<file>::<qualified name>` (one definition per name per scope: the source contract refuses a second) | an integer |
 | `fan_out` | `<service>:<file>` | an integer (the highest fan-out accepted) |
 | `fan_in` | `<service>:<file>` (a file that was stable at the baseline) | an integer (the highest fan-in accepted) |
 | `reach_gained` | `engine` or `gateway` | an integer (pairs of existing files that became reachable) |
-| `unresolved_base` | `<service>:<file>::<class>(<base expression as written>)` | none: the entry classifies a base the tool cannot follow (the tool prints the reason); it is the only way to |
 | `cross_service_import` | `repo:<importing file>-><imported file>` | none |
 
 ## Entries
@@ -48,8 +47,14 @@ One `###` section per entry, headed `### EX-<id>` and any title, then `- key: va
 None. The baseline recorded at the task 2q-a pin is the present state of the engine and the gateway, so nothing is exempt: every metric and smell the code has today is in the baseline, and only something worse than the baseline needs an entry here.
 
 Task 2q-a-repair-2: the committed metrics ledger is the only admission, mapping,
-retirement or unresolved-binding classification mechanism. Exemptions cannot
-excuse missing identities or admit a new population. Existing numeric exemptions
-remain temporary and never loosen a baseline. Improved function scores retain
-their explicit identity. See docs/gen2/metrics-ledger.md for the transition
-contract; ordinary review checks reasons and reviewing-task claims.
+retirement or move mechanism. Exemptions cannot excuse missing identities or admit
+a new population. Existing numeric exemptions remain temporary and never loosen a
+baseline. Improved function scores retain their explicit identity. See
+docs/gen2/metrics-ledger.md for the transition contract; ordinary review checks
+reasons and reviewing-task claims.
+
+Task 2q-a-repair-3 (the operator's ruling of 2026-10-05, Gate D #4 option B): source
+outside the supported-source contract (docs/gen2/SOURCE-CONTRACT.md) is refused before
+anything is measured. Neither an exemption nor a ledger entry waives a refusal, and
+the repair-2 classification of unresolved bindings (`classify`, `unresolved_base`) is
+withdrawn: an exemption naming `unresolved_base` is an unknown metric.

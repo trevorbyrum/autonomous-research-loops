@@ -106,7 +106,8 @@ class HolderUsersTest(unittest.TestCase):
         # by hand: each of these test modules imports the fixtures (`from gen2.tests import tool_repo_fixtures as fx` or
         # `from gen2.tests.tool_repo_fixtures import ...`); no other test module does
         self.assertEqual(users, {"test_metrics_measure", "test_metrics_ratchet", "test_debt_register", "test_locators",
-                                 "test_metrics_offenders", "test_metrics_collaboration", "test_metrics_dependencies", "test_metrics_identity"})   # the last three: task 2q-a-repair
+                                 "test_metrics_offenders", "test_metrics_collaboration", "test_metrics_dependencies", "test_metrics_identity",   # the last three: task 2q-a-repair
+                                 "test_source_contract", "test_metrics_plan", "test_tool_completion"})   # task 2q-a-repair-3
 
     def test_a_module_nobody_imports_has_no_users(self) -> None:
         self.assertEqual(TOOL["holder_users"]("gen2.tests.no_such_fixtures"), set())

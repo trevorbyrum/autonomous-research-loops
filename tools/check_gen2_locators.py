@@ -23,17 +23,23 @@ being recognised and so stopped being checked):
               (`gen2/store/schema/`) needs a tracked file under it.
   symbol      `path::name`, and the pair written as a file span, one space, and
               a name span (`adapters/base.py` `_read_body`): the name must be
-              defined in that file. For Python, a def, class or assignment of
-              that name anywhere in the file (`Class.method` and
-              `Outer.Inner.name` must match the nesting); for SQL a table,
-              view, trigger or index; for other files the quoted or bare word.
+              defined in that file. For Python this is the source facts'
+              DECLARATION-IN-FILE query: a def, class or assignment of that name
+              anywhere in the file, scopes and conditions aside; a dotted name
+              (`Class.method`, `Outer.Inner.name`) is the other query below,
+              over the file's own module; for SQL a table, view, trigger or
+              index; for other files the quoted or bare word.
   module path a dotted name whose first part is a first-party package
               (`gen2` or `research_gateway`): `gen2.router.service`,
               `gen2.router.service.Router.commit_outcome`. The longest prefix
               that is a tracked module of the gen-2 surface (production, tests
-              or tools) is the module; the rest follows module then class
-              attributes, never function locals or flattened short names; no such module fails. A package (a directory) alone is
-              enough.
+              or tools) is the module; the rest is the source facts'
+              MODULE/CLASS-ATTRIBUTE query: the module, then class attributes,
+              each name bound once, unconditionally, by a definition, never a
+              function local or a flattened short name, and every owner on the
+              way a class whose decorators and keywords the source contract
+              models (a replaced or unsupported owner satisfies nothing); no
+              such module fails. A package (a directory) alone is enough.
   marked      `code: text` for an ordinary code or data expression (a standard
               library name, a database column, a command) and `history: text`
               for something as it was at an earlier revision or in a retired
@@ -56,20 +62,26 @@ without backticks is not seen. A code name whose last part is a file suffix
 (an attribute `Response.json`) reads as a file; mark it. A name a package
 `__init__` only re-exports is not defined there: cite the defining file.
 
-Exit 0 all exist, 1 a locator does not, 2 a document cannot be read.
+Both queries read the same source facts as the metrics (tools/gen2_source_index.py), and the production source is checked against the supported-source contract
+(docs/gen2/SOURCE-CONTRACT.md) first, however this tool is run: a locator into source the contract refuses certifies nothing, so the run is refused with the
+diagnostics (exit 1) before any locator is checked.
 
-Trace: task 2q-a; Gate D #1 finding 6; Gate D #2 section 5 ("stale H-5 locators"); task 2q-a-repair F4.
+Exit 0 all exist, 1 a locator does not or the production source is refused, 2 a document cannot be read.
+
+Trace: task 2q-a; Gate D #1 finding 6; Gate D #2 section 5 ("stale H-5 locators"); task 2q-a-repair F4; task 2q-a-repair-3 (Gate D #4 checklist 5).
 """
 from __future__ import annotations
 
 import argparse
-import ast
 import fnmatch
 import re
 import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
+
+import gen2_source_contract as contract
+import gen2_source_index as source
 
 EXIT_OK, EXIT_FAIL, EXIT_TOOL = 0, 1, 2
 DEFAULT_DOCS = ("docs/gen2/INVARIANTS.md", "docs/gen2/DEBT-REGISTER.md")
@@ -142,104 +154,47 @@ def external(core: str) -> str | None:
     return None
 
 
-def python_names(text: str) -> set[str]:
-    """Every name a Python file defines, plain and qualified by its nesting: defs, classes and assignments."""
-    names: set[str] = set()
+class Sources:
+    """The source facts the locators are asked of: the production inventory, indexed once and checked against the contract, and any other Python file of the
+    surface (tests, tools), indexed by the same code on first use. A file that does not parse defines nothing."""
 
-    def visit(node: ast.AST, scope: list[str]) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                names.add(child.name)
-                names.add(".".join(scope + [child.name]))
-                visit(child, scope + [child.name])
-            elif isinstance(child, (ast.Assign, ast.AnnAssign)):
-                targets = child.targets if isinstance(child, ast.Assign) else [child.target]
-                for target in targets:
-                    for leaf in ast.walk(target):
-                        if isinstance(leaf, ast.Name):
-                            names.add(leaf.id)
-                            names.add(".".join(scope + [leaf.id]))
-            else:
-                visit(child, scope)
+    def __init__(self, root: Path, facts: source.Facts) -> None:
+        self.root, self.facts, self.cache = root, facts, dict(facts.indexes)
 
-    try:
-        visit(ast.parse(text), [])
-    except SyntaxError:
-        pass
-    return names
+    def index(self, path: str) -> source.FileIndex | None:
+        if path not in self.cache:
+            try:
+                self.cache[path] = source.index_text(path, (self.root / path).read_text(encoding="utf-8", errors="replace"))
+            except SyntaxError:
+                self.cache[path] = None
+        return self.cache[path]
 
 
-def scoped_names(text: str) -> set[str]:
-    """Module attributes followed only through class attributes; function locals
-    never become module/class attributes. Each owner must have one certain
-    class binding: a stale declaration cannot survive its replacement."""
-    names = set()
-
-    def block(statements, scope):
-        bindings = {}
-        def collect(body, conditional=False):
-            def bind(name, owner=None, defined=True, uncertain=False):
-                bindings.setdefault(name, []).append((owner, conditional or uncertain, defined))
-            def writes(node, uncertain):
-                if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
-                    bind(node.id, defined=isinstance(node.ctx, ast.Store), uncertain=uncertain)
-                if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name:
-                    bind(node.name, uncertain=True)
-                if isinstance(node, ast.MatchMapping) and node.rest:
-                    bind(node.rest, uncertain=True)
-                for field, value in ast.iter_fields(node):
-                    if field in ("body", "orelse", "finalbody") or (isinstance(node, ast.comprehension) and field == "target"):
-                        continue
-                    for child in value if isinstance(value, list) else [value]:
-                        if isinstance(child, ast.AST):
-                            writes(child, uncertain)
-            for child in body:
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    bind(child.name, child if isinstance(child, ast.ClassDef) else None)
-                elif isinstance(child, (ast.Import, ast.ImportFrom)):
-                    for alias in child.names:
-                        bind(alias.asname or alias.name.partition(".")[0], defined=False)
-                writes(child, not isinstance(child, (ast.Assign, ast.AugAssign, ast.Delete)) and
-                       not (isinstance(child, ast.AnnAssign) and child.value is not None))
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    continue
-                for field in ("body", "orelse", "finalbody"):
-                    collect(getattr(child, field, []), True)
-                for handler in getattr(child, "handlers", []):
-                    collect(handler.body, True)
-                for case in getattr(child, "cases", []):
-                    collect(case.body, True)
-        collect(statements)
-        if "*" in bindings:
-            return  # Unknown exports can replace any local owner; cite the defining module.
-        for name, options in bindings.items():
-            if len(options) != 1 or options[0][1]:
-                continue
-            owner, _, defined = options[0]
-            if defined:
-                names.add(".".join(scope + [name]))
-            if owner is not None:
-                block(owner.body, scope + [name])
-    try:
-        block(ast.parse(text).body, [])
-    except SyntaxError:
-        pass
-    return names
-
-
-def defines(root: Path, path: str, name: str, *, qualified: bool = False) -> bool:
-    text = (root / path).read_text(encoding="utf-8", errors="replace")
+def why_not(sources: Sources, path: str, name: str, *, qualified: bool = False) -> str | None:
+    """Why `path` does not define `name` (None when it does). Python: the source facts' declaration-in-file query for a plain name, and their module/class-attribute
+    query for a dotted name or a module path; SQL and other files: the word."""
     name = name.removesuffix("()")
     if path.endswith(".py"):
-        return name in (scoped_names(text) if qualified or "." in name else python_names(text))
+        index = sources.index(path)
+        if index is None:
+            return "the file does not parse"
+        if qualified or "." in name:
+            return source.module_attribute(index, name.split("."), lambda cls: contract.class_owner_ok(index, cls))
+        return None if source.declares(index, name) else "no def, class or assignment of that name anywhere in the file"
+    text = (sources.root / path).read_text(encoding="utf-8", errors="replace")
     if path.endswith(".sql"):
-        return re.search(rf"\b(?:TABLE|VIEW|TRIGGER|INDEX)\s+(?:IF NOT EXISTS\s+)?(?:\w+\.)?{re.escape(name)}\b", text, re.IGNORECASE) is not None
-    return re.search(rf'(?<![\w]){re.escape(name)}(?![\w])', text) is not None
+        found = re.search(rf"\b(?:TABLE|VIEW|TRIGGER|INDEX)\s+(?:IF NOT EXISTS\s+)?(?:\w+\.)?{re.escape(name)}\b", text, re.IGNORECASE) is not None
+        return None if found else "no table, view, trigger or index of that name"
+    return None if re.search(rf'(?<![\w]){re.escape(name)}(?![\w])', text) is not None else "the word does not appear"
 
 
-def check_document(root: Path, doc: str, files: list[str], modules: dict[str, str]) -> tuple[Counter, list[str]]:
+def defines(sources: Sources, path: str, name: str, *, qualified: bool = False) -> bool:
+    return why_not(sources, path, name, qualified=qualified) is None
+
+
+def check_document(sources: Sources, doc: str, files: list[str], modules: dict[str, str]) -> tuple[Counter, list[str]]:
     try:
-        text = (root / doc).read_text(encoding="utf-8")
+        text = (sources.root / doc).read_text(encoding="utf-8")
     except OSError as exc:
         raise ToolError(f"{doc} cannot be read: {exc}") from exc
     cleaned = prose(text)
@@ -282,8 +237,8 @@ def check_document(root: Path, doc: str, files: list[str], modules: dict[str, st
             if symbol:
                 checked["symbols"] += 1
                 symbol = re.sub(r"[#:].*$", "", symbol)
-                if not any(defines(root, f, symbol) for f in found):
-                    fail(start, f"{span}` `{symbol}" if "::" not in span else span, f"{symbol} is not defined in {', '.join(found[:3])}")
+                if not any(defines(sources, f, symbol) for f in found):
+                    fail(start, f"{span}` `{symbol}" if "::" not in span else span, f"{symbol} is not defined in {', '.join(found[:3])}: {why_not(sources, found[0], symbol)}")
             continue
         if IDENT.match(span) and "." in span:
             name = span.removesuffix("()")
@@ -292,7 +247,7 @@ def check_document(root: Path, doc: str, files: list[str], modules: dict[str, st
                                 "or mark it `code:` (an ordinary expression) or `history:` (a name as it was)")
                 continue
             checked["modules"] += 1
-            why = module_path_problem(root, name, modules)
+            why = module_path_problem(sources, name, modules)
             if why:
                 fail(start, span, why)
             continue
@@ -301,14 +256,15 @@ def check_document(root: Path, doc: str, files: list[str], modules: dict[str, st
     return checked, problems
 
 
-def module_path_problem(root: Path, name: str, modules: dict[str, str]) -> str | None:
+def module_path_problem(sources: Sources, name: str, modules: dict[str, str]) -> str | None:
     """Why a full module path names nothing (or None): the longest prefix that is a module holds the rest as a name."""
     parts = name.split(".")
     for length in range(len(parts), 1, -1):
         path = modules.get(".".join(parts[:length]))
         if path:
             symbol = ".".join(parts[length:])
-            return f"{symbol} is not defined in {path}" if symbol and not defines(root, path, symbol, qualified=True) else None
+            reason = why_not(sources, path, symbol, qualified=True) if symbol else None
+            return f"{symbol} is not defined in {path}: {reason}" if reason else None
     return None if any(m.startswith(name + ".") for m in modules) else "names no module of this repository"
 
 
@@ -326,11 +282,19 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root)
     try:
         files = tracked(root)
+        facts = contract.load(root)
+        if facts.diagnostics:
+            for diagnostic in facts.diagnostics:
+                print(f"SOURCE REFUSED: {diagnostic.render()}", file=sys.stderr)
+            print(f"gen2-locators: the production source is outside the supported-source contract ({contract.CONTRACT_ID}): {len(facts.diagnostics)} refusal(s); "
+                  "no locator was checked", file=sys.stderr)
+            return EXIT_FAIL
+        sources = Sources(root, facts)
         modules = module_files(root, files)
         total: Counter = Counter()
         problems: list[str] = []
         for doc in args.docs or DEFAULT_DOCS:
-            checked, found = check_document(root, doc, files, modules)
+            checked, found = check_document(sources, doc, files, modules)
             total += checked
             problems += found
     except ToolError as exc:

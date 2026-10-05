@@ -23,9 +23,11 @@ from __future__ import annotations
 from .base import Mutation
 
 MET, LOC = "tools/gen2_metrics.py", "tools/check_gen2_locators.py"
+IDX, CON, LED = "tools/gen2_source_index.py", "tools/gen2_source_contract.py", "tools/gen2_metrics_ledger.py"
+CONT = "test_source_contract.RefusalTest."
 CS, CN, CI, CM, CO, CR, CU = (f"test_metrics_collaboration.{c}." for c in (
     "SupportedSurfaceTest", "NestedClassTest", "SameFileIntermediateTest", "MethodResolutionOrderTest", "OverlappingFamiliesTest",
-    "RouterInMiniatureTest", "UnresolvedBaseTest"))
+    "RouterInMiniatureTest", "RefusedBaseTest"))
 OF = "test_metrics_offenders.BaselinedOffenderTest."
 DA, DF, DI, DS, DR, DU = (f"test_metrics_dependencies.{c}." for c in ("AstrasProbesTest", "FanOutTest", "FanInTest", "StableLimitTest", "RecordingTest", "UpgradeTest"))
 RB = "test_metrics_ratchet.BaselineFileTest."
@@ -33,7 +35,7 @@ LM, LU, LP = "test_locators.ModulePathTest.", "test_locators.UnmarkedDottedNameT
 
 SPELL = CS + "test_every_spelling_of_a_base_is_resolved_to_the_class"
 REEXPORT = CS + "test_a_reexport_through_a_package_is_followed"
-UNFOLLOWED = CU + "test_a_base_the_tool_cannot_follow_fails_the_check_naming_the_class_and_why"
+UNFOLLOWED = CU + "test_a_base_the_contract_cannot_follow_is_refused_naming_the_class_the_category_and_why"
 
 
 def r(mid: str, description: str, killers: tuple[str, ...], old: str, new: str, target: str = MET, also: tuple[tuple[str, str], ...] = ()) -> Mutation:
@@ -42,54 +44,51 @@ def r(mid: str, description: str, killers: tuple[str, ...], old: str, new: str, 
 
 MUTATIONS: list[Mutation] = [
     # --- F1: what a base is resolved over --------------------------------------------------------------------------------
-    r("collab-subscripted-base", "a subscripted base (Base[int]) is not followed to its class", (SPELL,),
-      "        if isinstance(node, ast.Subscript):\n            return self.expr(path, node.value, scope)", "        if False:\n            return self.expr(path, node.value, scope)"),
+    r("collab-subscripted-base", "a subscripted project base is accepted by erasure", (CONT + "test_refuses_src_base_subscript",),
+      '                if inner[0] != "external" or inner[1] not in MODELLED_TYPING:', "                if False:", CON),
     r("collab-from-import-unbound", "a name brought in by `from m import n` is not followed to its class", (SPELL, REEXPORT),
-      '        if kind == "from":\n            return self.member(self.module(rest[0]), rest[1], seen)', '        if kind == "from":\n            return ("external",)'),
+      '        if binding.role == "from":\n            return self.member(self.module_ref(binding.ref[1]), binding.ref[2], seen)', '        if binding.role == "from":\n            return ("external", "x")', IDX),
     r("collab-import-alias-unbound", "a name bound by `import m` or `import m as x` is not followed to its module", (SPELL, CR + "test_the_composed_class_has_the_hand_counted_inventory_however_its_bases_are_written"),
-      '        if kind == "module":\n            return self.module(rest[0])', '        if kind == "module":\n            return ("external",)'),
+      '        if binding.role == "import":\n            return self.module_ref(binding.ref[1])', '        if binding.role == "import":\n            return ("external", "x")', IDX),
     r("collab-module-members-unread", "the names a measured module defines or imports are not looked up", (SPELL, REEXPORT),
-      "            if attr in self.scope[path]:", "            if False:"),
-    r('collab-star-reexport-dropped', 'a name a package takes from a star import is not followed', ('test_metrics_collaboration.SupportedSurfaceTest.test_a_reexport_through_a_package_is_followed',),
-      '            for binding in self.scope[path].get("*", ()):', '            for binding in ():', 'tools/gen2_metrics.py'),
+      "            if attr in module.bindings:", "            if False:", IDX),
+    r("collab-star-import-accepted", "a star import is not reported", (CONT + "test_refuses_src_star_import",),
+      "            for line in self.index.star_imports:", "            for line in ():", IDX),
     r("collab-submodule-not-an-attribute", "a submodule is not an attribute of its package", (SPELL, REEXPORT),
-      '        return self.module(sub) if sub in self.names or sub in self.packages else ("unresolved", f"{dotted} defines no {attr}")',
-      '        return ("unresolved", f"{dotted} defines no {attr}")'),
+      "        if sub in self.names or sub in self.packages:\n            return self.module_ref(sub)", "        if False:\n            return self.module_ref(sub)", IDX),
     r("collab-nested-class-unfound", "a nested class is not found through its outer class", (CS + "test_a_nested_class_is_named_through_its_outer_class",),
-      '            return ("class", ref[1], nested) if nested in self.classes[ref[1]] else ("unresolved", f"{ref[2]} defines no class {attr}")',
-      '            return ("unresolved", f"{ref[2]} defines no class {attr}")'),
+      "            if attr not in scope.bindings:\n                raise Unresolved(\"SRC-NAME-UNRESOLVED\", f\"class {ref[2]} defines no {attr}\")", "            if True:\n                raise Unresolved(\"SRC-NAME-UNRESOLVED\", f\"class {ref[2]} defines no {attr}\")", IDX),
     r("collab-namespace-package-unknown", "a package without an __init__ is not a package", (SPELL, CR + "test_the_composed_class_has_the_hand_counted_inventory_however_its_bases_are_written"),
-      '        if dotted in self.packages:\n            return ("package", dotted)', '        if False:\n            return ("package", dotted)'),
+      '        if dotted in self.packages:\n            return ("package", dotted)', '        if False:\n            return ("package", dotted)', IDX),
     # --- F1: the order, the count, what cannot be followed ---------------------------------------------------------------
     r("collab-depth-first-order", "a method resolves depth-first, not through the C3 order", (CM + "test_a_diamond_is_resolved_by_c3_not_depth_first",),
-      "        self._mro[key] = [key] + c3_merge(sequences + [direct])",
-      "        self._mro[key] = list(dict.fromkeys([key] + [member for seq in sequences for member in seq]))"),
-    r("collab-inconsistent-order-guessed", "an inconsistent hierarchy takes its first candidate", (CM + "test_an_inconsistent_order_is_reported_not_guessed",),
-      '        if head is None:\n            raise ValueError("no consistent method resolution order")', "        if head is None:\n            head = sequences[0][0]"),
+      "        self._mro[key] = [key] + c3_merge(sequences + [direct])", "        self._mro[key] = list(dict.fromkeys([key] + [member for seq in sequences for member in seq]))", IDX),
+    r("collab-inconsistent-order-guessed", "an inconsistent hierarchy takes its first candidate", (CM + "test_an_inconsistent_order_is_refused_not_guessed",),
+      '        if head is None:\n            raise ValueError("no consistent method resolution order")', '        if head is None:\n            head = sequences[0][0]', IDX),
     r("collab-site-counted-per-family", "a call site is counted once for each family that contains it", (CO + "test_a_site_in_two_families_is_one_site",
       CI + "test_a_class_whose_only_cross_file_ancestor_is_reached_through_a_same_file_base_is_still_a_family"),
       "            sites |= mine", "            sites += list(mine)", also=(("    sites: set[tuple[str, int, int, str]] = set()", "    sites: list = []"),)),
     r("collab-root-needs-a-direct-base-elsewhere", "a class is a family only if its own base is in another file", (CI + "test_a_class_whose_only_cross_file_ancestor_is_reached_through_a_same_file_base_is_still_a_family",),
       "            if not any(member[0] != path for member in order):\n                continue",
       '            if not any(ref[0] == "class" and ref[1] != path for _, ref in bases):\n                continue'),
-    r("collab-nested-class-self-counted", "a nested class's self-calls count for its outer class", (CN + "test_a_nested_class_has_its_own_self",),
+    r("collab-nested-class-self-counted", "a nested class's self-calls count for its outer class", ("test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_closure_that_captures_the_receiver_is_counted_and_a_nested_class_is_not",),
       "        node = stack.pop()\n        if isinstance(node, ast.ClassDef):\n            continue", "        node = stack.pop()\n        if False:\n            continue"),
-    r("collab-unresolved-not-reported", "a base the tool cannot follow is not reported", (UNFOLLOWED, CU + "test_a_base_from_the_other_service_is_reported"),
-      'if ref[0] == "unresolved" or (ref[0] == "class" and ref[1] not in in_service):', "if False:"),
-    r("collab-other-service-base-accepted", "a base from the other service is not reported", (CU + "test_a_base_from_the_other_service_is_reported",),
-      'if ref[0] == "unresolved" or (ref[0] == "class" and ref[1] not in in_service):', 'if ref[0] == "unresolved":'),
-    r("collab-external-base-unresolved", "a builtin base is unresolved", (CU + "test_bases_outside_the_measured_files_are_classified_without_an_exemption",),
-      '            return ("external",) if hasattr(builtins, name) else ("unresolved", f"{name} is neither defined nor imported in {path}")',
-      '            return ("unresolved", f"{name} is neither defined nor imported in {path}")'),
+    r("collab-unresolved-not-reported", "a base the contract cannot follow is not reported", (UNFOLLOWED, CU + "test_a_base_from_the_other_service_is_refused"),
+      '            self.refuse(exc.category, path, node.lineno, f"class {cls.qual} has the base {text}: {exc.why}", REMEDY[exc.category])\n            return', "            return", CON),
+    r("collab-other-service-base-accepted", "a base from the other service is accepted", (CU + "test_a_base_from_the_other_service_is_refused",),
+      '            if ref[0] == "class" and self.facts.service_of(ref[1]) != self.facts.service_of(path):', "            if False:", CON),
+    r("collab-external-base-unresolved", "a builtin base is unresolved", (CU + "test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration",),
+      '        if hasattr(builtins, name):\n            return ("external", f"builtins.{name}")', "        if False:\n            return (\"external\", f\"builtins.{name}\")", IDX),
     r("collab-unmeasured-first-party-module-external", "an import of a first-party module that is not measured is external", (UNFOLLOWED,),
-      '        return ("unresolved", f"{dotted} is not a measured module") if dotted.partition(".")[0] in self.tops else ("external",)', '        return ("external",)'),
-    r("collab-unresolved-not-gated", "an unresolved base is not a regression", (UNFOLLOWED, CU + "test_an_unresolved_base_is_not_recorded_by_a_rebaseline_and_refuses_it_when_new"),
-      '"unresolved_bases": dict(s["self_calls"]["unresolved"]),', '"unresolved_bases": {},'),
-    r('collab-unresolved-cannot-be-exempted', 'a ledger classification is refused', ('test_metrics_collaboration.UnresolvedBaseTest.test_a_ledger_classifies_it_and_a_stale_one_fails',),
-      '            if f["action"] != "classify":', '            if True:', 'tools/gen2_metrics_ledger.py'),
+      '        if dotted.partition(".")[0] in self.tops:', "        if False:", IDX),
+    r("collab-refusal-exits-zero", "a refusal of the source ends the command with exit 0", ("test_source_contract.EveryCommandTest.test_check_refuses",),
+      "        print_refusal(exc.diagnostics)\n        return EXIT_FAIL", "        print_refusal(exc.diagnostics)\n        return EXIT_OK"),
+    r("collab-classify-accepted", "a classification is an action the ledger accepts", (CU + "test_a_classify_entry_is_an_invalid_action_and_cannot_waive_anything",),
+      'ACTIONS = ("map", "retire", "admit", "budget", "move")', 'ACTIONS = ("map", "retire", "admit", "budget", "move", "classify")', LED),
     # --- F2: a baselined function, both dimensions ------------------------------------------------------------------------
-    r('offender-tracked-dropped', 'a baselined function is compared only while it is over a threshold', ('test_metrics_offenders.BaselinedOffenderTest.test_astras_probe_a_function_that_leaves_both_thresholds_while_one_score_grows_fails', 'test_metrics_offenders.BaselinedOffenderTest.test_the_opposite_direction_across_the_thresholds_fails_too'),
-      '            current["services"][service]["functions"][key] = current["services"][service]["all_functions"][key]', '            current["services"][service]["functions"].pop(key, None)', 'tools/gen2_metrics_ledger.py'),
+    r("offender-tracked-dropped", "a mapped destination is not compared with the budget that followed it", ("test_metrics_plan.RenameAndNewFileTest.test_a_rename_that_raises_a_score_above_the_old_ceiling_still_fails_after_the_map",
+      "test_metrics_identity.IdentityTest.test_rename_and_move_with_crossed_scores_require_mapping_and_compare_both_scores"),
+      '            out["services"][service]["functions"][key] = out["services"][service]["all_functions"][key]', '            out["services"][service]["functions"].pop(key, None)', LED),
     r("offender-growth-needs-a-threshold", "a baselined function's growth counts only above a threshold", (OF + "test_astras_probe_a_function_that_leaves_both_thresholds_while_one_score_grows_fails",),
       "grown = [(metric, field_) for metric, field_, _ in pairs if now[field_] > was[field_]]",
       "grown = [(metric, field_) for metric, field_, limit in pairs if now[field_] > was[field_] and now[field_] > limit]"),
@@ -121,19 +120,20 @@ MUTATIONS: list[Mutation] = [
     r("dep-reach-compared-by-total", "reach gained is a larger total, so a swap of one pair for another passes", (DF + "test_replacing_one_import_by_another_is_no_rise",),
       '    gained, lost = pairs(new["reach"]) - pairs(old["reach"]), pairs(old["reach"]) - pairs(new["reach"])',
       '    gained = pairs(new["reach"]) - pairs(old["reach"]) if len(pairs(new["reach"])) > len(pairs(old["reach"])) else set()\n    lost = pairs(old["reach"]) - pairs(new["reach"])'),
-    r('dep-new-files-are-baselined', 'new file budgets are implicitly admitted without ledger entries', ('test_metrics_identity.IdentityTest.test_isolated_new_file_is_unadmitted_without_a_tool_crash',),
-      '        if ref not in admitted:', '        if False:', 'tools/gen2_metrics_ledger.py'),
+    r("dep-new-files-are-baselined", "new file budgets are implicitly admitted without ledger entries", ("test_metrics_identity.IdentityTest.test_isolated_new_file_is_unadmitted_without_a_tool_crash",),
+      '        elif not drafting:', '        elif False:', LED),
     # --- F5: what a rebaseline records, and the upgrade ------------------------------------------------------------------
     r("rebaseline-fan-out-loosens", "a rebaseline records a higher fan-out", (DR + "test_an_exempted_rise_is_never_recorded",),
       'out["fan_out"] = {f: min(n, old["fan_out"][f]) if f in survivors else n for f, n in now["fan_out"].items()}', 'out["fan_out"] = dict(now["fan_out"])'),
     r('rebaseline-fan-in-loosens', 'a rebaseline records a higher fan-in', ('test_metrics_dependencies.RecordingTest.test_an_exempted_fan_in_rise_is_never_recorded',),
       'min(sum(f in now["graph"][x] for x in now["graph"]), old["fan_in"][f])', 'sum(f in now["graph"][x] for x in now["graph"])', 'tools/gen2_metrics.py'),
-    r('rebaseline-reach-loosens', 'new reach budgets bypass ledger admission', ("test_metrics_identity.IdentityTest.test_new_reach_needs_admission_even_when_edge_and_numeric_growth_are_approved",),
-      '        if ref not in admitted:', '        if "|reach|" not in ref and ref not in admitted:', 'tools/gen2_metrics_ledger.py'),
-    r('rebaseline-new-file-unrecorded', 'a rebaseline records a file new since the baseline with a fan-out of zero', ('test_metrics_dependencies.FanOutTest.test_a_new_file_needs_bounded_admission_and_its_budget_is_then_enforced',),
-      '                s[field][location] = now[field][location]', '                s[field][location] = 0 if field == "fan_out" else now[field][location]', 'tools/gen2_metrics_ledger.py'),
-    r('upgrade-refusal-removed', 'a baseline of version 1 is read by check', ('test_metrics_dependencies.UpgradeTest.test_check_refuses_it_and_names_the_remedy',),
-      '    if isinstance(baseline, dict) and baseline.get("version") in (1, 2) and not upgradable:', '    if False:', 'tools/gen2_metrics.py'),
+    r("rebaseline-reach-loosens", "a new reach pair is admitted without a ledger entry", ("test_metrics_identity.IdentityTest.test_new_reach_needs_admission_even_when_edge_and_numeric_growth_are_approved",),
+      '        elif not drafting:', '        elif not drafting and "|reach|" not in ref:', LED),
+    r("rebaseline-new-file-unrecorded", "a rebaseline records a file new since the baseline with a fan-out of zero", ("test_metrics_dependencies.FanOutTest.test_a_new_file_needs_bounded_admission_and_its_budget_is_then_enforced",),
+      '                s[field_][location] = now[field_][location]', '                s[field_][location] = 0 if field_ == "fan_out" else now[field_][location]', LED),
+    r("upgrade-refusal-removed", "a version-1 baseline is read by check, its missing dependency maps taken as empty", ("test_metrics_dependencies.UpgradeTest.test_check_refuses_it_and_names_the_remedy",),
+      '    if isinstance(baseline, dict) and baseline.get("version") in (1, 2) and not upgradable:',
+      '    if isinstance(baseline, dict) and baseline.get("version") in (1, 2) and not upgradable:\n        for s in baseline["services"].values():\n            for key in ("fan_out", "fan_in", "reach", "graph"):\n                s.setdefault(key, {})\n    if False:', MET),
     r('upgrade-forgives-regressions', 'an upgrade of a version-1 baseline does not compare what it held', ('test_metrics_dependencies.UpgradeTest.test_an_upgrade_does_not_forgive_a_regression_of_what_the_old_baseline_held',),
       '        if baseline["pin"]["production_sha256"] != at_old.report["pin"]["production_sha256"]:', '        if False:', 'tools/gen2_metrics.py'),
     r('upgrade-reads-as-unchanged', 'an upgrade of a version-1 baseline writes nothing', ('test_metrics_dependencies.UpgradeTest.test_rebaseline_upgrades_it_once',),
@@ -148,9 +148,9 @@ MUTATIONS: list[Mutation] = [
       'PACKAGES = ("gen2", "research_gateway")', 'PACKAGES = ("gen2",)', LOC),
     r("loc-module-path-unchecked", "a full module path is not looked for", (LM + "test_a_name_that_is_not_defined_or_a_module_that_is_not_there_fails", LP + "test_a_full_module_path_is_checked_and_stops_passing_when_the_module_goes"),
       "            if why:\n                fail(start, span, why)", "            if False:\n                fail(start, span, why)", LOC),
-    r('loc-module-path-name-unchecked', 'the name after a module path is not looked for', (LM + "test_a_name_that_is_not_defined_or_a_module_that_is_not_there_fails",
+    r("loc-module-path-name-unchecked", "the name after a module path is not looked for", (LM + "test_a_name_that_is_not_defined_or_a_module_that_is_not_there_fails",
       LM + "test_a_name_is_looked_for_where_it_is_defined_not_where_it_is_inherited"),
-      'not defines(root, path, symbol, qualified=True)', 'False', 'tools/check_gen2_locators.py'),
+      "            reason = why_not(sources, path, symbol, qualified=True) if symbol else None", "            reason = None", LOC),
     r("loc-module-path-shortest-module", "the shortest prefix that is a module is the module", (LM + "test_the_longest_module_is_the_module_so_a_package_does_not_swallow_its_submodule",),
       "    for length in range(len(parts), 1, -1):", "    for length in range(2, len(parts) + 1):", LOC),
     r("loc-namespace-package-not-a-module-path", "a package without an __init__ names no module", (LM + "test_a_full_module_path_names_a_module_and_a_name_in_it",),

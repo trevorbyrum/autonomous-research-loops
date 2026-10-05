@@ -14,9 +14,9 @@ PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-metrics gen2-metrics-rebaseline gen2-metrics-admit gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-source gen2-metrics gen2-metrics-rebaseline gen2-metrics-admit gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
-gen2-check: gen2-sqlite gen2-boundaries gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
+gen2-check: gen2-sqlite gen2-boundaries gen2-source gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
 # (Re)built when either lock changes; `venv --clear` starts from an empty
@@ -42,6 +42,16 @@ gen2-sqlite: gen2-venv
 gen2-boundaries: gen2-venv
 	$(PYTHON) tools/check_boundaries.py
 
+# The supported-source contract's refusal stage (docs/gen2/SOURCE-CONTRACT.md; task
+# 2q-a-repair-3; tools/gen2_source_contract.py, stdlib only): the production source of
+# BOTH services is indexed once and anything outside the declared subset is refused with
+# file, line, construct and remediation. gen2-metrics, the locator check and every
+# command that reads the production source run it first on their own; it is a target of
+# its own so that the refusal is reported before, and apart from, any measurement.
+# Nothing waives it.
+gen2-source: gen2-venv
+	$(PYTHON) tools/gen2_source_contract.py
+
 # The architecture metrics and their ratchet (charter "Architecture metrics"; task
 # 2q-a; tools/gen2_metrics.py, stdlib only): the engine and the gateway measured
 # apart from the code, production only. Fails on any regression against
@@ -50,9 +60,11 @@ gen2-boundaries: gen2-venv
 gen2-metrics: gen2-venv
 	$(PYTHON) tools/gen2_metrics.py check
 
-# Draft reason: TODO ledger entries. Fill reasons and reviewing task, then commit.
+# Draft what the effective transition plan still lacks, with reason: TODO. Fill reasons
+# and reviewing task, then commit. `make gen2-metrics-admit ARGS="--move OLD NEW"` states
+# one explicit file (or directory) move as an entry.
 gen2-metrics-admit: gen2-venv
-	$(PYTHON) tools/gen2_metrics.py admit
+	$(PYTHON) tools/gen2_metrics.py admit $(ARGS)
 
 # Fold reviewed ledger transitions; otherwise TIGHTENING only: never run by gen2-check, never automatic.
 # Refuses while a regression stands; commit the diff.

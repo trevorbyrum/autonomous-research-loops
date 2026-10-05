@@ -188,8 +188,13 @@ FILE_TARGETS = {
     # task 2q-a: the metrics ratchet, the debt register's phase-close check and the locator check; their tests run each as a subprocess through the fixtures' globals
     "tools/gen2_metrics.py": ("disk",),
     "tools/gen2_metrics_ledger.py": ("disk",),
+    # task 2q-a-repair-3: the shared source facts and the supported-source contract every tool reads (children import them from the child tree), and the fixtures'
+    # judgment of a child run as a program (a module the killers import: reloaded over the mutant)
+    "tools/gen2_source_index.py": ("disk",),
+    "tools/gen2_source_contract.py": ("disk",),
+    "gen2/tests/tool_repo_fixtures.py": ("module", "gen2.tests.tool_repo_fixtures", "gen2.tests.test_tool_completion"),
     "tools/check_gen2_debt.py": ("attr", "gen2.tests.tool_repo_fixtures", "DEBT_TOOL"),
-    "tools/check_gen2_locators.py": ("attr", "gen2.tests.tool_repo_fixtures", "LOCATORS_TOOL"),
+    "tools/check_gen2_locators.py": ("disk",),   # task 2q-a-repair-3: it imports the shared source facts beside it, so it runs from the child tree, not alone from a temp dir
 }
 
 

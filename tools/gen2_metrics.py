@@ -33,25 +33,25 @@ Definitions
   Implicit collaboration. For every class with a project ancestor defined in
   another file - the Router and its six mixins - the `self.<method>(...)` call
   sites, in any member class, whose method is defined in another member
-  class's file. The bases are resolved over a stated surface (`Classes`):
-  module-level classes and names bound by `class`, `import m`, `import m.n`,
-  `import m as x`, `from m import n [as x]` and `from m import *`, relative
-  imports resolved, followed through any number of re-exports, a base being a
-  name, an attribute chain (`gen2.router.lifecycle.Lifecycle`), `Outer.Inner`
-  or any of them subscripted. A base outside the measured files (a builtin, a
-  standard-library or third-party module) is external. A base the tool cannot
-  follow to a class or to something outside - a call, a name bound twice, a
-  measured module that defines no such name, a first-party module that is not
-  measured, an inconsistent hierarchy - is UNRESOLVED: reported by name and
-  reason and a regression (below) unless the ledger classifies it; it is
-  never read as "no collaboration". The method is resolved the way Python
-  resolves it, through the C3 linearization of the family (not a depth-first
-  walk: a diamond `D(B, C)` with `B(A)`, `C(A)` and `C.f` overriding `A.f`
-  binds a call in `B` to `C.f`). A call site is counted once however many
-  families contain it, by (site, defining file). Gate D #1/#2 measured the
+  class's file. The bases, the methods and each method's receiver come from the
+  source facts of the supported-source contract (tools/gen2_source_index.py,
+  tools/gen2_source_contract.py, docs/gen2/SOURCE-CONTRACT.md): a base is a name
+  or an attribute chain followed through explicit imports and uniquely bound
+  re-exports to one class (or to something outside the production inventory, an
+  external terminal), and anything the contract cannot make certain - a call, a
+  name bound twice or conditionally, a measured module that defines no such name,
+  a star import, a conditional class or method, an alias, an unrecorded
+  decorator, an inconsistent hierarchy - is REFUSED before anything is measured;
+  it is never read as "no collaboration" and nothing classifies it. The method
+  is resolved the way Python resolves it, through the C3 linearization of the
+  family (not a depth-first walk: a diamond `D(B, C)` with `B(A)`, `C(A)` and
+  `C.f` overriding `A.f` binds a call in `B` to `C.f`). A name that a property
+  (a data attribute) or a modelled decorator's generated method binds first in
+  that order is not a project method call. A call site is counted once however
+  many families contain it, by (site, defining file). Gate D #1/#2 measured the
   Router with a fixed list of mixin names; this finds the same family without
-  one (it also finds `Response(SealedAnswer)` in the gateway).
-  `super()` calls, `self.<attr>.method()` and attribute reads are not counted.
+  one (it also finds `Response(SealedAnswer)` in the gateway). `super()` calls,
+  `self.<attr>.method()` and attribute reads are not counted.
   Cyclomatic proxy. 1 + one per if / ternary / for / while / except handler /
   assert, + (operands - 1) per Boolean operator, + 1 + conditions per
   comprehension generator, + one per `match` case that is not a bare `_`.
@@ -86,12 +86,14 @@ Smells (thresholds are the DEFAULT_THRESHOLDS below, recorded in the baseline)
   These are operating points, not derived constants: they freeze the present
   state and stop it growing; they do not say the present state is right.
 
-The ratchet (charter Architecture metrics; task 2q-a-repair-2)
+The ratchet (charter Architecture metrics; tasks 2q-a-repair-2 and -3)
   The baseline records budgets and a persistent identity registry. The ledger
-  docs/gen2/metrics-ledger.md explicitly admits, maps, retires or classifies
-  obligations. Missing identity is failure, never improvement. Maps transport
-  old budgets before comparing both function scores. New file, import edge,
-  reach gained and collaboration/function budgets need reasoned admission.
+  docs/gen2/metrics-ledger.md explicitly admits, maps, moves or retires
+  obligations; checking, drafting and folding read one effective transition
+  plan (tools/gen2_metrics_ledger.py). Missing identity is failure, never
+  improvement. Maps transport old budgets before comparing both function
+  scores. New file, import edge, reach gained and collaboration/function
+  budgets need reasoned admission.
   Fan-out is gated for every recorded file; fan-in of a previously stable
   target includes all dependents (its blast radius), regardless of file age.
   Instability is judged by causes and direction: taking on dependencies or
@@ -101,16 +103,20 @@ The ratchet (charter Architecture metrics; task 2q-a-repair-2)
   cannot excuse missing identity or an unadmitted population. Rebaseline
   folds committed ledger transitions and tightens all other budgets. Improved
   functions keep both scores and their identity, even below thresholds.
-  Classification cannot restore information an AST cannot resolve.
+  Source outside the supported-source contract is refused first, in every
+  command, and no ledger entry or exemption waives it.
 
-Subcommands (exit 0 pass, 1 regression / invalid exemption, 2 the tool could
-not run):
+Subcommands (exit 0 pass, 1 regression / invalid exemption / refused source, 2
+the tool could not run):
   check        the ratchet; also prints an advisory change-coupling summary
                that can never change the exit status (`make gen2-metrics`)
-  admit        draft ledger transitions and budgets with reason: TODO
+  admit        draft what the transition plan still lacks, with reason: TODO;
+               `--move OLD NEW` states one explicit file or directory move
   rebaseline   fold ledger transitions; otherwise tighten only (`make gen2-metrics-rebaseline`)
   report DIR   every table as Gate D's CSV/JSON (file and component
-               dependencies, function complexity, import edges, summary)
+               dependencies, function complexity, import edges, summary); source
+               the contract refuses is shown as an incomplete, non-passing input
+               (exit 1) with the tables for what could be read
   hotspots DIR the git-history report for Gate D: churn x complexity per
                file and files that change together (`make gen2-hotspots`).
                Churn is lines added + deleted by reachable commits touching
@@ -125,25 +131,22 @@ from __future__ import annotations
 
 import argparse
 import ast
-import builtins
 import collections
 import csv
 import hashlib
 import itertools
 import json
 import re
-import subprocess
 import sys
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
 
 import gen2_metrics_ledger as ledger
+import gen2_source_contract as contract
+from gen2_source_index import SERVICES, SERVICE_PREFIX, ToolError, absolute_module, git, is_production, module_name, production_files, Facts  # noqa: F401 (the one inventory)
 
 EXIT_OK, EXIT_FAIL, EXIT_TOOL = 0, 1, 2
-SERVICES = ("engine", "gateway")
-SERVICE_PREFIX = {"engine": "gen2/", "gateway": "gateway/research_gateway/"}
-ENGINE_TESTS = "gen2/tests/"
 BASELINE_VERSION = 3
 DEFAULT_BASELINE = "docs/gen2/metrics-baseline.json"
 DEFAULT_EXEMPTIONS = "docs/gen2/metrics-exemptions.md"
@@ -165,48 +168,14 @@ LOOSER_IS = {  # which direction of each threshold flags fewer things
 }
 SMELL_KINDS = ("hub_like", "unstable_dependency", "god_component")
 METRICS_NUMERIC = ("propagation_file", "propagation_component", "self_calls", "function_cyclomatic", "function_cognitive", "fan_out", "fan_in", "reach_gained")
-METRICS_SET = ("cycle_file", "cycle_component", "cross_service_import", "unresolved_base", "smell_hub_like", "smell_unstable_dependency", "smell_god_component")
+METRICS_SET = ("cycle_file", "cycle_component", "cross_service_import", "smell_hub_like", "smell_unstable_dependency", "smell_god_component")
 METRICS = METRICS_NUMERIC + METRICS_SET
 
 
-class ToolError(Exception):
-    """The tool could not run (exit 2): not a repository, unparseable source, unreadable or unknown-version baseline."""
-
-
-# --- the files -----------------------------------------------------------------------------------------------------
-
-def git(root: Path, *args: str) -> str:
-    try:
-        return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True, timeout=120).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
-        raise ToolError(f"git {' '.join(args)} failed in {root}: {getattr(exc, 'stderr', '') or exc}") from exc
-
-
-def production_files(root: Path) -> dict[str, list[str]]:
-    """Tracked production `.py` files per service (and "all", the two together), in `git ls-files` order, missing-from-disk ones skipped."""
-    tracked = [p for p in git(root, "ls-files").splitlines() if p.endswith(".py") and (root / p).is_file()]
-    engine = [p for p in tracked if p.startswith(SERVICE_PREFIX["engine"]) and not p.startswith(ENGINE_TESTS)]
-    gateway = [p for p in tracked if p.startswith(SERVICE_PREFIX["gateway"])]
-    return {"engine": engine, "gateway": gateway, "all": [p for p in tracked if p in set(engine) | set(gateway)]}
-
-
-def module_name(path: str) -> str:
-    return path.removeprefix("gateway/").removesuffix(".py").replace("/", ".").removesuffix(".__init__")
 
 
 def component_of(path: str) -> str:
     return ".".join(module_name(path).split(".")[:2])
-
-
-def read_trees(root: Path, paths: list[str]) -> tuple[dict[str, str], dict[str, ast.Module]]:
-    texts, trees = {}, {}
-    for path in paths:
-        texts[path] = (root / path).read_text(encoding="utf-8")
-        try:
-            trees[path] = ast.parse(texts[path], filename=path)
-        except SyntaxError as exc:
-            raise ToolError(f"{path} does not parse: {exc}") from exc
-    return texts, trees
 
 
 # --- the import graph ----------------------------------------------------------------------------------------------
@@ -216,12 +185,7 @@ def import_targets(path: str, node: ast.AST) -> list[str]:
     if isinstance(node, ast.Import):
         return [alias.name for alias in node.names]
     if isinstance(node, ast.ImportFrom):
-        base = node.module or ""
-        if node.level:
-            module = module_name(path)
-            package = module if path.endswith("__init__.py") else module.rpartition(".")[0]
-            parts = package.split(".")
-            base = ".".join(parts[:len(parts) - node.level + 1] + ([base] if base else []))
+        base = absolute_module(path, node.level, node.module)
         return [base] + [f"{base}.{alias.name}" for alias in node.names]
     return []
 
@@ -302,309 +266,55 @@ def component_graph(graph: dict[str, set[str]]) -> dict[str, set[str]]:
 
 # --- implicit collaboration: self-calls between the classes of one inheritance family ---------------------------------
 
-Ref = tuple  # ("class", file, qualified name) | ("module", dotted) | ("package", dotted) | ("external",) | ("unresolved", why)
-_COMPOUND = tuple(t for t in (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try, ast.Match, getattr(ast, "TryStar", None)) if t)
-
-
-def c3_merge(sequences: list[list]) -> list:
-    """Python's C3 merge of the linearizations of the bases and the list of the bases themselves; ValueError when none is consistent."""
-    sequences = [list(seq) for seq in sequences if seq]
-    order: list = []
-    while sequences:
-        head = next((seq[0] for seq in sequences if not any(seq[0] in other[1:] for other in sequences)), None)
-        if head is None:
-            raise ValueError("no consistent method resolution order")
-        order.append(head)
-        for seq in sequences:
-            if seq[0] == head:
-                del seq[0]
-        sequences = [seq for seq in sequences if seq]
-    return order
-
-
-class Classes:
-    """Binding occurrences stay distinct; conditional and competing alternatives fail closed.
-
-    What a class base expression names, resolved statically over the measured files (task 2q-a-repair F1).
-
-    The supported surface: module classes, nested classes by `Outer.Inner`, and function-local classes with recorded lexical bindings.
-    Module, enclosing class and enclosing function namespaces retain each declaration, import, write and parameter occurrence. Names
-    fall back through enclosing functions to the module, as Python does; competing or unsupported writes never select a stale class.
-    Names can be bound, also under
-    `if`/`try`/`with`/loops, by `class`, `import m`, `import m.n`, `import m as x`, `from m import n [as x]` (relative imports resolved) and
-    `from m import *` of a measured module. A base is a name, a dotted attribute chain (`pkg.mod.Class`) or either subscripted (`Generic[T]`).
-    Names resolve through any number of re-exports. A base from outside the measured files (a standard-library or third-party module, a
-    builtin) is EXTERNAL; anything else the tool cannot follow to a class - a call, a name bound twice or by assignment, a measured module
-    that defines no such name, an import of a first-party module that is not measured - is UNRESOLVED, and an unresolved base is reported
-    (never read as "no collaboration")."""
-
-    def __init__(self, trees: dict[str, ast.Module], names: dict[str, str]) -> None:
-        self.names = names
-        self.packages = {".".join(m.split(".")[:i]) for m in names for i in range(1, len(m.split(".")))} - set(names)
-        self.tops = {m.partition(".")[0] for m in names}
-        self.scope = {path: self._bindings(path, tree) for path, tree in trees.items()}
-        self.local_scope = {path: {} for path in trees}
-        self.classes = {path: self._classes(tree, self.local_scope[path]) for path, tree in trees.items()}
-        self.local_scope = {path: {qual: self._bindings(path, node) for qual, node in scopes.items()} for path, scopes in self.local_scope.items()}
-        self.class_scope = {path: {qual: self._bindings(path, node) for qual, node in classes.items()} for path, classes in self.classes.items()}
-        self.exports = {}
-        for path, tree in trees.items():
-            for node in tree.body:
-                if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
-                    try:
-                        value = ast.literal_eval(node.value)
-                        self.exports[path] = value if isinstance(value, (list, tuple)) and all(isinstance(v, str) for v in value) else None
-                    except (ValueError, TypeError):
-                        self.exports[path] = None
-        self.conditional = set()
-        def alternatives(path, node, uncertain=False):
-            if isinstance(node, ast.ClassDef) and uncertain:
-                self.conditional.add((path, node.lineno))
-            for child in ast.iter_child_nodes(node):
-                alternatives(path, child, uncertain or isinstance(node, _COMPOUND))
-        for path, tree in trees.items():
-            alternatives(path, tree)
-        self._mro: dict[tuple[str, str], list] = {}
-
-    @staticmethod
-    def _classes(tree: ast.Module, locals_: dict) -> dict[str, ast.ClassDef]:
-        found: dict[str, ast.ClassDef] = {}
-
-        def walk(node: ast.AST, scope: list[str]) -> None:
-            for child in ast.iter_child_nodes(node):
-                if isinstance(child, ast.ClassDef):
-                    qual = ".".join(scope + [child.name])
-                    key = qual
-                    n = 2
-                    while key in found:
-                        key = f"{qual}#{n}"
-                        n += 1
-                    found[key] = child
-                    walk(child, scope + [child.name])
-                elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    inner = scope + [child.name, "<locals>"]
-                    locals_[".".join(inner)] = child
-                    walk(child, inner)
-                else:
-                    walk(child, scope)
-
-        walk(tree, [])
-        return found
-
-    @staticmethod
-    def _bindings(path: str, tree: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, list[tuple]]:
-        found: dict[str, list[tuple]] = collections.defaultdict(list)
-        if isinstance(tree, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for arg in ast.walk(tree.args):
-                if isinstance(arg, ast.arg):
-                    found[arg.arg].append(("other",))
-
-        def visit(statements: list[ast.stmt], conditional: bool = False) -> None:
-            def bind(name, ref):
-                found[name].append(("conditional", ref) if conditional else ref)
-            def writes(node):
-                if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
-                    bind(node.id, ("other",))
-                if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name:
-                    bind(node.name, ("other",))
-                if isinstance(node, ast.MatchMapping) and node.rest:
-                    bind(node.rest, ("other",))
-                for field, value in ast.iter_fields(node):
-                    if field in ("body", "orelse", "finalbody") or (isinstance(node, ast.comprehension) and field == "target"):
-                        continue  # Bodies have their own scope/conditional visit; comprehension targets are local.
-                    for child in value if isinstance(value, list) else [value]:
-                        if isinstance(child, ast.AST):
-                            writes(child)
-            for node in statements:
-                if isinstance(node, ast.ClassDef):
-                    bind(node.name, ("class", node.name))
-                elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    bind(node.name, ("other",))
-                elif isinstance(node, ast.Import):
-                    for alias in node.names:
-                        bind(alias.asname or alias.name.partition(".")[0], ("module", alias.name if alias.asname else alias.name.partition(".")[0]))
-                elif isinstance(node, ast.ImportFrom):
-                    base = import_targets(path, node)[0]
-                    for alias in node.names:
-                        bind("*" if alias.name == "*" else alias.asname or alias.name, ("star", base) if alias.name == "*" else ("from", base, alias.name))
-                writes(node)
-                if isinstance(node, _COMPOUND):
-                    for block in ("body", "orelse", "finalbody"):
-                        visit(getattr(node, block, []), True)
-                    for handler in getattr(node, "handlers", []):
-                        visit(handler.body, True)
-                    for case in getattr(node, "cases", []):
-                        visit(case.body, True)
-
-        visit(tree.body)
-        return found
-
-    def module(self, dotted: str) -> Ref:
-        if dotted in self.names:
-            return ("module", dotted)
-        if dotted in self.packages:
-            return ("package", dotted)
-        return ("unresolved", f"{dotted} is not a measured module") if dotted.partition(".")[0] in self.tops else ("external",)
-
-    def member(self, ref: Ref, attr: str, seen: frozenset = frozenset()) -> Ref:
-        """The attribute `attr` of a module, package or class."""
-        if ref[0] in ("external", "unresolved"):
-            return ref
-        if ref[0] == "class":
-            nested = f"{ref[2]}.{attr}"
-            if self.class_scope[ref[1]][ref[2]].get(attr, []) != [("class", attr)]:
-                return ("unresolved", f"{nested} has uncertain class-scope binding occurrences")
-            return ("class", ref[1], nested) if nested in self.classes[ref[1]] else ("unresolved", f"{ref[2]} defines no class {attr}")
-        dotted = ref[1]
-        if ref[0] == "module":
-            path = self.names[dotted]
-            if (path, attr) in seen:
-                return ("unresolved", f"{dotted}.{attr} is imported through itself")
-            candidates = []
-            if attr in self.scope[path]:
-                candidates.append(self.bound(path, attr, seen | {(path, attr)}))
-            for binding in self.scope[path].get("*", ()):
-                if binding[0] == "conditional":
-                    candidates.append(("unresolved", "conditional star re-export"))
-                    continue
-                star = binding[1]
-                star_path = self.names.get(star)
-                if star_path:
-                    exports = self.scope[star_path].get("__all__", [])
-                    if exports and (len(exports) != 1 or exports[0][0] == "conditional" or self.exports.get(star_path) is None):
-                        candidates.append(("unresolved", f"{star} has uncertain __all__ exports"))
-                        continue
-                    if (exports and attr not in self.exports[star_path]) or (not exports and attr.startswith("_")):
-                        continue
-                found = self.member(self.module(star), attr, seen | {(path, attr)})
-                if found[0] != "unresolved" or "defines no" not in found[1]:
-                    candidates.append(found)
-            if len(candidates) > 1:
-                return ("unresolved", f"{dotted}.{attr} has competing binding occurrences/re-exports")
-            if candidates:
-                return candidates[0]
-        sub = f"{dotted}.{attr}"
-        return self.module(sub) if sub in self.names or sub in self.packages else ("unresolved", f"{dotted} defines no {attr}")
-
-    def bound(self, path: str, name: str, seen: frozenset = frozenset(), scope: str = "") -> Ref:
-        """A name in its lexical namespace, falling back through functions to the module."""
-        namespaces = self.class_scope[path] | self.local_scope[path]
-        bindings = namespaces[scope] if scope else self.scope[path]
-        options = bindings.get(name, [])
-        if not options:
-            if scope:
-                parent = scope.removesuffix(".<locals>").rpartition(".")[0]
-                while parent and parent not in self.local_scope[path]:
-                    parent = parent.rpartition(".")[0]
-                return self.bound(path, name, seen, parent)
-            if self.scope[path].get("*", ()):
-                return self.member(self.module(module_name(path)), name, seen)
-            return ("external",) if hasattr(builtins, name) else ("unresolved", f"{name} is neither defined nor imported in {path}")
-        if len(options) > 1 and not (all(o[0] == "module" for o in options) and len(set(options)) == 1):
-            return ("unresolved", f"{name} is bound more than once in {path}")
-        kind, *rest = next(iter(options))
-        if kind == "class":
-            return ("class", path, f"{scope}.{rest[0]}" if scope else rest[0])
-        if kind == "module":
-            return self.module(rest[0])
-        if kind == "from":
-            return self.member(self.module(rest[0]), rest[1], seen)
-        return ("unresolved", f"{name} is not a class or an import in {path}")
-
-    def expr(self, path: str, node: ast.expr, scope: str = "") -> Ref:
-        if isinstance(node, ast.Name):
-            return self.bound(path, node.id, scope=scope)
-        if isinstance(node, ast.Attribute):
-            return self.member(self.expr(path, node.value, scope), node.attr)
-        if isinstance(node, ast.Subscript):
-            return self.expr(path, node.value, scope)
-        return ("unresolved", f"{ast.unparse(node)} is not a name")
-
-    def bases(self, path: str, qual: str) -> list[tuple[str, Ref]]:
-        """(source text, what it resolves to) for each base of a class, in order."""
-        out = []
-        for node in self.classes[path][qual].bases:
-            ref = self.expr(path, node, qual.rpartition(".")[0])
-            out.append((ast.unparse(node), ("unresolved", f"{ast.unparse(node)} is a module, not a class") if ref[0] in ("module", "package") else ref))
-        return out
-
-    def mro(self, key: tuple[str, str], building: tuple = ()) -> list:
-        """C3 linearization of a class: project classes are (file, name); a base outside them is an opaque ("base", text) entry."""
-        if key in self._mro:
-            return self._mro[key]
-        if key in building:
-            raise ValueError("inheritance cycle")
-        sequences, direct = [], []
-        for text, ref in self.bases(*key):
-            node = (ref[1], ref[2]) if ref[0] == "class" else ("base", text)
-            direct.append(node)
-            sequences.append(self.mro(node, building + (key,)) if ref[0] == "class" else [node])
-        self._mro[key] = [key] + c3_merge(sequences + [direct])
-        return self._mro[key]
-
-
-def self_call_nodes(cls: ast.ClassDef):
-    """Every `self.<name>(...)` call in the class's own methods, closures included, nested classes not (their `self` is another object)."""
-    stack = list(cls.body)
+def receiver_calls(fn):
+    """Every `<receiver>.<name>(...)` call in a method, its closures included, nested classes not (their `self` is another object). The contract has refused any
+    method that binds its receiver's name again, so each such call is on the method's own receiver."""
+    stack = list(fn.node.body)
     while stack:
         node = stack.pop()
         if isinstance(node, ast.ClassDef):
             continue
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == "self":
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == fn.receiver:
             yield node
         stack.extend(ast.iter_child_nodes(node))
 
 
-def self_calls(resolver: Classes, files: list[str]) -> dict:
-    """{"sites": n, "pairs": {"a->b": n}, "families": {"Class (file)": {"sites": n, "pairs": {...}}}, "unresolved": {"file::Class(base)": why}}
+def self_calls(facts: Facts, files: list[str]) -> dict:
+    """{"sites": n, "pairs": {"a->b": n}, "families": {"Class (file)": {"sites": n, "pairs": {...}}}}
 
-    A family is rooted at every class with a project ancestor defined in another file (a same-file intermediate base does not hide it). Its
-    methods resolve the way Python resolves them, through
-    the C3 order of its project classes. A call site is counted once however many families contain it: by (site, defining file), so a site
-    that two compositions bind to different files counts once for each file. `families` shows each root's own view."""
-    in_service = set(files)
+    A family is rooted at every class with a project ancestor defined in another file (a same-file intermediate base does not hide it). Its methods resolve
+    the way Python resolves them, through the C3 order of its project classes (the contract has made every base certain and every method a direct, unconditional
+    declaration). A method name is attributed to the first class in that order that declares it: as a method (any role that is callable), as a modelled
+    decorator's generated method, or as a property (a data attribute: a call of it calls its value, not a project method, and nothing after it is reached). A
+    call site is counted once however many families contain it: by (site, defining file), so a site that two compositions bind to different files counts once
+    for each file. `families` shows each root's own view."""
     sites: set[tuple[str, int, int, str]] = set()
     families: dict[str, dict] = {}
-    unresolved: dict[str, str] = {}
     for path in sorted(files):
-        for qual, node in resolver.classes[path].items():
-            simple = qual.split("#", 1)[0]
-            if simple + "#2" in resolver.classes[path] or (path, node.lineno) in resolver.conditional:
-                unresolved[f"{path}::{qual}(binding)"] = "competing class declarations"
+        for cls in facts.indexes[path].classes.values():
+            if not any(ref[0] == "class" for _, ref in cls.bases):
                 continue
-            parent, _, name = simple.rpartition(".")
-            if not parent or parent in resolver.classes[path]:
-                binding = resolver.member(("class", path, parent), name) if parent else resolver.bound(path, simple)
-                if binding[0] == "unresolved":
-                    unresolved[f"{path}::{qual}(binding)"] = binding[1]
-                    continue
-            bases = resolver.bases(path, qual)
-            for text, ref in bases:
-                if ref[0] == "unresolved" or (ref[0] == "class" and ref[1] not in in_service):
-                    unresolved[f"{path}::{qual}({text})"] = ref[1] if ref[0] == "unresolved" else f"{text} is defined in {ref[1]}, outside this service"
-            if not any(ref[0] == "class" for _, ref in bases):
-                continue
-            try:
-                order = [member for member in resolver.mro((path, qual)) if member[0] != "base"]
-            except ValueError as exc:
-                unresolved[f"{path}::{qual}({', '.join(text for text, _ in bases)})"] = str(exc)
-                continue
+            order = facts.family(cls.key)
             if not any(member[0] != path for member in order):
                 continue
-            defined: dict[str, str] = {}  # method name -> the file of the first class in resolution order that defines it
+            defined: dict[str, tuple[str, str]] = {}   # method name -> (file of the first class in resolution order that declares it, its role)
             for member in order:
-                for item in resolver.classes[member[0]][member[1]].body:
-                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        defined.setdefault(item.name, member[0])
+                klass = facts.classes[member]
+                for name, fn in klass.methods.items():
+                    defined.setdefault(name, (member[0], fn.role))
+                for name in klass.generated:
+                    defined.setdefault(name, (member[0], "method"))
             mine: set[tuple[str, int, int, str]] = set()
             for member in order:
-                for call in self_call_nodes(resolver.classes[member[0]][member[1]]):
-                    if call.func.attr in defined and defined[call.func.attr] != member[0]:
-                        mine.add((member[0], call.lineno, call.col_offset, defined[call.func.attr]))
+                for fn in facts.classes[member].methods.values():
+                    for call in receiver_calls(fn) if fn.receiver and fn.role in ("method", "property") else ():
+                        owner, role = defined.get(call.func.attr, ("", "property"))   # a name no class declares is not a project method
+                        if owner and role != "property" and owner != member[0]:
+                            mine.add((member[0], call.lineno, call.col_offset, owner))
             sites |= mine
-            families[f"{qual} ({path})"] = {"sites": len(mine), "pairs": dict(sorted(collections.Counter(f"{src}->{dst}" for src, _, _, dst in mine).items()))}
+            families[f"{cls.qual} ({path})"] = {"sites": len(mine), "pairs": dict(sorted(collections.Counter(f"{src}->{dst}" for src, _, _, dst in mine).items()))}
     pairs = collections.Counter(f"{src}->{dst}" for src, _, _, dst in sites)
-    return {"sites": len(sites), "pairs": dict(sorted(pairs.items())), "families": families, "unresolved": dict(sorted(unresolved.items()))}
+    return {"sites": len(sites), "pairs": dict(sorted(pairs.items())), "families": families}
 
 
 # --- function complexity (Gate D's proxies) -----------------------------------------------------------------------------
@@ -657,27 +367,9 @@ class Fn:
     key: str = ""
 
 
-def functions_of(path: str, tree: ast.Module) -> list[Fn]:
-    found: list[Fn] = []
-
-    def walk(node: ast.AST, scope: list[str]) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, ast.ClassDef):
-                walk(child, scope + [child.name])
-            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                cyclomatic, cognitive = complexity(child)
-                found.append(Fn(path, ".".join(scope + [child.name]), child.lineno, child.end_lineno - child.lineno + 1, cyclomatic, cognitive))
-                walk(child, scope + [child.name])
-            else:
-                walk(child, scope)
-
-    walk(tree, [])
-    seen: collections.Counter = collections.Counter()
-    for fn in found:  # a repeated qualified name in one file keeps its own key: `name`, `name#2`, ...
-        seen[(fn.file, fn.name)] += 1
-        n = seen[(fn.file, fn.name)]
-        fn.key = f"{fn.file}::{fn.name}" + (f"#{n}" if n > 1 else "")
-    return found
+def functions_of(facts: Facts) -> list[Fn]:
+    """Every authored function of both services, with both scores: one lexical identity each (`file::qualified.name`), in file and source order."""
+    return [Fn(fn.path, fn.qual, fn.node.lineno, fn.node.end_lineno - fn.node.lineno + 1, *complexity(fn.node), key=fn.key) for fn in facts.functions]
 
 
 # --- one measurement -----------------------------------------------------------------------------------------------
@@ -691,6 +383,7 @@ class Measurement:
     graph: dict[str, set[str]]
     edge_lines: list[tuple[str, str, int]]
     functions: list[Fn]
+    facts: Facts
     report: dict = field(default_factory=dict)
 
 
@@ -725,15 +418,20 @@ def smells_of(graph: dict[str, set[str]], rows: list[dict], components: dict[str
     return {"hub_like": hubs, "unstable_dependency": unstable, "god_component": gods}
 
 
-def measure(root: Path, thresholds: dict | None = None) -> Measurement:
+def measure(root: Path, thresholds: dict | None = None, *, strict: bool = True) -> Measurement:
+    """One measurement of both services from the facts the source contract admits. Source outside the contract is refused (`SourceRefused`) before anything is
+    measured; only `report` passes strict=False, to show what it can of an input it marks incomplete and non-passing (no collaboration is measured then)."""
     thresholds = dict(DEFAULT_THRESHOLDS if thresholds is None else thresholds)
-    paths = production_files(root)
-    every = paths["all"]
-    texts, trees = read_trees(root, every)
+    facts = contract.load(root)
+    if strict:
+        contract.require(facts)
+    paths = {**{service: [p for p in facts.paths[service] if p in facts.indexes] for service in SERVICES}}
+    every = paths["all"] = [p for p in facts.paths["all"] if p in facts.indexes]
+    texts = facts.texts
     names = {module_name(p): p for p in every}
-    graph, edge_lines = build_graph(trees, names)
-    functions = [fn for path in every for fn in functions_of(path, trees[path])]
-    resolver = Classes(trees, names)
+    graph, edge_lines = build_graph({p: facts.indexes[p].tree for p in every}, names)
+    functions = functions_of(facts)
+    refused = {is_production(d.file) for d in facts.diagnostics}   # a service whose own source is refused is not measured for collaboration; the other still is
     services: dict[str, dict] = {}
     for service in SERVICES:
         files = paths[service]
@@ -758,7 +456,7 @@ def measure(root: Path, thresholds: dict | None = None) -> Measurement:
             "components": components,
             "graph": {p: sorted(own[p]) for p in files}, "reach": {p: sorted(reach(own, p)) for p in files},
             "modules": {row["module"]: {k: row[k] for k in ("fan_in", "fan_out", "instability", "out_reach", "in_reach")} for row in rows},
-            "self_calls": self_calls(resolver, files),
+            "self_calls": self_calls(facts, files) if service not in refused and None not in refused else {"sites": 0, "pairs": {}, "families": {}, "measured": False},
             "smells": smells_of(own, rows, components, thresholds),
             "functions": {"count": len(mine), "over_cyclomatic": sum(fn.cyclomatic > thresholds["function_cyclomatic"] for fn in mine),
                           "over_cyclomatic_50": sum(fn.cyclomatic > 50 for fn in mine),
@@ -767,8 +465,10 @@ def measure(root: Path, thresholds: dict | None = None) -> Measurement:
         }
     cross = sorted(f"{a}->{b}" for a, targets in graph.items() for b in targets
                    if (a in paths["engine"]) != (b in paths["engine"]))
-    measurement = Measurement(root, thresholds, paths, texts, graph, edge_lines, functions)
+    measurement = Measurement(root, thresholds, paths, texts, graph, edge_lines, functions, facts)
     measurement.report = {"definitions": __doc__, "thresholds": thresholds, "services": services, "cross_service_imports": cross,
+                          "input": {"contract": contract.CONTRACT_ID, "complete": not facts.diagnostics, "passing": not facts.diagnostics,
+                                    "refusals": [d.render() for d in facts.diagnostics]},
                           "pin": {"commit": head_commit(root), "production_sha256": production_digest(root, every)}}
     return measurement
 
@@ -794,7 +494,6 @@ def gated(measurement: Measurement, tracked: dict[str, set[str]] | None = None) 
             "cycles_file": s["cycles_file"], "cycles_component": s["cycles_component"],
             "graph": s["graph"], **dependency_record(s["graph"], s["reach"]),
             "self_calls": dict(s["self_calls"]["pairs"]),
-            "unresolved_bases": dict(s["self_calls"]["unresolved"]),
             "smells": {kind: list(s["smells"][kind]) for kind in SMELL_KINDS},
             "functions": dict(sorted(functions.items())),
             "all_functions": {fn.key: {"cyclomatic": fn.cyclomatic, "cognitive": fn.cognitive} for fn in measurement.functions if fn.file in s["graph"]},
@@ -845,7 +544,6 @@ def load_baseline(path: Path, upgradable: bool = False) -> dict:
 def make_baseline(measurement: Measurement, thresholds: dict) -> dict:
     body = gated(measurement)
     for service in SERVICES:
-        del body["services"][service]["unresolved_bases"]  # an unresolved base is never baselined: only an exemption classifies it
         del body["services"][service]["all_functions"]
     registry = ledger.register(body)
     return {"version": BASELINE_VERSION, "pin": measurement.report["pin"], "thresholds": dict(sorted(thresholds.items())),
@@ -937,8 +635,6 @@ def compare(baseline: dict, current: dict) -> tuple[list[Violation], list[str]]:
         found, notes = dependency_regressions(service, old, new, Fraction(baseline["thresholds"]["unstable_stable_max_pct"], 100))
         violations += found
         improvements += notes
-        for item, why in new["unresolved_bases"].items():
-            violations.append(Violation("unresolved_base", where(service, item), 1, f"0; {why}"))
         for kind in SMELL_KINDS:
             for item in new["smells"][kind]:
                 if item not in old["smells"][kind]:
@@ -1070,7 +766,7 @@ def apply_exemptions(violations: list[Violation], text: str | None) -> tuple[lis
     left: list[Violation] = []
     notes: list[str] = []
     for violation in violations:
-        entry = None if violation.metric in ("identity", "admission", "unresolved_base") else next((e for e in valid if (e.fields["metric"], e.fields["location"]) == (violation.metric, violation.where)), None)
+        entry = None if violation.metric in ("identity", "admission") else next((e for e in valid if (e.fields["metric"], e.fields["location"]) == (violation.metric, violation.where)), None)
         if entry is None:
             left.append(violation)
             continue
@@ -1264,7 +960,7 @@ def summary_lines(report: dict) -> list[str]:
         lines.append(
             f"{service}: {s['files']} files, {s['edges']} edges, propagation {float(gated_cost(s['propagation_file'])):.4%} "
             f"(components {float(gated_cost(s['propagation_component'])):.4%}), file cycles {len(s['cycles_file'])}, component cycles {len(s['cycles_component'])}, "
-            f"cross-file self-calls {s['self_calls']['sites']} over {len(s['self_calls']['pairs'])} file pairs, unresolved bases {len(s['self_calls']['unresolved'])}, "
+            f"cross-file self-calls {s['self_calls']['sites'] if s['self_calls'].get('measured', True) else 'not measured (source refused)'} over {len(s['self_calls']['pairs'])} file pairs, "
             f"smells hub/unstable/god {len(s['smells']['hub_like'])}/{len(s['smells']['unstable_dependency'])}/{len(s['smells']['god_component'])}, "
             f"{s['functions']['count']} functions, {len(s['functions']['offenders'])} over the thresholds")
     return lines
@@ -1277,7 +973,19 @@ def read_exemptions(path: Path) -> str | None:
         return None
 
 
-def assess(root, args, baseline, measurement):
+@dataclass
+class Assessment:
+    old: dict                  # the baseline at the locations the plan gives its budgets
+    current: dict              # the current facts, the compared population completed with each map's destination
+    entries: list
+    plan: "ledger.Plan | None"
+    violations: list           # before the ledger's budgets and the exemptions
+    left: list                 # what still fails
+    notes: list
+    errors: list
+
+
+def assess(root, args, baseline, measurement) -> Assessment:
     current = gated(measurement, tracked_of(baseline))
     text = read_exemptions(root / args.ledger)
     entries, errors = ledger.read_entries(text, parse_entries, PLACEHOLDER)
@@ -1289,14 +997,16 @@ def assess(root, args, baseline, measurement):
         if text != committed:
             errors.append("ledger entries must be committed before check/rebaseline")
     if errors:
-        return baseline, current, entries, {}, 0, [], [], [], errors
-    old, registry, serial, accounting, used = ledger.account(baseline, current, entries, Violation)
+        return Assessment(baseline, current, entries, None, [], [], [], errors)
+    plan = ledger.make_plan(baseline, current, entries, Violation)
+    old, current = ledger.transport(baseline, plan), ledger.effective_current(current, plan)
     violations, improvements = compare(old, current)
-    left, problems = ledger.budgets(accounting + violations, entries, METRICS_NUMERIC, used, Violation)
+    left, problems = ledger.budgets(plan.failures + violations, entries, METRICS_NUMERIC, plan.used, Violation)
     left, notes, exemptions = apply_exemptions(left, read_exemptions(root / args.exemptions))
     errors += problems + exemptions
-    notes += [f"ledger {e.fields['action']} {e.fields.get('identity', e.fields.get('target', ''))}" for e in entries if e.fields["action"] in ("map", "retire", "admit")]
-    return old, current, entries, registry, serial, violations, left, improvements + notes, errors
+    notes += [f"ledger {e.fields['action']} {e.fields.get('identity', e.fields.get('target', e.fields.get('from', '')))}" for e in entries if e.fields["action"] in ("map", "retire", "admit", "move")]
+    notes += [f"ledger {line}" for line in ledger.describe(plan, entries)]
+    return Assessment(old, current, entries, plan, violations, left, improvements + notes, errors)
 
 
 def command_admit(args):
@@ -1307,31 +1017,40 @@ def command_admit(args):
     entries, errors = parse_entries(read_exemptions(root / args.ledger) or "", "ML-", ledger.ALIASES)
     if errors:
         raise ToolError("; ".join(errors))
-    proposals = ledger.draft_fields(baseline, current, [])
-    subjects = [{k: v for k, v in e.fields.items() if k not in ("reason", "task")} for e in entries]
-    virtual = entries + [Exemption(f"DRAFT-{i}", f) for i, f in enumerate(proposals) if f not in subjects]
-    adjusted, _registry, _serial, _failures, _used = ledger.account(baseline, current, virtual, Violation)
-    violations, _ = compare(adjusted, current)
-    fields = ledger.draft_fields(baseline, current, violations)
-    existing = [{k: v for k, v in e.fields.items() if k not in ("reason", "task")} for e in entries]
+    stated = [dict(action="move", **{"from": old, "to": new}) for old, new in args.move or []]   # the author's explicit moves: drafted as entries, expanded by the plan
+    existing = {ledger.subject(e.fields) for e in entries}
+    moves = [f for f in stated if ledger.subject(f) not in existing]
+    plan = ledger.make_plan(baseline, current, entries + [Exemption(f"DRAFT-{i}", f) for i, f in enumerate(moves)], Violation, drafting=True)
+    old, effective = ledger.transport(baseline, plan), ledger.effective_current(current, plan)
+    violations, _ = compare(old, effective)
+    drafts = [f for f in moves + ledger.draft_fields(plan, violations) if ledger.subject(f) not in existing]
     rendered = [(e.ident, e.fields) for e in entries]
     serial = max((int(e.ident[3:]) for e in entries if e.ident[3:].isdigit()), default=0)
-    for f in fields:
-        if f not in existing:
-            serial += 1
-            rendered.append((f"ML-{serial:04}", {**f, "reason": "TODO", "task": "TODO"}))
+    for f in drafts:
+        serial += 1
+        rendered.append((f"ML-{serial:04}", {**f, "reason": "TODO", "task": "TODO"}))
     path = root / args.ledger
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(ledger.render(rendered), encoding="utf-8")
-    print(f"drafted {len(rendered) - len(entries)} entries in {path}; replace TODOs, review and commit")
+    print(f"drafted {len(drafts)} entries in {path}; replace TODOs, review and commit")
+    for line in ledger.describe(plan, [Exemption(ident, fields) for ident, fields in rendered]):
+        print(f"  {line}")
     return EXIT_OK
+
+
+def print_refusal(diagnostics, stream=sys.stderr) -> None:
+    for diagnostic in diagnostics:
+        print(f"SOURCE REFUSED: {diagnostic.render()}", file=stream)
+    print(f"gen2-metrics: the production source is outside the supported-source contract ({contract.CONTRACT_ID}, docs/gen2/SOURCE-CONTRACT.md): "
+          f"{len(diagnostics)} refusal(s); nothing was measured, recorded or certified", file=stream)
 
 
 def command_check(args: argparse.Namespace) -> int:
     root = Path(args.root)
     baseline = load_baseline(root / args.baseline)
     measurement = measure(root, baseline["thresholds"])
-    _old, _current, _entries, _registry, _serial, _violations, left, notes, errors = assess(root, args, baseline, measurement)
+    assessed = assess(root, args, baseline, measurement)
+    left, notes, errors = assessed.left, assessed.notes, assessed.errors
     if notes:
         print("the baseline can be tightened: `make gen2-metrics-rebaseline`, then commit the diff")
     tighter = [k for k in DEFAULT_THRESHOLDS if tighter_thresholds(baseline["thresholds"], DEFAULT_THRESHOLDS)[k] != baseline["thresholds"][k]]
@@ -1357,12 +1076,7 @@ def command_rebaseline(args: argparse.Namespace) -> int:
     except ToolError:
         if path.exists():
             raise
-        measurement = measure(root)
-        # Bootstrap cannot silently certify unresolved source.
-        unresolved = [(service, key) for service in SERVICES for key in measurement.report["services"][service]["self_calls"]["unresolved"]]
-        if unresolved:
-            print(f"unresolved bindings at bootstrap: {unresolved}", file=sys.stderr)
-            return EXIT_FAIL
+        measurement = measure(root)   # a refusal here is raised before anything is written
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(baseline_text(make_baseline(measurement, DEFAULT_THRESHOLDS)), encoding="utf-8")
         print(f"wrote the first baseline {path}")
@@ -1382,26 +1096,25 @@ def command_rebaseline(args: argparse.Namespace) -> int:
         baseline["identity_serial"] = len(baseline["identities"])
     thresholds = tighter_thresholds(baseline["thresholds"], DEFAULT_THRESHOLDS)
     at_new = at_old if thresholds == baseline["thresholds"] else measure(root, thresholds)
-    old, current, entries, registry, serial, violations, left, _notes, errors = assess(root, args, baseline, at_new)
-    if left or errors:
-        for v in left:
+    assessed = assess(root, args, baseline, at_new)
+    if assessed.left or assessed.errors:
+        for v in assessed.left:
             print(f"METRICS REGRESSION: {v.describe()}", file=sys.stderr)
-        for error in errors:
+        for error in assessed.errors:
             print(f"METRICS LEDGER/EXEMPTION PROBLEM: {error}", file=sys.stderr)
         print("gen2-metrics-rebaseline: refused; resolve identity/admission and regressions first", file=sys.stderr)
         return EXIT_FAIL
-    thresholds = tighter_thresholds(baseline["thresholds"], DEFAULT_THRESHOLDS)
-    at_new = at_old if thresholds == baseline["thresholds"] else measure(root, thresholds)
-    folded = ledger.fold(old, current, entries, violations)
+    plan, entries = assessed.plan, assessed.entries
+    folded = ledger.fold(assessed.old, assessed.current, entries, assessed.violations)
     tracked = tracked_of(folded)
     updated = {"version": BASELINE_VERSION, "pin": at_new.report["pin"], "thresholds": dict(sorted(thresholds.items())),
-               **tighten(folded, current, gated(at_new, tracked), thresholds)}
+               **tighten(folded, assessed.current, gated(at_new, tracked), thresholds)}
     # New threshold offenders have a budget only because a tighter operating
     # point was adopted; every previously recorded identity still persists.
-    remaining = ledger.inventory(updated) - set(registry.values())
+    remaining = ledger.inventory(updated) - set(plan.registry.values())
     if remaining:
         raise ToolError(f"unadmitted budgets during folding: {sorted(remaining)}")
-    updated.update(identities=registry, identity_serial=serial)
+    updated.update(identities=plan.registry, identity_serial=plan.serial)
     try:
         ledger.validate_registry(updated)
     except ValueError as exc:
@@ -1412,24 +1125,33 @@ def command_rebaseline(args: argparse.Namespace) -> int:
         return EXIT_OK
     path.write_text(baseline_text(updated), encoding="utf-8")
     if entries:
-        (root / args.ledger).write_text(ledger.render([(e.ident, e.fields) for e in entries if e.fields["action"] == "classify"]), encoding="utf-8")
+        (root / args.ledger).write_text(ledger.render([]), encoding="utf-8")   # every transition is folded into the baseline: the ledger starts empty again
     print(f"wrote {path}; review baseline and ledger diffs and commit them")
     return EXIT_OK
 
 
 def command_report(args: argparse.Namespace) -> int:
-    measurement = measure(Path(args.root))
+    """Every table, from what the contract admits; source it refuses is shown as an INCOMPLETE, NON-PASSING input (exit 1) with its diagnostics, and the
+    tables are written for what could be read (the import graph and function complexity do not depend on the refused forms)."""
+    measurement = measure(Path(args.root), strict=False)
     write_report(measurement, Path(args.out))
     for line in summary_lines(measurement.report):
         print(line)
+    if measurement.facts.diagnostics:
+        print_refusal(measurement.facts.diagnostics)
+        print(f"gen2-metrics: report written to {args.out}, marked input.complete=false, input.passing=false", file=sys.stderr)
+        return EXIT_FAIL
     return EXIT_OK
 
 
 def command_hotspots(args: argparse.Namespace) -> int:
-    measurement = measure(Path(args.root))
+    measurement = measure(Path(args.root), strict=False)
     write_hotspots(measurement, Path(args.out))
     for line in advisory_hotspots(measurement, top=10):
         print(line)
+    if measurement.facts.diagnostics:   # the history tables need only the files and their complexity; the input is still not a passing one
+        print_refusal(measurement.facts.diagnostics)
+        return EXIT_FAIL
     return EXIT_OK
 
 
@@ -1441,7 +1163,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ledger", default=ledger.LEDGER)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("check")
-    commands.add_parser("admit")
+    admit = commands.add_parser("admit")
+    admit.add_argument("--move", nargs=2, action="append", metavar=("FROM", "TO"),
+                       help="state one explicit file move (or directory prefix, both ending in /): drafted as a `move` entry, expanded by the plan; repeatable")
     commands.add_parser("rebaseline")
     report = commands.add_parser("report")
     report.add_argument("out")
@@ -1450,6 +1174,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return {"admit": command_admit, "check": command_check, "rebaseline": command_rebaseline, "report": command_report, "hotspots": command_hotspots}[args.command](args)
+    except contract.SourceRefused as exc:
+        print_refusal(exc.diagnostics)
+        return EXIT_FAIL
     except ToolError as exc:
         print(f"gen2-metrics: {exc}", file=sys.stderr)
         return EXIT_TOOL

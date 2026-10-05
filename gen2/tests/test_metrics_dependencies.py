@@ -248,7 +248,7 @@ class RecordingTest(RatchetTestCase):
         population(repo)
         self.assertIn("fan_in engine:gen2/t.py: 2 against a baseline of 1", self.check(repo, 1).stderr)
 
-    def test_the_baseline_holds_the_counts_and_the_reach_and_not_the_graph(self) -> None:
+    def test_the_baseline_holds_the_counts_the_reach_and_the_graph(self) -> None:
         repo = self.baselined(CHAIN)
         self.assertEqual(engine(repo, "fan_out"), {"gen2/p/a.py": 1, "gen2/p/b.py": 1, "gen2/p/c.py": 0})
         self.assertEqual(engine(repo, "fan_in"), {"gen2/p/a.py": 0, "gen2/p/b.py": 1, "gen2/p/c.py": 1})

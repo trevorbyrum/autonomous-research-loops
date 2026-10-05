@@ -2,14 +2,14 @@
 
 The negative probes assert refusal on ordinary source edits; controls assert
 reviewed transitions preserve budgets and IDs. Runtime controls check Python's
-selection independently. These fixtures cannot authenticate ledger review claims
-or establish the predictive validity of the AST metrics (Gate A/D review).
+selection independently: where Python's own selection differs from what a
+static reading would pick (an assignment replacing a base, a competing re-export,
+a conditional class), the source is REFUSED by the supported-source contract
+(docs/gen2/SOURCE-CONTRACT.md) instead of guessed (task 2q-a-repair-3). These
+fixtures cannot authenticate ledger review claims or establish the predictive
+validity of the AST metrics (Gate A/D review).
 """
 from __future__ import annotations
-
-import json
-import subprocess
-import sys
 
 from gen2.tests import children
 from gen2.tests.test_metrics_collaboration import BASE, calls, real_engine_files, tree, use
@@ -223,17 +223,19 @@ class IdentityTest(RatchetTestCase):
         self.assertIn("engine|reach|gen2/p/a.py->gen2/p/c.py: missing", result.stderr)
         self.assertEqual(repo.run("rebaseline").returncode, 1)
 
-    def test_classifications_do_not_replace_missing_pair_accounting(self):
+    def test_a_missing_pair_is_accounted_for_by_the_ledger_once_the_source_is_inside_the_contract(self):
         repo = self.baselined(tree(use("from gen2.p.base import Base")))
-        repo.write({"gen2/p/use.py": use(bases="Missing")})
-        write_ledger(repo, entry("classify", metric="unresolved_base", location="engine:gen2/p/use.py::Child(Missing)"))
+        repo.write({"gen2/p/use.py": use(bases="object")})   # the same method, no longer a member of the family: the pair is gone, which is not an improvement
         self.assertIn("engine|self_calls|gen2/p/use.py->gen2/p/base.py: missing", self.check(repo, 1).stderr)
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
 
-    def test_duplicate_and_conditional_nested_classes_are_unresolved(self):
-        for body in ("    class Inner: pass\n    class Inner: pass\n", "    if True:\n        class Inner: pass\n"):
+    def test_duplicate_and_conditional_nested_classes_are_refused(self):
+        for body, category in (("    class Inner: pass\n    class Inner: pass\n", "SRC-DEF-DUPLICATE"), ("    if True:\n        class Inner: pass\n", "SRC-CLASS-CONDITIONAL")):
             repo = self.baselined({"gen2/p/a.py": "class Outer: pass\n"})
             repo.write({"gen2/p/a.py": "class Outer:\n" + body})
-            self.assertIn("unresolved_base", self.check(repo, 1).stderr)
+            self.assertIn(f"gen2/p/a.py:", self.check(repo, 1).stderr)
+            self.assertIn(category, self.check(repo, 1).stderr)
+            self.assertEqual(repo.run("rebaseline").returncode, 1)
 
     def test_uncommitted_reasoned_ledger_fails(self):
         repo = self.baselined(CHAIN)
@@ -272,11 +274,21 @@ class IdentityTest(RatchetTestCase):
 
 
 class BindingTest(RatchetTestCase):
+    """Each form that makes Python select a different class than a static reading is run by the interpreter, and the tool refuses it by category."""
+
     def runtime(self, repo, code):
         code = "import sys; sys.path.insert(0, '.'); " + code
         result = children.python(["-B", "-c", code], cwd=repo.root, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
+
+    def refused(self, repo, *categories):
+        done = self.check(repo, 1)
+        for category in categories:
+            self.assertIn(category, done.stderr)
+        self.assertIn("SOURCE REFUSED", done.stderr)
+        self.assertNotIn("METRICS REGRESSION", done.stderr)
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
 
     def test_class_scope_assignment_cannot_leave_a_stale_nested_class_binding(self):
         source = "from gen2.p.base import Base\nclass Outer:\n    class Inner(Base): pass\nclass Child(Outer.Inner):\n    def g(self): return self.f()\n"
@@ -285,9 +297,7 @@ class BindingTest(RatchetTestCase):
         self.assertEqual(self.runtime(repo, code).strip(), "True")
         repo.write({"gen2/p/use.py": source.replace("    class Inner(Base): pass\n", "    class Inner(Base): pass\n    Inner = object\n")})
         self.assertEqual(self.runtime(repo, code).strip(), "False")
-        self.assertIn("class-scope binding", self.check(repo, 1).stderr)
-        self.assertTrue(calls(repo)["unresolved"])
-        self.assertEqual(repo.run("rebaseline").returncode, 1)
+        self.refused(repo, "SRC-DEF-REBOUND")
 
     def test_header_and_expression_writes_cannot_leave_a_stale_module_binding(self):
         for replacement in ("for Base in (object,): pass\n", "if (Base := object): pass\n",
@@ -302,10 +312,10 @@ class BindingTest(RatchetTestCase):
                 repo.write({"gen2/p/use.py": changed})
                 self.assertEqual(self.runtime(repo, "from gen2.p.use import Child; print(hasattr(Child, 'f'))").strip(), "False")
                 if replacement != "del Base\n":
-                    self.assertIn("unresolved_base", self.check(repo, 1).stderr)
+                    self.refused(repo, "SRC-BINDING-COMPETING", "SRC-LOADER-UNINVENTORIED" if "__import__" in replacement else "SRC-BINDING-COMPETING")
                 else:
-                    self.assertIn("missing", self.check(repo, 1).stderr)
-                self.assertEqual(repo.run("rebaseline").returncode, 1)
+                    self.assertIn("missing", self.check(repo, 1).stderr)   # the source is inside the contract and the pair is gone: the ledger's question
+                    self.assertEqual(repo.run("rebaseline").returncode, 1)
 
     def test_a_nested_class_base_uses_its_enclosing_class_namespace(self):
         source = "from gen2.p.base import Base\nclass Outer:\n    from gen2.p.other import Base\n    class Inner(Base):\n        def g(self): return self.f()\n"
@@ -315,8 +325,7 @@ class BindingTest(RatchetTestCase):
         self.check(repo)
         repo.write({"gen2/p/use.py": source.replace("    from gen2.p.other import Base\n", "    Base = object\n")})
         self.assertEqual(self.runtime(repo, "from gen2.p.use import Outer; print(hasattr(Outer.Inner, 'f'))").strip(), "False")
-        self.assertIn("unresolved_base", self.check(repo, 1).stderr)
-        self.assertEqual(repo.run("rebaseline").returncode, 1)
+        self.refused(repo, "SRC-BASE-ALIAS")
 
     def test_a_function_local_class_base_accounts_for_local_writes_and_parameters(self):
         source = "from gen2.p.base import Base\ndef build():\n    class Child(Base):\n        def g(self): return self.f()\n    return Child\n"
@@ -327,10 +336,9 @@ class BindingTest(RatchetTestCase):
         for changed in (source.replace("def build():", "def build(Base=object):"), source.replace("    class Child", "    Base = object\n    class Child")):
             repo.write({"gen2/p/use.py": changed})
             self.assertEqual(self.runtime(repo, "from gen2.p.use import build; print(hasattr(build(), 'f'))").strip(), "False")
-            self.assertIn("unresolved_base", self.check(repo, 1).stderr)
-            self.assertEqual(repo.run("rebaseline").returncode, 1)
+            self.refused(repo, "SRC-BASE-ALIAS")
 
-    def test_conditional_real_router_fails_while_runtime_mro_is_unchanged(self):
+    def test_conditional_real_router_is_refused_while_the_runtime_mro_is_unchanged(self):
         repo = self.baselined(real_engine_files())
         code = 'from gen2.router.service import Router; print([c.__name__ for c in Router.__mro__]); print(hasattr(Router,"commit_outcome"))'
         before = self.runtime(repo, code)
@@ -341,54 +349,71 @@ class BindingTest(RatchetTestCase):
         repo.write({path: changed})
         self.assertEqual(self.runtime(repo, code), before)
         self.assertIn("True", before)
-        self.assertIn("unresolved_base", self.check(repo, 1).stderr)
-        self.assertTrue(calls(repo)["unresolved"])
-        self.assertEqual(repo.run("rebaseline").returncode, 1)
+        self.refused(repo, "SRC-CLASS-CONDITIONAL", "SRC-DEF-DUPLICATE")
 
-    def test_competing_star_reexports_fail_for_both_interpreter_orders(self):
+    def test_the_real_routers_method_under_if_true_is_refused_though_python_runs_it_unchanged(self):
+        """Gate D #4 R2: only `Router._now` under `if True:` kept the bytecode and the runtime result and took 132 sites to 127 with every check green."""
+        repo = self.baselined(real_engine_files())
+        path = "gen2/router/service.py"
+        original = (repo.root / path).read_text()
+        start = original.index("    def _now(self")
+        end = original.index("\n    def ", start + 10)
+        block = original[start:end]
+        changed = original[:start] + "    if True:\n" + "".join("    " + line if line.strip() else line for line in block.splitlines(keepends=True)) + original[end:]
+        repo.write({path: changed})
+        self.assertEqual(self.runtime(repo, "from gen2.router.service import Router; print(hasattr(Router, '_now'))").strip(), "True")
+        self.refused(repo, "SRC-METHOD-CONDITIONAL")
+
+    def test_competing_star_reexports_are_refused_for_both_interpreter_orders(self):
         for prefix, package in (("gen2/", "gen2"), ("gateway/research_gateway/", "research_gateway")):
             files = {prefix + "__init__.py": "", prefix + "p/a.py": BASE.replace("return 1", 'return "a"'), prefix + "p/z.py": BASE.replace("return 1", 'return "z"'),
-                     prefix + "p/__init__.py": "from .a import *\n", prefix + "p/use.py": use(f"from {package}.p import Base")}
+                     prefix + "p/__init__.py": "from .a import Base\n", prefix + "p/use.py": use(f"from {package}.p import Base")}
             repo = self.baselined(files)
             code = f'import sys; sys.path.insert(0,"gateway"); from {package}.p.use import Child; print(Child().g())'
             for order, selected in (("from .z import *\nfrom .a import *\n", "a"), ("from .a import *\nfrom .z import *\n", "z")):
                 repo.write({prefix + "p/__init__.py": order})
-                self.assertEqual(self.runtime(repo, code).strip(), selected)
-                self.assertIn("competing binding", self.check(repo, 1).stderr)
-                self.assertEqual(repo.run("rebaseline").returncode, 1)
+                self.assertEqual(self.runtime(repo, code).strip(), selected)   # python's selection changes with the order
+                self.refused(repo, "SRC-STAR-IMPORT")
 
-    def test_star_export_visibility_matches_python_or_is_unresolved(self):
+    def test_star_export_visibility_is_refused_whatever_python_exports(self):
         for declaration, exists in (("__all__ = ['Base']\n", True), ("__all__ = []\n", False), ("__all__ = [name for name in globals()]\n", True)):
             files = tree(use("from gen2.p import Base"), **{"gen2/__init__.py": "", "gen2/p/base.py": BASE + declaration, "gen2/p/__init__.py": "from .base import *\n"})
             repo = Repo(files)
             self.addCleanup(repo.close)
             self.assertEqual(self.runtime(repo, "import gen2.p as p; print(hasattr(p, 'Base'))").strip(), str(exists))
-            found = calls(repo)
-            if declaration == "__all__ = ['Base']\n":
-                self.assertEqual(found["pairs"], {"gen2/p/use.py->gen2/p/base.py": 1})
-                self.assertFalse(found["unresolved"])
-            else:
-                self.assertTrue(found["unresolved"])
+            done = repo.run("report", str(repo.root / "out"))
+            self.assertEqual(done.returncode, 1)
+            self.assertIn("SRC-STAR-IMPORT", done.stderr)
+            if "globals" in declaration:
+                self.assertIn("SRC-ALL-DYNAMIC", done.stderr)
 
-    def test_star_export_lists_are_read_only_from_the_module_namespace(self):
+    def test_an___all___outside_the_module_level_is_refused_and_is_not_a_module_export(self):
         for public, local in ((["Base"], []), ([], ["Base"])):
             for nested in (f"def private():\n    __all__ = {local!r}\n", f"class Private:\n    __all__ = {local!r}\n"):
                 with self.subTest(public=public, nested=nested):
                     files = tree(use("from gen2.p import Base"), **{"gen2/__init__.py": "", "gen2/p/base.py": BASE + f"__all__ = {public!r}\n" + nested,
-                                 "gen2/p/__init__.py": "from .base import *\n"})
+                                 "gen2/p/__init__.py": "from .base import Base\n"})
                     repo = Repo(files)
                     self.addCleanup(repo.close)
-                    self.assertEqual(self.runtime(repo, "import gen2.p as p; print(hasattr(p, 'Base'))").strip(), str(bool(public)))
-                    found = calls(repo)
-                    if public:
-                        self.assertEqual(found["pairs"], {"gen2/p/use.py->gen2/p/base.py": 1})
-                        self.assertFalse(found["unresolved"])
-                    else:
-                        self.assertFalse(found["pairs"])
-                        self.assertTrue(found["unresolved"])
+                    self.assertEqual(self.runtime(repo, "import gen2.p as p; print(hasattr(p, 'Base'))").strip(), "True")   # explicit re-export: independent of __all__
+                    done = repo.run("report", str(repo.root / "out"))
+                    self.assertEqual(done.returncode, 1)
+                    self.assertIn("SRC-ALL-DYNAMIC", done.stderr)
+                    self.assertIn("gen2/p/base.py:", done.stderr)
 
     def test_unique_reexport_matches_the_interpreter(self):
-        repo = self.baselined(tree(use("from gen2.p import Base"), **{"gen2/__init__.py": "", "gen2/p/__init__.py": "from .base import *\n"}))
+        repo = self.baselined(tree(use("from gen2.p import Base"), **{"gen2/__init__.py": "", "gen2/p/__init__.py": "from .base import Base\n"}))
         self.assertEqual(self.runtime(repo, "from gen2.p.use import Child; print(Child().g())").strip(), "1")
         self.assertEqual(calls(repo)["pairs"], {"gen2/p/use.py->gen2/p/base.py": 1})
         self.check(repo)
+
+    def test_the_explicit_import_chains_the_contract_supports_match_the_interpreter(self):
+        """Qualified bases, explicit re-exports and an aliased import each select the class Python selects."""
+        for head, bases in ((("import gen2.p.base",), "gen2.p.base.Base"), (("from gen2.p import base",), "base.Base"), (("from gen2.p.base import Base as B",), "B"),
+                            (("from gen2.q import Public",), "Public")):
+            with self.subTest(bases=bases):
+                files = tree(use(*head, bases=bases), **{"gen2/__init__.py": "", "gen2/q/__init__.py": "from gen2.p.base import Base as Public\n"})
+                repo = Repo(files)
+                self.addCleanup(repo.close)
+                self.assertEqual(self.runtime(repo, "from gen2.p.use import Child; print(Child().g())").strip(), "1")
+                self.assertEqual(calls(repo)["pairs"], {"gen2/p/use.py->gen2/p/base.py": 1})

@@ -10,11 +10,19 @@ out by hand from the fixture's text, never read back from the tool.
 
 The three tool paths are module globals read at call time:
 tools/gen2_mutations.py points them at mutated copies.
+
+A tool run is judged as a PROGRAM before a test judges what it said (task 2q-a-repair-3, Gate D #4 F4). `Repo.run` raises `ToolDidNotComplete` - never an
+AssertionError - when the child crashed (a traceback), timed out, died of a signal, could not be loaded or started (an import or syntax error, an exit
+status the tool never returns, an exit 2 without the tool's own message) or left no result its caller needed. A test that asserts on such a run therefore
+ERRORS instead of failing, and the mutation harness does not credit an errored killer as a kill: a mutant a tool crashes on is not shown to have behaved
+wrongly, only to have crashed. Every child's return code, stdout and stderr are kept (`Repo.runs`, the exception, and the JSON lines `GEN2_TOOL_RUN_LOG`
+names), whatever the outcome.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -24,6 +32,7 @@ REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / "tools" / "gen2_metrics.py"
 DEBT_TOOL = REPO / "tools" / "check_gen2_debt.py"
 LOCATORS_TOOL = REPO / "tools" / "check_gen2_locators.py"
+CONTRACT_TOOL = REPO / "tools" / "gen2_source_contract.py"
 
 BASELINE = "docs/gen2/metrics-baseline.json"
 EXEMPTIONS = "docs/gen2/metrics-exemptions.md"
@@ -32,12 +41,40 @@ GIT_ENV = {"GIT_AUTHOR_NAME": "Test Author", "GIT_AUTHOR_EMAIL": "test@example.i
            "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}   # a fixture commit never depends on the host's git configuration (signing, hooks)
 
 
+TOOL_MESSAGES = ("gen2-metrics:", "gen2-locators:", "gen2-debt:")   # the line a tool prints when it refuses or cannot run: a completed exit 2 carries one
+LOAD_FAILURE = re.compile(r"^(?:SyntaxError|IndentationError|TabError|ModuleNotFoundError|ImportError):", re.M)
+
+
+class ToolDidNotComplete(Exception):
+    """A tool subprocess did not complete as a program (module docstring). `command`, `returncode`, `stdout` and `stderr` are those of the child, kept whole."""
+
+    def __init__(self, why: str, command: list[str], returncode: int | None, stdout: str, stderr: str) -> None:
+        super().__init__(f"the tool did not complete: {why}\ncommand: {' '.join(command)}\nreturn code: {returncode}\nstdout:\n{stdout}\nstderr:\n{stderr}")
+        self.why, self.command, self.returncode, self.stdout, self.stderr = why, command, returncode, stdout, stderr
+
+
+def incomplete(done: subprocess.CompletedProcess) -> str | None:
+    """Why a finished child is not a completed run (a crash, a signal, a load failure), or None. A tool's own refusal is a completed run."""
+    if done.returncode < 0:
+        return f"it was killed by signal {-done.returncode}"
+    if "Traceback (most recent call last)" in (done.stdout or "") + (done.stderr or ""):
+        return "it crashed with a traceback"
+    if LOAD_FAILURE.search(done.stderr or ""):
+        return "it could not be loaded (an import or syntax error)"
+    if done.returncode not in (0, 1, 2):
+        return f"it exited with status {done.returncode}, which no tool returns"
+    if done.returncode == 2 and not any(prefix in (done.stderr or "") for prefix in TOOL_MESSAGES):
+        return "it exited 2 without its own message (the interpreter could not start it, or the arguments were refused by argparse)"
+    return None
+
+
 class Repo:
     """A temporary repository. `files` are written and committed at once; `commit` makes later changes tracked."""
 
     def __init__(self, files: dict[str, str] | None = None, *, commit: bool = True) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
+        self.runs: list[subprocess.CompletedProcess] = []   # every child this repository ran, whole (return code, stdout, stderr)
         self.git("init", "-q")
         self.write(files or {}, commit=commit)
 
@@ -64,14 +101,34 @@ class Repo:
             self.git("add", "-A")
             self.git("commit", "-q", "--allow-empty", "-m", message, date=date)
 
-    def run(self, *args: str, tool: Path | None = None, root: bool = True) -> subprocess.CompletedProcess:
-        """The metrics tool (or another) on this repository: `args` are the tool's, after --root."""
+    def run(self, *args: str, tool: Path | None = None, root: bool = True, timeout: int = 120) -> subprocess.CompletedProcess:
+        """The metrics tool (or another) on this repository: `args` are the tool's, after --root. Raises ToolDidNotComplete when the child did not complete as a
+        program (module docstring); what it printed and returned is otherwise the caller's to judge."""
         from gen2.tests import children
         target = tool or TOOL
         if target.is_relative_to(REPO):
             target = children.path(str(target.relative_to(REPO)))
         command = [sys.executable, str(target), *(["--root", str(self.root)] if root else []), *args]
-        return subprocess.run(command, capture_output=True, text=True, timeout=120)
+        try:
+            done = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            out, err = (x.decode(errors="replace") if isinstance(x, bytes) else x or "" for x in (exc.stdout, exc.stderr))
+            self.record(command, None, out, err, f"timed out after {timeout} s")
+            raise ToolDidNotComplete(f"it timed out after {timeout} s", command, None, out, err) from exc
+        why = incomplete(done)
+        self.runs.append(done)
+        self.record(command, done.returncode, done.stdout, done.stderr, why)
+        if why:
+            raise ToolDidNotComplete(why, command, done.returncode, done.stdout, done.stderr)
+        return done
+
+    @staticmethod
+    def record(command: list[str], returncode: int | None, stdout: str, stderr: str, problem: str | None) -> None:
+        log = os.environ.get("GEN2_TOOL_RUN_LOG")
+        if log:
+            with open(log, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"test": os.environ.get("GEN2_ATTEST_TEST"), "command": command, "returncode": returncode, "stdout": stdout,
+                                         "stderr": stderr, "did_not_complete": problem}) + "\n")
 
     def baseline(self) -> dict:
         return json.loads((self.root / BASELINE).read_text())

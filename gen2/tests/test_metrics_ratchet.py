@@ -105,10 +105,15 @@ class BaselineFileTest(RatchetTestCase):
         (repo.root / BASELINE).write_text("{not json")
         self.assertIn("cannot be read", self.check(repo, 2).stderr)
 
-    def test_a_source_that_does_not_parse_is_a_tool_failure(self) -> None:
+    def test_a_source_that_does_not_parse_is_a_refusal_not_a_measurement(self) -> None:
+        """The contract's first row: a production file that does not parse is refused (exit 1) with its file and line, before anything is measured."""
         repo = self.baselined(BASE)
+        before = (repo.root / BASELINE).read_bytes()
         repo.write({"gen2/c.py": "def (:\n"})
-        self.assertIn("gen2/c.py does not parse", self.check(repo, 2).stderr)
+        done = self.check(repo, 1)
+        self.assertIn("SOURCE REFUSED: gen2/c.py:1: SRC-INV-PARSE: the file does not parse", done.stderr)
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
+        self.assertEqual((repo.root / BASELINE).read_bytes(), before)
 
 
 class PropagationTest(RatchetTestCase):
@@ -317,13 +322,29 @@ class FunctionTest(RatchetTestCase):
         self.assertEqual(repo.run("rebaseline").returncode, 0)
         self.assertEqual(repo.baseline()["services"]["engine"]["functions"], {"gen2/m.py::f": {"cyclomatic": 21, "cognitive": 20}})
 
-    def test_two_functions_of_one_qualified_name_are_kept_apart(self) -> None:
-        source = self.source(20) + "if True:\n" + "".join("    " + line + "\n" for line in self.source(20).splitlines())
-        repo = self.baselined({"gen2/m.py": source})
-        self.assertEqual(set(repo.baseline()["services"]["engine"]["functions"]), {"gen2/m.py::f", "gen2/m.py::f#2"})
-        grown = self.source(20) + "if True:\n" + "".join("    " + line + "\n" for line in self.source(20, asserts=1).splitlines())
-        repo.write({"gen2/m.py": grown})
-        self.assertIn("function_cyclomatic engine:gen2/m.py::f#2: 22 against a baseline of 21", self.check(repo, 1).stderr)
+    def test_a_prepended_function_of_the_same_name_is_refused_not_a_new_owner_of_the_old_budget(self) -> None:
+        """Gate D #4 R1: a tiny same-name function before the real one took the old key (21/0 -> 1/0) and moved the real function to `f#2` below both thresholds:
+        check and rebaseline returned 0. Positional `#2` identities are not issued; the duplicate is refused and the baseline is not touched."""
+        repo = self.baselined({"gen2/m.py": self.source(20)})
+        before = (repo.root / BASELINE).read_bytes()
+        nested = py("def f(a):", *(f"{'    ' * (i + 1)}if a:" for i in range(7)), f"{'    ' * 8}return 1")   # cyclomatic 8, cognitive 28: the real f, below both thresholds
+        repo.write({"gen2/m.py": "def f(a):\n    pass\n\n" + nested})
+        done = self.check(repo, 1)
+        self.assertIn("SRC-DEF-DUPLICATE: f is defined more than once in the module (first at line 1)", done.stderr)
+        self.assertNotIn("improved", done.stdout)
+        self.assertEqual(repo.run("rebaseline").returncode, 1)
+        self.assertEqual((repo.root / BASELINE).read_bytes(), before)
+
+    def test_the_direct_crossover_of_one_function_still_fails_by_its_scores(self) -> None:
+        repo = self.baselined({"gen2/m.py": self.source(20)})   # cyclomatic 21, cognitive 20 (20 ifs, none nested): an offender
+        nested = py("def f(a):", *(f"{'    ' * (i + 1)}if a:" for i in range(7)), f"{'    ' * 8}return 1")   # 8 and 28: the cognitive score grew while cyclomatic fell below its threshold
+        repo.write({"gen2/m.py": nested})
+        self.assertIn("function_cognitive engine:gen2/m.py::f: 28 against a baseline of 20", self.check(repo, 1).stderr)
+
+    def test_an_unchanged_unique_function_keeps_its_identity_and_its_budget(self) -> None:
+        repo = self.baselined({"gen2/m.py": self.source(20)})
+        self.assertEqual(set(repo.baseline()["services"]["engine"]["functions"]), {"gen2/m.py::f"})
+        self.check(repo, 0)
 
     def test_the_thresholds_are_the_baselines_not_the_tools(self) -> None:
         repo = self.baselined({"gen2/m.py": self.source(24)})   # cyclomatic 25 is an offender under the tool's limit of 20
