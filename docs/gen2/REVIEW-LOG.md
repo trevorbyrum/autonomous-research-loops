@@ -1558,3 +1558,11 @@ The post-2q Gate D is renumbered #5.
   - it is sequenced inside the 2q-a repair, so the family history continues.
 
   Routed to **2q-a-repair-3** (checklist 0–8). Coders return to Sonnet 5.5.
+
+## 2026-10-05: 2b-repair-20 (project-owned canonical address serialization)
+- **Astra** (`62ccbbd1`, pinned 5354346; `private/reviews/gen2-2b-repair-20-astra-review-20261005.md`): **PASS on A, B and C. ROOT-CAUSE. "2b-repair-20 is ACCEPTED."**
+  - The serializer matches RFC 5952 §§4.1–4.3. The mapped hex spelling is the accepted contract (28a2e83), not drift.
+  - Probes: 256 zero-run layouts plus 30,000 value-preserving samples. A real-wire probe on 3.12.3 and 3.12.14 found no other spelling producer.
+  - R17-1, R18-1 and the 2b acceptance are intact.
+  - No new operator confirmation is needed.
+- **Orchestrator reruns at 5354346** (isolated clone): gen2-check exit 0 (2,044 tests, 2,040/2,040 mutants, 1,752 s). The gen2-gateway rerun is in progress.
