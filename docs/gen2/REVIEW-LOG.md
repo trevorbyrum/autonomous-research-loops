@@ -1589,3 +1589,17 @@ The post-2q Gate D is renumbered #5.
 - The operator adopted four rules after a research pass on speeding up the build (repair-loop returns, review size, gate-only full suites): blocking findings defined; re-reviews raise only blocking findings; a round cap at 3 consecutive BLOCKs, after which the operator decides; small slices; one full test run per round. All are recorded in BUILD-CHARTER "Review throughput".
 - They apply from the next dispatch. 2q-a-repair-4's review (`ca0161ae`) already running is unchanged.
 - Deferring 2q-b was offered and not adopted.
+
+## 2026-10-05: 2q-a-repair-4 (positive recognition)
+- **Astra** (`ca0161ae`, pinned 01fa8ad; `private/reviews/gen2-2q-a-repair-4-astra-review-20261005.md`), dispatched before the review-throughput rules: **BLOCK on A and C, PASS on B, family MITIGATION.**
+- **ROOT-CAUSE within their scope:**
+  - the effective-member (`__hash__`) correction: 144 hash cases agree with Python;
+  - completion dominance: the mixed-crash mutant is now INVALID, and `os._exit`, suppressed excepthook, SIGTERM and timeout are all rejected. Under model B the record need not be unforgeable; the claim must be stated as detecting accidental incomplete execution.
+  - all 16 rebuilt kills are valid.
+- **Open:**
+  - **F1 HIGH:** the recognition boundary still admits namespace mutation and unlisted producers (e.g. `namespace().A = object`). 40 closure probes produce zero refusals and a wrong attribution.
+  - **F2 HIGH:** transformation recognition uses spelling where Python uses identity and composition (e.g. a string annotation ending in `ClassVar`).
+  - **F3 HIGH:** the loader fingerprint omits the other definitions in the loader module, which execute at import.
+  - Gate C: unsound positive expectations and unsupported claims.
+- Astra's own reruns: gen2-check exit 0 (2,237 tests, 2,244/2,244); gen2-gateway exit 0 (1,516+1,516, 394/394). Orchestrator reruns match.
+- **This is the second consecutive BLOCK since Gate D #4.** Under the review-throughput rules, a third goes to the operator (round cap). Before the next brief, the orchestrator asked Astra to classify F1–F3 under the new blocking definition, and whether an interpreter cross-check would close the family.
