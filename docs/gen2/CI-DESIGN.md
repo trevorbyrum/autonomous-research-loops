@@ -99,7 +99,7 @@ Engine work fixes **worker budgeting**: mutation jobs come from the container's 
 
 - **T0 (every push):**
   - `gen2-sqlite`, `gen2-boundaries`, `gen2-size`, `gen2-schemas`, `gen2-ddl`, `gen2-catalog-check`, `gen2-metrics`, `gen2-debt`, `gen2-locators`;
-  - the supported-source guard, once Gate D #4 rules;
+  - the supported-source guard, `gen2-source` (`docs/gen2/SOURCE-CONTRACT.md`; operator ruling 2026-10-05, Gate D #4 option B);
   - the protected-path and test-integrity reports;
   - a secret and personal-data scan.
 

@@ -1566,3 +1566,21 @@ The post-2q Gate D is renumbered #5.
   - R17-1, R18-1 and the 2b acceptance are intact.
   - No new operator confirmation is needed.
 - **Orchestrator reruns at 5354346** (isolated clone): gen2-check exit 0 (2,044 tests, 2,040/2,040 mutants, 1,752 s); gen2-gateway exit 0 (1,500+1,500 tests, gateway mutants passed, 971 s). The coder's results are confirmed. **2b-repair-20 CLOSED.**
+
+## 2026-10-05: 2q-a-repair-3 (the supported-source contract; family repair against the Gate D #4 checklist)
+- **Astra** (`78dde6c8`, pinned dbe5dd4; `private/reviews/gen2-2q-a-repair-3-astra-review-20261005.md`; the first session `d1d4e515` stopped on a model-capacity error): **BLOCK on A and C, PASS on B, family MITIGATION.**
+- **Accepted:**
+  - checklist item 0;
+  - item 4, the one transition plan (R3 ROOT-CAUSE);
+  - the `_no_reading` replacement (734+800 differential comparisons, zero differences; the measurement change is honestly declared);
+  - the six rebuilt R4 mutants;
+  - the 27/27 historical reproduction;
+  - Astra's own reruns: gen2-check exit 0 (2,178 tests, 2,151/2,151) and gen2-gateway exit 0 (1,516+1,516, 394/394).
+- **Open:**
+  - **F1 HIGH:** effective members aren't modelled. `__eq__`, or a bare `@dataclass`, sets `__hash__ = None` and masks an inherited method, which is still attributed to the ancestor.
+  - **F2 HIGH:** prohibited binding and dispatch changes pass the guard: dataclass fields shadowing methods, external precedence through ancestors, module-attribute stores, walrus in annotations, `global` plus import, assigned hooks, and more. A stale qualified owner also passes the locator check.
+  - **F3 HIGH:** the loader inventory checks text, not behaviour (`continue`→`pass` passes).
+  - **F4 HIGH:** a killer that both fails an assertion and has an incomplete child still earns a kill, and exit 0/1 is taken as completion without a witness.
+  - Disclosure corrections: a refused `report` does write partial artifacts; six test claims were rejected.
+- **Routed** to **2q-a-repair-4** (Sonnet 5.5), which turns the guard into positive recognition (refuse every unrecognised binding or store kind) instead of a list of known bad forms. This is the first BLOCK since Gate D #4. No operator ruling is needed: the defects are within the ratified contract.
+- The orchestrator corrected CI-DESIGN's T0 list so it names `gen2-source`.
