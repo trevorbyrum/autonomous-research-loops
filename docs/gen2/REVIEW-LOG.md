@@ -1627,3 +1627,13 @@ The post-2q Gate D is renumbered #5.
 - **Non-blocking:** the `get_type_hints` analogy wording; interpreter-version portability.
 - The research addendum covers compiler visit order, two-way validation and mangling. Routed to **2q-a-repair-6b**.
 - **Slice B (2q-a-repair-7) BLOCKED before coding** on three production uses of banned names; it's held for an operator decision.
+
+## 2026-10-05: 2q-a-repair-6b (slice A fix: validated pairing, mangling)
+- **Astra** (`752b23d2`, pinned a4deb99; `private/reviews/gen2-2q-a-repair-6b-astra-review-20261005.md`): **BLOCK on A and C, PASS on B, MITIGATION.**
+- **Repaired:** R6-1's mispairing (ROOT-CAUSE) and R6-2's named examples. The landing run is green (gen2-check 2,271 tests, 2,282/2,282; gen2-gateway exit 0), and production is unchanged.
+- **Open, blocking (one identity family):**
+  - **R6B-1:** restored private members give a false cross-file self-call attribution, because member and attribute identity use the raw spelling.
+  - **R6B-2:** mixed spellings (`__h` and `_C__h`) split one binding and hide a rebinding.
+- A safe false refusal of valid annotation syntax is non-blocking.
+- This is the second consecutive BLOCK since the operator's continue ruling.
+- **Repo fact:** production contains **no** private (mangled) names.
