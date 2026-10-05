@@ -1565,4 +1565,4 @@ The post-2q Gate D is renumbered #5.
   - Probes: 256 zero-run layouts plus 30,000 value-preserving samples. A real-wire probe on 3.12.3 and 3.12.14 found no other spelling producer.
   - R17-1, R18-1 and the 2b acceptance are intact.
   - No new operator confirmation is needed.
-- **Orchestrator reruns at 5354346** (isolated clone): gen2-check exit 0 (2,044 tests, 2,040/2,040 mutants, 1,752 s). The gen2-gateway rerun is in progress.
+- **Orchestrator reruns at 5354346** (isolated clone): gen2-check exit 0 (2,044 tests, 2,040/2,040 mutants, 1,752 s); gen2-gateway exit 0 (1,500+1,500 tests, gateway mutants passed, 971 s). The coder's results are confirmed. **2b-repair-20 CLOSED.**
