@@ -1535,3 +1535,20 @@ The post-2q Gate D is renumbered #5.
   - **D2 charter amendment** recorded in BUILD-CHARTER: task branches and worktrees, PRs into `gen2`, operator merges, still one coder.
   - **D9 values:** accepted-review evidence is kept permanently, routine runs for 90 days, and nightly findings become tasks within 2 working days.
 - **Confirmed defect, routed:** the gateway client's canonical origin depends on `ipaddress.__str__` (3.12.14 changed it). Root fix: project-owned canonical serialisation, plus pinning the reference environment (D5).
+
+## 2026-10-05: Gate D #4 (rerun): the 2q-a architecture-metrics finish line
+- **Rerun** in a fresh Astra session (`6544e498`), pinned 4f1ae96. The first session, `f657c1c2`, closed without producing a report. Report: `private/reviews/gen2-gate-d-4-astra-review.md`; evidence: `private/evidence/gate-d-4-rerun/`.
+- **Verdict: BLOCK.** Astra chooses option **B**: exact computation of the declared metrics over a declared, guarded source subset, with one shared recognition boundary across both services.
+- **Findings:**
+  - **F1 HIGH:** source recognition can still change an obligation or lose part of a measurement while the checks pass (R1 and R2 open). Family: MITIGATION.
+  - **F2 HIGH:** the acceptance boundary is implicit, and classified uncertainty can still pass.
+  - **F3 MEDIUM:** admission drafting contradicts existing mappings (R3).
+  - **F4 MEDIUM:** the six disputed mutants still crash rather than producing the wrong behaviour they are meant to show (R4).
+  - **F5 MEDIUM:** duplicated source models have accumulated repair complexity.
+- **Repair:** one family-level repair against checklist 0–8 (ratify, recognition boundary, production compatibility, R1/R2, R3, locators, R4, assembled pin, family closure). A shared source boundary plus an effective transition plan would be ROOT-CAUSE; more per-example exceptions would stay MITIGATION.
+- **Production syntax inventory:** 100 files are almost wholly inside the proposed contract. The one exception is `_no_reading` in `gateway/research_gateway/core/payload.py`, which installs methods dynamically. Astra recommends replacing it with explicit methods while keeping the behaviour unchanged.
+- **Operator rulings required:**
+  1. adopt B and the supported-source contract, including an unwaivable refusal stage and amendments to repair-2's unresolved-classification claims;
+  2. authorize the minimal production change (`_no_reading`) before 2q-a acceptance;
+  3. approve its sequencing (inside the 2q-a repair, or as a 2q-b preparation slice ahead of acceptance).
+- Not rerun by Astra: the full engine and gateway suites and their mutation campaigns. The earlier reruns at 4f1ae96 stand as prior evidence.
