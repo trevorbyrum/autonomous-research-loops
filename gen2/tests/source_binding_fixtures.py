@@ -6,7 +6,8 @@ fixture tree and the text Python prints for it, and the VERDICT the contract mus
 sites). The `Probe` record is the one of tests/source_probe_fixtures.py and the runner is `BindingTest` (tests/test_source_binding.py).
 
 What this slice settles is BINDING IDENTITY: which class, function, module or external object a name is, through explicit imports, aliases (also tuple-unpacked), re-exports across
-files and `nonlocal` writes. It does not settle what a call or a container hands out at run time (a function that returns a module, a module in a list, a module passed to a
+files and `nonlocal` writes; since task 2q-a-repair-6 also which scope a name lives in (the compiler's symbol table: the probes of `scope-probes.json` below), the compiler-invalid `nonlocal` forms, and an
+alias the resolver cannot follow. It does not settle what a call or a container hands out at run time (a function that returns a module, a module in a list, a module passed to a
 parameter, a namespace dictionary's mutator): those are call-time owner effects, slice 2 of the F1 repair, and nothing here claims them. Of her 20 closure-probe cases only the four above are
 binding identity; the other 16 (and her walrus, default-parameter, `getattr` and `type(*args)` loader and class cases among them) are still accepted by the source stage.
 """
@@ -18,6 +19,9 @@ from gen2.tests.tool_repo_fixtures import py
 RUN_LOADED = "from {pkg}.b import value; print(value.__name__)"
 OBJECT_BASE = f"False\n{RESIDUE}"   # what Python prints when B's base was replaced by `object`: B has no `f`
 IMPORT_LOADER = "from importlib import import_module"
+A_OF_A, A_OF_C = py("class A:", "    def f(self): return 'A'"), py("class A:", "    def f(self): return 'C'")   # Astra's two classes of one name, told apart by what `f` returns
+RUN_BASE = "from {pkg}.b import B; print(B().run())"
+NO_BINDING = "SyntaxError: no binding for nonlocal 'A' found"   # what Python prints for the two invalid `nonlocal` forms below
 
 PROBES = [
     Probe("loader-unpack", "closure-probes.json", {"a.py": "", "b.py": py(IMPORT_LOADER, "loader, = (import_module,)", 'value = loader("math")')}, RUN_LOADED, "math",
@@ -30,6 +34,25 @@ PROBES = [
           {"a.py": BASE, "b.py": py("def factory():", "    from {pkg}.a import A", "    def middle():", "        def replace():", "            nonlocal A", "            A = object", "        replace()",
                                     "    middle()", "    class B(A):", "        def run(self): return self.f()", "    return B", "B = factory()")},
           CONTROL_IMPORT, OBJECT_BASE, refused=(("SRC-BINDING-COMPETING", "b.py", 9),), notes="the nonlocal write rebinds factory's A, two functions up: the base has two bindings and is refused"),
+    # --- task 2q-a-repair-6: scope is the compiler's (`symtable`), Astra's 2q-a-repair-5 probes (private/evidence/astra-2q-a-repair-5/scope-probes.json) ---------------------------------
+    Probe("global-read-owner", "scope-probes.json", {"a.py": A_OF_A, "c.py": A_OF_C, "b.py": py("from {pkg}.a import A", "def factory():", "    from {pkg}.c import A", "    def build():",
+                                                                                          "        global A", "        class B(A):", "            def run(self): return self.f()", "        return B", "    return build()",
+                                                                                          "B = factory()")},
+          RUN_BASE, "A", sites=1, pairs=(("b.py", "a.py"),), notes="`global A` in build makes the base the MODULE's A (a.py), not the A factory imported: the cross-file pair is b.py -> a.py"),
+    Probe("global-read-loader", "scope-probes.json", {"a.py": "", "b.py": py(IMPORT_LOADER + " as load", "def factory():", "    load = len", "    def run():", "        global load", '        return load("math")',
+                                                                              "    return run()", "value = factory()")},
+          RUN_LOADED, "math", refused=(("SRC-LOADER-UNINVENTORIED", "b.py", 6),), notes="`global load` reads the module's loader, not factory's `len`"),
+    Probe("nonlocal-no-binding-no-write", "scope-probes.json", {"a.py": "", "b.py": py("def outer():", "    def inner():", "        nonlocal A", "        return A", "    return inner")},
+          "from {pkg}.b import outer", NO_BINDING, refused=(("SRC-INV-PARSE", "b.py", 3),), notes="a `nonlocal` with no enclosing binding is a SyntaxError in Python, written or not"),
+    Probe("nonlocal-global-barrier", "scope-probes.json",
+          {"a.py": BASE, "b.py": py("def outer():", "    from {pkg}.a import A", "    def middle():", "        global A", "        def inner():", "            nonlocal A", "            A = object", "        return inner",
+                                    "    return middle")}, "from {pkg}.b import outer", NO_BINDING, refused=(("SRC-INV-PARSE", "b.py", 6),),
+          notes="`middle` declares A global, so the import in outer is no binder for inner's nonlocal: Python refuses the module"),
+    Probe("loader-source-rebound", "scope-probes.json", {"a.py": "", "b.py": py(IMPORT_LOADER, "loader = import_module", "import_module = len", 'value = loader("math")')}, RUN_LOADED, "math",
+          refused=(("SRC-BINDING-COMPETING", "b.py", 4),), notes="`loader` keeps the imported function: an alias of a name whose bindings compete is neither accepted nor guessed, the call through it is refused"),
+    Probe("a local import shadows the module's name (a control: accepted)", "a control of the scope repair",
+          {"a.py": A_OF_A, "c.py": A_OF_C, "b.py": py("from {pkg}.a import A", "def factory():", "    from {pkg}.c import A", "    class B(A):", "        def run(self): return self.f()", "    return B", "B = factory()")},
+          RUN_BASE, "C", sites=1, pairs=(("b.py", "c.py"),), notes="no declaration: the nearest binding is factory's own import, so the base is c.py's A"),
     # --- controls, accepted or refused the same at both pins: the refusals above are not blanket ones, and a name is bound where Python binds it -------------------------
     Probe("the second name of an unpacking is the second value", "a control of the alias repair",
           {"a.py": "", "b.py": py(IMPORT_LOADER, "size, loader = (len, import_module)", 'value = loader("math")')}, RUN_LOADED, "math", refused=(("SRC-LOADER-UNINVENTORIED", "b.py", 3),),

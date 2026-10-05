@@ -488,7 +488,8 @@ class Contract:
             return node.value.partition("[")[0].strip().rpartition(".")[2] in ("ClassVar", "InitVar", "KW_ONLY")
         try:
             return self.facts.identity(cls.path, cls.parent, node) in FIELD_MARKERS
-        except Unresolved:
+        except Unresolved as exc:
+            self.uncertain(cls.path, node, exc)
             return False
 
     # -- families: the data a method name must not be overridden by ---------------------------------------------------------
@@ -612,11 +613,17 @@ class Contract:
     # -- what an expression denotes: the base of a store, the first argument of setattr ---------------------------------------------
 
     def identity(self, index: FileIndex, scope: source.Scope, node: ast.expr) -> str | None:
-        """The identity the one resolver gives a name or an attribute chain, or None where it has none certain: a call through it is then no recognised site."""
+        """The identity the one resolver gives a name or an attribute chain, or None where it has none certain: a call through it is then no recognised site. Except an alias whose
+        target the resolver cannot say (`loader = import_module` where `import_module` is rebound): that is REFUSED here, whatever asks (task 2q-a-repair-6), never read as no site."""
         try:
             return self.facts.identity(index.path, scope, node)
-        except Unresolved:
+        except Unresolved as exc:
+            self.uncertain(index.path, node, exc)
             return None
+
+    def uncertain(self, path: str, node: ast.expr, exc: Unresolved) -> None:
+        if exc.alias:
+            self.refuse("SRC-BINDING-COMPETING", path, node.lineno, f"`{ast.unparse(node)}` is used where its identity matters, and {exc.why}", REMEDY["SRC-BINDING-COMPETING"])
 
     def context(self, scope: source.Scope) -> tuple:
         """What the code in `scope` knows of its receiver: (the class, the receiver's name, the method's role) inside a method, however deeply a closure, lambda or

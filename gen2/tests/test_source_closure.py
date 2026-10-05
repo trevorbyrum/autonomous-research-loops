@@ -40,11 +40,15 @@ def interpreter(repo: Repo, service: str, code: str) -> str:
     return (done.stdout + (done.stderr.strip().splitlines()[-1] if done.returncode else "")).strip()
 
 
-def measured_sites(repo: Repo, service: str) -> int:
+def measured(repo: Repo, service: str) -> dict:
     out = repo.root / "report"
     done = repo.run("report", str(out))
     assert done.returncode == 0, done.stderr
-    return json.loads((out / "metrics-summary.json").read_text())["services"][service]["self_calls"]["sites"]
+    return json.loads((out / "metrics-summary.json").read_text())["services"][service]["self_calls"]
+
+
+def measured_sites(repo: Repo, service: str) -> int:
+    return measured(repo, service)["sites"]
 
 
 class ClosureCase(ContractCase):
@@ -225,27 +229,34 @@ class WalkerUnitTest(unittest.TestCase):
 
     def test_a_name_stored_where_no_statement_says_how_is_refused(self) -> None:
         said = in_the_tools('tree = ast.parse("x = 1")\ntree.body = [ast.Expr(value=ast.Name(id="y", ctx=ast.Store()))]\nast.fix_missing_locations(tree)\n'
-                            'print(json.dumps([[d.category, d.construct] for d in si.FileIndex("gen2/a.py", tree).diagnostics]))')
+                            'print(json.dumps([[d.category, d.construct] for d in si.FileIndex("gen2/a.py", tree, "x = 1").diagnostics]))')
         self.assertEqual(said, [["SRC-FORM-UNRECOGNISED", "the name y is written where no statement says how"]])
 
     def test_a_node_class_the_table_has_no_entry_for_is_refused_and_not_read_as_harmless(self) -> None:
         said = in_the_tools('class Unheard(ast.stmt):\n    _fields = ()\ntree = ast.parse("x = 1")\ntree.body.append(Unheard())\nast.fix_missing_locations(tree)\n'
-                            'print(json.dumps([[d.category, d.construct] for d in si.FileIndex("gen2/a.py", tree).diagnostics]))')
+                            'print(json.dumps([[d.category, d.construct] for d in si.FileIndex("gen2/a.py", tree, "x = 1").diagnostics]))')
         self.assertEqual(said, [["SRC-FORM-UNRECOGNISED", "the syntax Unheard has no recorded effect on a namespace"]])
 
     def test_a_node_class_inside_an_expression_is_refused_as_well(self) -> None:
         said = in_the_tools('class Unheard(ast.expr):\n    _fields = ()\ntree = ast.parse("f(1)")\ntree.body[0].value.args.append(Unheard())\nast.fix_missing_locations(tree)\n'
-                            'print(json.dumps([d.category for d in si.FileIndex("gen2/a.py", tree).diagnostics]))')
+                            'print(json.dumps([d.category for d in si.FileIndex("gen2/a.py", tree, "f(1)").diagnostics]))')
         self.assertEqual(said, ["SRC-FORM-UNRECOGNISED"])
 
     def test_a_binding_role_the_contract_has_no_record_of_is_refused(self) -> None:
-        said = in_the_tools('tree = ast.parse("x = 1")\nindex = si.FileIndex("gen2/a.py", tree)\nindex.module.bindings["x"][0].role = "frobnicate"\n'
+        said = in_the_tools('tree = ast.parse("x = 1")\nindex = si.FileIndex("gen2/a.py", tree, "x = 1")\nindex.module.bindings["x"][0].role = "frobnicate"\n'
                             'facts = si.Facts(pathlib.Path("."), {"all": ["gen2/a.py"], "engine": ["gen2/a.py"], "gateway": []}, {"gen2/a.py": "x = 1"}, {"gen2/a.py": index})\n'
                             'c.Contract(facts).bindings(index, index.module)\nprint(json.dumps([[d.category, d.construct] for d in facts.diagnostics]))')
         self.assertEqual(said, [["SRC-FORM-UNRECOGNISED", "the binding of x has the role frobnicate, which the contract does not record"]])
 
+    def test_a_kind_of_binding_in_a_class_body_the_contract_has_no_record_of_is_refused(self) -> None:
+        """Valid source cannot reach it now that the compiler refuses a star import below the module level, so the binding's role is changed by hand."""
+        said = in_the_tools('text = "class A:\\n    x = 1\\n"\ntree = ast.parse(text)\nindex = si.FileIndex("gen2/a.py", tree, text)\nindex.classes["A"].scope.bindings["x"][0].role = "star"\n'
+                            'facts = si.Facts(pathlib.Path("."), {"all": ["gen2/a.py"], "engine": ["gen2/a.py"], "gateway": []}, {"gen2/a.py": text}, {"gen2/a.py": index})\n'
+                            'contract = c.Contract(facts)\ncontract.families()\ncontract.namespace(index, index.classes["A"])\nprint(json.dumps([[d.category, d.construct] for d in facts.diagnostics]))')
+        self.assertEqual(said, [["SRC-FORM-UNRECOGNISED", "the star binding of x in class A has no recorded effect"]])
+
     def test_every_role_the_walker_gives_a_binding_is_one_the_contract_lists(self) -> None:
-        said = in_the_tools(f'tree = ast.parse({EVERY_FORM + "from os import *" + chr(10)!r})\nindex = si.FileIndex("gen2/a.py", tree)\n'
+        said = in_the_tools(f'text = {EVERY_FORM + "from os import *" + chr(10)!r}\ntree = ast.parse(text)\nindex = si.FileIndex("gen2/a.py", tree, text)\n'
                             'roles = sorted({b.role for s in index.scopes for bs in s.bindings.values() for b in bs})\nprint(json.dumps([roles, list(si.BINDING_ROLES)]))')
         roles, listed = said
         self.assertEqual(sorted(set(roles) - set(listed)), [])
@@ -272,8 +283,12 @@ class ProbeCase(ClosureCase):
                             self.assertIn((category, prefix + file, line), found)
                     else:
                         self.assertEqual((status, found), (0, []), msg=f"{probe.name} is inside the contract")
-                        if probe.sites is not None:
-                            self.assertEqual(measured_sites(repo, service), probe.sites, msg=f"the cross-file self-call sites measured for {probe.name}")
+                        if probe.sites is not None or probe.pairs is not None:
+                            calls = measured(repo, service)
+                            if probe.sites is not None:
+                                self.assertEqual(calls["sites"], probe.sites, msg=f"the cross-file self-call sites measured for {probe.name}")
+                            if probe.pairs is not None:
+                                self.assertEqual(calls["pairs"], {f"{prefix}{caller}->{prefix}{owner}": 1 for caller, owner in probe.pairs}, msg=f"the files the sites of {probe.name} reach")
 
 
 class ProbeTest(ProbeCase):

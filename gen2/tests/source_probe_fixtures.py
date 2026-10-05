@@ -32,6 +32,7 @@ class Probe:
     says: str                                              # what it prints (standard output, then the last line of standard error if it failed), exactly
     refused: tuple[tuple[str, str, int], ...] = ()         # (category, file, line) each of which the contract must report; empty: the source is inside the contract
     sites: int | None = None                               # for a source inside the contract: the cross-file self-call sites the metrics must measure
+    pairs: tuple[tuple[str, str], ...] | None = None       # and the (calling file, defining file) of each: which class a base is, as the metrics attribute it
     only: str | None = None
     notes: str = ""
 

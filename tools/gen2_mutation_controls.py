@@ -462,31 +462,34 @@ MANUAL: dict[str, dict] = {
         "why": "a narrow control and nothing more (task 2q-a-repair-5, 2026-10-05): it exercises only tools/gen2_source_contract.py Contract.kind_of's NamedExpr branch, with an attribute written "
                "through an assignment expression whose value is an ordinary call (`(obj := make()).value = 1`), which the mutant that says data for every such expression accepts as well. It does "
                "not show that such a value cannot hold a module or a class (call-time owner effects, slice 2), and its family is no closure evidence (ordinary_data_stores)"},
-    # task 2q-a-repair-5: the nonlocal owner, the pairing of an unpacking and the consumers of the one resolver. Their killers are tests written for them after the trace, so none is
-    # traced for them; each control is a test of the same family that takes another path through the same code and passes under the mutant
+    # task 2q-a-repair-5: the pairing of an unpacking and the consumers of the one resolver (task 2q-a-repair-6 made the nonlocal owner the compiler's: its mutants are 2Q6-idx-free-*). Their
+    # killers are tests written for them after the trace, so none is traced for them; each control is a test that takes another path through the same code and passes under the mutant.
+    # Astra's 2q-a-repair-5 review F2 rejected three pairings that never reached the changed line or the guard; task 2q-a-repair-6 replaced each with a test that does
     **{mid: {"controls": [control], "why": why} for control, why, mids in (
-        ("test_source_closure.ClosureAcceptanceTest.test_accepts_aliases_and_scopes",
-         "accepts a nonlocal write whose nearest enclosing function binds the name (tools/gen2_source_index.py _Builder.nonlocal_owner): the nearest function and the nearest one that binds the "
-         "name are the same function there, so the mutant that takes the nearest function leaves it as it was",
-         ("2QB-idx-nonlocal-binds-the-nearest-function",)),
-        ("test_source_binding.NonlocalOwnerTest.test_the_write_skips_a_function_that_does_not_bind_the_name",
-         "records a nonlocal write past a function that binds nothing, to the one function that binds the name: the outermost binder the mutant picks is that function",
-         ("2QB-idx-nonlocal-skips-the-function-that-binds-the-name",)),
-        ("test_source_binding.NonlocalOwnerTest.test_the_write_stops_at_the_nearest_function_that_binds_the_name",
-         "records nonlocal writes that have an enclosing binding and asserts where they go; the refusal of a nonlocal name no function binds is not on its path",
-         ("2QB-idx-nonlocal-without-a-binding-accepted",)),
         ("test_source_binding.UnpackingTest.test_a_loop_target_takes_the_elements_of_what_it_iterates_and_not_the_values_beside_it",
-         "binds the targets of a loop over a literal, which an unpacking's pairing never touches (tools/gen2_source_index.py paired_values: an assignment only): the mutants that change the "
-         "pairing of an assignment's names leave it as it was",
-         ("2QB-idx-unpacking-binds-no-value", "2QB-idx-unpacking-binds-every-name-to-the-first-value")),
+         "binds the targets of a loop over a literal, which an unpacking's pairing never touches (tools/gen2_source_index.py paired_values: an assignment only): the mutant that binds every name "
+         "of an assignment to the first value leaves it as it was",
+         ("2QB-idx-unpacking-binds-every-name-to-the-first-value",)),
+        ("test_source_binding.UnpackingTest.test_a_starred_element_on_either_side_pairs_nothing_even_when_the_counts_are_equal",
+         "reaches tools/gen2_source_index.py paired_values's final return with a starred element (`a, *b = x, y`; `a, b = *x, y`: the counts are equal, so the line before it does not return), "
+         "where the answer is None whether or not the starred check is there: the mutant that always returns None leaves it as it was",
+         ("2QB-idx-unpacking-binds-no-value",)),
         ("test_source_binding.UnpackingTest.test_each_name_takes_the_value_at_its_position_and_a_chain_is_an_alias",
          "pairs the names of an assignment with literals that have no starred element, the same count and a position each: the mutants that pair a loop's target, a starred literal or a "
          "literal of another count change none of them",
          ("2QB-idx-unpacking-pairs-a-loop-target", "2QB-idx-unpacking-pairs-a-starred-value", "2QB-idx-unpacking-pairs-a-different-count")),
+        ("test_source_binding.ResolverTest.test_an_alias_chain_that_ends_in_an_import_is_that_import",
+         "follows an acyclic chain of two aliases to an import (tools/gen2_source_index.py Facts.follow): each step evaluates the alias-cycle guard and passes it, so the mutant that "
+         "answers a cycle with an external name instead of a refusal leaves it as it was",
+         ("2QB-idx-alias-cycle-is-external",)),
+        ("test_source_binding.ResolverTest.test_a_decorator_written_as_its_qualified_identity_has_that_identity",
+         "asks tools/gen2_source_contract.py decorator_transform for `@contextlib.contextmanager`, a decorator whose spelling IS its resolved identity: the mutant that reads the spelling gives "
+         "the same record",
+         ("2QB-con-decorator-identity-is-its-spelling",)),
         ("test_source_closure.ClosureRefusalTest.test_refuses_global_redirect_of_every_kind_of_binding",
-         "refuses rebindings through `global` (no alias, no decorator, no call identity on its path): the mutants of an alias's cycle and of a consumer that reads a spelling leave these "
-         "refusals as they were",
-         ("2QB-idx-alias-cycle-is-external", "2QB-con-decorator-identity-is-its-spelling", "2QB-con-call-identity-is-its-spelling")),
+         "refuses rebindings through `global` (no alias, no decorator; every call in it is a plain name, whose spelling is its identity): the mutant of a consumer that reads a spelling leaves "
+         "these refusals as they were",
+         ("2QB-con-call-identity-is-its-spelling",)),
         ("test_source_contract.RefusalTest.test_refuses_src_base_subscript",
          "refuses a subscripted base (tools/gen2_source_contract.py Contract.base's subscript branch, which resolves its own `assignments=False` line): the mutant that lets a base follow an "
          "assignment changes the other resolution line",

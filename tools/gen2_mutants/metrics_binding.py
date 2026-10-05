@@ -1,7 +1,8 @@
 """Mutants of task 2q-a-repair-5 (Astra's 2q-a-repair-4 review F1, slice 1: binding identity): the nonlocal write's owner, the pairing of an unpacking, and the consumers that
 must ask the one resolver. Each guard is removed or weakened alone.
 
-  2QB-idx-*  the index (tools/gen2_source_index.py): which function a `nonlocal` write belongs to, what an unpacking binds, an alias that is its own identity;
+  2QB-idx-*  the index (tools/gen2_source_index.py): what an unpacking binds, an alias that is its own identity (which function a `nonlocal` write belongs to was a family of this file
+             until task 2q-a-repair-6 made it the compiler's answer: the 2Q6-idx-free-* mutants);
   2QB-con-*  the contract (tools/gen2_source_contract.py): a consumer that reads a spelling where the resolver gives an identity, a base that follows an assignment.
 
 Every killer fails by ASSERTION on a refusal the mutant lets through or a recorded fact it changes (the interpreter-controlled probes of gen2/tests/source_binding_fixtures.py
@@ -23,19 +24,8 @@ def b(mid: str, description: str, killers: tuple[str, ...], target: str, old: st
     return Mutation(f"2QB-{mid}", "2q-a-repair-5", description, killers, target=target, old=old, new=new)
 
 
-BINDS_ITSELF = 'outer.kind == "function" and any(b.role != "nonlocal_write" for b in outer.bindings.get(name, ()))'
-OWNER_LINE = f"        return next((outer for outer in self._enclosing(scope) if {BINDS_ITSELF}), None)"
-
 MUTATIONS: list[Mutation] = [
-    # --- a `nonlocal` write belongs to the enclosing function that binds the name -----------------------------------------------------------------
-    b("idx-nonlocal-binds-the-nearest-function", "a nonlocal write is recorded in the nearest enclosing function, whether or not it binds the name", (NONLOCAL, BINDING, NL + "test_the_write_skips_a_function_that_does_not_bind_the_name"),
-      IDX, BINDS_ITSELF, 'outer.kind == "function"'),
-    b("idx-nonlocal-skips-the-function-that-binds-the-name", "a nonlocal write is recorded in the outermost function that binds the name, past a nearer one that binds it too",
-      (SCOPES, BINDING, NL + "test_the_write_stops_at_the_nearest_function_that_binds_the_name"), IDX, OWNER_LINE,
-      f"        return next(reversed([outer for outer in self._enclosing(scope) if {BINDS_ITSELF}]), None)"),
-    b("idx-nonlocal-without-a-binding-accepted", "a nonlocal name that no enclosing function binds is not refused", (NONLOCAL, NL + "test_a_name_no_enclosing_function_binds_is_refused_and_another_nonlocal_write_does_not_bind_it"),
-      IDX, '                self.diagnose("SRC-FORM-UNRECOGNISED", binding.line, f"`nonlocal {name}` names no binding of an enclosing function", "bind the name in the enclosing function: Python refuses this source")',
-      "                pass"),
+    # --- a `nonlocal` write belongs to the enclosing function the compiler says binds the name: the mutants of that rule are the 2Q6-idx-free-* ones (tools/gen2_mutants/metrics_scope.py) -----
     # --- an unpacking pairs each name with its own value --------------------------------------------------------------------------------------
     b("idx-unpacking-binds-no-value", "no name of an unpacking is bound to its value", (BINDING, ALIASES, UP + "test_each_name_takes_the_value_at_its_position_and_a_chain_is_an_alias"),
       IDX, "    return None if any(isinstance(e, ast.Starred) for e in (*node.elts, *source.elts)) else source.elts", "    return None"),
@@ -49,12 +39,12 @@ MUTATIONS: list[Mutation] = [
       IDX, " or len(node.elts) != len(source.elts):", ":"),
     # --- an alias that is its own identity has none ------------------------------------------------------------------------------------------
     b("idx-alias-cycle-is-external", "an alias of itself is read as an external name instead of being refused", (ALIASES,), IDX,
-      '                raise Unresolved("SRC-BINDING-COMPETING", f"{name} is an alias of itself")', '                return ("external", name)'),
+      '                raise Unresolved("SRC-BINDING-COMPETING", f"{name} is an alias of itself", alias=True)', '                return ("external", name)'),
     # --- every consumer asks the one resolver --------------------------------------------------------------------------------------------------
     b("con-decorator-identity-is-its-spelling", "a decorator is recognised by how it is written, not by the identity the resolver gives it", (SCOPES, OWNER, CLA + "implicit_and_generated_members"), CON,
       "    identity = facts.identity(path, scope, target)", "    identity = ast.unparse(target)"),
     b("con-call-identity-is-its-spelling", "a loader, setattr or sys.modules is recognised by how it is written, not by the identity the resolver gives it", (ALIASES, BINDING), CON,
-      "            return self.facts.identity(index.path, scope, node)\n        except Unresolved:\n            return None", "            return source.chain_text(node)\n        except Unresolved:\n            return None"),
+      "            return self.facts.identity(index.path, scope, node)\n        except Unresolved as exc:", "            return source.chain_text(node)\n        except Unresolved as exc:"),
     b("con-base-follows-an-assignment", "a base bound by an assignment is followed to what it aliases and accepted", (BASE_ALIAS,), CON,
       '                ref = self.facts.expr(path, cls.parent, node, assignments=False)\n            if ref[0] in ("module", "package"):', '                ref = self.facts.expr(path, cls.parent, node)\n            if ref[0] in ("module", "package"):'),
 ]

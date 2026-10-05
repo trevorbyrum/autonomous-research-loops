@@ -47,8 +47,8 @@ MUTATIONS: list[Mutation] = [
       "    if path.startswith(SERVICE_PREFIX[\"engine\"]):\n        return \"engine\""),
     # --- function identity, rebinding, declarations -----------------------------------------------------------------------
     s("src-def-duplicate-unreported", "two definitions of one name in a scope are accepted", (RT + "src_def_duplicate",), IDX, "            if len(defs) > 1:", "            if False:"),
-    s("src-global-write-unrouted", "a `global` write does not rebind the module's definition", (RT + "src_def_rebound",), IDX,
-      "        if name in scope.declared:\n            kind = scope.declared[name]", "        if False and name in scope.declared:\n            kind = scope.declared[name]"),
+    s("src-global-write-unrouted", "a `global` write is not recorded as a write of the module's namespace", (RT + "src_def_rebound",), IDX,
+      "        if owner is not scope and owner is not holding(scope):\n", "        if False:\n"),
     s("src-method-conditional-unreported", "a method declared in a compound statement of its class is accepted", (RT + "src_method_conditional",), IDX,
       '        if nested and scope.kind == "class":', "        if False:"),
     s("src-annotation-binds", "an annotation alone rebinds a defined name", (AT + "function_identity",), IDX,
@@ -81,13 +81,13 @@ MUTATIONS: list[Mutation] = [
     s("src-mro-single-linearization", "a family's order is the first base's order alone", (AT + "inheritance",), IDX,
       "        self._mro[key] = [key] + (c3_merge(sequences + [direct]) if direct else [OBJECT])", "        self._mro[key] = [key] + (sequences[0] if sequences else [])"),
     s("src-same-file-class-key", "a nested class is keyed by its short name", (AT + "class_and_method_declarations",), IDX,
-      '        inner = Scope("class", scope.named(node.name), node, scope)', '        inner = Scope("class", node.name, node, scope)'),
+      '        inner = self.new_scope("class", scope.named(node.name), node, scope)', '        inner = self.new_scope("class", node.name, node, scope)'),
     # --- decorators and descriptors --------------------------------------------------------------------------------------
     s("con-unknown-decorator-accepted", "a decorator with no record is accepted as a recorded one", (RT + "src_decorator_unknown",), CON,
       "    record = BY_IDENTITY.get(identity)\n", "    record = BY_IDENTITY.get(identity) or TRANSFORMS[1]\n"),
     s("src-decorator-shadowing-read-as-unknown", "a decorator name that is rebound, conditional or bound by an assignment or a parameter is reported as unknown, not as shadowed", (RT + "src_decorator_shadowed",), IDX,
-      '            raise Unresolved("SRC-DECORATOR-SHADOWED" if exc.category in ("SRC-BINDING-COMPETING", "SRC-BASE-ALIAS") else "SRC-DECORATOR-UNKNOWN", exc.why) from None',
-      '            raise Unresolved("SRC-DECORATOR-UNKNOWN", exc.why) from None'),
+      '            raise Unresolved("SRC-DECORATOR-SHADOWED" if exc.category in ("SRC-BINDING-COMPETING", "SRC-BASE-ALIAS") else "SRC-DECORATOR-UNKNOWN", exc.why, exc.alias) from None',
+      '            raise Unresolved("SRC-DECORATOR-UNKNOWN", exc.why, exc.alias) from None'),
     s("con-decorator-arguments-unchecked", "a recorded decorator is accepted with any arguments", (RT + "src_decorator_args",), CON, "    if not record.allowed(node):", "    if False:"),
     s("con-dataclass-slots-allowed", "a dataclass with slots=True is a recorded form", (RT + "src_decorator_args",), CON,
       '(not node.args and all(k.arg == "frozen" and isinstance(k.value, ast.Constant) and k.value.value is True for k in node.keywords))' if False else

@@ -29,6 +29,11 @@ It does not decide policy about decorators, receivers, reflection or dynamic loa
 and rows and runs them over this index. Everything that measures or looks a name up (tools/gen2_metrics.py, tools/check_gen2_locators.py) reads
 these facts, so a form the index cannot state is refused before anything is measured, never read differently by a second consumer.
 
+SCOPE IS THE COMPILER'S (task 2q-a-repair-6; Astra's 2q-a-repair-5 review F1). Which scope a name lives in (local, declared or implicit global, nonlocal, free) is answered by the
+standard library's `symtable`, the compiler's own scope analysis, and by nothing hand-written here (`locate`, the one rule every use and every write goes through). The index records
+WHAT a binding refers to; the table decides WHERE the name lives. Each scope the walker finds is paired with the compiler's table for it by type, name and line, or the file is refused;
+a file the compiler itself refuses (an invalid `nonlocal`) is refused with the compiler's message and has no facts.
+
 Standard library only. Files outside the production inventory (tests, tools) can be indexed with the same code for the locator checker's
 queries (`index_text`); their diagnostics are not the contract's concern.
 """
@@ -37,6 +42,7 @@ from __future__ import annotations
 import ast
 import builtins
 import subprocess
+import symtable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -134,15 +140,23 @@ class Binding:
 
 
 class Scope:
-    __slots__ = ("kind", "qual", "node", "parent", "bindings", "declared")
+    __slots__ = ("kind", "qual", "node", "parent", "bindings", "table", "pending")
 
     def __init__(self, kind: str, qual: str, node: ast.AST, parent: "Scope | None") -> None:
         self.kind, self.qual, self.node, self.parent = kind, qual, node, parent   # module | class | function | lambda | comprehension
         self.bindings: dict[str, list[Binding]] = {}
-        self.declared: dict[str, str] = {}   # names a `global` or `nonlocal` statement sends elsewhere
+        self.table: symtable.SymbolTable | None = None   # the compiler's table for this scope (a list, set or dict comprehension CPython inlines has none)
+        self.pending: dict[tuple, list[symtable.SymbolTable]] = {}   # the tables of scopes nested in this one that no scope has taken yet, by (type, name, line)
 
     def bind(self, name: str, binding: Binding) -> None:
         self.bindings.setdefault(name, []).append(binding)
+
+    def symbol(self, name: str) -> symtable.Symbol | None:
+        """The compiler's entry for a name in this scope's table, or None: the table holds no entry for a name only an annotation mentions under `from __future__ import annotations`."""
+        try:
+            return self.table.lookup(name) if self.table is not None else None
+        except KeyError:
+            return None
 
     def named(self, name: str) -> str:
         return f"{self.qual}.{name}" if self.qual else name
@@ -218,7 +232,8 @@ class CallSite:
 class FileIndex:
     """One file's facts: scopes with their bindings, definitions, classes, store and call sites, and the structural diagnostics found while reading it."""
 
-    def __init__(self, path: str, tree: ast.Module) -> None:
+    def __init__(self, path: str, tree: ast.Module, text: str) -> None:
+        """`text` is the source `tree` was parsed from: the compiler's symbol table is built from it."""
         self.path, self.tree = path, tree
         self.module = Scope("module", "", tree, None)
         self.functions: list[FunctionFact] = []
@@ -228,7 +243,12 @@ class FileIndex:
         self.star_imports: list[int] = []
         self.stores: list[Store] = []
         self.calls: list[CallSite] = []
-        _Builder(self).run()
+        try:
+            table = symtable.symtable(text, path, "exec")
+        except SyntaxError as exc:   # the compiler refuses the file (an invalid `nonlocal`): no scope can be told from a table it will not build, so the file has no facts
+            self.diagnostics.append(Diagnostic("SRC-INV-PARSE", path, exc.lineno or 0, f"the compiler refuses the file: {exc.msg}", "fix the source: Python itself will not run it"))
+            return
+        _Builder(self, table).run()
 
 
 # --- the dispatcher's table ------------------------------------------------------------------------------------------------
@@ -287,6 +307,7 @@ class Target:
     direct: bool = True
 
 
+MISMATCH = "the index and the compiler's symbol table disagree about this scope: that is a defect of this tool, not of the source; report it rather than work around it"
 FORM_REMEDY = ("write the form with a construct the contract records, or amend the contract (docs/gen2/SOURCE-CONTRACT.md, operator-reviewed) before using it: a form with no "
                "record binds or stores in a way the metrics cannot state")
 
@@ -300,27 +321,69 @@ def chain_text(node: ast.AST | None) -> str | None:
     return ".".join([node.id, *reversed(parts)]) if isinstance(node, ast.Name) else None
 
 
+TABLE_NAMES = {ast.Lambda: "lambda", ast.ListComp: "listcomp", ast.SetComp: "setcomp", ast.DictComp: "dictcomp", ast.GeneratorExp: "genexpr"}   # the names the compiler gives these scopes
+INLINED = (ast.ListComp, ast.SetComp, ast.DictComp)   # CPython 3.12 inlines these into the table of the scope holding them (PEP 709); a generator expression keeps its own
+
+
+def parameters_of(args: ast.arguments) -> list[ast.arg]:
+    return [*args.posonlyargs, *args.args, *args.kwonlyargs, *(a for a in (args.vararg, args.kwarg) if a is not None)]
+
+
+def header_names(node: ast.AST) -> set[str]:
+    """The names a scope's own header binds: the parameters of a function or lambda, the iteration variables of a comprehension, nothing for a class."""
+    if isinstance(node, (*FUNCTIONS, ast.Lambda)):
+        return {a.arg for a in parameters_of(node.args)}
+    generators = getattr(node, "generators", ())
+    return {n.id for g in generators for n in ast.walk(g.target) if isinstance(n, ast.Name)}
+
+
 class _Builder:
-    def __init__(self, index: FileIndex) -> None:
-        self.index = index
-        self.nonlocals: list[tuple[Scope, str, Binding]] = []   # the `nonlocal` writes, placed once every function has its bindings (Python decides what a function binds over its whole body)
+    def __init__(self, index: FileIndex, table: symtable.SymbolTable) -> None:
+        self.index, self.table = index, table
+        self.nonlocals: list[tuple[Scope, str, Binding]] = []   # the `nonlocal` writes, placed once every scope has its bindings (the owner is the compiler's; the order is the source's)
 
     def run(self) -> None:
         index = self.index
+        self.adopt(index.module, self.table)
         self.block(index.tree.body, index.module, False)
-        for scope, name, binding in self.nonlocals:
-            owner = self.nonlocal_owner(scope, name)
-            if owner is None:
-                self.diagnose("SRC-FORM-UNRECOGNISED", binding.line, f"`nonlocal {name}` names no binding of an enclosing function", "bind the name in the enclosing function: Python refuses this source")
-            else:
-                owner.bind(name, binding)
+        for owner, name, binding in self.nonlocals:
+            owner.bind(name, binding)
         for scope in index.scopes:
             self.structure(scope)
+            for tables in scope.pending.values():
+                for table in tables:
+                    self.diagnose("SRC-FORM-UNRECOGNISED", table.get_lineno(), f"the compiler's table for {table.get_name()} has no scope of the index to match", MISMATCH)
 
-    def nonlocal_owner(self, scope: Scope, name: str) -> Scope | None:
-        """The function a `nonlocal` write belongs to: the nearest enclosing function that binds the name itself (a parameter, an assignment, an import ...), skipping a function
-        that only passes it through and a class body, as Python's compiler does. Another `nonlocal` write binds nothing there."""
-        return next((outer for outer in self._enclosing(scope) if outer.kind == "function" and any(b.role != "nonlocal_write" for b in outer.bindings.get(name, ()))), None)
+    def adopt(self, scope: Scope, table: symtable.SymbolTable) -> None:
+        scope.table = table
+        self.collect(scope, table)
+
+    def collect(self, scope: Scope, table: symtable.SymbolTable) -> None:
+        for child in table.get_children():
+            kind = getattr(child.get_type(), "value", child.get_type())
+            if kind in ("function", "class"):
+                scope.pending.setdefault((kind, child.get_name(), child.get_lineno()), []).append(child)
+            else:   # an annotation scope (type parameters, a type alias): those forms are refused as they are, and what they hold is looked for in the scope that holds them
+                self.collect(scope, child)
+
+    def attach(self, scope: Scope) -> None:
+        """Pair a new scope with the compiler's table for it: by type, name and line among the tables of the nearest scope that has one, and among those the first (the compiler's order is
+        source order, but not the walker's for a generator expression inside another's first iterable) whose parameters or iteration variables are the scope's. A scope with no such table
+        is refused; only a list, set or dict comprehension may have none at all, which CPython inlines."""
+        node, holder = scope.node, scope.parent
+        while holder.table is None and holder.parent is not None:
+            holder = holder.parent
+        name = TABLE_NAMES.get(type(node)) or node.name
+        found = holder.pending.get(("class" if scope.kind == "class" else "function", name, node.lineno), [])
+        if not found and isinstance(node, INLINED):
+            return
+        names = header_names(node)
+        table = next((t for t in found if names <= {s.get_name() for s in t.get_symbols() if s.is_parameter() or s.is_assigned()}), None)
+        if table is None:
+            self.diagnose("SRC-FORM-UNRECOGNISED", node.lineno, f"the compiler's symbol table has no matching scope for {scope.kind} {name} at this line", MISMATCH)
+        else:
+            found.remove(table)
+            self.adopt(scope, table)
 
     # -- the dispatcher ----------------------------------------------------------------------------------------------
 
@@ -348,30 +411,24 @@ class _Builder:
 
     def bind(self, scope: Scope, name: str, role: str, line: int, conditional: bool, ref: tuple = (), source: ast.AST | None = None, direct: bool = False,
              annotated: ast.AST | None = None) -> None:
-        """The one place a binding is recorded. A `global` or `nonlocal` declaration sends EVERY kind of binding (an import and a definition as much as an assignment)
-        to the scope it names."""
-        if name in scope.declared:
-            kind = scope.declared[name]
-            binding = Binding(f"{kind}_write", line, conditional, (), source, direct, annotated, scope)
-            if kind == "global":
-                self.index.module.bind(name, binding)
+        """The one place a binding is recorded. WHERE the name lives is the compiler's answer (`locate`): a `global` or `nonlocal` declaration sends EVERY kind of binding (an import
+        and a definition as much as an assignment) to the module or to the enclosing function that binds the name, and a comprehension's iteration variable stays in it."""
+        owner = scope if scope.kind == "comprehension" and role == "target" else locate(scope, name)
+        if owner is not scope and owner is not holding(scope):
+            binding = Binding("global_write" if owner.kind == "module" else "nonlocal_write", line, conditional, (), source, direct, annotated, scope)
+            if owner.kind == "module":
+                owner.bind(name, binding)
             else:
-                self.nonlocals.append((scope, name, binding))
+                self.nonlocals.append((owner, name, binding))
             return
         if role == "assign" and direct and chain_text(source) is not None:
             ref = ("alias", chain_text(source))   # a name bound to a name or an attribute chain forwards that identity
-        scope.bind(name, Binding(role, line, conditional, ref, source, direct, annotated, scope))
-
-    @staticmethod
-    def _enclosing(scope: Scope):
-        scope = scope.parent
-        while scope is not None:
-            yield scope
-            scope = scope.parent
+        owner.bind(name, Binding(role, line, conditional, ref, source, direct, annotated, scope))
 
     def new_scope(self, kind: str, qual: str, node: ast.AST, parent: Scope) -> Scope:
         inner = Scope(kind, qual, node, parent)
         self.index.scopes.append(inner)
+        self.attach(inner)
         return inner
 
     def form_leaf(self, node, scope, nested, target) -> None:
@@ -387,19 +444,18 @@ class _Builder:
         if nested:
             self.diagnose("SRC-CLASS-CONDITIONAL", node.lineno, f"class {node.name} is declared inside a compound statement",
                           "declare the class directly in its module, class or function body")
-        inner = Scope("class", scope.named(node.name), node, scope)
+        inner = self.new_scope("class", scope.named(node.name), node, scope)
         fact = ClassFact(self.index.path, inner.qual, node, inner, scope, nested)
         key, n = inner.qual, 2
         while key in self.index.classes:   # a duplicate is refused below; both stay in the index so nothing disappears
             key, n = f"{inner.qual}#{n}", n + 1
         self.index.classes[key] = fact
-        self.index.scopes.append(inner)
         self.each(getattr(node, "type_params", ()), scope, nested)
         self.each((*node.decorator_list, *node.bases, *(k.value for k in node.keywords)), scope, nested)
         self.block(node.body, inner, False)
 
     def parameters(self, args: ast.arguments, inner: Scope) -> list[ast.arg]:
-        every = [*args.posonlyargs, *args.args, *args.kwonlyargs, *(a for a in (args.vararg, args.kwarg) if a is not None)]
+        every = parameters_of(args)
         for arg in every:
             inner.bind(arg.arg, Binding("param", arg.lineno))
         return every
@@ -409,10 +465,9 @@ class _Builder:
         if nested and scope.kind == "class":
             self.diagnose("SRC-METHOD-CONDITIONAL", node.lineno, f"method {node.name} is declared inside a compound statement of class {scope.qual}",
                           "declare the method directly in the class body")
-        inner = Scope("function", scope.named(node.name), node, scope)
+        inner = self.new_scope("function", scope.named(node.name), node, scope)
         fact = FunctionFact(self.index.path, inner.qual, node, inner, scope, nested)
         self.index.functions.append(fact)
-        self.index.scopes.append(inner)
         args = node.args
         every = self.parameters(args, inner)
         # everything in the header is evaluated where the function is DEFINED: decorators, defaults, every annotation, the return annotation
@@ -452,7 +507,7 @@ class _Builder:
                 self.bind(scope, alias.asname or alias.name, "from", node.lineno, nested, ("from", base, alias.name))
 
     def form_declaration(self, node: ast.Global | ast.Nonlocal, scope: Scope, nested: bool, target) -> None:
-        scope.declared.update({name: "global" if isinstance(node, ast.Global) else "nonlocal" for name in node.names})
+        return None   # `global` and `nonlocal` only say where a name lives, and the compiler's table answers that (`locate`): they record nothing here
 
     def form_assign(self, node: ast.Assign, scope: Scope, nested: bool, target) -> None:
         self.each(node.targets, scope, nested, Target("assign", node.value))
@@ -514,10 +569,7 @@ class _Builder:
 
     def form_walrus(self, node: ast.NamedExpr, scope: Scope, nested: bool, target) -> None:
         self.visit(node.value, scope, nested)
-        holder = scope
-        while holder.kind == "comprehension" and holder.parent is not None:
-            holder = holder.parent   # the target of an assignment expression in a comprehension is bound in the scope that holds the comprehension
-        self.bind(holder, node.target.id, "walrus", node.lineno, nested, source=node.value, direct=True)
+        self.bind(scope, node.target.id, "walrus", node.lineno, nested, source=node.value, direct=True)   # inside a comprehension the compiler's table puts it where the comprehension is written
 
     # -- names, attributes, items, calls --
 
@@ -585,34 +637,66 @@ def paired_values(node: ast.AST, target: Target) -> list[ast.expr] | None:
 
 
 def index_text(path: str, text: str) -> FileIndex:
-    """The facts of any Python text (the locator checker indexes tests and tools this way); a SyntaxError propagates."""
-    return FileIndex(path, ast.parse(text, filename=path))
+    """The facts of any Python text (the locator checker indexes tests and tools this way); a SyntaxError of the parser propagates."""
+    return FileIndex(path, ast.parse(text, filename=path), text)
 
 
 # --- the whole production inventory --------------------------------------------------------------------------------
 
 class Unresolved(Exception):
-    """A name that cannot be followed to one certain definition (`category` is the contract's refusal category)."""
+    """A name that cannot be followed to one certain definition (`category` is the contract's refusal category). `identity` marks a name whose competing bindings include one that carries an
+    identity (an import, a definition, a class, an alias); `alias` marks an ordinary alias (`loader = import_module`) of such a name, or of itself. That is not "no recognised identity": the
+    alias may have captured the one the contract refuses, so every consumer refuses it."""
 
-    def __init__(self, category: str, why: str) -> None:
+    def __init__(self, category: str, why: str, alias: bool = False, identity: bool = False) -> None:
         super().__init__(why)
-        self.category, self.why = category, why
+        self.category, self.why, self.alias, self.identity = category, why, alias, identity
 
 
-def lexical_chain(scope: Scope) -> list[Scope]:
-    """The namespaces a name used in `scope` is looked up in: the scope itself, then each enclosing function and the module (a class body is not
-    enclosing for the code inside it)."""
-    chain, outer = [scope], scope.parent
-    while outer is not None:
-        if outer.kind != "class":
-            chain.append(outer)
-        outer = outer.parent
-    return chain
+def enclosing(scope: Scope):
+    """The scopes around `scope`, nearest first, the module last."""
+    while scope.parent is not None:
+        scope = scope.parent
+        yield scope
+
+
+def module_of(scope: Scope) -> Scope:
+    return scope if scope.parent is None else module_of(scope.parent)
+
+
+def holding(scope: Scope) -> Scope:
+    """The scope a comprehension is written in (PEP 572: its assignment expressions bind there); any other scope is its own."""
+    while scope.kind == "comprehension" and scope.parent is not None:
+        scope = scope.parent
+    return scope
+
+
+def locate(scope: Scope, name: str) -> Scope:
+    """The scope whose namespace a name used or written in `scope` belongs to, as the COMPILER decides it (task 2q-a-repair-6): the standard library's `symtable` is the only authority for
+    local, declared or implicit global, nonlocal and free, so no rule of this index decides a scope. A local name is the scope's own, a global one the module's, a free or nonlocal one
+    the nearest enclosing function whose table has it local (a class body between is never one). What the table does not say, in three places only: a comprehension's own iteration
+    variables stay inside it; a list, set or dict comprehension CPython inlines has no table, so its other names are those of the scope holding it (PEP 709); and a name the table
+    does not hold at all is one the compiler never evaluates (an annotation under `from __future__ import annotations`), which the module's namespace answers, as it does for
+    `typing.get_type_hints` and `dataclasses`."""
+    here = scope
+    while here.table is None and here.parent is not None:
+        if name in here.bindings:
+            return here
+        here = here.parent
+    symbol = here.symbol(name)
+    if symbol is None or symbol.is_global():
+        return module_of(here)
+    if not symbol.is_free():   # a declared `nonlocal` is free too
+        return here
+    binders = [outer for outer in enclosing(here) if outer.kind != "class" and (name in outer.bindings if outer.table is None else (found := outer.symbol(name)) is not None and found.is_local())]
+    return binders[0] if binders else module_of(here)
 
 
 def holder_of(scope: Scope, name: str) -> Scope | None:
-    """The scope whose namespace holds the name a use in `scope` means, or None: the one lookup rule, in lexical order, that the resolver and its consumers share."""
-    return next((candidate for candidate in lexical_chain(scope) if name in candidate.bindings), None)
+    """The scope whose namespace holds the binding a use of `name` in `scope` means, or None when no scope of the file does (a builtin, or a name nothing binds): `locate`'s answer,
+    which the resolver and its consumers share."""
+    holder = locate(scope, name)
+    return holder if name in holder.bindings else None
 
 
 Ref = tuple   # ("class", path, qual) | ("function", path, qual) | ("module", dotted) | ("package", dotted) | ("external", dotted identity)
@@ -655,7 +739,8 @@ class Facts:
         return is_production(path)
 
     def diagnose(self, category: str, path: str, line: int, construct: str, remediation: str) -> None:
-        self.diagnostics.append(Diagnostic(category, path, line, construct, remediation))
+        if (diagnostic := Diagnostic(category, path, line, construct, remediation)) not in self.diagnostics:   # one refusal per site, however many consumers ask
+            self.diagnostics.append(diagnostic)
 
     # -- the name resolver: one certain definition, or a refusal ---------------------------------------------------------
 
@@ -675,11 +760,12 @@ class Facts:
             raise Unresolved("SRC-NAME-UNRESOLVED", f"{name} is not bound in {where}")
         distinct = {(b.role, b.ref) for b in bindings}
         if len(distinct) > 1 or all(b.conditional for b in bindings):
-            raise Unresolved("SRC-BINDING-COMPETING", f"{name} has competing or conditional bindings in {where} (lines {', '.join(str(b.line) for b in bindings)})")
+            raise Unresolved("SRC-BINDING-COMPETING", f"{name} has competing or conditional bindings in {where} (lines {', '.join(str(b.line) for b in bindings)})",
+                             identity=any(b.role in ("import", "from", "class", "def") or b.ref[:1] == ("alias",) for b in bindings))
         return next((b for b in bindings if not b.conditional), bindings[0])
 
     def bound(self, path: str, scope: Scope, name: str, seen: frozenset = frozenset(), assignments: bool = True) -> Ref:
-        """A name used in `scope`: its own namespace first, then each enclosing function's and the module's (a class body is not enclosing)."""
+        """A name used in `scope`: followed through the namespace the compiler's symbol table puts it in (`holder_of`), or a builtin."""
         if (candidate := holder_of(scope, name)) is not None:
             return self.follow(path, candidate, name, self.certain(name, candidate.bindings[name], candidate.qual or path), seen, assignments)
         if hasattr(builtins, name):
@@ -697,8 +783,13 @@ class Facts:
             return self.member(self.module_ref(binding.ref[1]), binding.ref[2], seen, assignments)
         if binding.ref[:1] == ("alias",) and assignments:   # a name bound once to a name or an attribute chain (`loader = import_module`, `a, b = x, y`) is what that chain is
             if (id(scope), name) in seen:
-                raise Unresolved("SRC-BINDING-COMPETING", f"{name} is an alias of itself")
-            return self.expr(path, scope, binding.source, seen | {(id(scope), name)}, assignments)
+                raise Unresolved("SRC-BINDING-COMPETING", f"{name} is an alias of itself", alias=True)
+            try:
+                return self.expr(path, scope, binding.source, seen | {(id(scope), name)}, assignments)
+            except Unresolved as exc:
+                if exc.category != "SRC-BINDING-COMPETING" or exc.alias or not exc.identity:
+                    raise
+                raise Unresolved(exc.category, f"{name} is an alias of {ast.unparse(binding.source)}, which {exc.why}", alias=True) from None
         raise Unresolved("SRC-BASE-ALIAS", f"{name} is bound by {binding.role}, not by a class, a function or an import")
 
     def member(self, ref: Ref, attr: str, seen: frozenset = frozenset(), assignments: bool = True) -> Ref:
@@ -745,7 +836,7 @@ class Facts:
         try:
             ref = self.expr(path, scope, node)
         except Unresolved as exc:
-            raise Unresolved("SRC-DECORATOR-SHADOWED" if exc.category in ("SRC-BINDING-COMPETING", "SRC-BASE-ALIAS") else "SRC-DECORATOR-UNKNOWN", exc.why) from None
+            raise Unresolved("SRC-DECORATOR-SHADOWED" if exc.category in ("SRC-BINDING-COMPETING", "SRC-BASE-ALIAS") else "SRC-DECORATOR-UNKNOWN", exc.why, exc.alias) from None
         return ref[1] if ref[0] in ("module", "package", "external") else f"{module_name(ref[1])}.{ref[2]}"
 
     # -- class bases and the C3 order ------------------------------------------------------------------------------------
