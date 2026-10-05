@@ -73,7 +73,14 @@ class UtcInstantOrderTest(unittest.TestCase):
         self.assertLess(utc_instant_ns("2026-09-25T12:00:00Z"), utc_instant_ns("2026-09-25T12:00:00.5Z"))
 
     def test_invalid_instants_are_refused(self) -> None:
-        for value in ("2026-02-29T00:00:00Z", "2026-09-25T24:00:00Z", None, "2026-09-25"):
+        """An instant of the right shape that names no real instant is refused, not converted: the calendar and the clock are checked (the shape alone would convert hour 24, minute 60
+        and second 60 to a number)."""
+        for value in ("2026-02-29T00:00:00Z", "2026-09-25T24:00:00Z", "2026-09-25T23:60:00Z", "2026-09-25T23:59:60Z", "2026-13-01T00:00:00Z"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                utc_instant_ns(value)
+
+    def test_a_value_that_is_not_the_shape_of_an_instant_is_refused(self) -> None:
+        for value in (None, "2026-09-25", 20260925, ""):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 utc_instant_ns(value)
 

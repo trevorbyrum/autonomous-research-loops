@@ -805,6 +805,7 @@ class Contract:
         text = ast.unparse(node)[:80]
         first = node.args[0] if node.args else None
         literal = len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)
+        name = node.args[1].value if literal else ""
         kind = self.kind_of(index, scope, first, context) if first is not None else "unknown"
         if kind == "class":
             self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{text}` writes an attribute of a class", "declare the member in the class body")
@@ -814,8 +815,8 @@ class Contract:
             self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{text}` writes an attribute under a computed name", "write the attribute with a literal name")
         elif kind == "unknown":
             self.refuse("SRC-FORM-UNRECOGNISED", index.path, node.lineno, f"`{text}` writes through {ast.unparse(first)}, which nothing in the source says what it is", FORM_REMEDY)
-        elif self.hides_a_family_method(context, kind, node.args[1].value, _identity(index, scope, node.func)):
-            self.override(index.path, node.lineno, f"`{text}`" + (f" in {context[0].qual}" if context else ""), node.args[1].value)
+        elif self.hides_a_family_method(context, kind, name, _identity(index, scope, node.func)):
+            self.override(index.path, node.lineno, f"`{text}`" + (f" in {context[0].qual}" if context else ""), name)
 
     def hides_a_family_method(self, context: tuple, kind: str, name: str, identity: str | None) -> bool:
         """Whether writing the attribute `name` by setattr hides a method of a class family: through the receiver, a method of the receiver's own family; through data, a method of any

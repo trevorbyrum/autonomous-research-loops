@@ -253,8 +253,8 @@ MUTATIONS: list[Mutation] = [
     s("loc-star-import-uncertainty-ignored", "a module with a star import certifies its qualified names", (MQ + "test_a_star_import_in_the_module_leaves_every_name_uncertain",), IDX, "    if index.star_imports:", "    if False:"),
     # --- Repo.run's judgment of a child as a program -----------------------------------------------------------------------
     s("run-signal-is-complete", "a child killed by a signal is a completed run", (CP["DidNotCompleteTest"] + "test_a_signal_is_not_a_completed_run",), FIX, "    if done.returncode < 0:", "    if False:"),
-    s("run-traceback-is-complete", "a child that crashed with a traceback is a completed run", (CP["DidNotCompleteTest"] + "test_a_traceback_is_a_crash_even_with_exit_one",
-                                                                                                  CP["ErrorNotFailureTest"] + "test_a_crashed_child_is_an_error_and_not_a_failure"), FIX,
+    s("run-traceback-is-complete", "a child that crashed with a traceback is a completed run (the crash is still no completion: only the reason differs)",
+      (CP["DidNotCompleteTest"] + "test_a_traceback_is_a_crash_even_with_exit_one",), FIX,
       '    if "Traceback (most recent call last)" in (done.stdout or "") + (done.stderr or ""):', "    if False:"),
     s("run-load-failure-is-complete", "a child that could not be loaded is a completed run", (CP["DidNotCompleteTest"] + "test_a_syntax_error_in_the_script_itself_is_a_load_failure_without_a_traceback_header",), FIX,
       '    if LOAD_FAILURE.search(done.stderr or ""):', "    if False:"),

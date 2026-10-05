@@ -493,12 +493,16 @@ class LoaderInventoryTest(ContractCase):
 
     def test_a_changed_filter_or_skip_set_or_argument_or_discovery_is_refused(self) -> None:
         real = self.LOADER.read_text(encoding="utf-8")
-        changes = {"the skip set": real.replace('_SKIP = {"base"}', '_SKIP = {"base", "core"}'), "the filter": real.replace('info.name.startswith("_")', 'info.name.startswith("x")'),
-                   "the argument": real.replace('f"{__name__}.{info.name}"', 'f"{__name__}.{info.name}x"'), "the discovery": real.replace("pkgutil.iter_modules(__path__)", "pkgutil.iter_modules(['/x'])")}
-        for what, loader in changes.items():
+        changes = {"the skip set": (real.replace('_SKIP = {"base"}', '_SKIP = {"base", "core"}'), "_SKIP is not"), "the filter": (real.replace('info.name.startswith("_")', 'info.name.startswith("x")'), "the filter is not"),
+                   "the argument": (real.replace('f"{__name__}.{info.name}"', 'f"{__name__}.{info.name}x"'), "the argument is not"),
+                   "the discovery": (real.replace("pkgutil.iter_modules(__path__)", "pkgutil.iter_modules(['/x'])"), "does not read the package's own __path__")}
+        for what, (loader, says) in changes.items():
             with self.subTest(change=what):
                 self.assertNotEqual(loader, real, msg="the fixture's edit must change the real loader")
-                self.assertIn("SRC-LOADER-INVENTORY", [c for c, _ in self.categories(self.files(loader=loader))])
+                found = self.categories(self.files(loader=loader))
+                self.assertIn("SRC-LOADER-INVENTORY", [c for c, _ in found])
+                # the fingerprint refuses any change to the loader; the checks of the argument, the discovery, the skip set and the filter say WHICH part changed, and each is held by its own text
+                self.assertTrue(any(says in construct for _, construct in found), msg=f"no refusal says {says!r}: {found}")
 
     def test_a_second_loader_call_in_the_same_function_is_refused(self) -> None:
         real = self.LOADER.read_text(encoding="utf-8")

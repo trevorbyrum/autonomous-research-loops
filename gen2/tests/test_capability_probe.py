@@ -557,13 +557,21 @@ class DeclaredExpiryTest(FakeRunnerCase):
         obs = self.run_probe(runners={"codex": claude})
         self.assertEqual((obs["outcome"], obs["declared_expiry"]), ("usable", {"access_token": None, "id_token": None, "refresh_credential": True}))
 
+    def reads(self, reader, *arguments):
+        """What a reader of a declared credential returns: it answers None for what it cannot read and never raises, so a raise is a wrong answer and is reported as one (a mutant
+        that lets an out-of-range or NaN instant reach the conversion makes the reader raise, which is a refusal missing, not a test that could not run)."""
+        try:
+            return reader(*arguments)
+        except Exception as exc:
+            self.fail(f"{reader.__name__}{arguments!r} raised {exc!r} instead of answering")
+
     def test_the_readers_alone(self):
         self.assertEqual(jwt_exp(jwt({"exp": EXP_2001})), "2001-09-09T01:46:40Z")
         for token in (jwt({"exp": True}), jwt({"exp": "1000000000"}), jwt({"exp": -1}), jwt({"exp": 253402300800}), jwt({"exp": 10**30}),
                       jwt({"iat": EXP_2001}), jwt([EXP_2001]), jwt({"exp": EXP_2001}) + ".a.b", "a.%%%.c", "a." + "W" * 10 + ".c", "a.b", None, 7):
             with self.subTest(token=token):
-                self.assertIsNone(jwt_exp(token))
-        self.assertEqual(jwt_exp("x." + base64.urlsafe_b64encode(b'{"exp": NaN}').decode() + ".y"), None)  # Python's json reads NaN
+                self.assertIsNone(self.reads(jwt_exp, token))
+        self.assertEqual(self.reads(jwt_exp, "x." + base64.urlsafe_b64encode(b'{"exp": NaN}').decode() + ".y"), None)  # Python's json reads NaN
         self.assertEqual((epoch_instant(EXP_2001 + 0.25), epoch_instant(253402300799), epoch_instant(0)),
                          ("2001-09-09T01:46:41Z", "9999-12-31T23:59:59Z", "1970-01-01T00:00:00Z"))
         self.assertEqual(codex_declared([]), {"access_token": None, "id_token": None, "refresh_credential": False})
@@ -572,7 +580,7 @@ class DeclaredExpiryTest(FakeRunnerCase):
         for ms, instant in ((EXP_2001 * 1000, "2001-09-09T01:46:40Z"), (EXP_2001 * 1000 + 1, "2001-09-09T01:46:41Z"), (True, None),
                             ("1000000000000", None), (10**400, None), (float("inf"), None)):
             with self.subTest(expires_at=ms):
-                self.assertEqual(claude_declared({"claudeAiOauth": {"expiresAt": ms, "refreshToken": ""}}),
+                self.assertEqual(self.reads(claude_declared, {"claudeAiOauth": {"expiresAt": ms, "refreshToken": ""}}),
                                  {"access_token": instant, "id_token": None, "refresh_credential": False})
 
 

@@ -164,7 +164,8 @@ class RecoveryWorld:
 
     def request(self, **change) -> dict:
         """The operator's request for the job's open incident (the one status names)."""
-        since = change.pop("incident_since", None) or self.journal()["incident"]["since"]
+        incident = self.journal()["incident"]   # None once something has closed it: a test that asks for a request then must say so, not die looking for the incident's time
+        since = change.pop("incident_since", None) or (incident["since"] if incident else "no open incident")
         return {"invocation_id": MAIN, "incident_since": since, "reason": "the operator ended the stray group", **change}
 
     def reconciled(self, retained: dict) -> None:

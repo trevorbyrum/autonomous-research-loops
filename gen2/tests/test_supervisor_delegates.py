@@ -382,8 +382,11 @@ class ParentEnds:
         (a stale copy's write would also be refused by the journal's revision
         check, task 1c-repair-4, but that is not what keeps it)."""
         for method in METHODS:
-            with self.assertRaises(Waiting) as raised:
-                supervisor._call(supervisor.job(caller), {"budgets": {}}, method, {"invocation_id": inv})
+            try:
+                with self.assertRaises(Waiting) as raised:
+                    supervisor._call(supervisor.job(caller), {"budgets": {}}, method, {"invocation_id": inv})
+            except StaleJournal as stale:   # the journal's own revision check refusing a write the chokepoint should never have attempted from the caller's copy
+                self.fail(f"{method}: the chokepoint worked from the caller's stale copy of the journal and wrote it ({stale}) instead of refusing at the journal of the job called for")
             self.assertIsInstance(raised.exception, Held, method)
         job = supervisor.job(inv)
         for held in ({"budgets": {}}, supervisor._journal(job)):

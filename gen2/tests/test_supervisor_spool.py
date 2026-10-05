@@ -91,12 +91,19 @@ class StageTest(SpoolTestCase):
         self.assertEqual(self.spool.stage(TOPIC, b"a" * 64, "text/plain")["size_bytes"], 64)  # already staged: no new bytes
 
     def test_a_topic_or_hash_that_is_not_one_is_refused(self) -> None:
-        for bad in ("../escape", "fleet-a:t1/../../x", "Fleet:t", ""):
+        """Names that are not topic ids but would be perfectly good directory names: without the check the spool would stage under them, so a refusal is the only thing that tells
+        them from a topic. (The names that cannot be directories at all are the next test's: there the filesystem refuses too.)"""
+        for bad in ("Fleet:t", "fleet-a:T1", "fleet a:t1", "fleet-a:t1 "):
             with self.subTest(bad), self.assertRaises(ValueError):
                 self.spool.stage(bad, b"x", "text/plain")
         for bad in ("sha256:../../etc", "md5:" + "0" * 32, sha(b"x").upper()):
             with self.subTest(bad), self.assertRaises(ValueError):
                 self.spool.read(bad, topic_id=TOPIC)
+
+    def test_a_topic_that_would_leave_the_spool_or_is_empty_is_refused(self) -> None:
+        for bad in ("../escape", "fleet-a:t1/../../x", ""):
+            with self.subTest(bad), self.assertRaises(ValueError):
+                self.spool.stage(bad, b"x", "text/plain")
 
     def test_a_symlinked_topic_directory_is_not_followed(self) -> None:
         outside = self.root / "outside"

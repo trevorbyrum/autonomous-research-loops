@@ -577,19 +577,21 @@ class ReadOnlyTest(ImporterTestCase):
         for case, (make, blocking, source) in cases.items():
             with self.subTest(case=case):
                 make()
-                report = self.dry()
-                self.assertEqual([i["code"] for i in report["blocking"]], blocking)
-                self.assertEqual(report["sources"].get("state/control.sqlite3"), source)
-                item = find(records_of(report, "latency"), "queue item")
-                if blocking:
-                    self.assertEqual((item["status"], "stale-snapshot" in codes(item)), ("partial", True))
-                else:
-                    self.assertEqual((item["status"], item["issues"]), ("maps", []))
-                self.assertNotIn("outside-marker", dry_run.render(report))
-                if managed.is_dir() and not managed.is_symlink():
-                    managed.rmdir()
-                elif managed.exists() or managed.is_symlink():
-                    managed.unlink()
+                try:
+                    report = self.dry()
+                    self.assertEqual([i["code"] for i in report["blocking"]], blocking)
+                    self.assertEqual(report["sources"].get("state/control.sqlite3"), source)
+                    item = find(records_of(report, "latency"), "queue item")
+                    if blocking:
+                        self.assertEqual((item["status"], "stale-snapshot" in codes(item)), ("partial", True))
+                    else:
+                        self.assertEqual((item["status"], item["issues"]), ("maps", []))
+                    self.assertNotIn("outside-marker", dry_run.render(report))
+                finally:   # whatever the assertions found, the next case starts from no managed entry (a failed case must not make the next one's setup fail)
+                    if managed.is_dir() and not managed.is_symlink():
+                        managed.rmdir()
+                    elif managed.exists() or managed.is_symlink():
+                        managed.unlink()
         state = self.root / "state"
         state.rename(self.tmp / "state-elsewhere")
         state.symlink_to(self.tmp / "state-elsewhere", target_is_directory=True)

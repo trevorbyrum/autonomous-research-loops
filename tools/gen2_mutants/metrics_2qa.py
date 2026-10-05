@@ -189,7 +189,7 @@ MUTATIONS: list[Mutation] = [
     m("exempt-set-limit-allowed", "a named instance may carry a limit", (RE + "test_a_numeric_metric_needs_its_limit_and_a_set_metric_takes_none",),
       '    elif metric in METRICS_SET and fields.get("limit"):', "    elif False:"),
     m("exempt-invalid-still-applies", "an invalid entry exempts", (RE + "test_each_required_field_is_required",),
-      "        if not problems:\n            valid.append(entry)", "        valid.append(entry)"),
+      "        if not problems:\n            valid.append(entry)", '        if not problems or ("metric" in entry.fields and "location" in entry.fields):   # the fields the key is built from are there\n            valid.append(entry)'),
     m("exempt-duplicate-allowed", "two entries for one regression are allowed", (RE + "test_two_entries_for_one_regression_are_a_problem",),
       "        if key in seen:", "        if False:"),
     m("exempt-unused-allowed", "an entry no regression needs stays", (RE + "test_an_entry_no_regression_needs_is_stale_and_fails", RE + "test_an_entry_that_names_the_wrong_location_exempts_nothing_and_is_stale"),
