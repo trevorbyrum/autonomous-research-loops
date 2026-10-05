@@ -1603,3 +1603,14 @@ The post-2q Gate D is renumbered #5.
   - Gate C: unsound positive expectations and unsupported claims.
 - Astra's own reruns: gen2-check exit 0 (2,237 tests, 2,244/2,244); gen2-gateway exit 0 (1,516+1,516, 394/394). Orchestrator reruns match.
 - **This is the second consecutive BLOCK since Gate D #4.** Under the review-throughput rules, a third goes to the operator (round cap). Before the next brief, the orchestrator asked Astra to classify F1–F3 under the new blocking definition, and whether an interpreter cross-check would close the family.
+
+## 2026-10-05: 2q-a-repair-5 (slice 1: the binding-identity resolver), the first round under the review-throughput rules
+- **Astra** (`9796d360`, pinned 3cd4716; `private/reviews/gen2-2q-a-repair-5-astra-review-20261005.md`): **BLOCK on A and C, PASS on B. The slice correction is MITIGATION.**
+- **Repaired:** the four original cases (re-exported and unpacked loader, unpacked module, nonlocal). The landing run is green: gen2-check exit 0 (2,248 tests, 2,256/2,256); gen2-gateway exit 0.
+- **Open, blocking:**
+  - **F1 (d, e):** the shared lookup ignores `global` declarations when reading a name, giving a wrong class owner or a missed loader under nested-scope shadowing; an unresolved alias becomes an accepted call.
+  - **F2 (e):** three new paired controls (`2QB-idx-unpacking-binds-no-value`, `2QB-idx-alias-cycle-is-external`, `2QB-con-decorator-identity-is-its-spelling`) don't reach the changed line or guard.
+- **Non-blocking:**
+  - two compiler-invalid `nonlocal` forms are accepted;
+  - the four producer-call residuals (`loader-default`, `loader-walrus`, `loader-getattr`, `type-star`) need a named owner.
+- **This is the third consecutive BLOCK since Gate D #4, so the round cap applies.** The orchestrator stopped dispatching, and the decision is the operator's: accept the remainder as debt, or continue, with a fresh Gate D first.
