@@ -64,6 +64,7 @@ def build(Mutant) -> list:
                '    def __eq__(self, other) -> bool:\n        raise PassiveRead("this value is declared any_(): metadata carried as sent, stored and never read (comparison)")',
                '    def __eq__(self, other) -> bool:\n        return self is other', (PR + "EqualityAndShapeTest.test_a_passive_value_refuses_every_comparison",), CONTROLS),
         Mutant("U-slots-the-base-has-a-dict", "the shared base gives its instances a dictionary", PAYLOAD,
-               '    __slots__ = ()\n\n    def __bool__', '    def __bool__', (PR + "AttributesTest.test_a_dunder_an_introspecting_library_probes_for_is_an_attribute_error_as_for_any_object",),
-               (*CONTROLS, PR + "EqualityAndShapeTest.test_the_storage_is_one_slot_in_each_class_and_there_is_no_instance_dict")),
+               '    __slots__ = ()\n\n    def __bool__', '    def __bool__', (PR + "AttributesTest.test_a_dunder_an_introspecting_library_probes_for_is_an_attribute_error_as_for_any_object",
+                                                                                                PR + "EqualityAndShapeTest.test_the_storage_is_one_slot_in_each_class_and_there_is_no_instance_dict"),
+               CONTROLS),   # task 2q-a-repair-4: the storage test asks the object for its dictionary now (it only read `__slots__` before, which this mutant leaves unchanged): it is a killer, not a control
     ]

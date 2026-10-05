@@ -14,7 +14,7 @@ the refusals are not blanket ones.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from gen2.tests.tool_repo_fixtures import py
 

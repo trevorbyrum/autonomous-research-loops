@@ -157,7 +157,7 @@ class WitnessTest(ChildCase):
             import sys
             import sibling_module
             print(__name__, sys.argv[1:], sibling_module.VALUE, __file__.endswith('child.py'), sys.argv[0].endswith('child.py'))
-        """, )
+        """)
         self.assertEqual(done.stdout, "__main__ [] beside the tool True True\n")
 
     def test_a_record_that_disagrees_with_the_exit_status_is_not_a_completed_run(self) -> None:
