@@ -21,3 +21,13 @@ What is the best-supported way to close the open 2q-a findings? They are: scope-
 - **Quoted dataclass field markers (slice 3):** refuse quoted annotations in class bodies, which current code doesn't use. This also narrows forms, so it's part of the same amendment.
 - **Weak paired controls:** mechanical; write controls that reach the changed line.
 - **Optional:** cross-check the import graph against an independent analyser (grimp) and report disagreements; advisory only.
+
+## Addendum, 2026-10-05: slice A's adapter regressions (Astra's 2q-a-repair-6 review, R6-1 and R6-2)
+The binding family recurred inside slice A's AST-to-`symtable` adapter, so the charter requires research before re-briefing.
+- **Compiler scope order.** CPython's symtable pass visits a comprehension's **first iterable before** entering the comprehension's own scope (CPython 3.12.3 `Python/symtable.c`, around line 2384, cited by Astra). So `symtable` children don't come in AST pre-order when an iterable contains a nested scope. Verified locally: for `tuple((A := object) for q in (q for q in (1,)))`, the children are `genexpr` with identifiers `{.0, q}` first, then `genexpr` with `{.0, A, object, q}`. Same name, same line, different identifier sets.
+- **Private name mangling.** Inside a class body, the compiler records `__name` (no trailing double underscore) as `_ClassName__name`, with the class name's leading underscores stripped, and it looks names up the same way. This is the Python language reference, "Private name mangling", and CPython `symtable.c` `_Py_Mangle`. Verified locally: `class C: def __helper` gives the identifier `_C__helper`.
+- **Implication.** Two corrections, both mechanical and both grounded in the compiler's documented behaviour:
+  1. Pair scopes by reproducing the compiler's visit order, **and validate every pairing both ways**: the AST scope's names, mangled, must equal the table's identifiers modulo compiler-internal names like `.0`, and any disagreement is a refusal. Pairing by header is not proof; validating it makes a wrong pairing detectable whatever order logic is used.
+  2. Apply the language's mangling rule to every identifier looked up in a class context.
+
+  A missing symbol for an executable binding is a refusal, never a module or global fallback; only genuinely unevaluated annotations take the annotation path.

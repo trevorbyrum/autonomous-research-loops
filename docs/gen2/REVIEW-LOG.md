@@ -1617,3 +1617,13 @@ The post-2q Gate D is renumbered #5.
 - **Operator ruling 2026-10-05 at the round cap.** After the research pass (`docs/gen2/research/2q-a-round-cap-20261005.md`, now required by the charter's "Research before re-briefing"), the operator ruled: "make the fixes, review it to make sure it didn't cause any other issues and then we'll move on."
   - The operator continues on the researched plan: scope from `symtable` (slice A, 2q-a-repair-6), then SOURCE-CONTRACT v2, soundy by declaration (slice B, 2q-a-repair-7): the mechanism ban plus a refusal of quoted class-body annotations, replacing value tracking. v2 is approved.
   - The pre-repair Gate D is skipped by operator direction. Gate D #5 after 2q still runs.
+
+## 2026-10-05: 2q-a-repair-6 (slice A: scope from symtable)
+- **Astra** (`471df716`, pinned 59b0536; `private/reviews/gen2-2q-a-repair-6-astra-review-20261005.md`): **BLOCK on A and C, PASS on B, family MITIGATION.**
+- **ROOT-CAUSE for their findings:** the global/nonlocal repair, the compiler-invalid refusal, alias uncertainty, and the three controls. The landing run is green, and production measurements and the accepted items are intact.
+- **New regressions from the adapter:**
+  - **R6-1:** same-header generator scopes can be paired with the wrong `symtable` table, because the compiler visits the first iterable first.
+  - **R6-2:** private names are looked up unmangled, so duplicate and rebound private methods are accepted.
+- **Non-blocking:** the `get_type_hints` analogy wording; interpreter-version portability.
+- The research addendum covers compiler visit order, two-way validation and mangling. Routed to **2q-a-repair-6b**.
+- **Slice B (2q-a-repair-7) BLOCKED before coding** on three production uses of banned names; it's held for an operator decision.
