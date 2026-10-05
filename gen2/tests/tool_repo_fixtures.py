@@ -17,6 +17,12 @@ status the tool never returns, an exit 2 without the tool's own message) or left
 ERRORS instead of failing, and the mutation harness does not credit an errored killer as a kill: a mutant a tool crashes on is not shown to have behaved
 wrongly, only to have crashed. Every child's return code, stdout and stderr are kept (`Repo.runs`, the exception, and the JSON lines `GEN2_TOOL_RUN_LOG`
 names), whatever the outcome.
+
+A completed run needs a POSITIVE witness (task 2q-a-repair-4, Astra's 2q-a-repair-3 review F4): an exit status of 0 or 1 and the absence of a recognised traceback
+prove nothing, because a child that called `os._exit(0)`, or crashed with its exception hook suppressed, looks exactly like a tool's own refusal. Each tool child
+therefore runs under `LAUNCHER`, which runs the tool as `__main__` and writes a completion record - a JSON file naming the status - ONLY when the tool returns or
+exits normally (`sys.exit`, a return from `main`). `Repo.run` requires that record and that its status is the process's: a child with no record is incomplete
+whatever its exit status, and a tool's own refusal (exit 1, or exit 2 with its message) is a completed run because it wrote one.
 """
 from __future__ import annotations
 
@@ -53,8 +59,40 @@ class ToolDidNotComplete(Exception):
         self.why, self.command, self.returncode, self.stdout, self.stderr = why, command, returncode, stdout, stderr
 
 
-def incomplete(done: subprocess.CompletedProcess) -> str | None:
-    """Why a finished child is not a completed run (a crash, a signal, a load failure), or None. A tool's own refusal is a completed run."""
+LAUNCHER = """
+import json, os, runpy, sys
+record, tool, *rest = sys.argv[1:]
+sys.argv = [tool, *rest]
+if sys.path and sys.path[0] == "":
+    del sys.path[0]
+sys.path.insert(0, os.path.dirname(os.path.abspath(tool)))   # the script's own directory first, as `python tool.py` has it
+if not os.path.isfile(tool):
+    print(f"{sys.executable}: can't open file {tool!r}: [Errno 2] No such file or directory", file=sys.stderr)
+    sys.exit(2)
+try:
+    with open(tool, "rb") as handle:
+        compile(handle.read(), tool, "exec")
+except SyntaxError as bad:   # reported as the interpreter reports a script it cannot load: no traceback header
+    sys.excepthook(SyntaxError, bad.with_traceback(None), None)
+    sys.exit(1)
+status = 0
+try:
+    runpy.run_path(tool, run_name="__main__")
+except SystemExit as stop:
+    status = stop.code
+    if status is None:
+        status = 0
+    elif not isinstance(status, int):
+        print(status, file=sys.stderr)
+        status = 1
+with open(record, "w", encoding="utf-8") as handle:
+    json.dump({"status": status}, handle)
+sys.exit(status)
+"""   # the witness: the record is written only after the tool returned or exited normally, so os._exit and a suppressed crash write none
+
+
+def incomplete(done: subprocess.CompletedProcess, completion: dict | None = None) -> str | None:
+    """Why a finished child is not a completed run (a crash, a signal, a load failure, no completion record), or None. A tool's own refusal is a completed run."""
     if done.returncode < 0:
         return f"it was killed by signal {-done.returncode}"
     if "Traceback (most recent call last)" in (done.stdout or "") + (done.stderr or ""):
@@ -65,7 +103,40 @@ def incomplete(done: subprocess.CompletedProcess) -> str | None:
         return f"it exited with status {done.returncode}, which no tool returns"
     if done.returncode == 2 and not any(prefix in (done.stderr or "") for prefix in TOOL_MESSAGES):
         return "it exited 2 without its own message (the interpreter could not start it, or the arguments were refused by argparse)"
+    if completion is None:
+        return "it left no completion record: it did not return or exit normally (an os._exit, or a crash whose report was suppressed)"
+    if completion.get("status") != done.returncode:
+        return f"its completion record says status {completion.get('status')!r} but it exited {done.returncode}"
     return None
+
+
+def record_run(command: list[str], returncode: int | None, stdout: str, stderr: str, problem: str | None, completion: dict | None = None) -> None:
+    log = os.environ.get("GEN2_TOOL_RUN_LOG")
+    if log:
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"test": os.environ.get("GEN2_ATTEST_TEST"), "command": command, "returncode": returncode, "stdout": stdout, "stderr": stderr,
+                                     "completion": completion, "did_not_complete": problem}) + "\n")
+
+
+def run_judged(command: list[str], timeout: int, runs: list | None = None) -> subprocess.CompletedProcess:
+    """Run `[python, script, *arguments]` under LAUNCHER and judge it as a program (module docstring): the finished child, kept whole in `runs` and in the run log, or
+    ToolDidNotComplete. A repository-less caller (a test of the tool on the real tree) uses this directly."""
+    with tempfile.TemporaryDirectory() as records:
+        record = Path(records) / "completion.json"
+        try:
+            done = subprocess.run([command[0], "-c", LAUNCHER, str(record), *command[1:]], capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            out, err = (x.decode(errors="replace") if isinstance(x, bytes) else x or "" for x in (exc.stdout, exc.stderr))
+            record_run(command, None, out, err, f"timed out after {timeout} s")
+            raise ToolDidNotComplete(f"it timed out after {timeout} s", command, None, out, err) from exc
+        completion = json.loads(record.read_text(encoding="utf-8")) if record.exists() else None
+    why = incomplete(done, completion)
+    if runs is not None:
+        runs.append(done)
+    record_run(command, done.returncode, done.stdout, done.stderr, why, completion)
+    if why:
+        raise ToolDidNotComplete(why, command, done.returncode, done.stdout, done.stderr)
+    return done
 
 
 class Repo:
@@ -108,27 +179,7 @@ class Repo:
         target = tool or TOOL
         if target.is_relative_to(REPO):
             target = children.path(str(target.relative_to(REPO)))
-        command = [sys.executable, str(target), *(["--root", str(self.root)] if root else []), *args]
-        try:
-            done = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-        except subprocess.TimeoutExpired as exc:
-            out, err = (x.decode(errors="replace") if isinstance(x, bytes) else x or "" for x in (exc.stdout, exc.stderr))
-            self.record(command, None, out, err, f"timed out after {timeout} s")
-            raise ToolDidNotComplete(f"it timed out after {timeout} s", command, None, out, err) from exc
-        why = incomplete(done)
-        self.runs.append(done)
-        self.record(command, done.returncode, done.stdout, done.stderr, why)
-        if why:
-            raise ToolDidNotComplete(why, command, done.returncode, done.stdout, done.stderr)
-        return done
-
-    @staticmethod
-    def record(command: list[str], returncode: int | None, stdout: str, stderr: str, problem: str | None) -> None:
-        log = os.environ.get("GEN2_TOOL_RUN_LOG")
-        if log:
-            with open(log, "a", encoding="utf-8") as handle:
-                handle.write(json.dumps({"test": os.environ.get("GEN2_ATTEST_TEST"), "command": command, "returncode": returncode, "stdout": stdout,
-                                         "stderr": stderr, "did_not_complete": problem}) + "\n")
+        return run_judged([sys.executable, str(target), *(["--root", str(self.root)] if root else []), *args], timeout, self.runs)
 
     def baseline(self) -> dict:
         return json.loads((self.root / BASELINE).read_text())
@@ -205,3 +256,12 @@ def component_files(lines: int, importing_components: int) -> dict[str, str]:
 def with_branches(n: int, name: str = "f") -> str:
     """A function of cyclomatic complexity n + 1 and cognitive complexity n."""
     return py(f"def {name}(a):", *(f"    if a == {i}:\n        pass" for i in range(n)))
+
+
+def fixture_python(cwd: Path, code: str, timeout: int = 60) -> subprocess.CompletedProcess:
+    """What the INTERPRETER does with a fixture package, as the control of a source fixture: `code` run in a fresh Python child whose working directory is `cwd` (the fixture tree: a
+    `gen2/` or `gateway/research_gateway/` package of its own is the only one it can import, the repository's is not on its path) and an environment of nothing but PATH. Not a
+    gen-2 child of the repository's code tree, so it does not go through tests/children.py; a name for the executable in a variable keeps tests/test_children.py's lint, which is about
+    the repository's tree, from reading it as one."""
+    python = sys.executable
+    return subprocess.run([python, "-c", code], cwd=cwd, env={"PATH": os.environ.get("PATH", ""), "PYTHONDONTWRITEBYTECODE": "1"}, capture_output=True, text=True, timeout=timeout)

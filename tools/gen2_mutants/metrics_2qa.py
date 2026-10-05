@@ -58,9 +58,9 @@ MUTATIONS: list[Mutation] = [
       MSM + "test_a_god_component_is_big_and_imported_by_many_components"), 'return ".".join(module_name(path).split(".")[:2])', 'return ".".join(module_name(path).split(".")[:1])'),
     # --- implicit collaboration -----------------------------------------------------------------------------------------
     m("collab-same-file-counted", "a self-call into the same file counts", (MCO + "test_calls_between_the_files_of_one_family_are_counted_by_directed_pair",),
-      'if owner and role != "property" and owner != member[0]:', 'if owner and role != "property":'),
+      'if owner and role in ("method", "static", "class") and owner != member[0]:', 'if owner and role in ("method", "static", "class"):'),
     m("collab-last-definition-wins", "a method defined twice resolves to the last class, not the composed class's own", (MCO + "test_a_method_resolves_the_way_the_composed_class_resolves_it",),
-      "defined.setdefault(name, (member[0], fn.role))", "defined[name] = (member[0], fn.role)"),
+      "defined.setdefault(name, (member[0], effective.role))", "defined[name] = (member[0], effective.role)"),
     m("collab-same-file-family", "a class with a base in its own file is a family", (MCO + "test_a_base_in_the_same_file_or_outside_the_project_is_no_family",),
       "            if not any(member[0] != path for member in order):\n                continue", "            if False:\n                continue"),
     m("collab-module-attribute-base", "a base named through a module attribute is not resolved", (MCO + "test_a_base_named_through_a_module_attribute_is_found",),

@@ -1,17 +1,28 @@
-"""Gen-2 source facts: the one recognition boundary (task 2q-a-repair-3; docs/gen2/SOURCE-CONTRACT.md).
+"""Gen-2 source facts: the one recognition boundary (tasks 2q-a-repair-3 and 2q-a-repair-4; docs/gen2/SOURCE-CONTRACT.md).
 
 Gate D #4 found one cause behind the architecture ratchet's R1-R4 findings: three tools (the metrics resolver, the function inventory and the
 locator checker) each rebuilt names, scopes and class ownership from the same source, so a form one of them mis-read became an apparent improvement
 that the closed accounting then preserved. This module parses every production file ONCE, for both services, into one index:
 
-  * definitions and scopes: every `def`, `async def` and `class`, in the lexical scope that holds it, with its qualified name, its decorators and
-    whether a compound statement guards it;
-  * binding roles: every occurrence that binds a name in a scope, with its role (class, def, import, import from, star, assign, augmented assign,
-    target, walrus, delete, parameter, global/nonlocal write) and whether it is conditional;
-  * class bases, resolved by the one name resolver below, and the C3 order over the project classes;
+  * definitions and scopes: every `def`, `async def`, `class`, lambda and comprehension, in the lexical scope that holds it, with its qualified name,
+    its decorators and whether a compound statement guards it;
+  * binding roles: every occurrence that binds a name in a scope, with its role (class, def, import, import from, star, assign, annotation, augmented
+    assign, target, walrus, delete, parameter, global/nonlocal write) and whether it is conditional, and the expression whose value it binds;
+  * store sites (an attribute or an item written or deleted) and call sites, each with the scope that holds it;
+  * class bases, resolved by the one name resolver below, and the C3 order over the project classes (`object` implicit and last, as Python has it);
   * method ownership: the methods a class declares directly, and each method's receiver;
   * diagnostics: every construct the structural rows of the source contract refuse (a duplicate definition, a conditional class or method, a
-    rebound definition, a star import, an unresolvable base ...), each naming file, line, construct and remediation.
+    rebound definition, a star import, an unresolvable base, a syntax form the walker has no record of ...), each naming file, line, construct and
+    remediation.
+
+POSITIVE RECOGNITION (task 2q-a-repair-4; Astra's 2q-a-repair-3 review F2). Three rounds of fixes for individual spellings showed the cause: the guard
+refused the forms it knew to be bad and trusted every other. The walker below turns that around. It is ONE dispatcher: every node of the syntax tree is
+visited exactly once, through the table `FORMS`, which names the handler of every node class that can occur in the supported subset - the handler that records
+what the node does to a namespace (a binding, a store, a call, a new scope) or that it does nothing. A node class with no entry in `FORMS` is REFUSED
+(SRC-FORM-UNRECOGNISED), not read as harmless; so is a name stored where no statement recorded how. There is no traversal that lists the positions it
+knows of (statements, defaults, decorators, loop targets ...): a position the walker does not enumerate is still visited, because the walk is by node, and a
+node it does not recognise stops the build. tools/gen2_source_contract.py runs the contract's rows over these facts the same way: a kind of binding or store
+with no recognised effect is refused there too.
 
 It does not decide policy about decorators, receivers, reflection or dynamic loading: tools/gen2_source_contract.py holds the contract's records
 and rows and runs them over this index. Everything that measures or looks a name up (tools/gen2_metrics.py, tools/check_gen2_locators.py) reads
@@ -101,20 +112,31 @@ class Diagnostic:
         return f"{self.file}:{self.line}: {self.category}: {self.construct}. {self.remediation}"
 
 
+# The roles a binding can have: the complete list, one per kind of binding site (docs/gen2/SOURCE-CONTRACT.md, "Closure"). tools/gen2_source_contract.py recognises each
+# of them in each kind of namespace; a role not listed there is refused, so a new kind of binding cannot be added here and trusted.
+BINDING_ROLES = ("class", "def", "import", "from", "star", "assign", "annotation", "augassign", "target", "walrus", "delete", "param", "global_write", "nonlocal_write")
+
+
 @dataclass
 class Binding:
-    """One occurrence that binds a name in a scope. `ref` is ("module", dotted) or ("from", module, name) for the import roles."""
-    role: str      # class def import from star assign annotation augassign target walrus delete param global_write nonlocal_write
+    """One occurrence that binds a name in a scope. `ref` is ("module", dotted) or ("from", module, name) for the import roles, ("alias", text) for a name bound
+    directly to a name or an attribute chain. `source` is the expression whose value the name is bound to, where there is one (an assignment's value, a loop's
+    iterable, a walrus's value); `direct` says the bare name is the whole target, not one element of an unpacking."""
+    role: str      # one of BINDING_ROLES
     line: int
     conditional: bool = False
     ref: tuple = ()
+    source: ast.AST | None = None
+    direct: bool = False
+    annotated: ast.AST | None = None   # the annotation of the annotated assignment that bound it (a dataclass field is one)
+    origin: "Scope | None" = None      # the scope the binding statement ran in (a `global` or `nonlocal` write is recorded in another scope, but `source` is evaluated here)
 
 
 class Scope:
     __slots__ = ("kind", "qual", "node", "parent", "bindings", "declared")
 
     def __init__(self, kind: str, qual: str, node: ast.AST, parent: "Scope | None") -> None:
-        self.kind, self.qual, self.node, self.parent = kind, qual, node, parent   # module | class | function
+        self.kind, self.qual, self.node, self.parent = kind, qual, node, parent   # module | class | function | lambda | comprehension
         self.bindings: dict[str, list[Binding]] = {}
         self.declared: dict[str, str] = {}   # names a `global` or `nonlocal` statement sends elsewhere
 
@@ -146,6 +168,16 @@ class FunctionFact:
         return f"{self.path}::{self.qual}"
 
 
+@dataclass(frozen=True)
+class Member:
+    """One member a class has once Python has built it (the contract fills these). `role` is a function's role (method, static, class, property) for a member that is
+    a `def`, `data` for a name bound to anything else, `slot` for a `__slots__` entry. `origin` says where it comes from: authored in the body, generated by a recorded
+    transformation, or IMPLICIT (Python's own rule: `__eq__` without `__hash__` sets `__hash__` to None)."""
+    role: str
+    origin: str
+    note: str = ""
+
+
 @dataclass
 class ClassFact:
     path: str
@@ -158,14 +190,32 @@ class ClassFact:
     transforms: list[str] = field(default_factory=list)
     methods: dict[str, FunctionFact] = field(default_factory=dict)
     generated: set[str] = field(default_factory=set)        # method names a modelled class decorator adds (a dataclass's __init__ ...)
+    members: dict[str, Member] = field(default_factory=dict)   # the EFFECTIVE members: authored, generated and implicit ones; the first class in the C3 order that has the name decides it
+    fields: list[tuple[str, int]] = field(default_factory=list)   # a dataclass's fields (name, line): each is an instance attribute its generated `__init__` writes
+    slots: list[str] = field(default_factory=list)          # the names a literal `__slots__` lists
+    dataclass_kind: str = ""                                # "plain" or "frozen" for a recorded `dataclasses.dataclass`, else ""
 
     @property
     def key(self) -> tuple[str, str]:
         return (self.path, self.qual)
 
 
+@dataclass(frozen=True)
+class Store:
+    """An attribute or an item written or deleted (`a.b = v`, `a[k] += v`, `del a.b`, a loop or `with` target `a.b`) and the scope that holds the statement."""
+    node: ast.Attribute | ast.Subscript
+    scope: Scope
+    conditional: bool
+
+
+@dataclass(frozen=True)
+class CallSite:
+    node: ast.Call
+    scope: Scope
+
+
 class FileIndex:
-    """One file's facts: scopes with their bindings, definitions, classes and the structural diagnostics found while reading it."""
+    """One file's facts: scopes with their bindings, definitions, classes, store and call sites, and the structural diagnostics found while reading it."""
 
     def __init__(self, path: str, tree: ast.Module) -> None:
         self.path, self.tree = path, tree
@@ -175,20 +225,78 @@ class FileIndex:
         self.scopes: list[Scope] = [self.module]
         self.diagnostics: list[Diagnostic] = []
         self.star_imports: list[int] = []
+        self.stores: list[Store] = []
+        self.calls: list[CallSite] = []
         _Builder(self).run()
 
 
-def statement_blocks(node: ast.AST):
-    """The statement lists a compound statement holds, in source order (an `except` handler's and a `case`'s body included)."""
-    for name, value in ast.iter_fields(node):
-        if isinstance(value, list) and value and isinstance(value[0], ast.stmt):
-            yield value
-        elif name == "handlers":
-            for handler in value:
-                yield handler.body
-        elif name == "cases":
-            for case in value:
-                yield case.body
+# --- the dispatcher's table ------------------------------------------------------------------------------------------------
+# Every syntax node class that may occur in the supported subset, and the handler (a `form_<name>` method of _Builder) that records what it does. A class not named
+# here is REFUSED (SRC-FORM-UNRECOGNISED): the walker has no record of what it binds, stores or changes. A node class of a later Python is therefore refused until it is
+# listed, deliberately. `REFUSED_BY_DESIGN` are the node classes the contract does not record: the `type` statement and type parameters bind names in an annotation
+# scope this index does not model. gen2/tests/test_source_contract.py compares this table with the node classes of the interpreter running the tests.
+
+FORMS: dict[str, str] = {}
+
+
+def _forms(handler: str, *names: str) -> None:
+    FORMS.update(dict.fromkeys(names, handler))
+
+
+_forms("leaf", "Constant", "Pass", "Break", "Continue", "Load", "Store", "Del", "And", "Or", "Add", "Sub", "Mult", "MatMult", "Div", "Mod", "Pow", "LShift", "RShift",
+       "BitOr", "BitXor", "BitAnd", "FloorDiv", "Invert", "Not", "UAdd", "USub", "Eq", "NotEq", "Lt", "LtE", "Gt", "GtE", "Is", "IsNot", "In", "NotIn", "TypeIgnore",
+       "MatchSingleton")
+_forms("generic", "Module", "Expression", "Interactive", "FunctionType", "Return", "Raise", "Assert", "Expr", "BoolOp", "BinOp", "UnaryOp", "IfExp", "Dict", "Set", "Await",
+       "Yield", "YieldFrom", "Compare", "FormattedValue", "JoinedStr", "Slice", "comprehension", "arguments", "arg", "keyword", "alias", "MatchValue", "MatchSequence", "MatchClass",
+       "MatchOr", "ExtSlice", "Index", "Suite")
+_forms("function", "FunctionDef", "AsyncFunctionDef")
+_forms("class", "ClassDef")
+_forms("lambda", "Lambda")
+_forms("comprehension_scope", "ListComp", "SetComp", "DictComp", "GeneratorExp")
+_forms("assign", "Assign")
+_forms("augassign", "AugAssign")
+_forms("annassign", "AnnAssign")
+_forms("delete", "Delete")
+_forms("loop", "For", "AsyncFor")
+_forms("compound", "While", "If", "Try", "TryStar", "Match", "With", "AsyncWith")
+_forms("withitem", "withitem")
+_forms("except_handler", "ExceptHandler")
+_forms("match_case", "match_case")
+_forms("capture", "MatchAs", "MatchStar", "MatchMapping")
+_forms("import", "Import")
+_forms("import_from", "ImportFrom")
+_forms("declaration", "Global", "Nonlocal")
+_forms("walrus", "NamedExpr")
+_forms("name", "Name")
+_forms("container", "Tuple", "List", "Starred")
+_forms("attribute", "Attribute")
+_forms("subscript", "Subscript")
+_forms("call", "Call")
+REFUSED_BY_DESIGN = ("TypeAlias", "TypeVar", "ParamSpec", "TypeVarTuple")   # a name bound in an annotation scope: not modelled, so not accepted
+PURE_NODES = tuple(name for name, form in FORMS.items() if form == "leaf")    # nodes with no children that matter
+
+
+@dataclass(frozen=True)
+class Target:
+    """How the names a statement writes are bound: the role, the expression whose value they take, the annotation of the annotated assignment that wrote them (if
+    one did), and whether the bare name is the whole target (it is not an element of an unpacking)."""
+    role: str
+    source: ast.AST | None = None
+    annotated: ast.AST | None = None
+    direct: bool = True
+
+
+FORM_REMEDY = ("write the form with a construct the contract records, or amend the contract (docs/gen2/SOURCE-CONTRACT.md, operator-reviewed) before using it: a form with no "
+               "record binds or stores in a way the metrics cannot state")
+
+
+def chain_text(node: ast.AST | None) -> str | None:
+    """The dotted text of a pure name-and-attribute chain (`a`, `a.b.c`), or None for any other expression."""
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    return ".".join([node.id, *reversed(parts)]) if isinstance(node, ast.Name) else None
 
 
 class _Builder:
@@ -197,21 +305,46 @@ class _Builder:
 
     def run(self) -> None:
         index = self.index
-        self.body(index.tree.body, index.module, False)
+        self.block(index.tree.body, index.module, False)
         for scope in index.scopes:
             self.structure(scope)
+
+    # -- the dispatcher ----------------------------------------------------------------------------------------------
+
+    def visit(self, node: ast.AST, scope: Scope, nested: bool, target: Target | None = None) -> None:
+        """Every node goes through here, once: the form's handler records its effect, and a node class with no form is refused."""
+        form = FORMS.get(type(node).__name__)
+        if form is None:
+            self.diagnose("SRC-FORM-UNRECOGNISED", getattr(node, "lineno", 0), f"the syntax {type(node).__name__} has no recorded effect on a namespace", FORM_REMEDY)
+            return
+        getattr(self, f"form_{form}")(node, scope, nested, target)
+
+    def block(self, statements: list[ast.stmt], scope: Scope, nested: bool) -> None:
+        for statement in statements:
+            self.visit(statement, scope, nested)
+
+    def each(self, nodes, scope: Scope, nested: bool, target: Target | None = None) -> None:
+        for node in nodes:
+            if node is not None:
+                self.visit(node, scope, nested, target)
 
     # -- scopes and definitions --
 
     def diagnose(self, category: str, line: int, construct: str, remediation: str) -> None:
         self.index.diagnostics.append(Diagnostic(category, self.index.path, line, construct, remediation))
 
-    def bind(self, scope: Scope, name: str, role: str, line: int, conditional: bool, ref: tuple = ()) -> None:
-        if name in scope.declared and role in ("assign", "augassign", "target", "walrus", "delete", "def", "class"):
+    def bind(self, scope: Scope, name: str, role: str, line: int, conditional: bool, ref: tuple = (), source: ast.AST | None = None, direct: bool = False,
+             annotated: ast.AST | None = None) -> None:
+        """The one place a binding is recorded. A `global` or `nonlocal` declaration sends EVERY kind of binding (an import and a definition as much as an assignment)
+        to the scope it names."""
+        origin = scope
+        if name in scope.declared:
             kind = scope.declared[name]
             target = self.index.module if kind == "global" else next((s for s in self._enclosing(scope) if s.kind == "function"), scope)
-            role, scope = f"{kind}_write", target
-        scope.bind(name, Binding(role, line, conditional, ref))
+            role, scope, ref = f"{kind}_write", target, ()
+        elif role == "assign" and direct and chain_text(source) is not None:
+            ref = ("alias", chain_text(source))   # a name bound to a name or an attribute chain forwards that identity
+        scope.bind(name, Binding(role, line, conditional, ref, source, direct, annotated, origin))
 
     @staticmethod
     def _enclosing(scope: Scope):
@@ -220,16 +353,20 @@ class _Builder:
             yield scope
             scope = scope.parent
 
-    def body(self, statements: list[ast.stmt], scope: Scope, nested: bool) -> None:
-        for node in statements:
-            if isinstance(node, ast.ClassDef):
-                self.class_def(node, scope, nested)
-            elif isinstance(node, FUNCTIONS):
-                self.function_def(node, scope, nested)
-            else:
-                self.other(node, scope, nested)
+    def new_scope(self, kind: str, qual: str, node: ast.AST, parent: Scope) -> Scope:
+        inner = Scope(kind, qual, node, parent)
+        self.index.scopes.append(inner)
+        return inner
 
-    def class_def(self, node: ast.ClassDef, scope: Scope, nested: bool) -> None:
+    def form_leaf(self, node, scope, nested, target) -> None:
+        return None
+
+    def form_generic(self, node, scope, nested, target) -> None:
+        for child in ast.iter_child_nodes(node):
+            if type(child).__name__ not in PURE_NODES:
+                self.visit(child, scope, nested)
+
+    def form_class(self, node: ast.ClassDef, scope: Scope, nested: bool, target) -> None:
         self.bind(scope, node.name, "class", node.lineno, nested)
         if nested:
             self.diagnose("SRC-CLASS-CONDITIONAL", node.lineno, f"class {node.name} is declared inside a compound statement",
@@ -241,11 +378,17 @@ class _Builder:
             key, n = f"{inner.qual}#{n}", n + 1
         self.index.classes[key] = fact
         self.index.scopes.append(inner)
-        for expression in (*node.decorator_list, *node.bases, *(k.value for k in node.keywords)):
-            self.writes(expression, scope, nested, "target")
-        self.body(node.body, inner, False)
+        self.each(getattr(node, "type_params", ()), scope, nested)
+        self.each((*node.decorator_list, *node.bases, *(k.value for k in node.keywords)), scope, nested)
+        self.block(node.body, inner, False)
 
-    def function_def(self, node: ast.FunctionDef | ast.AsyncFunctionDef, scope: Scope, nested: bool) -> None:
+    def parameters(self, args: ast.arguments, inner: Scope) -> list[ast.arg]:
+        every = [*args.posonlyargs, *args.args, *args.kwonlyargs, *(a for a in (args.vararg, args.kwarg) if a is not None)]
+        for arg in every:
+            inner.bind(arg.arg, Binding("param", arg.lineno))
+        return every
+
+    def form_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef, scope: Scope, nested: bool, target) -> None:
         self.bind(scope, node.name, "def", node.lineno, nested)
         if nested and scope.kind == "class":
             self.diagnose("SRC-METHOD-CONDITIONAL", node.lineno, f"method {node.name} is declared inside a compound statement of class {scope.qual}",
@@ -255,53 +398,139 @@ class _Builder:
         self.index.functions.append(fact)
         self.index.scopes.append(inner)
         args = node.args
-        for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg):
-            if arg is not None:
-                inner.bind(arg.arg, Binding("param", arg.lineno))
-        for expression in (*node.decorator_list, *args.defaults, *(d for d in args.kw_defaults if d is not None)):
-            self.writes(expression, scope, nested, "target")
-        self.body(node.body, inner, False)
+        every = self.parameters(args, inner)
+        # everything in the header is evaluated where the function is DEFINED: decorators, defaults, every annotation, the return annotation
+        self.each(getattr(node, "type_params", ()), scope, nested)
+        self.each((*node.decorator_list, *args.defaults, *args.kw_defaults, *(a.annotation for a in every), node.returns), scope, nested)
+        self.block(node.body, inner, False)
 
-    # -- every other statement: imports, writes, compound blocks --
+    def form_lambda(self, node: ast.Lambda, scope: Scope, nested: bool, target) -> None:
+        self.each((*node.args.defaults, *node.args.kw_defaults), scope, nested)
+        inner = self.new_scope("lambda", scope.qual, node, scope)
+        self.parameters(node.args, inner)
+        self.visit(node.body, inner, nested)
 
-    def other(self, node: ast.stmt, scope: Scope, nested: bool) -> None:
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                name = alias.asname or alias.name.partition(".")[0]
-                self.bind(scope, name, "import", node.lineno, nested, ("module", alias.name if alias.asname else alias.name.partition(".")[0]))
-        elif isinstance(node, ast.ImportFrom):
-            base = absolute_module(self.index.path, node.level, node.module)
-            for alias in node.names:
-                if alias.name == "*":
-                    self.index.star_imports.append(node.lineno)
-                    self.bind(scope, "*", "star", node.lineno, nested, ("star", base))
-                else:
-                    self.bind(scope, alias.asname or alias.name, "from", node.lineno, nested, ("from", base, alias.name))
-        elif isinstance(node, (ast.Global, ast.Nonlocal)):
-            scope.declared.update({name: "global" if isinstance(node, ast.Global) else "nonlocal" for name in node.names})
-        role = "augassign" if isinstance(node, ast.AugAssign) else "assign" if isinstance(node, (ast.Assign, ast.AnnAssign)) else "target"
-        self.writes(node, scope, nested, role)
-        for block in statement_blocks(node):
-            self.body(block, scope, True)
+    def form_comprehension_scope(self, node, scope: Scope, nested: bool, target) -> None:
+        """A comprehension has a scope of its own for its targets; only its first iterable is evaluated outside it, and a walrus inside it binds in the scope that holds it."""
+        inner = self.new_scope("comprehension", scope.qual, node, scope)
+        for position, generator in enumerate(node.generators):
+            self.visit(generator.iter, scope if position == 0 else inner, nested)
+            self.visit(generator.target, inner, nested, Target("target", generator.iter))
+            self.each(generator.ifs, inner, nested)
+        self.each((node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,), inner, nested)
 
-    def writes(self, node: ast.AST, scope: Scope, nested: bool, role: str) -> None:
-        """Bind the names a statement (or an expression) writes in its own scope: store and delete targets, `except ... as`, match captures, walrus
-        targets (also inside a comprehension, which binds them in the scope that holds it). Nested statements, lambdas and comprehension targets
-        have their own scopes and are not entered here."""
-        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
-            self.bind(scope, node.id, "delete" if isinstance(node.ctx, ast.Del) else role, node.lineno, nested)
-        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name:
-            self.bind(scope, node.name, "target", getattr(node, "lineno", 0), True)
-        elif isinstance(node, ast.MatchMapping) and node.rest:
-            self.bind(scope, node.rest, "target", 0, True)
-        elif isinstance(node, ast.NamedExpr):
-            self.writes(node.value, scope, nested, "walrus")
-            self.bind(scope, node.target.id, "walrus", node.lineno, nested)
-            return
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.stmt, ast.Lambda)) or (isinstance(node, ast.comprehension) and child is node.target):
-                continue
-            self.writes(child, scope, nested, "annotation" if isinstance(node, ast.AnnAssign) and child is node.target and node.value is None else role)
+    # -- statements: imports, writes, compound blocks --
+
+    def form_import(self, node: ast.Import, scope: Scope, nested: bool, target) -> None:
+        for alias in node.names:
+            name = alias.asname or alias.name.partition(".")[0]
+            self.bind(scope, name, "import", node.lineno, nested, ("module", alias.name if alias.asname else alias.name.partition(".")[0]))
+
+    def form_import_from(self, node: ast.ImportFrom, scope: Scope, nested: bool, target) -> None:
+        base = absolute_module(self.index.path, node.level, node.module)
+        for alias in node.names:
+            if alias.name == "*":
+                self.index.star_imports.append(node.lineno)
+                self.bind(scope, "*", "star", node.lineno, nested, ("star", base))
+            else:
+                self.bind(scope, alias.asname or alias.name, "from", node.lineno, nested, ("from", base, alias.name))
+
+    def form_declaration(self, node: ast.Global | ast.Nonlocal, scope: Scope, nested: bool, target) -> None:
+        scope.declared.update({name: "global" if isinstance(node, ast.Global) else "nonlocal" for name in node.names})
+
+    def form_assign(self, node: ast.Assign, scope: Scope, nested: bool, target) -> None:
+        self.each(node.targets, scope, nested, Target("assign", node.value))
+        self.visit(node.value, scope, nested)
+
+    def form_augassign(self, node: ast.AugAssign, scope: Scope, nested: bool, target) -> None:
+        self.visit(node.target, scope, nested, Target("augassign", node.value))
+        self.visit(node.value, scope, nested)
+
+    def form_annassign(self, node: ast.AnnAssign, scope: Scope, nested: bool, target) -> None:
+        if node.value is None and not isinstance(node.target, ast.Name):
+            self.each(ast.iter_child_nodes(node.target), scope, nested)   # `a.b: int` declares and stores nothing
+        else:
+            self.visit(node.target, scope, nested, Target("assign" if node.value is not None else "annotation", node.value, annotated=node.annotation))
+        self.visit(node.annotation, scope, nested)
+        self.each([node.value], scope, nested)
+
+    def form_delete(self, node: ast.Delete, scope: Scope, nested: bool, target) -> None:
+        self.each(node.targets, scope, nested, Target("delete"))
+
+    def form_loop(self, node: ast.For | ast.AsyncFor, scope: Scope, nested: bool, target) -> None:
+        self.visit(node.target, scope, nested, Target("target", node.iter))
+        self.visit(node.iter, scope, nested)
+        self.block(node.body, scope, True)
+        self.block(node.orelse, scope, True)
+
+    def form_compound(self, node: ast.stmt, scope: Scope, nested: bool, target) -> None:
+        """If, While, Try, With and Match: the header's expressions belong to the statement, its blocks are conditional."""
+        for name, value in ast.iter_fields(node):
+            if name in ("body", "orelse", "finalbody") and isinstance(value, list):
+                self.block(value, scope, True)
+            elif name in ("handlers", "cases", "items"):
+                self.each(value, scope, True if name != "items" else nested)
+            elif isinstance(value, ast.AST):
+                self.visit(value, scope, nested)
+
+    def form_withitem(self, node: ast.withitem, scope: Scope, nested: bool, target) -> None:
+        self.visit(node.context_expr, scope, nested)
+        if node.optional_vars is not None:
+            self.visit(node.optional_vars, scope, nested, Target("target", node.context_expr))
+
+    def form_except_handler(self, node: ast.ExceptHandler, scope: Scope, nested: bool, target) -> None:
+        self.each([node.type], scope, nested)
+        if node.name:
+            self.bind(scope, node.name, "target", node.lineno, True)
+        self.block(node.body, scope, True)
+
+    def form_match_case(self, node: ast.match_case, scope: Scope, nested: bool, target) -> None:
+        self.visit(node.pattern, scope, nested)
+        self.each([node.guard], scope, nested)
+        self.block(node.body, scope, True)
+
+    def form_capture(self, node, scope: Scope, nested: bool, target) -> None:
+        """A match pattern that captures a name: `case x`, `case [*rest]`, `case {**rest}`."""
+        name = node.rest if isinstance(node, ast.MatchMapping) else node.name
+        if name:
+            self.bind(scope, name, "target", getattr(node, "lineno", 0), True)
+        self.form_generic(node, scope, nested, target)
+
+    def form_walrus(self, node: ast.NamedExpr, scope: Scope, nested: bool, target) -> None:
+        self.visit(node.value, scope, nested)
+        holder = scope
+        while holder.kind == "comprehension" and holder.parent is not None:
+            holder = holder.parent   # the target of an assignment expression in a comprehension is bound in the scope that holds the comprehension
+        self.bind(holder, node.target.id, "walrus", node.lineno, nested, source=node.value, direct=True)
+
+    # -- names, attributes, items, calls --
+
+    def form_name(self, node: ast.Name, scope: Scope, nested: bool, target: Target | None) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            if target is None:
+                self.diagnose("SRC-FORM-UNRECOGNISED", node.lineno, f"the name {node.id} is written where no statement says how", FORM_REMEDY)
+                return
+            self.bind(scope, node.id, "delete" if isinstance(node.ctx, ast.Del) else target.role, node.lineno, nested, source=target.source, direct=target.direct,
+                      annotated=target.annotated)
+
+    def form_container(self, node, scope: Scope, nested: bool, target: Target | None) -> None:
+        inner = replace_target(target) if target is not None and isinstance(node.ctx, (ast.Store, ast.Del)) else None
+        self.each(ast.iter_child_nodes(node), scope, nested, inner)
+
+    def form_attribute(self, node: ast.Attribute, scope: Scope, nested: bool, target) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            self.index.stores.append(Store(node, scope, nested))
+        self.visit(node.value, scope, nested)
+
+    def form_subscript(self, node: ast.Subscript, scope: Scope, nested: bool, target) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            self.index.stores.append(Store(node, scope, nested))
+        self.visit(node.value, scope, nested)
+        self.visit(node.slice, scope, nested)
+
+    def form_call(self, node: ast.Call, scope: Scope, nested: bool, target) -> None:
+        self.index.calls.append(CallSite(node, scope))
+        self.form_generic(node, scope, nested, target)
 
     # -- one definition, one binding ---------------------------------------------------------------------------------------
 
@@ -318,6 +547,11 @@ class _Builder:
         if scope.kind == "module":
             for line in self.index.star_imports:
                 self.diagnose("SRC-STAR-IMPORT", line, "a star import", "import the names explicitly: a star import's bindings depend on the imported module's exports and the order of the imports")
+
+
+def replace_target(target: Target) -> Target:
+    """The same target for an element of an unpacking."""
+    return Target(target.role, target.source, target.annotated, False)
 
 
 def index_text(path: str, text: str) -> FileIndex:
@@ -347,6 +581,7 @@ def lexical_chain(scope: Scope) -> list[Scope]:
 
 
 Ref = tuple   # ("class", path, qual) | ("function", path, qual) | ("module", dotted) | ("package", dotted) | ("external", dotted identity)
+OBJECT = ("base", "builtins.object")   # the entry every class's order ends with
 
 
 def c3_merge(sequences: list[list]) -> list:
@@ -462,17 +697,18 @@ class Facts:
     # -- class bases and the C3 order ------------------------------------------------------------------------------------
 
     def mro(self, key: tuple[str, str], building: tuple = ()) -> list:
-        """C3 linearization of a class over its project bases: project classes are (file, qualified name); an external base is an opaque entry."""
+        """C3 linearization of a class over its bases: project classes are (file, qualified name); an external base is an opaque entry, ("base", resolved identity), that
+        stands for the class and ALL its ancestors; `object` is the implicit last base of every class, as in Python, so `class C(object, A)` is inconsistent here as it is there."""
         if key in self._mro:
             return self._mro[key]
         if key in building:
             raise ValueError("inheritance cycle")
         sequences, direct = [], []
-        for text, ref in self.classes[key].bases:
-            node = (ref[1], ref[2]) if ref[0] == "class" else ("base", text)
+        for _text, ref in self.classes[key].bases:
+            node = (ref[1], ref[2]) if ref[0] == "class" else ("base", ref[1])
             direct.append(node)
-            sequences.append(self.mro(node, building + (key,)) if ref[0] == "class" else [node])
-        self._mro[key] = [key] + c3_merge(sequences + [direct])
+            sequences.append(self.mro(node, building + (key,)) if ref[0] == "class" else [node] if node == OBJECT else [node, OBJECT])
+        self._mro[key] = [key] + (c3_merge(sequences + [direct]) if direct else [OBJECT])
         return self._mro[key]
 
     def family(self, key: tuple[str, str]) -> list[tuple[str, str]]:
@@ -480,22 +716,26 @@ class Facts:
         return [member for member in self.mro(key) if member[0] != "base"]
 
 
-def identify(path: str, scope: Scope, node: ast.expr) -> str:
+def identify(path: str, scope: Scope, node: ast.expr, seen: frozenset = frozenset()) -> str:
     """The dotted identity a name or attribute chain certainly has in `scope`, from the file's own bindings alone: an import binds `module` or `module.name`, a
-    definition `<module of this file>.<qualified name>`, an unbound builtin `builtins.<name>`. A name with competing, conditional or non-import bindings (an
-    assignment, a parameter, a loop target ...) has no certain identity: Unresolved, SRC-DECORATOR-SHADOWED. Decorators and the contract's loader sites are
-    recognised by this identity, never by their spelling."""
+    definition `<module of this file>.<qualified name>`, an unbound builtin `builtins.<name>`, and a name bound ONCE, directly, to another name or attribute chain
+    (`loader = import_module`) has the identity of that chain. A name with competing, conditional or other bindings (an assignment of a call, a parameter, a loop target
+    ...) has no certain identity: Unresolved, SRC-DECORATOR-SHADOWED. Decorators and the contract's loader sites are recognised by this identity, never by their
+    spelling, so an alias of a loader is the loader."""
     if isinstance(node, ast.Attribute):
-        return f"{identify(path, scope, node.value)}.{node.attr}"
+        return f"{identify(path, scope, node.value, seen)}.{node.attr}"
     if not isinstance(node, ast.Name):
         raise Unresolved("SRC-DECORATOR-UNKNOWN", f"{ast.unparse(node)} is not a name or an attribute chain")
     for candidate in lexical_chain(scope):
         if node.id in candidate.bindings:
             bindings = candidate.bindings[node.id]
-            if len({(b.role, b.ref) for b in bindings}) > 1 or all(b.conditional for b in bindings) or bindings[0].role not in ("import", "from", "def", "class"):
+            alias = bindings[0].role == "assign" and bindings[0].ref[:1] == ("alias",) and (id(candidate), node.id) not in seen
+            if len({(b.role, b.ref) for b in bindings}) > 1 or all(b.conditional for b in bindings) or (bindings[0].role not in ("import", "from", "def", "class") and not alias):
                 raise Unresolved("SRC-DECORATOR-SHADOWED", f"{node.id} is not bound once, unconditionally, by an import or a definition (it is {', '.join(sorted({b.role for b in bindings}))}, "
                                  f"line {bindings[0].line})")
             binding = bindings[0]
+            if alias:
+                return identify(path, candidate, binding.source, seen | {(id(candidate), node.id)})
             if binding.role == "import":
                 return binding.ref[1]
             if binding.role == "from":

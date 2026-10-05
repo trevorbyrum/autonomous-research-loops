@@ -175,9 +175,13 @@ REFUSALS = [
            {"a.py": py("def decorate(cls):", "    for name in ('__len__',):", "        setattr(cls, name, None)", "    return cls")}, ("a.py", 3), "computed name"),
     refuse("setattr with a computed name", "SRC-REFLECTIVE", {"a.py": py("class A:", "    def f(self, name):", "        setattr(self, name, 1)")}, ("a.py", 3), "computed name"),
     refuse("setattr on a class by its name", "SRC-REFLECTIVE", {"a.py": py("class A:", "    pass", "", "setattr(A, 'x', 1)")}, ("a.py", 4), "writes an attribute of a class"),
-    refuse("a module namespace written through globals()", "SRC-REFLECTIVE", {"a.py": py("globals()['x'] = 1")}, ("a.py", 1), "globals()"),
+    refuse("a module namespace written through globals()", "SRC-REFLECTIVE", {"a.py": py("globals()['x'] = 1")}, ("a.py", 1), "writes a namespace through globals()"),
     refuse("a module namespace changed by globals().update", "SRC-REFLECTIVE", {"a.py": py("globals().update({'x': 1})")}, ("a.py", 1), "globals()"),
-    refuse("sys.modules written", "SRC-REFLECTIVE", {"a.py": py("import sys", "", "sys.modules['x'] = sys")}, ("a.py", 3), "sys.modules"),
+    refuse("sys.modules written", "SRC-REFLECTIVE", {"a.py": py("import sys", "", "sys.modules['x'] = sys")}, ("a.py", 3), "writes sys.modules"),
+    # --- closure: a form the contract does not record (the families by position and kind are gen2/tests/source_closure_fixtures.py) ------------------
+    refuse("a type alias statement", "SRC-FORM-UNRECOGNISED", {"a.py": py("type Alias = int")}, ("a.py", 1), "TypeAlias"),
+    refuse("a type parameter of a function", "SRC-FORM-UNRECOGNISED", {"a.py": py("def f[T](x: T) -> T:", "    return x")}, ("a.py", 1), "TypeVar"),
+    refuse("a store through a name nothing binds", "SRC-FORM-UNRECOGNISED", {"a.py": py("def f():", "    nowhere.x = 1")}, ("a.py", 2), "nowhere.x"),
     # --- row 8: non-graph mechanisms -------------------------------------------------------------------------------------
     refuse("importlib.import_module with no inventory entry", "SRC-LOADER-UNINVENTORIED", {"a.py": py("import importlib", "", "def load(name):", "    return importlib.import_module(name)")},
            ("a.py", 4), "importlib.import_module"),

@@ -131,6 +131,13 @@ class EqualityAndShapeTest(RefusalCase):
 
     def test_the_storage_is_one_slot_in_each_class_and_there_is_no_instance_dict(self) -> None:
         self.assertEqual((Sealed.__slots__, Passive.__slots__), (("_value",), ("_value",)))
+        for instance in (Sealed({"a": 1}), Passive("x")):
+            with self.subTest(cls=type(instance).__name__):
+                # the slot declaration alone does not say there is no dictionary (a base without `__slots__` would give one): ask the object itself, past its own refusing `__getattr__`
+                with self.assertRaises(AttributeError):
+                    object.__getattribute__(instance, "__dict__")
+                self.assertFalse(hasattr(instance, "__dict__"))
+                self.assertFalse(any("__dict__" in vars(klass) for klass in type(instance).__mro__ if klass is not object), msg="no class in the order contributes an instance dictionary")
 
     def test_without_still_works_on_an_object_and_refuses_anything_else(self) -> None:
         self.assertEqual(payload.plain(Sealed({"a": 1, "b": 2}).without("a")), {"b": 2})

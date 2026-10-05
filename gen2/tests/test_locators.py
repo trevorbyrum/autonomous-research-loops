@@ -258,7 +258,7 @@ class RealRepositoryTest(unittest.TestCase):
         self.assertNotIn("2q's to reconcile", h5)
 
     def test_the_real_documents_hold_no_unmarked_dotted_name_and_no_stale_locator(self) -> None:
-        done = fx.subprocess.run([fx.sys.executable, str(fx.LOCATORS_TOOL), "--root", str(fx.REPO)], capture_output=True, text=True)
+        done = fx.run_judged([fx.sys.executable, str(fx.LOCATORS_TOOL), "--root", str(fx.REPO)], 120)   # judged as a program, with its completion record
         self.assertEqual(done.returncode, 0, msg=f"{done.stdout}\n{done.stderr}")
         self.assertIn("0 that do not exist or are unmarked", done.stdout)
 

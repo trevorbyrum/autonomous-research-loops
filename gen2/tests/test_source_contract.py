@@ -85,11 +85,19 @@ class RefusalTest(ContractCase):
                 self.assertEqual((status, [(d["category"], d["file"], d["line"]) for d in view["diagnostics"]]), (1, [("SRC-CLASS-HOOK", prefix + "c.py", 2)]))
                 self.assertIn("defines __init_subclass__", view["diagnostics"][0]["construct"])
 
+    BUILT_ELSEWHERE = {"SRC-INV-UNTRACKED": "UntrackedTest, both services", "SRC-LOADER-INVENTORY": "LoaderInventoryTest and test_source_closure.LoaderBoundaryTest, over a copy of the gateway's real loader"}
+
     def test_every_category_of_the_contract_has_a_refusal_fixture_in_each_service_it_applies_to(self) -> None:
-        covered = {f.category for f in REFUSALS} | {"SRC-INV-UNTRACKED", "SRC-LOADER-INVENTORY"}   # the last two are built in LoaderInventoryTest and UntrackedTest
-        self.assertEqual(covered, set(categories_in_the_tool()))
+        """Category BY SERVICE, not the union of the categories: every category the fixtures here are the oracle of has a refusal fixture that runs in the engine AND one that runs in the
+        gateway (a fixture marked `only` runs in one), so a rule held by one service's code path and not the other's is found. The two categories whose fixtures are built in other tests
+        are named, with where."""
+        tool = set(categories_in_the_tool())
+        self.assertEqual({f.category for f in REFUSALS} | set(self.BUILT_ELSEWHERE), tool)
+        covered = {(f.category, service) for f in REFUSALS for service in SERVICES if f.only in (None, service)}
+        missing = sorted((category, service) for category in tool - set(self.BUILT_ELSEWHERE) for service in SERVICES if (category, service) not in covered)
+        self.assertEqual(missing, [], msg="a category with no refusal fixture in a service")
         for fixture in REFUSALS:
-            self.assertIn(fixture.category, categories_in_the_tool(), msg=fixture.name)
+            self.assertIn(fixture.category, tool, msg=fixture.name)
 
     def test_a_refusal_is_reported_where_the_construct_is_even_when_nothing_uses_it(self) -> None:
         """Gate D #4: the guard refuses by form, with no collaboration pair to disappear. An isolated unsupported declaration in a file nothing imports is refused."""
@@ -131,10 +139,24 @@ class UntrackedTest(ContractCase):
         self.assertEqual(self.view(repo)[0], 0)
 
     def test_a_tracked_file_missing_from_the_working_tree_is_skipped_and_left_to_the_ledger(self) -> None:
-        repo = self.repo(package("engine", {"a.py": "x = 1\n", "b.py": "y = 2\n"}))
+        """The deleted file held a function, so there is something to be accounted for: it is no crash, the file is absent from the inventory and the import graph, and the ratchet fails on the
+        identity that is now missing (missing is never an improvement) until the ledger retires it. (A data-only file would show none of this: it has no function before it is deleted.)"""
+        doc = {"docs/gen2/INVARIANTS.md": "none\n", "docs/gen2/DEBT-REGISTER.md": "none\n"}
+        repo = self.repo(package("engine", {"a.py": py("def f():", "    return 1"), "b.py": py("def g():", "    return 2")}) | doc)
+        self.assertEqual(repo.run("rebaseline").returncode, 0)
+        before = self.view(repo)[1]
+        self.assertEqual(sorted(f["key"] for f in before["functions"]), ["gen2/a.py::f", "gen2/b.py::g"])
         (repo.root / "gen2/b.py").unlink()
         status, view = self.view(repo)
-        self.assertEqual((status, [f["key"] for f in view["functions"]]), (0, []))
+        self.assertEqual((status, [f["key"] for f in view["functions"]]), (0, ["gen2/a.py::f"]), msg="no crash, and the deleted file's function is not a fact")
+        out = repo.root / "out"
+        self.assertEqual(repo.run("report", str(out)).returncode, 0)
+        summary = json.loads((out / "metrics-summary.json").read_text())
+        self.assertNotIn("gen2/b.py", summary["services"]["engine"]["graph"], msg="the deleted file is out of the file inventory")
+        done = repo.run("check")
+        self.assertEqual(done.returncode, 1, msg=done.stdout + done.stderr)
+        self.assertRegex(done.stderr, r"METRICS REGRESSION: identity engine\|file\|gen2/b\.py: missing; map or retire in committed ledger")
+        self.assertNotIn("SOURCE REFUSED", done.stderr)
 
 
 class AcceptanceTest(ContractCase):
@@ -219,10 +241,18 @@ class EveryCommandTest(ContractCase):
         repo.write(self.BAD)
         return repo
 
-    def assertRefused(self, done) -> None:
+    def assertRefused(self, done, partial: bool = False) -> None:
+        """The refusal, named with its file, line and construct, and with what the command did. A command that measures nothing from refused source (check, admit, rebaseline) says
+        "nothing was measured, recorded or certified"; `report` and `hotspots` DO write the tables they can read, and must not say that: they say the tables are partial, the input incomplete
+        and non-passing, and that nothing in them is certified (task 2q-a-repair-4; Astra's 2q-a-repair-3 review)."""
         self.assertEqual(done.returncode, 1, msg=f"{done.stdout}\n{done.stderr}")
         self.assertIn("SOURCE REFUSED: gen2/a.py:5: SRC-CLASS-CONDITIONAL: class Late is declared inside a compound statement", done.stderr)
-        self.assertIn("nothing was measured, recorded or certified", done.stderr)
+        if partial:
+            self.assertIn("the tables written are PARTIAL, the input is incomplete and non-passing, and nothing in them is certified", done.stderr)
+            self.assertNotIn("nothing was measured", done.stderr)
+        else:
+            self.assertIn("nothing was measured, recorded or certified", done.stderr)
+            self.assertNotIn("PARTIAL", done.stderr)
 
     def test_check_refuses(self) -> None:
         self.assertRefused(self.refused_repo().run("check"))
@@ -246,16 +276,29 @@ class EveryCommandTest(ContractCase):
         self.assertFalse((repo.root / "docs/gen2/metrics-ledger.md").exists())
 
     def test_report_shows_the_input_as_incomplete_and_non_passing_and_still_writes_what_it_could_read(self) -> None:
+        """A refused `report` writes PARTIAL tables, and says exactly that: not "nothing was measured". Its artifacts carry the mark themselves: input.complete, input.passing and
+        input.certified are false in the summary and NOT-CERTIFIED.txt beside the tables names the refusals."""
         repo = self.repo(self.BAD)
         out = repo.root / "out"
         done = repo.run("report", str(out))
-        self.assertRefused(done)
+        self.assertRefused(done, partial=True)
         summary = json.loads((out / "metrics-summary.json").read_text())
-        self.assertEqual((summary["input"]["contract"], summary["input"]["complete"], summary["input"]["passing"]), ("source-contract/1", False, False))
+        self.assertEqual((summary["input"]["contract"], summary["input"]["complete"], summary["input"]["passing"], summary["input"]["certified"]), ("source-contract/1", False, False, False))
         self.assertTrue(any("SRC-CLASS-CONDITIONAL" in r for r in summary["input"]["refusals"]))
         self.assertEqual(summary["services"]["engine"]["self_calls"], {"sites": 0, "pairs": {}, "families": {}, "measured": False})
         self.assertIn("not measured (source refused)", done.stdout)
-        self.assertTrue((out / "file-dependencies.csv").exists() and (out / "function-complexity.csv").exists())
+        self.assertIn("PARTIAL report written", done.stderr)
+        self.assertTrue((out / "file-dependencies.csv").exists() and (out / "function-complexity.csv").exists(), msg="what could be read is written")
+        self.assertTrue((out / "NOT-CERTIFIED.txt").exists(), msg="the tables carry the mark: a marker is written beside them")
+        marker = (out / "NOT-CERTIFIED.txt").read_text()
+        for needle in ("NOT CERTIFIED", "PARTIAL", "incomplete and non-passing", "gen2/a.py:5: SRC-CLASS-CONDITIONAL"):
+            self.assertIn(needle, marker)
+
+    def test_a_report_that_passes_has_no_marker(self) -> None:
+        repo = self.repo(self.GOOD)
+        out = repo.root / "out"
+        self.assertEqual(repo.run("report", str(out)).returncode, 0)
+        self.assertFalse((out / "NOT-CERTIFIED.txt").exists())
 
     def test_a_report_measures_the_collaboration_of_the_service_whose_source_is_inside_the_contract(self) -> None:
         """Gate D's historical pins: the gateway of two of them holds a form the contract refuses while the engine's Router is inside it. The refused service's
@@ -275,11 +318,15 @@ class EveryCommandTest(ContractCase):
         repo = self.repo(self.GOOD)
         out = repo.root / "out"
         self.assertEqual(repo.run("report", str(out)).returncode, 0)
-        self.assertEqual(json.loads((out / "metrics-summary.json").read_text())["input"], {"contract": "source-contract/1", "complete": True, "passing": True, "refusals": []})
+        self.assertEqual(json.loads((out / "metrics-summary.json").read_text())["input"], {"contract": "source-contract/1", "complete": True, "passing": True, "certified": True, "refusals": []})
 
-    def test_hotspots_refuses_too(self) -> None:
+    def test_hotspots_refuses_too_and_its_tables_are_marked_partial_and_not_certified(self) -> None:
         repo = self.repo(self.BAD)
-        self.assertRefused(repo.run("hotspots", str(repo.root / "out")))
+        out = repo.root / "out"
+        self.assertRefused(repo.run("hotspots", str(out)), partial=True)
+        self.assertTrue((out / "NOT-CERTIFIED.txt").exists(), msg="the tables carry the mark: a marker is written beside them")
+        self.assertIn("NOT CERTIFIED", (out / "NOT-CERTIFIED.txt").read_text())
+        self.assertTrue((out / "hotspots-summary.json").exists(), msg="the tables it could write are written")
 
     def test_the_locator_command_refuses_before_checking_a_locator(self) -> None:
         repo = self.refused_repo()
@@ -311,7 +358,7 @@ class EveryCommandTest(ContractCase):
 
 class RealInventoryTest(ContractCase):
     def test_the_production_inventory_of_both_services_is_inside_the_contract(self) -> None:
-        result = subprocess.run([sys.executable, str(fx.CONTRACT_TOOL), "--root", str(fx.REPO), "--json"], capture_output=True, text=True, timeout=120)
+        result = fx.run_judged([sys.executable, str(fx.CONTRACT_TOOL), "--root", str(fx.REPO), "--json"], 120)   # judged as a program, with its completion record
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         view = json.loads(result.stdout)
         self.assertEqual(view["diagnostics"], [])
@@ -386,6 +433,7 @@ class DocumentAndToolTest(unittest.TestCase):
         self.assertEqual([code(n.strip()) for n in rows["Skip names"].split("(")[0].split(",")], loader["skip_names"])
         self.assertEqual([code(n.strip()) for n in rows["Discovered files"].split(",")], loader["discovered"])
         self.assertEqual(code(rows["Argument"]), loader["argument"])
+        self.assertEqual(code(rows["Fingerprint"]), loader["fingerprint"])
 
     def test_the_loader_calls_and_hooks_listed_in_the_text_are_the_tools(self) -> None:
         text = CONTRACT_DOC.read_text(encoding="utf-8")

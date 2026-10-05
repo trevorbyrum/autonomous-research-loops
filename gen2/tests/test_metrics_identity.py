@@ -11,6 +11,9 @@ validity of the AST metrics (Gate A/D review).
 """
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 from gen2.tests import children
 from gen2.tests.test_metrics_collaboration import BASE, calls, real_engine_files, tree, use
 from gen2.tests.test_metrics_dependencies import CHAIN
@@ -19,6 +22,33 @@ from gen2.tests.test_metrics_ratchet import RatchetTestCase
 from gen2.tests.tool_repo_fixtures import BASELINE, Repo, py
 
 LEDGER = "docs/gen2/metrics-ledger.md"
+COMPARE_NOW = """
+import ast, sys
+def load(path):
+    node = next(n for n in ast.walk(ast.parse(open(path).read())) if isinstance(n, ast.FunctionDef) and n.name == '_now')
+    node.decorator_list, node.returns = [], None
+    module = ast.fix_missing_locations(ast.Module(body=[node], type_ignores=[]))
+    from gen2.core import instants
+    namespace = {'instants': instants}
+    exec(compile(module, '<_now>', 'exec'), namespace)
+    return namespace['_now']
+class Clock:
+    def __init__(self, value):
+        self.value = value
+    def _clock(self):
+        return self.value
+before, after = load(sys.argv[1]), load(sys.argv[2])
+code = lambda f: (f.__code__.co_code, f.__code__.co_consts, f.__code__.co_names)
+print(code(before) == code(after))
+for value in ('2030-01-02T03:04:05Z', 'not an instant'):
+    out = []
+    for f in (before, after):
+        try:
+            out.append(('returned', f(Clock(value))))
+        except RuntimeError as exc:
+            out.append(('raised', str(exc)))
+    print(out[0] == out[1], out[0][0])
+"""
 
 
 def entry(action, **fields):
@@ -351,6 +381,16 @@ class BindingTest(RatchetTestCase):
         self.assertIn("True", before)
         self.refused(repo, "SRC-CLASS-CONDITIONAL", "SRC-DEF-DUPLICATE")
 
+    def same_now(self, original_text, changed_path):
+        """Whether `Router._now` of the original source and the one in `changed_path` are the same method, and what each does with a deterministic clock (printed: the code is the
+        same, a good instant returned the same, a bad one raised the same). Run in a child that compiles the one function from each file: presence of a name proves nothing about it."""
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as handle:
+            handle.write(original_text)
+        self.addCleanup(Path(handle.name).unlink)
+        result = children.python(["-B", "-c", COMPARE_NOW, handle.name, str(changed_path)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.split("\n")[:-1]
+
     def test_the_real_routers_method_under_if_true_is_refused_though_python_runs_it_unchanged(self):
         """Gate D #4 R2: only `Router._now` under `if True:` kept the bytecode and the runtime result and took 132 sites to 127 with every check green."""
         repo = self.baselined(real_engine_files())
@@ -362,6 +402,7 @@ class BindingTest(RatchetTestCase):
         changed = original[:start] + "    if True:\n" + "".join("    " + line if line.strip() else line for line in block.splitlines(keepends=True)) + original[end:]
         repo.write({path: changed})
         self.assertEqual(self.runtime(repo, "from gen2.router.service import Router; print(hasattr(Router, '_now'))").strip(), "True")
+        self.assertEqual(self.same_now(original, repo.root / path), ["True", "True returned", "True raised"], msg="the method under `if True:` is the same method: same bytecode, constants, names and results")
         self.refused(repo, "SRC-METHOD-CONDITIONAL")
 
     def test_competing_star_reexports_are_refused_for_both_interpreter_orders(self):

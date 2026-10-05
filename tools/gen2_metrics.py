@@ -45,9 +45,13 @@ Definitions
   it is never read as "no collaboration" and nothing classifies it. The method
   is resolved the way Python resolves it, through the C3 linearization of the
   family (not a depth-first walk: a diamond `D(B, C)` with `B(A)`, `C(A)` and
-  `C.f` overriding `A.f` binds a call in `B` to `C.f`). A name that a property
-  (a data attribute) or a modelled decorator's generated method binds first in
-  that order is not a project method call. A call site is counted once however
+  `C.f` overriding `A.f` binds a call in `B` to `C.f`). A name is attributed to
+  the first class in that order that HAS it as an effective member (what Python
+  has built once the body has run): a name that a property, a slot, a data
+  attribute, or the `__hash__ = None` Python sets for a class that defines
+  `__eq__` and not `__hash__` (and a non-frozen dataclass), binds first in that
+  order is not a project method call, and a modelled decorator's generated
+  method is one. A call site is counted once however
   many families contain it, by (site, defining file). Gate D #1/#2 measured the
   Router with a fixed list of mixin names; this finds the same family without
   one (it also finds `Response(SealedAnswer)` in the gateway). `super()` calls,
@@ -116,13 +120,15 @@ the tool could not run):
   report DIR   every table as Gate D's CSV/JSON (file and component
                dependencies, function complexity, import edges, summary); source
                the contract refuses is shown as an incomplete, non-passing input
-               (exit 1) with the tables for what could be read
+               (exit 1) with PARTIAL, non-certified tables for what could be read
   hotspots DIR the git-history report for Gate D: churn x complexity per
                file and files that change together (`make gen2-hotspots`).
                Churn is lines added + deleted by reachable commits touching
                current production files; `--no-renames`; pair coupling counts
                commits touching both files (Jaccard and conditional fractions);
-               no causal claim and no elapsed-time normalization.
+               no causal claim and no elapsed-time normalization. Source the
+               contract refuses is exit 1 with PARTIAL tables, marked not
+               certified (NOT-CERTIFIED.txt beside them), as for `report`.
 
 Trace: task 2q-a; charter "Architecture metrics" and "Root-cause fixes, not
 patches"; Gate D #1 findings 5 and 6, Gate D #2 section 5.
@@ -284,10 +290,12 @@ def self_calls(facts: Facts, files: list[str]) -> dict:
 
     A family is rooted at every class with a project ancestor defined in another file (a same-file intermediate base does not hide it). Its methods resolve
     the way Python resolves them, through the C3 order of its project classes (the contract has made every base certain and every method a direct, unconditional
-    declaration). A method name is attributed to the first class in that order that declares it: as a method (any role that is callable), as a modelled
-    decorator's generated method, or as a property (a data attribute: a call of it calls its value, not a project method, and nothing after it is reached). A
-    call site is counted once however many families contain it: by (site, defining file), so a site that two compositions bind to different files counts once
-    for each file. `families` shows each root's own view."""
+    declaration, and no external class can come before a project class in that order). A name is attributed to the first class in that order that HAS it as an
+    EFFECTIVE member (tools/gen2_source_contract.py `effective`: what Python has built once the body has run): a method of any callable role, a method a
+    modelled decorator generates, or a member that is no method - a property, a slot, a data attribute, the `__hash__ = None` Python sets implicitly for a class that
+    defines `__eq__` and not `__hash__`, the one a non-frozen dataclass gets - which is data: a call of it calls its value, not a project method, and nothing after
+    it in the order is reached. A call site is counted once however many families contain it: by (site, defining file), so a site that two compositions bind to
+    different files counts once for each file. `families` shows each root's own view."""
     sites: set[tuple[str, int, int, str]] = set()
     families: dict[str, dict] = {}
     for path in sorted(files):
@@ -297,19 +305,16 @@ def self_calls(facts: Facts, files: list[str]) -> dict:
             order = facts.family(cls.key)
             if not any(member[0] != path for member in order):
                 continue
-            defined: dict[str, tuple[str, str]] = {}   # method name -> (file of the first class in resolution order that declares it, its role)
+            defined: dict[str, tuple[str, str]] = {}   # member name -> (file of the first class in resolution order that HAS it, its role)
             for member in order:
-                klass = facts.classes[member]
-                for name, fn in klass.methods.items():
-                    defined.setdefault(name, (member[0], fn.role))
-                for name in klass.generated:
-                    defined.setdefault(name, (member[0], "method"))
+                for name, effective in facts.classes[member].members.items():   # the effective members: authored, generated and implicit (`__hash__ = None` for `__eq__` alone)
+                    defined.setdefault(name, (member[0], effective.role))
             mine: set[tuple[str, int, int, str]] = set()
             for member in order:
                 for fn in facts.classes[member].methods.values():
                     for call in receiver_calls(fn) if fn.receiver and fn.role in ("method", "property") else ():
-                        owner, role = defined.get(call.func.attr, ("", "property"))   # a name no class declares is not a project method
-                        if owner and role != "property" and owner != member[0]:
+                        owner, role = defined.get(call.func.attr, ("", "data"))   # a name no class has is not a project method
+                        if owner and role in ("method", "static", "class") and owner != member[0]:   # a property, a slot or other data masks the name: a call of it calls its value
                             mine.add((member[0], call.lineno, call.col_offset, owner))
             sites |= mine
             families[f"{cls.qual} ({path})"] = {"sites": len(mine), "pairs": dict(sorted(collections.Counter(f"{src}->{dst}" for src, _, _, dst in mine).items()))}
@@ -468,7 +473,7 @@ def measure(root: Path, thresholds: dict | None = None, *, strict: bool = True) 
     measurement = Measurement(root, thresholds, paths, texts, graph, edge_lines, functions, facts)
     measurement.report = {"definitions": __doc__, "thresholds": thresholds, "services": services, "cross_service_imports": cross,
                           "input": {"contract": contract.CONTRACT_ID, "complete": not facts.diagnostics, "passing": not facts.diagnostics,
-                                    "refusals": [d.render() for d in facts.diagnostics]},
+                                    "certified": not facts.diagnostics, "refusals": [d.render() for d in facts.diagnostics]},
                           "pin": {"commit": head_commit(root), "production_sha256": production_digest(root, every)}}
     return measurement
 
@@ -1038,11 +1043,27 @@ def command_admit(args):
     return EXIT_OK
 
 
-def print_refusal(diagnostics, stream=sys.stderr) -> None:
+NOT_CERTIFIED = "NOT-CERTIFIED.txt"   # the marker `report` and `hotspots` write beside the tables they could produce from refused source
+
+
+def print_refusal(diagnostics, stream=sys.stderr, partial: bool = False) -> None:
+    """The refusal. A command that measures nothing from refused source (check, admit, rebaseline) says so; `report` and `hotspots` DO write the tables they can read, and
+    say that instead: the output is partial, the input incomplete and non-passing, and nothing in it is certified (task 2q-a-repair-4; Astra's 2q-a-repair-3 review)."""
     for diagnostic in diagnostics:
         print(f"SOURCE REFUSED: {diagnostic.render()}", file=stream)
+    outcome = ("the tables written are PARTIAL, the input is incomplete and non-passing, and nothing in them is certified" if partial
+               else "nothing was measured, recorded or certified")
     print(f"gen2-metrics: the production source is outside the supported-source contract ({contract.CONTRACT_ID}, docs/gen2/SOURCE-CONTRACT.md): "
-          f"{len(diagnostics)} refusal(s); nothing was measured, recorded or certified", file=stream)
+          f"{len(diagnostics)} refusal(s); {outcome}", file=stream)
+
+
+def mark_not_certified(out: Path, diagnostics) -> None:
+    """Beside the tables of a report of refused source: they are partial and certify nothing (a CSV cannot carry that itself)."""
+    (out / NOT_CERTIFIED).write_text(
+        "NOT CERTIFIED: the production source is outside the supported-source contract (docs/gen2/SOURCE-CONTRACT.md).\n"
+        "The tables here are PARTIAL: they hold what could be read (the import graph and function complexity) and measure no collaboration of a service whose source was refused.\n"
+        "The input is incomplete and non-passing; none of these tables is a certified measurement and none may be compared with a baseline as one.\n\n"
+        + "".join(f"{d.render()}\n" for d in diagnostics), encoding="utf-8")
 
 
 def command_check(args: argparse.Namespace) -> int:
@@ -1138,8 +1159,9 @@ def command_report(args: argparse.Namespace) -> int:
     for line in summary_lines(measurement.report):
         print(line)
     if measurement.facts.diagnostics:
-        print_refusal(measurement.facts.diagnostics)
-        print(f"gen2-metrics: report written to {args.out}, marked input.complete=false, input.passing=false", file=sys.stderr)
+        mark_not_certified(Path(args.out), measurement.facts.diagnostics)
+        print_refusal(measurement.facts.diagnostics, partial=True)
+        print(f"gen2-metrics: PARTIAL report written to {args.out}, marked input.complete=false, input.passing=false, input.certified=false, with {NOT_CERTIFIED}", file=sys.stderr)
         return EXIT_FAIL
     return EXIT_OK
 
@@ -1149,8 +1171,9 @@ def command_hotspots(args: argparse.Namespace) -> int:
     write_hotspots(measurement, Path(args.out))
     for line in advisory_hotspots(measurement, top=10):
         print(line)
-    if measurement.facts.diagnostics:   # the history tables need only the files and their complexity; the input is still not a passing one
-        print_refusal(measurement.facts.diagnostics)
+    if measurement.facts.diagnostics:   # the history tables need only the files and their complexity; the input is still not a passing one, and they certify nothing
+        mark_not_certified(Path(args.out), measurement.facts.diagnostics)
+        print_refusal(measurement.facts.diagnostics, partial=True)
         return EXIT_FAIL
     return EXIT_OK
 

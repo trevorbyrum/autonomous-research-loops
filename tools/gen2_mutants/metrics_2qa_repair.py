@@ -62,7 +62,7 @@ MUTATIONS: list[Mutation] = [
       '        if dotted in self.packages:\n            return ("package", dotted)', '        if False:\n            return ("package", dotted)', IDX),
     # --- F1: the order, the count, what cannot be followed ---------------------------------------------------------------
     r("collab-depth-first-order", "a method resolves depth-first, not through the C3 order", (CM + "test_a_diamond_is_resolved_by_c3_not_depth_first",),
-      "        self._mro[key] = [key] + c3_merge(sequences + [direct])", "        self._mro[key] = list(dict.fromkeys([key] + [member for seq in sequences for member in seq]))", IDX),
+      "        self._mro[key] = [key] + (c3_merge(sequences + [direct]) if direct else [OBJECT])", "        self._mro[key] = list(dict.fromkeys([key] + [member for seq in sequences for member in seq]))", IDX),
     r("collab-inconsistent-order-guessed", "an inconsistent hierarchy takes its first candidate", (CM + "test_an_inconsistent_order_is_refused_not_guessed",),
       '        if head is None:\n            raise ValueError("no consistent method resolution order")', '        if head is None:\n            head = sequences[0][0]', IDX),
     r("collab-site-counted-per-family", "a call site is counted once for each family that contains it", (CO + "test_a_site_in_two_families_is_one_site",

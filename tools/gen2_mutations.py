@@ -7,18 +7,23 @@ reruns the guard's declared killer tests and its paired controls against the
 mutant, and checks that the killers catch it while the controls still pass:
 
   KILLED    every test listed in `killers` fails, and every paired control
-            passes. A failure is an assertion failure, or an
-            sqlite3.IntegrityError raised in a test body outside setUp (a
-            write the test expects to succeed was refused, i.e. the mutant
-            over-restricts);
+            passes, and no test errored. A failure is an assertion failure,
+            or an sqlite3.IntegrityError raised in a test body outside setUp
+            (a write the test expects to succeed was refused, i.e. the
+            mutant over-restricts);
   SURVIVED  no killer fails — the guard is untested;
   INVALID   the mutation text was not found exactly once, a listed killer
             did not fail, a paired control did not pass (it failed, erred,
-            was skipped or did not run), or tests errored (setup broke
-            rather than an assertion catching the mutant) while some listed
-            killer did not fail in its own body. Setup errors elsewhere are
-            reported but tolerated when every listed killer failed in its
-            body: an over-restricting mutant can also break a shared fixture.
+            was skipped or did not run), or ANY test errored. Incomplete
+            execution dominates (task 2q-a-repair-4, Astra's 2q-a-repair-3
+            review F4): an error, such as a tool child that did not complete
+            (gen2/tests/tool_repo_fixtures.py, ToolDidNotComplete), is not
+            an assertion catching the mutant, and a killer that errored in
+            one subtest is not credited with an assertion failure in
+            another: only killers and controls run under a mutant, so there
+            is no "unrelated" error to tolerate. The complete text of each
+            error, child results included, is kept (`_Collector.errored_detail`)
+            and printed under the INVALID verdict.
 
 Children (task 1c; attestation task 1c-repair, Astra 1c review C1). A
 Python-module or disk target is also written into a temporary copy of the
@@ -195,6 +200,8 @@ FILE_TARGETS = {
     "gen2/tests/tool_repo_fixtures.py": ("module", "gen2.tests.tool_repo_fixtures", "gen2.tests.test_tool_completion"),
     "tools/check_gen2_debt.py": ("attr", "gen2.tests.tool_repo_fixtures", "DEBT_TOOL"),
     "tools/check_gen2_locators.py": ("disk",),   # task 2q-a-repair-3: it imports the shared source facts beside it, so it runs from the child tree, not alone from a temp dir
+    # task 2q-a-repair-4: the harness's own verdict, run by the tests of its rule on a copy the runner hands them by path (the copy imports gen2_mutants, which the tests put on sys.path)
+    "tools/gen2_mutations.py": ("attr", "test_mutation_verdict", "HARNESS"),
 }
 
 
@@ -225,6 +232,7 @@ class _Collector(unittest.TestResult):
         super().__init__()
         self.failed: set[str] = set()
         self.errored: dict[str, str] = {}
+        self.errored_detail: dict[str, list[str]] = {}   # the whole text of every error of a test, a tool child's complete result included
         self.attestations: list[dict] = []  # what the killers' children attested (module docstring, "Children")
         self.expected: str | None = None     # the SHA-256 of the mutant as written into the child tree
         self.tree: Path | None = None
@@ -247,7 +255,9 @@ class _Collector(unittest.TestResult):
         if issubclass(err[0], sqlite3.IntegrityError) and not in_setup:
             self.failed.add(test.id())
         else:
-            self.errored[test.id()] = self._exc_info_to_string(err, test).strip().splitlines()[-1]
+            text = self._exc_info_to_string(err, test).strip()
+            self.errored[test.id()] = text.splitlines()[-1]
+            self.errored_detail.setdefault(test.id(), []).append(text)
 
     def addError(self, test, err) -> None:  # noqa: N802
         self._record_error(test, err)
@@ -564,14 +574,16 @@ def verdict(m: Mutation, res: _Collector, controls: tuple[str, ...], own_pid: in
     broken = [c for c in controls if not any(_named(t, c) for t in res.ran) or any(_named(t, c) for t in (*res.failed, *res.errored, *res.skipped))]
     if broken:
         return f"INVALID   {m.mid}: paired control(s) did not pass under the mutant: {broken}"
-    if res.errored and (missing or not m.killers):
-        return f"INVALID   {m.mid}: {len(res.errored)} test error(s), e.g. {next(iter(res.errored.items()))}"
+    if res.errored:   # only killers and controls ran, and a control that errored is `broken` above: these are killers that did not complete, whatever else they asserted
+        shown = "".join(f"\n    {name}:\n" + "\n".join("      " + line for line in text.splitlines())
+                        for name, texts in res.errored_detail.items() for text in texts)
+        return (f"INVALID   {m.mid}: {len(res.errored)} test(s) did not complete, e.g. {next(iter(res.errored.items()))} (incomplete execution is no kill, "
+                f"even when the same test also failed an assertion){shown}")
     if not res.failed:
         return f"SURVIVED  {m.mid}: {m.description}"
     if missing:
         return f"INVALID   {m.mid}: listed killer(s) did not fail: {missing}"
-    note = f" ({len(res.errored)} other test(s) errored in setup: the mutant also breaks a shared fixture)" if res.errored else ""
-    return f"KILLED    {m.mid} by {len(res.failed)} test(s), {len(controls)} paired control(s) passing{note}"
+    return f"KILLED    {m.mid} by {len(res.failed)} test(s), {len(controls)} paired control(s) passing"
 
 
 def _evaluate(m: Mutation) -> str:
