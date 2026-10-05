@@ -1552,3 +1552,9 @@ The post-2q Gate D is renumbered #5.
   2. authorize the minimal production change (`_no_reading`) before 2q-a acceptance;
   3. approve its sequencing (inside the 2q-a repair, or as a 2q-b preparation slice ahead of acceptance).
 - Not rerun by Astra: the full engine and gateway suites and their mutation campaigns. The earlier reruns at 4f1ae96 stand as prior evidence.
+- **Operator rulings 2026-10-05** ("I agree"):
+  - all three adopted: B and the supported-source contract, with repair-2's unresolved-classification permission withdrawn;
+  - the `_no_reading` explicit-method replacement is authorized before 2q-a acceptance;
+  - it is sequenced inside the 2q-a repair, so the family history continues.
+
+  Routed to **2q-a-repair-3** (checklist 0–8). Coders return to Sonnet 5.5.
