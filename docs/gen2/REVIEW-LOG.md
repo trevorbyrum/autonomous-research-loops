@@ -1614,3 +1614,6 @@ The post-2q Gate D is renumbered #5.
   - two compiler-invalid `nonlocal` forms are accepted;
   - the four producer-call residuals (`loader-default`, `loader-walrus`, `loader-getattr`, `type-star`) need a named owner.
 - **This is the third consecutive BLOCK since Gate D #4, so the round cap applies.** The orchestrator stopped dispatching, and the decision is the operator's: accept the remainder as debt, or continue, with a fresh Gate D first.
+- **Operator ruling 2026-10-05 at the round cap.** After the research pass (`docs/gen2/research/2q-a-round-cap-20261005.md`, now required by the charter's "Research before re-briefing"), the operator ruled: "make the fixes, review it to make sure it didn't cause any other issues and then we'll move on."
+  - The operator continues on the researched plan: scope from `symtable` (slice A, 2q-a-repair-6), then SOURCE-CONTRACT v2, soundy by declaration (slice B, 2q-a-repair-7): the mechanism ban plus a refusal of quoted class-body annotations, replacing value tracking. v2 is approved.
+  - The pre-repair Gate D is skipped by operator direction. Gate D #5 after 2q still runs.
