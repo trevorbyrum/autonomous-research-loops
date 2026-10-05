@@ -42,6 +42,22 @@ Both are re-indexed from the reviewed commit before every Gate D and are availab
 - **The classification runs at family level, not only per finding** (the user, 2026-10-02, after 2b ran twelve review rounds: "I literally had you add a review pass that specifically was meant to catch patches"). Every re-review must also answer: do this round's findings share a root cause with earlier rounds of the same task? A series of individually correct fixes for one shared cause is itself a **MITIGATION of the family cause**, even when each fix is ROOT-CAUSE for its own finding. The reviewer names the family cause, and the next brief must target it. The orchestrator's briefs must ask this question explicitly. Restating the reviewer's per-finding repairs is not enough.
 - **A task that keeps failing review triggers Gate D anyway.** On a task's third consecutive BLOCK, a fresh-session Gate D runs before the next repair is dispatched, so the whole-system review can't be postponed indefinitely by a task that never closes.
 
+## Review throughput (the user, 2026-10-05)
+Adopted after asking what research suggests for speeding up the build. The research: repair loops get most of their achievable gain within 3–4 rounds (arXiv 2607.05197). Review rounds and turnaround grow with change size (Google's modern code review study; Greptile's analysis). Expensive suites belong once at the gate, not on every iteration (Google's diff-based mutation testing; merge-queue practice). These rules apply from the next dispatch onward. They do not change a review already running.
+
+- **Blocking findings, defined.** A finding blocks only if, in realistic operation, it could:
+  - (a) produce a wrong research result or a false completeness, exhaustion or sufficiency signal;
+  - (b) leak a credential or token, or widen a permission;
+  - (c) lose or corrupt durable data;
+  - (d) break an invariant or contract the operator ratified;
+  - (e) let a check or test claim to enforce a blocking-class property when it doesn't.
+
+  Everything else is **non-blocking**. The reviewer records it, and the orchestrator logs it in `docs/gen2/DEBT-REGISTER.md` with an owning task or phase and a removal condition. The operator accepts these entries in advance, by this rule, so they don't escalate one by one. The ROOT-CAUSE/MITIGATION classification still applies, and a MITIGATION of a blocking-class finding still blocks and escalates.
+- **Re-reviews raise only blocking findings.** After a task's first review, a re-review judges the previous round's blocking findings and raises **new** findings only if they are blocking-class. New non-blocking observations go to the register, not the verdict.
+- **Round cap.** On a task's **third consecutive BLOCK**, the orchestrator stops dispatching and sends the operator a short summary: what remains, its blocking class, and the family verdict. The operator decides whether to **accept the remainder as debt** (registered with owner and removal condition; the task closes) or **continue**. If the operator continues, the Gate D rule above runs before the next repair.
+- **Small slices.** A brief scopes a change to a few hundred hand-written lines; a guide of ≤ ~500, excluding generated files such as the mutation-controls JSON. Larger work is split into sequential slices, each landed and reviewed on its own. A repair brief targets the blocking findings and their family cause, not every observation.
+- **One full test run per round.** Coders run targeted tests and the `--only` mutants for what they changed while working; they don't run the full targets. At landing, the orchestrator runs `make gen2-check` then `make gen2-gateway` once, unpiped, on an isolated snapshot, and that is the round's execution record. The reviewer uses it and doesn't rerun the full targets; it may rebuild specific mutants and run targeted tests. If the landing run fails, the coder fixes it before review is dispatched. Once the CI design's §4 qualification is met, CI is that run.
+
 ## Standing rules
 - Build follows the adjudicated phase order (flow doc + Astra review §10): Phase 0 invariants/migration contract → 1 mechanical vertical slice (fake executors; crash/replay/cancel proven before model authority) → 2 one complete research workflow → 3 qualified automation/projections → 4 migration+canary. Phase transitions are operator-gates.
 - Size rules (the user, 2026-09-29; replaces the earlier 10,000/12,000 total, which had been copied from the design review's *proposed* planning allocation without operator approval):

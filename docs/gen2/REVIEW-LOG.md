@@ -1584,3 +1584,8 @@ The post-2q Gate D is renumbered #5.
   - Disclosure corrections: a refused `report` does write partial artifacts; six test claims were rejected.
 - **Routed** to **2q-a-repair-4** (Sonnet 5.5), which turns the guard into positive recognition (refuse every unrecognised binding or store kind) instead of a list of known bad forms. This is the first BLOCK since Gate D #4. No operator ruling is needed: the defects are within the ratified contract.
 - The orchestrator corrected CI-DESIGN's T0 list so it names `gen2-source`.
+
+## 2026-10-05: operator ruling, review throughput
+- The operator adopted four rules after a research pass on speeding up the build (repair-loop returns, review size, gate-only full suites): blocking findings defined; re-reviews raise only blocking findings; a round cap at 3 consecutive BLOCKs, after which the operator decides; small slices; one full test run per round. All are recorded in BUILD-CHARTER "Review throughput".
+- They apply from the next dispatch. 2q-a-repair-4's review (`ca0161ae`) already running is unchanged.
+- Deferring 2q-b was offered and not adopted.
