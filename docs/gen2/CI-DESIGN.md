@@ -1,6 +1,6 @@
 # gen-2 CI design — revision 2
 
-Status: **PROPOSAL, revision 2.1** (orchestrator, 2026-10-04). Revision 2 was re-reviewed by Astra and judged **SOUND-WITH-CHANGES** (`private/reviews/gen2-ci-design-rev2-astra-review-20261004.md`). 2.1 applies RR1–RR3 and its first-slice additions. Nothing is enabled until the operator rules on §9.
+Status: **APPROVED by the operator 2026-10-05** (D1–D3 and D5–D11 as recommended; D4 changed to no GitHub Actions). Revision 2.1 (orchestrator, 2026-10-04). Revision 2 was re-reviewed by Astra and judged **SOUND-WITH-CHANGES** (`private/reviews/gen2-ci-design-rev2-astra-review-20261004.md`). 2.1 applies RR1–RR3 and its first-slice additions. Nothing is enabled until the operator rules on §9.
 
 - **Revision 1:** `5ae3d49` plus the §3.9 addendum `d087225`. Astra reviewed it with verdict **SOUND-WITH-CHANGES** (`private/reviews/gen2-ci-design-astra-review-20261004.md`; evidence in `private/evidence/astra-ci-design/`).
 - **This revision** adopts all ten of Astra's findings, its research corrections, its changes to the gaps list and its implementation order. §10 maps each finding to where it is addressed.
@@ -323,7 +323,7 @@ Each step is a build-out on a branch, tested there, and merged into `gen2` only 
 | D1 | CI as the authoritative execution record | **Yes, after the §4 qualification.** |
 | D2 | Task branches/worktrees/PRs | **Yes, with one coder and operator merges.** Concurrency and merge authority are separate, later decisions. |
 | D3 | Astra cites CI runs instead of rerunning | **Yes, after D1's prerequisites.** Gate C/Gate D independence kept, with mandatory reruns when the machinery is suspect. |
-| D4 | GitHub Actions | **Repurpose as scheduled, non-required drift**, once Jenkins covers the reference workload. Stop duplicate full runs on every push after qualification. |
+| D4 | GitHub Actions | **Operator ruling 2026-10-05: no GitHub Actions at all** (no paid minutes). The drift job (current 3.12.x, 3.13, latest SQLite) runs in the **Jenkins nightly** mode instead, as variant images. `.github/workflows/gen2-check.yml` will be removed or disabled once the operator confirms which. |
 | D5 | Canonical origin | **Root fix and pin the reference.** |
 | D6 | Platform requests | **The revised, prioritised set in §6.** |
 | D7 | Pre-merge full verification and the integration interlock | **Approve.** |

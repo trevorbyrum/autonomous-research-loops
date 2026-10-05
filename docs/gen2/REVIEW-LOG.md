@@ -1512,3 +1512,26 @@ Full report: `private/reviews/gen2-2q-a-repair-2-astra-review-20261003.md`.
 - consolidation of the 2,000+-line tool.
 
 The post-2q Gate D is renumbered #5.
+
+## 2026-10-04/05 — CI design: Astra review, revision, re-review; operator rulings
+- **Design:** `docs/gen2/CI-DESIGN.md`. It builds on the existing `trevorbyrum/ci-cd` platform (two Jenkins VMs, the `std` library, archgate) and the gen2 Jenkinsfile from PR #1.
+- **Astra review 1** (`private/reviews/gen2-ci-design-astra-review-20261004.md`): **SOUND-WITH-CHANGES**, 10 findings. The four HIGH ones:
+  - the diff-mutation selector and the full backstop were in the wrong order;
+  - crash-kills happen at the subprocess boundary;
+  - verifier qualification needs identity, cleanliness and evidence, and "five landings" is not enough;
+  - the network-isolation claim was broader than the design could support.
+
+  Revision 2 adopts all ten, plus Astra's implementation order.
+- **Astra re-review** (`gen2-ci-design-rev2-astra-review-20261004.md`): **SOUND-WITH-CHANGES**. Remaining items:
+  - RR1: a charter transition table;
+  - RR2: event-bound freshness for the Gate D pack;
+  - RR3: full source keys;
+  - first-slice additions.
+
+  All are applied in revision 2.1 (`73b9ed0`).
+- **Operator rulings, 2026-10-05:**
+  - **D1–D3 and D5–D11 approved as recommended.**
+  - **D4 changed:** no GitHub Actions at all, because there are no paid minutes. Drift checks move to the Jenkins nightly mode.
+  - **D2 charter amendment** recorded in BUILD-CHARTER: task branches and worktrees, PRs into `gen2`, operator merges, still one coder.
+  - **D9 values:** accepted-review evidence is kept permanently, routine runs for 90 days, and nightly findings become tasks within 2 working days.
+- **Confirmed defect, routed:** the gateway client's canonical origin depends on `ipaddress.__str__` (3.12.14 changed it). Root fix: project-owned canonical serialisation, plus pinning the reference environment (D5).
