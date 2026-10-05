@@ -922,3 +922,8 @@ MUTANTS.extend(_snapshot_mutants(Mutant))
 from gen2_gateway_inventory_mutants import build as _inventory_mutants  # noqa: E402
 
 MUTANTS.extend(_inventory_mutants(Mutant))
+
+# task 2q-a-repair-3: the explicit refusals of Sealed and Passive that replaced the class decorator `_no_reading`
+from gen2_gateway_payload_mutants import build as _payload_mutants  # noqa: E402
+
+MUTANTS.extend(_payload_mutants(Mutant))

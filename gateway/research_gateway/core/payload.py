@@ -84,40 +84,161 @@ OMIT = object()
 MAX_DEPTH = 64   # no provider answer the gateway supports nests deeper; one that does is unreadable (core/schema.py), which also bounds every later walk over it
 
 
-_READS = ("__bool__", "__iter__", "__reversed__", "__len__", "__getitem__", "__contains__", "__lt__", "__le__", "__gt__", "__ge__", "__str__", "__format__",
-          "__int__", "__float__", "__index__", "__bytes__", "__add__", "__radd__", "__mul__", "__rmul__", "__neg__", "__abs__", "__mod__", "__sub__",
-          "__rsub__", "__truediv__", "__floordiv__", "__and__", "__or__", "__xor__", "__hash__", "__call__", "__round__", "__floor__", "__ceil__", "__trunc__", "__matmul__", "__pow__", "__lshift__",
-          "__rshift__", "__invert__", "__pos__", "__complex__")
+def _refusal(held: "_Unread", how: str | None = None) -> UndeclaredRead:
+    """The error that reading `held` (a Sealed or a Passive) raises. `how` names the way it was read: a special method's name, or `attribute 'x'`;
+    None is a write, which is refused as a change (the object is never changed)."""
+    if isinstance(held, Sealed):
+        error, what, readable = SealedRead, "the provider's raw object", "it is for storing (a record's `raw=`); declare the field and read it decoded"
+    else:
+        error, what, readable = (PassiveRead, "this value is declared any_(): metadata carried as sent, stored and never read",
+                                 "a value that decides anything is declared a kind in the schema")
+    return error(f"{what} is not changed" if how is None else f"{what} ({how}); {readable}")
 
 
-def _no_reading(error: type, what: str, readable: str):
-    """The class decorator that makes every way of reading an instance raise `error`: each special method that reads (truth, ordering, iteration, subscript,
-    text, number, arithmetic), and any attribute that is not its own (a dunder an introspecting library probes for is an AttributeError, as for any object)."""
-    def refuse(name):
-        def read(self, *args, **kwargs):
-            raise error(f"{what} ({name}); {readable}")
-        read.__name__ = name
-        return read
+class _Unread:
+    """What Sealed and Passive share: every way of reading an instance raises (task 2q-a-repair-3; it replaces the class decorator `_no_reading`, which installed these
+    methods with `setattr`, a form the source contract (docs/gen2/SOURCE-CONTRACT.md) cannot model, and behaves exactly as it did). Each special method that reads —
+    truth, ordering, iteration, subscript, text, number, arithmetic, call — raises the class's error through `_refusal`, and so does any attribute that is not its own (a dunder an
+    introspecting library probes for is an AttributeError, as for any object) and any attempt to change one. Each subclass defines its own `__hash__`: a class that defines `__eq__`
+    would otherwise get `__hash__ = None`, and hashing one raises the same error as every other read."""
+    __slots__ = ()
 
-    def decorate(cls):
-        for name in _READS:
-            setattr(cls, name, refuse(name))
+    def __bool__(self, *args, **kwargs):
+        raise _refusal(self, "__bool__")
 
-        def __getattr__(self, name):
-            if name.startswith("__") and name.endswith("__"):
-                raise AttributeError(name)
-            raise error(f"{what} (attribute {name!r}); {readable}")
-        cls.__getattr__ = __getattr__
+    def __iter__(self, *args, **kwargs):
+        raise _refusal(self, "__iter__")
 
-        def __setattr__(self, name, value):
-            raise error(f"{what} is not changed")
-        cls.__setattr__ = __setattr__
-        return cls
-    return decorate
+    def __reversed__(self, *args, **kwargs):
+        raise _refusal(self, "__reversed__")
+
+    def __len__(self, *args, **kwargs):
+        raise _refusal(self, "__len__")
+
+    def __getitem__(self, *args, **kwargs):
+        raise _refusal(self, "__getitem__")
+
+    def __contains__(self, *args, **kwargs):
+        raise _refusal(self, "__contains__")
+
+    def __lt__(self, *args, **kwargs):
+        raise _refusal(self, "__lt__")
+
+    def __le__(self, *args, **kwargs):
+        raise _refusal(self, "__le__")
+
+    def __gt__(self, *args, **kwargs):
+        raise _refusal(self, "__gt__")
+
+    def __ge__(self, *args, **kwargs):
+        raise _refusal(self, "__ge__")
+
+    def __str__(self, *args, **kwargs):
+        raise _refusal(self, "__str__")
+
+    def __format__(self, *args, **kwargs):
+        raise _refusal(self, "__format__")
+
+    def __int__(self, *args, **kwargs):
+        raise _refusal(self, "__int__")
+
+    def __float__(self, *args, **kwargs):
+        raise _refusal(self, "__float__")
+
+    def __index__(self, *args, **kwargs):
+        raise _refusal(self, "__index__")
+
+    def __bytes__(self, *args, **kwargs):
+        raise _refusal(self, "__bytes__")
+
+    def __add__(self, *args, **kwargs):
+        raise _refusal(self, "__add__")
+
+    def __radd__(self, *args, **kwargs):
+        raise _refusal(self, "__radd__")
+
+    def __mul__(self, *args, **kwargs):
+        raise _refusal(self, "__mul__")
+
+    def __rmul__(self, *args, **kwargs):
+        raise _refusal(self, "__rmul__")
+
+    def __neg__(self, *args, **kwargs):
+        raise _refusal(self, "__neg__")
+
+    def __abs__(self, *args, **kwargs):
+        raise _refusal(self, "__abs__")
+
+    def __mod__(self, *args, **kwargs):
+        raise _refusal(self, "__mod__")
+
+    def __sub__(self, *args, **kwargs):
+        raise _refusal(self, "__sub__")
+
+    def __rsub__(self, *args, **kwargs):
+        raise _refusal(self, "__rsub__")
+
+    def __truediv__(self, *args, **kwargs):
+        raise _refusal(self, "__truediv__")
+
+    def __floordiv__(self, *args, **kwargs):
+        raise _refusal(self, "__floordiv__")
+
+    def __and__(self, *args, **kwargs):
+        raise _refusal(self, "__and__")
+
+    def __or__(self, *args, **kwargs):
+        raise _refusal(self, "__or__")
+
+    def __xor__(self, *args, **kwargs):
+        raise _refusal(self, "__xor__")
+
+    def __call__(self, *args, **kwargs):
+        raise _refusal(self, "__call__")
+
+    def __round__(self, *args, **kwargs):
+        raise _refusal(self, "__round__")
+
+    def __floor__(self, *args, **kwargs):
+        raise _refusal(self, "__floor__")
+
+    def __ceil__(self, *args, **kwargs):
+        raise _refusal(self, "__ceil__")
+
+    def __trunc__(self, *args, **kwargs):
+        raise _refusal(self, "__trunc__")
+
+    def __matmul__(self, *args, **kwargs):
+        raise _refusal(self, "__matmul__")
+
+    def __pow__(self, *args, **kwargs):
+        raise _refusal(self, "__pow__")
+
+    def __lshift__(self, *args, **kwargs):
+        raise _refusal(self, "__lshift__")
+
+    def __rshift__(self, *args, **kwargs):
+        raise _refusal(self, "__rshift__")
+
+    def __invert__(self, *args, **kwargs):
+        raise _refusal(self, "__invert__")
+
+    def __pos__(self, *args, **kwargs):
+        raise _refusal(self, "__pos__")
+
+    def __complex__(self, *args, **kwargs):
+        raise _refusal(self, "__complex__")
+
+    def __getattr__(self, name):
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
+        raise _refusal(self, f"attribute {name!r}")
+
+    def __setattr__(self, name, value):
+        raise _refusal(self)
 
 
-@_no_reading(SealedRead, "the provider's raw object", "it is for storing (a record's `raw=`); declare the field and read it decoded")
-class Sealed:
+class Sealed(_Unread):
     """The provider's object exactly as it was sent (a member, a whole answer, a download's bytes), kept for storing in a record's `raw`.
 
     It is stored (`plain`, which hands out a copy: the object kept here is never reachable) and compared with nothing: reading it — truth, iteration, subscript, `.get`, any attribute — raises
@@ -125,10 +246,12 @@ class Sealed:
     compared equal and a flag on the object said which those were; `make_record` set it for any raw it was given, so a literal an adapter passed compared with a decoded object and told
     whether they matched — the guess Astra's R13C-2 mutant made. Nothing compares Sealed objects now: `Rec.same_as` is the one comparison, of two decoded objects.)"""
     __slots__ = ("_value",)
-    __hash__ = None
 
     def __init__(self, value):
         object.__setattr__(self, "_value", value)
+
+    def __hash__(self, *args, **kwargs):
+        raise _refusal(self, "__hash__")
 
     def __eq__(self, other) -> bool:
         if isinstance(other, Sealed):
@@ -145,19 +268,19 @@ class Sealed:
         return Sealed({k: v for k, v in self._value.items() if k not in names})
 
 
-@_no_reading(PassiveRead, "this value is declared any_(): metadata carried as sent, stored and never read",
-             "a value that decides anything is declared a kind in the schema")
-class Passive:
+class Passive(_Unread):
     """The value of a field a schema declares `any_()`: carried as sent, for storing in a record (`extra`, provenance), and nothing else.
 
     Every way of reading it raises PassiveRead — `if x`, `x == y`, `x in z`, `str(x)`, `f"{x}"`, `x[0]`, `x.get`, `int(x)`, `x + 1` — so a value that
     identifies a candidate, selects one, ends or continues a listing, or goes into a request cannot be one: the schema gives such a field a kind, and
     the decoder checks it. `plain()` is the one way out, and hands out a copy."""
     __slots__ = ("_value",)
-    __hash__ = None
 
     def __init__(self, value=None):
         object.__setattr__(self, "_value", value)
+
+    def __hash__(self, *args, **kwargs):
+        raise _refusal(self, "__hash__")
 
     def __eq__(self, other) -> bool:
         raise PassiveRead("this value is declared any_(): metadata carried as sent, stored and never read (comparison)")
