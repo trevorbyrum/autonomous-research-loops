@@ -6679,7 +6679,7 @@
   "controls": [
    "test_gateway_client.UnreadableAnswers.test_control_a_record_cache_hit_is_its_sources_record"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 604"
+  "why": "gen2/gateway_client/client.py: executes line 625"
  },
  "2B-count-without-identities": {
   "controls": [
@@ -6691,31 +6691,31 @@
   "controls": [
    "test_gateway_client.RecordedByTheRouter.test_an_outage_that_widens_is_recorded_snapshot_by_snapshot"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 494; or executes line 492"
+  "why": "gen2/gateway_client/client.py: executes line 515; or executes line 513"
  },
  "2B-echo-bool-attempt": {
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 294"
+  "why": "gen2/gateway_client/client.py: executes line 315"
  },
  "2B-echo-is-identity": {
   "controls": [
    "test_gateway_client.RecordedByTheRouter.test_an_outage_that_widens_is_recorded_snapshot_by_snapshot"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 494; or executes line 492"
+  "why": "gen2/gateway_client/client.py: executes line 515; or executes line 513"
  },
  "2B-echo-unchecked": {
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 532"
+  "why": "gen2/gateway_client/client.py: executes line 553"
  },
  "2B-envelope-unchecked": {
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 440"
+  "why": "gen2/gateway_client/client.py: executes line 461"
  },
  "2B-fact-id-episode-only": {
   "controls": [
@@ -6818,7 +6818,7 @@
   "controls": [
    "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result_under_this_invocation"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 550"
+  "why": "gen2/gateway_client/client.py: executes line 571"
  },
  "2B-id-includes-links": {
   "controls": [
@@ -6836,7 +6836,7 @@
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 557; or executes line 556"
+  "why": "gen2/gateway_client/client.py: executes line 578; or executes line 577"
  },
  "2B-metadata-only-empty": {
   "controls": [
@@ -6860,13 +6860,13 @@
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 570"
+  "why": "gen2/gateway_client/client.py: executes line 591"
  },
  "2B-page-request-first": {
   "controls": [
    "test_gateway_client.RecordedByTheRouter.test_an_outage_that_widens_is_recorded_snapshot_by_snapshot"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 494; or executes line 492"
+  "why": "gen2/gateway_client/client.py: executes line 515; or executes line 513"
  },
  "2B-partial-unexplained": {
   "controls": [
@@ -6878,43 +6878,43 @@
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 527-528"
+  "why": "gen2/gateway_client/client.py: executes line 548-549"
  },
  "2B-poll-capture-ignored": {
   "controls": [
    "test_gateway_client.TransportOutcomes.test_a_queued_answer_is_polled_to_its_result_under_this_invocation"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 547"
+  "why": "gen2/gateway_client/client.py: executes line 568"
  },
  "2B-poll-echo-unchecked": {
   "controls": [
    "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 588; or executes line 586"
+  "why": "gen2/gateway_client/client.py: executes line 609; or executes line 607"
  },
  "2B-poll-uncorrelated": {
   "controls": [
    "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 585; or executes line 584"
+  "why": "gen2/gateway_client/client.py: executes line 606; or executes line 605"
  },
  "2B-queued-unpolled": {
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 541"
+  "why": "gen2/gateway_client/client.py: executes line 562"
  },
  "2B-records-unchecked": {
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 554"
+  "why": "gen2/gateway_client/client.py: executes line 575"
  },
  "2B-redirects-followed": {
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 249"
+  "why": "gen2/gateway_client/client.py: executes line 270"
  },
  "2B-repeat-counted-twice": {
   "controls": [
@@ -6926,13 +6926,13 @@
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 526; or executes line 525"
+  "why": "gen2/gateway_client/client.py: executes line 547; or executes line 546"
  },
  "2B-uncaptured-complete": {
   "controls": [
    "test_gateway_client.RecordedByTheRouter.test_an_outage_that_widens_is_recorded_snapshot_by_snapshot"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 568; or executes line 562"
+  "why": "gen2/gateway_client/client.py: executes line 589; or executes line 583"
  },
  "2B-uncaptured-empty-kept": {
   "by_hand": true,
@@ -6948,7 +6948,7 @@
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 539; or executes line 536"
+  "why": "gen2/gateway_client/client.py: executes line 560; or executes line 557"
  },
  "2B-unobserved-counted": {
   "controls": [
@@ -7044,13 +7044,13 @@
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 496 (else 494); or executes line 492"
+  "why": "gen2/gateway_client/client.py: executes line 517 (else 515); or executes line 513"
  },
  "2B13-cap-on-any-last-page": {
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 496 (else 494); or executes line 492"
+  "why": "gen2/gateway_client/client.py: executes line 517 (else 515); or executes line 513"
  },
  "2B13-cursor-beyond-the-bound": {
   "controls": [
@@ -7226,7 +7226,7 @@
   "rejected": [
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 431"
+  "why": "gen2/gateway_client/client.py: executes line 452"
  },
  "2B13-exchange-timeout-ignored": {
   "controls": [
@@ -7237,7 +7237,7 @@
    "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep",
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 431"
+  "why": "gen2/gateway_client/client.py: executes line 452"
  },
  "2B13-failed-page-unknown-end": {
   "controls": [
@@ -7267,7 +7267,7 @@
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 491 (else 490); or executes line 479"
+  "why": "gen2/gateway_client/client.py: executes line 512 (else 511); or executes line 500"
  },
  "2B13-partial-page-ends": {
   "controls": [
@@ -7283,7 +7283,7 @@
    "test_gateway_client.PollDeadline.test_a_deadline_that_passes_is_a_timeout_observation_and_never_an_empty_result",
    "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 583; or executes line 584; or executes line 585; or executes line 589"
+  "why": "gen2/gateway_client/client.py: executes line 604; or executes line 605; or executes line 606; or executes line 610"
  },
  "2B13-poll-sleep-unbounded": {
   "controls": [
@@ -7294,13 +7294,13 @@
    "test_gateway_client.PollDeadline.test_gate_d_a_slow_gateway_cannot_stretch_one_second_into_three",
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 589; or executes line 584"
+  "why": "gen2/gateway_client/client.py: executes line 610; or executes line 605"
  },
  "2B13-poll-timeout-restarts": {
   "controls": [
    "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 585; or executes line 584"
+  "why": "gen2/gateway_client/client.py: executes line 606; or executes line 605"
  },
  "2B13-poll-timeout-unclamped": {
   "controls": [
@@ -7310,7 +7310,7 @@
    "test_gateway_client.PollDeadline.test_a_reply_that_arrives_inside_its_timeout_and_is_not_the_end_leaves_only_what_remains_to_sleep",
    "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 585; or executes line 584"
+  "why": "gen2/gateway_client/client.py: executes line 606; or executes line 605"
  },
  "2B13-request-type-open": {
   "controls": [
@@ -7361,13 +7361,13 @@
   "controls": [
    "test_gateway_exchange.EveryBlockingStepIsBounded.test_control_the_same_reply_is_read_when_it_is_timely"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 209; or executes line 205"
+  "why": "gen2/gateway_client/client.py: executes line 230; or executes line 226"
  },
  "2B13D-connect-time-not-counted": {
   "controls": [
    "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 210; or executes line 205; or executes line 211"
+  "why": "gen2/gateway_client/client.py: executes line 231; or executes line 226; or executes line 232"
  },
  "2B13D-deadline-never-passes": {
   "controls": [
@@ -7379,13 +7379,13 @@
   "controls": [
    "test_gateway_client.OverRealHttp.test_the_default_transport_reads_a_real_answer"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 438"
+  "why": "gen2/gateway_client/client.py: executes line 459"
  },
  "2B13D-plain-sockets-undeadlined": {
   "controls": [
    "test_gateway_exchange.ALateReplyIsATimeout.test_a_reply_inside_the_deadline_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 223"
+  "why": "gen2/gateway_client/client.py: executes line 244"
  },
  "2B13D-reads-never-armed": {
   "controls": [
@@ -7423,7 +7423,7 @@
   "controls": [
    "test_gateway_exchange.TlsExchangeIsBoundedToo.test_control_a_timely_tls_reply_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 235"
+  "why": "gen2/gateway_client/client.py: executes line 256"
  },
  "2B13D-tls-reads-not-armed": {
   "controls": [
@@ -7441,7 +7441,7 @@
   "controls": [
    "test_gateway_exchange.TlsExchangeIsBoundedToo.test_control_a_timely_tls_reply_is_read"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 231"
+  "why": "gen2/gateway_client/client.py: executes line 252"
  },
  "2B15-a-connection-failure-leaves-the-endpoint-fresh": {
   "by_hand": true,
@@ -7454,13 +7454,13 @@
   "controls": [
    "test_gateway_exchange.NoExchangeResolvesAName.test_an_ip_literal_is_never_resolved"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 397"
+  "why": "gen2/gateway_client/client.py: executes line 418"
  },
  "2B15-a-failed-lookup-keeps-the-last-good-addresses-in-use": {
   "controls": [
    "test_gateway_exchange.NoExchangeResolvesAName.test_an_ip_literal_is_never_resolved"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 418"
+  "why": "gen2/gateway_client/client.py: executes line 439"
  },
  "2B15-an-exchange-re-resolves-after-a-failure": {
   "by_hand": true,
@@ -7495,19 +7495,19 @@
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 327"
+  "why": "gen2/gateway_client/client.py: executes line 348"
  },
  "2B17-a-failed-connect-leaves-its-socket-open": {
   "controls": [
    "test_gateway_exchange.EachCallIsGivenWhatIsLeft.test_control_send_sends_with_time_left"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 214; or leaves line 209-212 for a line outside 208-215 (or returns)"
+  "why": "gen2/gateway_client/client.py: executes line 235; or leaves line 230-233 for a line outside 229-236 (or returns)"
  },
  "2B17-a-failed-operation-keeps-the-client": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 348; or executes line 349; or executes line 351; or executes line 352"
+  "why": "gen2/gateway_client/client.py: executes line 369; or executes line 370; or executes line 372; or executes line 373"
  },
  "2B17-a-grant-is-not-an-operation": {
   "by_hand": true,
@@ -7532,15 +7532,15 @@
  },
  "2B17-a-timeout-withdraws-the-endpoint": {
   "controls": [
-   "test_gateway_client.PollDeadline.test_the_defaults_end_within_the_deadline_where_gate_d_counted_about_21_hours"
+   "test_gateway_routes.TheEndpointForms.test_control_unmapped_addresses_keep_the_accepted_spelling_under_newer_rendering"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 435"
+  "why": "gen2/gateway_client/client.py: executes line 456"
  },
  "2B17-a-url-without-a-host-is-an-endpoint": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: leaves line 193 for a line outside 193-194 (or returns); or executes line 183"
+  "why": "gen2/gateway_client/client.py: leaves line 214 for a line outside 214-215 (or returns); or executes line 204"
  },
  "2B17-an-exchange-ignores-the-owner": {
   "by_hand": true,
@@ -7553,19 +7553,19 @@
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: leaves line 345 for a line outside 345-346 (or returns); or executes line 352"
+  "why": "gen2/gateway_client/client.py: leaves line 366 for a line outside 366-367 (or returns); or executes line 373"
  },
  "2B17-another-scheme-is-an-endpoint": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 183"
+  "why": "gen2/gateway_client/client.py: executes line 204"
  },
  "2B17-credentials-in-the-url-are-accepted": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 183"
+  "why": "gen2/gateway_client/client.py: executes line 204"
  },
  "2B17-failover-stops-at-the-first-address": {
   "by_hand": true,
@@ -7578,43 +7578,43 @@
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 327; or executes line 187, 324"
+  "why": "gen2/gateway_client/client.py: executes line 348; or executes line 208, 345"
  },
  "2B17-instances-share-their-addresses": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 326; or executes line 332; or executes line 336; or executes line 187, 324"
+  "why": "gen2/gateway_client/client.py: executes line 347; or executes line 353; or executes line 357; or executes line 208, 345"
  },
  "2B17-proxy-dispatch-is-restored": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_no_global_opener_is_used_or_installed"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 249"
+  "why": "gen2/gateway_client/client.py: executes line 270"
  },
  "2B17-the-data-handler-is-back": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 249"
+  "why": "gen2/gateway_client/client.py: executes line 270"
  },
  "2B17-the-endpoint-can-be-changed": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 388"
+  "why": "gen2/gateway_client/client.py: executes line 409"
  },
  "2B17-the-file-handler-is-back": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 249"
+  "why": "gen2/gateway_client/client.py: executes line 270"
  },
  "2B17-the-ftp-handler-is-back": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 249"
+  "why": "gen2/gateway_client/client.py: executes line 270"
  },
  "2B17-the-global-opener-is-used": {
   "controls": [
@@ -7624,37 +7624,37 @@
    "test_gateway_exchange.TlsExchangeIsBoundedToo.test_control_a_timely_tls_reply_is_read",
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 274"
+  "why": "gen2/gateway_client/client.py: executes line 295"
  },
  "2B17-the-scheme-gate-is-gone": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 270"
+  "why": "gen2/gateway_client/client.py: executes line 291"
  },
  "2B17-the-unknown-scheme-handler-is-back": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 249"
+  "why": "gen2/gateway_client/client.py: executes line 270"
  },
  "2B18-a-label-need-not-be-ldh": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: leaves line 193 for a line outside 193-194 (or returns)"
+  "why": "gen2/gateway_client/client.py: leaves line 214 for a line outside 214-215 (or returns)"
  },
  "2B18-a-name-may-be-any-length": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: leaves line 193 for a line outside 193-194 (or returns)"
+  "why": "gen2/gateway_client/client.py: leaves line 214 for a line outside 214-215 (or returns)"
  },
  "2B18-a-path-query-or-fragment-is-accepted": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 183"
+  "why": "gen2/gateway_client/client.py: executes line 204"
  },
  "2B18-a-percent-encoded-host-is-a-name": {
   "by_hand": true,
@@ -7667,13 +7667,13 @@
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 183"
+  "why": "gen2/gateway_client/client.py: executes line 204"
  },
  "2B18-an-alternate-numeric-spelling-is-a-name": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: leaves line 193 for a line outside 193-194 (or returns)"
+  "why": "gen2/gateway_client/client.py: leaves line 214 for a line outside 214-215 (or returns)"
  },
  "2B18-connect-reads-the-request-host-as-an-address": {
   "by_hand": true,
@@ -7687,13 +7687,13 @@
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 195"
+  "why": "gen2/gateway_client/client.py: executes line 216"
  },
  "2B18-the-port-is-unchecked": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: leaves line 193 for a line outside 193-194 (or returns)"
+  "why": "gen2/gateway_client/client.py: leaves line 214 for a line outside 214-215 (or returns)"
  },
  "2B18-the-r17-1-reading-is-restored": {
   "by_hand": true,
@@ -7711,37 +7711,37 @@
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 377"
+  "why": "gen2/gateway_client/client.py: executes line 398"
  },
  "2B19-the-port-is-limited-to-five-digits": {
   "controls": [
    "test_gateway_routes.DirectHttpOnly.test_a_grant_goes_the_same_way"
   ],
-  "why": "gen2/gateway_client/client.py: executes line 183"
+  "why": "gen2/gateway_client/client.py: executes line 204"
  },
  "2B20-the-address-spelling-depends-on-the-interpreter": {
   "controls": [
    "test_gateway_routes.TheEndpointForms.test_control_unmapped_addresses_keep_the_accepted_spelling_under_newer_rendering"
   ],
-  "why": "By hand (2b-repair-20 / CI design D5): exercises the same canonical serializer, literal admission, endpoint owner, resolution and request construction under simulated newer rendering with unmapped IPv4 and IPv6 values; their accepted spellings still hold when the mutant delegates to str(ip)."
+  "why": "gen2/gateway_client/client.py: executes line 170"
  },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"
   ],
-  "why": "tools/gen2_metrics.py: leaves line 768 for a line outside 768-770 (or returns)"
+  "why": "tools/gen2_metrics.py: leaves line 530 for a line outside 530-532 (or returns)"
  },
  "2Q-baseline-version-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"
   ],
-  "why": "tools/gen2_metrics.py: leaves line 766 for a line outside 766-767 (or returns)"
+  "why": "tools/gen2_metrics.py: leaves line 528 for a line outside 528-529 (or returns)"
  },
  "2Q-cc-boolop-operands": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 567; or executes line 566"
+  "why": "tools/gen2_metrics.py: executes line 339; or executes line 338"
  },
  "2Q-cc-branch-increment": {
   "controls": [
@@ -7750,104 +7750,111 @@
   "rejected": [
    "test_metrics_measure.ComplexityTest.test_a_comprehension_inside_a_branch_counts_its_depth"
   ],
-  "why": "tools/gen2_metrics.py: executes line 565; or executes line 564"
+  "why": "tools/gen2_metrics.py: executes line 337; or executes line 336"
  },
  "2Q-cc-comprehension-conditions": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 570; or executes line 569"
+  "why": "tools/gen2_metrics.py: executes line 342; or executes line 341"
  },
  "2Q-cc-match-wildcard": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 573; or executes line 572"
+  "why": "tools/gen2_metrics.py: executes line 345; or executes line 344"
  },
  "2Q-cc-nested-scope-entered": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 561"
+  "why": "tools/gen2_metrics.py: executes line 333"
  },
  "2Q-cc-no-assert": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_comprehension_inside_a_branch_counts_its_depth"
   ],
-  "why": "tools/gen2_metrics.py: executes line 564"
+  "why": "tools/gen2_metrics.py: executes line 336"
  },
  "2Q-cc-no-handler": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 564"
+  "why": "tools/gen2_metrics.py: executes line 336"
  },
  "2Q-cc-no-ternary": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_comprehension_inside_a_branch_counts_its_depth"
   ],
-  "why": "tools/gen2_metrics.py: executes line 564"
+  "why": "tools/gen2_metrics.py: executes line 336"
  },
  "2Q-cog-boolop": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 568; or executes line 566"
+  "why": "tools/gen2_metrics.py: executes line 340; or executes line 338"
  },
  "2Q-cog-comprehension-depth": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 571; or executes line 569"
+  "why": "tools/gen2_metrics.py: executes line 343; or executes line 341"
  },
  "2Q-cog-elif-nested": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 582; or executes line 581"
+  "why": "tools/gen2_metrics.py: executes line 354; or executes line 353"
  },
  "2Q-cog-handler-flat": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 563"
+  "why": "tools/gen2_metrics.py: executes line 335"
  },
  "2Q-cog-match": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 574; or executes line 572"
+  "why": "tools/gen2_metrics.py: executes line 346; or executes line 344"
  },
  "2Q-cog-nesting-flat": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 580; or executes line 579"
+  "why": "tools/gen2_metrics.py: executes line 352; or executes line 351"
  },
  "2Q-collab-last-definition-wins": {
   "controls": [
    "test_metrics_measure.CollaborationTest.test_calls_between_the_files_of_one_family_are_counted_by_directed_pair"
   ],
-  "why": "tools/gen2_metrics.py: executes line 536; or executes line 535"
+  "why": "tools/gen2_metrics.py: executes line 304; or executes line 303"
  },
  "2Q-collab-module-attribute-base": {
-  "by_hand": true,
   "controls": [
-   "test_metrics_measure.CollaborationTest.test_an_attribute_base_that_is_not_a_project_class_is_no_family"
+   "test_source_contract.RefusalTest.test_refuses_src_base_shape"
   ],
-  "why": "evaluates tools/gen2_metrics.py project_bases' changed elif for a base named through a module attribute (abc.ABC) that is no project class: false, on the accepted path to no family; the mutant's `False and ...` leaves it so"
+  "rejected": [
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration",
+   "test_metrics_collaboration.SupportedSurfaceTest.test_a_nested_class_is_named_through_its_outer_class",
+   "test_metrics_measure.CollaborationTest.test_an_attribute_base_that_is_not_a_project_class_is_no_family",
+   "test_source_contract.AcceptanceTest.test_accepts_imports_and_exports",
+   "test_source_contract.AcceptanceTest.test_accepts_inheritance",
+   "test_source_contract.RefusalTest.test_refuses_src_base_mixed"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 458"
  },
  "2Q-collab-same-file-counted": {
   "controls": [
    "test_metrics_measure.CollaborationTest.test_a_method_resolves_the_way_the_composed_class_resolves_it"
   ],
-  "why": "tools/gen2_metrics.py: executes line 540"
+  "why": "tools/gen2_metrics.py: executes line 312"
  },
  "2Q-collab-same-file-family": {
   "controls": [
    "test_metrics_measure.CollaborationTest.test_a_method_resolves_the_way_the_composed_class_resolves_it"
   ],
-  "why": "tools/gen2_metrics.py: executes line 530"
+  "why": "tools/gen2_metrics.py: executes line 298"
  },
  "2Q-debt-closed-phase-ignored": {
   "controls": [
@@ -8004,7 +8011,7 @@
   "controls": [
    "test_debt_register.StatusFileTest.test_a_phase_may_not_be_closed_with_a_task_that_is_not"
   ],
-  "why": "tools/check_gen2_debt.py: executes line 142"
+  "why": "tools/check_gen2_debt.py: executes line 142; or executes line 147"
  },
  "2Q-debt-task-state-unchecked": {
   "controls": [
@@ -8028,13 +8035,13 @@
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 970"
+  "why": "tools/gen2_metrics.py: executes line 726"
  },
  "2Q-exempt-citation-unchecked": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 976"
+  "why": "tools/gen2_metrics.py: executes line 732"
  },
  "2Q-exempt-continuation-lost": {
   "by_hand": true,
@@ -8047,199 +8054,195 @@
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_a_complete_matching_entry_lets_the_regression_pass_and_is_reported"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1006"
+  "why": "tools/gen2_metrics.py: executes line 762"
  },
  "2Q-exempt-fenced-parsed": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 939"
+  "why": "tools/gen2_metrics.py: executes line 695"
  },
  "2Q-exempt-invalid-still-applies": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1001; or executes line 1002"
+  "why": "tools/gen2_metrics.py: executes line 757; or executes line 758"
  },
  "2Q-exempt-limit-ignored": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_two_entries_for_one_regression_are_a_problem"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1020"
+  "why": "tools/gen2_metrics.py: executes line 776"
  },
  "2Q-exempt-limit-inclusive": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_two_entries_for_one_regression_are_a_problem"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1020"
+  "why": "tools/gen2_metrics.py: executes line 776"
  },
  "2Q-exempt-limit-optional": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 980"
+  "why": "tools/gen2_metrics.py: executes line 737; or executes line 736"
  },
  "2Q-exempt-location-ignored": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1013; or executes line 1012"
+  "why": "tools/gen2_metrics.py: executes line 769; or executes line 768"
  },
  "2Q-exempt-location-optional": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 970"
+  "why": "tools/gen2_metrics.py: executes line 726"
  },
  "2Q-exempt-metric-optional": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 970"
+  "why": "tools/gen2_metrics.py: executes line 726"
  },
  "2Q-exempt-placeholder-accepted": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 971"
+  "why": "tools/gen2_metrics.py: executes line 727"
  },
  "2Q-exempt-reason-optional": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 970"
+  "why": "tools/gen2_metrics.py: executes line 726"
  },
  "2Q-exempt-removal-a-word": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_two_entries_for_one_regression_are_a_problem"
   ],
-  "why": "tools/gen2_metrics.py: executes line 978"
+  "why": "tools/gen2_metrics.py: executes line 734"
  },
  "2Q-exempt-removal-optional": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 970"
+  "why": "tools/gen2_metrics.py: executes line 726"
  },
  "2Q-exempt-set-limit-allowed": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_a_set_metric_entry_names_the_instance_and_lets_it_pass"
   ],
-  "why": "tools/gen2_metrics.py: executes line 987"
+  "why": "tools/gen2_metrics.py: executes line 743"
  },
  "2Q-exempt-unknown-field-ignored": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 956; or executes line 955"
+  "why": "tools/gen2_metrics.py: executes line 712; or executes line 711"
  },
  "2Q-exempt-unknown-metric": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_the_removal_condition_must_be_a_condition"
   ],
-  "why": "tools/gen2_metrics.py: executes line 974"
+  "why": "tools/gen2_metrics.py: executes line 730"
  },
  "2Q-exempt-unused-allowed": {
   "controls": [
    "test_metrics_ratchet.ExemptionTest.test_two_entries_for_one_regression_are_a_problem"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1026"
- },
- "2Q-fn-duplicate-key": {
-  "controls": [
-   "test_metrics_ratchet.FunctionTest.test_the_smell_thresholds_are_the_baselines_too"
-  ],
-  "why": "tools/gen2_metrics.py: executes line 617; or executes line 614"
+  "why": "tools/gen2_metrics.py: executes line 782"
  },
  "2Q-fn-qualified-name": {
   "controls": [
    "test_metrics_measure.ComplexityTest.test_a_ternary_an_assert_and_a_while"
   ],
-  "why": "tools/gen2_metrics.py: executes line 607; or executes line 605"
+  "why": "tools/gen2_metrics.py: executes line 372"
  },
  "2Q-god-counts-files": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 684 (else 682); or executes line 676"
+  "why": "tools/gen2_metrics.py: executes line 444 (else 442); or executes line 436"
  },
  "2Q-god-either": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 662 (else 661)"
+  "why": "tools/gen2_metrics.py: executes line 417 (else 416)"
  },
  "2Q-god-fan-in-exclusive": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 662 (else 661)"
+  "why": "tools/gen2_metrics.py: executes line 417 (else 416)"
  },
  "2Q-god-lines-exclusive": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 662 (else 661)"
+  "why": "tools/gen2_metrics.py: executes line 417 (else 416)"
  },
  "2Q-graph-component-cycles-dropped": {
   "controls": [
    "test_metrics_measure.CycleTest.test_a_cycle_is_its_strongly_connected_set_and_not_the_files_that_lead_into_it"
   ],
-  "why": "tools/gen2_metrics.py: executes line 695 (else 690); or executes line 676"
+  "why": "tools/gen2_metrics.py: executes line 455 (else 450); or executes line 436"
  },
  "2Q-graph-component-one-segment": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 226"
+  "why": "tools/gen2_metrics.py: executes line 178"
+ },
+ "2Q-graph-cross-service-edges-unreported": {
+  "controls": [
+   "test_metrics_measure.GraphTest.test_the_engine_and_the_gateway_are_measured_separately_and_tests_by_neither"
+  ],
+  "why": "tools/gen2_metrics.py: executes line 466-467 (else 466)"
  },
  "2Q-graph-from-submodule": {
   "controls": [
    "test_metrics_measure.GraphTest.test_an_import_between_the_services_is_reported_and_enters_neither_graph"
   ],
-  "why": "tools/gen2_metrics.py: executes line 253; or executes line 246"
+  "why": "tools/gen2_metrics.py: executes line 189; or executes line 187"
  },
  "2Q-graph-local-imports-skipped": {
   "controls": [
    "test_metrics_measure.GraphTest.test_an_import_between_the_services_is_reported_and_enters_neither_graph"
   ],
-  "why": "tools/gen2_metrics.py: executes line 261; or executes line 260"
- },
- "2Q-graph-missing-file-read": {
-  "controls": [
-   "test_metrics_measure.GraphTest.test_an_import_between_the_services_is_reported_and_enters_neither_graph"
-  ],
-  "why": "tools/gen2_metrics.py: executes line 215"
+  "why": "tools/gen2_metrics.py: executes line 197; or executes line 196"
  },
  "2Q-graph-propagation-without-self": {
   "controls": [
    "test_metrics_measure.GraphTest.test_an_import_between_the_services_is_reported_and_enters_neither_graph"
   ],
-  "why": "tools/gen2_metrics.py: executes line 315 (else 314)"
+  "why": "tools/gen2_metrics.py: executes line 251 (else 250)"
  },
  "2Q-graph-reach-includes-self": {
   "controls": [
    "test_metrics_measure.GraphTest.test_an_import_between_the_services_is_reported_and_enters_neither_graph"
   ],
-  "why": "tools/gen2_metrics.py: executes line 278"
+  "why": "tools/gen2_metrics.py: executes line 214"
  },
  "2Q-graph-relative-level": {
   "controls": [
-   "test_metrics_measure.GraphTest.test_the_engine_and_the_gateway_are_measured_separately_and_tests_by_neither"
+   "test_metrics_identity.BindingTest.test_an___all___outside_the_module_level_is_refused_and_is_not_a_module_export"
   ],
-  "why": "tools/gen2_metrics.py: executes line 252; or executes line 248"
+  "rejected": [
+   "test_metrics_collaboration.SupportedSurfaceTest.test_a_reexport_through_a_package_is_followed",
+   "test_metrics_collaboration.SupportedSurfaceTest.test_every_spelling_of_a_base_is_resolved_to_the_class",
+   "test_metrics_identity.BindingTest.test_unique_reexport_matches_the_interpreter",
+   "test_metrics_measure.GraphTest.test_propagation_cost_counts_self_reach_over_all_ordered_pairs",
+   "test_metrics_measure.GraphTest.test_the_summary_line_states_the_cost_as_a_percentage",
+   "test_source_contract.AcceptanceTest.test_accepts_imports_and_exports"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 87"
  },
  "2Q-graph-self-edge": {
   "controls": [
    "test_metrics_measure.GraphTest.test_an_import_between_the_services_is_reported_and_enters_neither_graph"
   ],
-  "why": "tools/gen2_metrics.py: executes line 263"
- },
- "2Q-graph-service-edges-leak": {
-  "controls": [
-   "test_metrics_measure.GraphTest.test_the_engine_and_the_gateway_are_measured_separately_and_tests_by_neither"
-  ],
-  "why": "tools/gen2_metrics.py: executes line 679; or executes line 676"
+  "why": "tools/gen2_metrics.py: executes line 199"
  },
  "2Q-graph-singleton-cycles": {
   "controls": [
@@ -8249,127 +8252,127 @@
    "test_metrics_measure.CycleTest.test_a_component_cycle_over_acyclic_files_is_found_at_component_level_only",
    "test_metrics_measure.CycleTest.test_the_gateways_cycle_is_not_the_engines"
   ],
-  "why": "tools/gen2_metrics.py: executes line 307"
+  "why": "tools/gen2_metrics.py: executes line 243"
  },
  "2Q-graph-tests-measured": {
   "controls": [
    "test_metrics_measure.GraphTest.test_an_import_between_the_services_is_reported_and_enters_neither_graph"
   ],
-  "why": "tools/gen2_metrics.py: executes line 216"
+  "why": "tools/gen2_source_index.py: executes line 55"
  },
  "2Q-history-advisory-fails": {
   "controls": [
    "test_metrics_measure.HistoryTest.test_files_that_change_together_by_joint_commits_and_jaccard"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1172; or leaves line 1170-1171 for a line outside 1169-1173 (or returns)"
+  "why": "tools/gen2_metrics.py: executes line 930; or leaves line 928-929 for a line outside 927-931 (or returns)"
  },
  "2Q-history-churn-added-only": {
   "controls": [
    "test_metrics_measure.HistoryTest.test_files_that_change_together_by_joint_commits_and_jaccard"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1145; or executes line 1142"
+  "why": "tools/gen2_metrics.py: executes line 903; or executes line 900"
  },
  "2Q-history-era-exclusive": {
   "controls": [
    "test_metrics_measure.HistoryTest.test_files_that_change_together_by_joint_commits_and_jaccard"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1150"
+  "why": "tools/gen2_metrics.py: executes line 908"
  },
  "2Q-history-jaccard": {
   "controls": [
    "test_metrics_measure.HistoryTest.test_commits_churn_and_the_hotspot_score_per_file"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1158 (else 1153)"
+  "why": "tools/gen2_metrics.py: executes line 916 (else 911)"
  },
  "2Q-history-non-production-files": {
   "controls": [
    "test_metrics_measure.HistoryTest.test_commits_churn_and_the_hotspot_score_per_file"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1143; or executes line 1142"
+  "why": "tools/gen2_metrics.py: executes line 901; or executes line 900"
  },
  "2Q-hub-either": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 651"
+  "why": "tools/gen2_metrics.py: executes line 406"
  },
  "2Q-hub-fan-in-exclusive": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 651"
+  "why": "tools/gen2_metrics.py: executes line 406"
  },
  "2Q-hub-fan-out-exclusive": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 651"
+  "why": "tools/gen2_metrics.py: executes line 406"
  },
  "2Q-loc-assignment-lost": {
   "controls": [
-   "test_locators.SymbolLocatorTest.test_a_missing_pair_is_reported_once_even_when_its_name_looks_dotted"
+   "test_locators.SymbolLocatorTest.test_a_removed_or_misspelled_name_fails_naming_the_file"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 159; or executes line 158"
+  "why": "tools/gen2_source_index.py: executes line 514"
  },
  "2Q-loc-bare-suffix-is-a-file": {
   "controls": [
    "test_locators.NotALocatorTest.test_a_fenced_block_is_skipped_and_the_line_numbers_still_count"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 123"
+  "why": "tools/check_gen2_locators.py: executes line 136"
  },
  "2Q-loc-directory-unchecked": {
   "controls": [
    "test_locators.FileLocatorTest.test_a_tail_must_start_at_a_path_component"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 130"
+  "why": "tools/check_gen2_locators.py: executes line 143"
  },
  "2Q-loc-double-colon-ignored": {
   "controls": [
    "test_locators.SymbolLocatorTest.test_a_defined_name_passes_in_the_double_colon_and_the_pair_forms"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 214; or executes line 213"
+  "why": "tools/check_gen2_locators.py: executes line 232; or executes line 231"
  },
  "2Q-loc-external-flow-any-date": {
   "controls": [
    "test_locators.FileLocatorTest.test_a_tail_must_start_at_a_path_component"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 138"
+  "why": "tools/check_gen2_locators.py: executes line 151"
  },
  "2Q-loc-external-preflight-any-prefix": {
   "controls": [
    "test_locators.FileLocatorTest.test_a_tail_must_start_at_a_path_component"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 138"
+  "why": "tools/check_gen2_locators.py: executes line 151"
  },
  "2Q-loc-external-review-any-depth": {
   "controls": [
    "test_locators.FileLocatorTest.test_a_tail_must_start_at_a_path_component"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 138"
+  "why": "tools/check_gen2_locators.py: executes line 151"
  },
  "2Q-loc-external-unchecked": {
   "controls": [
    "test_locators.FileLocatorTest.test_a_tail_must_start_at_a_path_component"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 206"
+  "why": "tools/check_gen2_locators.py: executes line 224"
  },
  "2Q-loc-fenced-checked": {
   "controls": [
    "test_locators.NotALocatorTest.test_a_locator_written_without_backticks_is_not_seen"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 110; or executes line 106"
+  "why": "tools/check_gen2_locators.py: executes line 122; or executes line 118"
  },
  "2Q-loc-glob-unchecked": {
   "controls": [
    "test_locators.FileLocatorTest.test_a_tail_must_start_at_a_path_component"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 132"
+  "why": "tools/check_gen2_locators.py: executes line 145"
  },
  "2Q-loc-line-number-not-stripped": {
   "controls": [
    "test_locators.FileLocatorTest.test_a_tail_must_start_at_a_path_component"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 117"
+  "why": "tools/check_gen2_locators.py: executes line 130"
  },
  "2Q-loc-missing-file-passes": {
   "controls": [
@@ -8382,13 +8385,13 @@
    "test_locators.FileLocatorTest.test_a_tail_must_start_at_a_path_component",
    "test_locators.FileLocatorTest.test_the_exemption_is_only_for_what_the_list_names"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 209"
+  "why": "tools/check_gen2_locators.py: executes line 227"
  },
  "2Q-loc-pair-by-distance": {
   "controls": [
    "test_locators.SymbolLocatorTest.test_a_defined_name_passes_in_the_double_colon_and_the_pair_forms"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 215"
+  "why": "tools/check_gen2_locators.py: executes line 233"
  },
  "2Q-loc-pair-ignored": {
   "controls": [
@@ -8398,7 +8401,7 @@
    "test_locators.SymbolLocatorTest.test_a_defined_name_passes_in_the_double_colon_and_the_pair_forms",
    "test_locators.SymbolLocatorTest.test_a_missing_pair_is_reported_once_even_when_its_name_looks_dotted"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 215"
+  "why": "tools/check_gen2_locators.py: executes line 233"
  },
  "2Q-loc-pair-reported-twice": {
   "controls": [
@@ -8407,53 +8410,41 @@
   "rejected": [
    "test_locators.SymbolLocatorTest.test_a_defined_name_passes_in_the_double_colon_and_the_pair_forms"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 218; or executes line 215-216 (else 215)"
+  "why": "tools/check_gen2_locators.py: executes line 236; or executes line 233-234 (else 233)"
  },
  "2Q-loc-plain-def-name-lost": {
   "controls": [
-   "test_locators.SymbolLocatorTest.test_a_missing_pair_is_reported_once_even_when_its_name_looks_dotted"
+   "test_locators.SymbolLocatorTest.test_a_removed_or_misspelled_name_fails_naming_the_file"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 151; or executes line 150"
- },
- "2Q-loc-qualified-name-flat": {
-  "controls": [
-   "test_locators.SymbolLocatorTest.test_a_missing_pair_is_reported_once_even_when_its_name_looks_dotted"
-  ],
-  "rejected": [
-   "test_locators.SymbolLocatorTest.test_a_defined_name_passes_in_the_double_colon_and_the_pair_forms"
-  ],
-  "why": "tools/check_gen2_locators.py: executes line 152; or executes line 150"
+  "why": "tools/gen2_source_index.py: executes line 514"
  },
  "2Q-loc-sql-only-tables": {
   "controls": [
    "test_locators.SymbolLocatorTest.test_in_a_json_or_other_file_the_name_must_appear_as_a_word"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 177; or executes line 176"
+  "why": "tools/check_gen2_locators.py: executes line 186; or executes line 185"
  },
  "2Q-loc-symbol-unchecked": {
   "controls": [
    "test_locators.SymbolLocatorTest.test_a_defined_name_passes_in_the_double_colon_and_the_pair_forms"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 222"
+  "why": "tools/check_gen2_locators.py: executes line 240"
  },
  "2Q-loc-tail-mid-component": {
   "controls": [
    "test_locators.FileLocatorTest.test_a_bare_name_and_the_tail_of_a_path_match_any_tracked_file_of_that_name"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 134"
+  "why": "tools/check_gen2_locators.py: executes line 147"
  },
  "2Q-loc-untracked-counts": {
   "controls": [
    "test_locators.FileLocatorTest.test_a_tail_must_start_at_a_path_component"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 97"
+  "why": "tools/check_gen2_locators.py: executes line 109"
  },
  "2Q-loc-word-is-substring": {
   "by_hand": true,
   "controls": [
-   "test_locators.SymbolLocatorTest.test_a_name_in_a_markdown_file_is_found_as_a_word"
-  ],
-  "rejected": [
    "test_locators.SymbolLocatorTest.test_a_name_in_a_markdown_file_is_found_as_a_word"
   ],
   "why": "runs tools/check_gen2_locators.py defines' changed word search on a markdown file for a whole word it contains: found under the mutant's substring test too"
@@ -8462,31 +8453,31 @@
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 689 (else 688); or executes line 676"
+  "why": "tools/gen2_metrics.py: executes line 449 (else 448); or executes line 436"
  },
  "2Q-offender-cognitive-inclusive": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 689 (else 688); or executes line 676"
+  "why": "tools/gen2_metrics.py: executes line 449 (else 448); or executes line 436"
  },
  "2Q-offender-cyclomatic-inclusive": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 689 (else 688); or executes line 676"
+  "why": "tools/gen2_metrics.py: executes line 449 (else 448); or executes line 436"
  },
  "2Q-ratchet-component-cycle-ignored": {
   "controls": [
    "test_metrics_ratchet.CycleTest.test_a_baselined_cycle_stays_allowed"
   ],
-  "why": "tools/gen2_metrics.py: executes line 863; or executes line 855"
+  "why": "tools/gen2_metrics.py: executes line 621; or executes line 613"
  },
  "2Q-ratchet-component-propagation-ignored": {
   "controls": [
    "test_metrics_ratchet.PropagationTest.test_a_lower_cost_passes_says_so_and_names_the_remedy"
   ],
-  "why": "tools/gen2_metrics.py: executes line 857; or executes line 855"
+  "why": "tools/gen2_metrics.py: executes line 615; or executes line 613"
  },
  "2Q-ratchet-cross-service-ignored": {
   "by_hand": true,
@@ -8502,19 +8493,19 @@
   "controls": [
    "test_metrics_identity.IdentityTest.test_mapped_rename_passes_and_keeps_persistent_id_after_folding"
   ],
-  "why": "A unique function identity map passes the same transition guard; the mutant only over-restricts cycle mappings."
+  "why": "tools/gen2_metrics_ledger.py: executes line 270"
  },
  "2Q-ratchet-cycle-overlap-allowed": {
   "controls": [
    "test_metrics_ratchet.CycleTest.test_a_baselined_cycle_stays_allowed"
   ],
-  "why": "tools/gen2_metrics.py: executes line 807"
+  "why": "tools/gen2_metrics.py: executes line 575"
  },
  "2Q-ratchet-function-cognitive-ignored": {
   "controls": [
    "test_metrics_ratchet.FunctionTest.test_the_smell_thresholds_are_the_baselines_too"
   ],
-  "why": "tools/gen2_metrics.py: executes line 890; or executes line 855"
+  "why": "tools/gen2_metrics.py: executes line 646; or executes line 613"
  },
  "2Q-ratchet-function-growth-ignored": {
   "controls": [
@@ -8523,31 +8514,31 @@
   "rejected": [
    "test_metrics_ratchet.FunctionTest.test_two_functions_of_one_qualified_name_are_kept_apart"
   ],
-  "why": "tools/gen2_metrics.py: executes line 896; or executes line 891"
+  "why": "tools/gen2_metrics.py: executes line 652; or executes line 647"
  },
  "2Q-ratchet-function-new-ignored": {
   "controls": [
-   "test_metrics_ratchet.FunctionTest.test_two_functions_of_one_qualified_name_are_kept_apart"
+   "test_metrics_ratchet.FunctionTest.test_an_unchanged_unique_function_keeps_its_identity_and_its_budget"
   ],
-  "why": "tools/gen2_metrics.py: executes line 905"
+  "why": "tools/gen2_metrics.py: executes line 661"
  },
  "2Q-ratchet-gateway-ignored": {
   "controls": [
    "test_metrics_ratchet.PropagationTest.test_a_lower_cost_passes_says_so_and_names_the_remedy"
   ],
-  "why": "tools/gen2_metrics.py: executes line 855"
+  "why": "tools/gen2_metrics.py: executes line 613"
  },
  "2Q-ratchet-improvement-silent": {
   "controls": [
    "test_metrics_ratchet.PropagationTest.test_a_gateway_regression_is_named_for_the_gateway_only"
   ],
-  "why": "tools/gen2_metrics.py: executes line 861"
+  "why": "tools/gen2_metrics.py: executes line 619"
  },
  "2Q-ratchet-new-cycle-ignored": {
   "controls": [
    "test_metrics_ratchet.CycleTest.test_a_baselined_cycle_stays_allowed"
   ],
-  "why": "tools/gen2_metrics.py: executes line 865"
+  "why": "tools/gen2_metrics.py: executes line 623"
  },
  "2Q-ratchet-propagation-equal-fails": {
   "controls": [
@@ -8558,19 +8549,19 @@
    "test_metrics_ratchet.PropagationTest.test_a_gateway_regression_is_named_for_the_gateway_only",
    "test_metrics_ratchet.PropagationTest.test_a_lower_cost_passes_says_so_and_names_the_remedy"
   ],
-  "why": "tools/gen2_metrics.py: executes line 859"
+  "why": "tools/gen2_metrics.py: executes line 617"
  },
  "2Q-ratchet-propagation-ignored": {
   "controls": [
    "test_metrics_ratchet.PropagationTest.test_a_lower_cost_passes_says_so_and_names_the_remedy"
   ],
-  "why": "tools/gen2_metrics.py: executes line 859"
+  "why": "tools/gen2_metrics.py: executes line 617"
  },
  "2Q-ratchet-propagation-rounded": {
   "controls": [
    "test_metrics_ratchet.PropagationTest.test_a_lower_cost_passes_says_so_and_names_the_remedy"
   ],
-  "why": "tools/gen2_metrics.py: executes line 859"
+  "why": "tools/gen2_metrics.py: executes line 617"
  },
  "2Q-ratchet-selfcall-growth-ignored": {
   "by_hand": true,
@@ -8588,197 +8579,207 @@
   "controls": [
    "test_metrics_ratchet.CollaborationTest.test_more_cross_file_self_calls_on_a_baselined_pair_fail"
   ],
-  "why": "tools/gen2_metrics.py: executes line 871; or executes line 870"
+  "why": "tools/gen2_metrics.py: executes line 629; or executes line 628"
  },
  "2Q-ratchet-smell-ignored": {
   "controls": [
    "test_metrics_ratchet.SmellTest.test_a_baselined_hub_stays_allowed_and_leaving_it_is_an_improvement"
   ],
-  "why": "tools/gen2_metrics.py: executes line 884"
+  "why": "tools/gen2_metrics.py: executes line 640"
  },
  "2Q-ratchet-thresholds-from-tool": {
   "controls": [
-   "test_metrics_ratchet.FunctionTest.test_two_functions_of_one_qualified_name_are_kept_apart"
+   "test_metrics_ratchet.FunctionTest.test_an_unchanged_unique_function_keeps_its_identity_and_its_budget"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1221"
+  "why": "tools/gen2_metrics.py: executes line 1051"
  },
  "2Q-rebaseline-cross-service-loosens": {
   "controls": [
-   "test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"
+   "test_metrics_identity.IdentityTest.test_a_new_dependent_of_a_stable_target_is_counted"
   ],
-  "why": "The same ledger admission/folding path admits an isolated file without changing any set or function budget."
+  "why": "tools/gen2_metrics_ledger.py: executes line 291"
  },
  "2Q-rebaseline-crossing-offenders-dropped": {
+  "by_hand": true,
   "controls": [
    "test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"
   ],
-  "why": "The same ledger admission/folding path admits an isolated file without changing any set or function budget."
+  "why": "folds an admitted file through tools/gen2_metrics_ledger.py fold's admission loop (task 2q-a-repair-2 moved the budget of a threshold offender there): the admitted isolated file has no function budget, so the changed function branch is not taken and the mutant leaves the fold as it was"
  },
  "2Q-rebaseline-cycles-loosen": {
   "controls": [
-   "test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"
+   "test_metrics_identity.IdentityTest.test_a_new_dependent_of_a_stable_target_is_counted"
   ],
-  "why": "The same ledger admission/folding path admits an isolated file without changing any set or function budget."
+  "why": "tools/gen2_metrics_ledger.py: executes line 291"
  },
  "2Q-rebaseline-functions-loosen": {
   "controls": [
    "test_metrics_ratchet.FunctionTest.test_rebaseline_adopts_tighter_thresholds_and_the_offenders_they_find_are_not_regressions"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1057; or executes line 1056"
+  "why": "tools/gen2_metrics.py: executes line 816; or executes line 815"
  },
  "2Q-rebaseline-propagation-loosens": {
   "controls": [
-   "test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_cycle_regression"
+   "test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_self_call_regression"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1042; or executes line 1041"
+  "why": "tools/gen2_metrics.py: executes line 798; or executes line 797"
  },
  "2Q-rebaseline-propagation-never-tightens": {
   "controls": [
    "test_metrics_ratchet.RebaselineTest.test_it_does_not_rewrite_the_baseline_for_a_new_commit_alone"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1042; or executes line 1041"
+  "why": "tools/gen2_metrics.py: executes line 798; or executes line 797"
  },
  "2Q-rebaseline-refusal-removed": {
   "controls": [
    "test_metrics_ratchet.RebaselineTest.test_it_does_not_rewrite_the_baseline_for_a_new_commit_alone"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1271"
+  "why": "tools/gen2_metrics.py: executes line 1100"
  },
  "2Q-rebaseline-rewrites-for-a-commit": {
   "controls": [
    "test_metrics_ratchet.RebaselineTest.test_a_regression_covered_by_an_exemption_is_never_recorded"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1282"
+  "why": "tools/gen2_metrics.py: executes line 1123"
  },
  "2Q-rebaseline-selfcalls-loosen": {
   "controls": [
-   "test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_cycle_regression"
+   "test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_propagation_regression"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1045; or executes line 1038"
+  "why": "tools/gen2_metrics.py: executes line 802; or executes line 794"
  },
  "2Q-rebaseline-smells-loosen": {
   "controls": [
-   "test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"
+   "test_metrics_identity.IdentityTest.test_a_new_dependent_of_a_stable_target_is_counted"
   ],
-  "why": "The same ledger admission/folding path admits an isolated file without changing any set or function budget."
+  "why": "tools/gen2_metrics_ledger.py: executes line 291"
  },
  "2Q-rebaseline-threshold-loosens": {
   "controls": [
    "test_metrics_ratchet.FunctionTest.test_the_smell_thresholds_are_the_baselines_too"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1071; or executes line 1069"
+  "why": "tools/gen2_metrics.py: executes line 829; or executes line 827"
  },
  "2Q-rebaseline-threshold-never-tightens": {
   "controls": [
    "test_metrics_ratchet.FunctionTest.test_the_smell_thresholds_are_the_baselines_too"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1071; or executes line 1069"
+  "why": "tools/gen2_metrics.py: executes line 829; or executes line 827"
  },
  "2Q-unstable-any-source": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 660 (else 658)"
+  "why": "tools/gen2_metrics.py: executes line 415 (else 413)"
  },
  "2Q-unstable-margin-exclusive": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 660 (else 658)"
+  "why": "tools/gen2_metrics.py: executes line 415 (else 413)"
  },
  "2Q-unstable-stable-max-exclusive": {
   "controls": [
    "test_metrics_measure.SmellTest.test_a_stable_module_depending_on_a_much_less_stable_one_is_flagged"
   ],
-  "why": "tools/gen2_metrics.py: executes line 660 (else 658)"
+  "why": "tools/gen2_metrics.py: executes line 415 (else 413)"
  },
  "2QI-class-scope-occurrences": {
   "controls": [
-   "test_metrics_collaboration.SupportedSurfaceTest.test_a_nested_class_is_named_through_its_outer_class"
+   "test_metrics_identity.IdentityTest.test_a_new_dependent_of_a_stable_target_is_counted"
   ],
-  "why": "Unique class-scope occurrence resolves through the same member guard; the control exercises Outer.Inner and still passes under the mutant."
+  "why": "tools/gen2_source_index.py: executes line 315"
  },
  "2QI-conditional-class": {
   "controls": [
-   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+   "test_source_contract.RefusalTest.test_a_refusal_names_file_line_construct_and_remediation_in_the_text_a_command_prints"
   ],
-  "why": "The unique unconditional nested-class control traverses declaration and binding occurrence recording; discarding conditional provenance leaves this accepted selection intact."
+  "why": "tools/gen2_source_index.py: executes line 234"
  },
  "2QI-last-entry-binding": {
   "controls": [
-   "test_metrics_identity.BindingTest.test_unique_reexport_matches_the_interpreter"
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
   ],
-  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+  "why": "tools/gen2_source_index.py: leaves line 407 for a line outside 407-408 (or returns)"
  },
  "2QI-lexical-base-scope": {
   "controls": [
-   "test_metrics_collaboration.SupportedSurfaceTest.test_a_nested_class_is_named_through_its_outer_class"
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
   ],
-  "why": "A nested class with no class-local base uses the same scoped base lookup and remains accepted under the module-namespace mutant."
+  "why": "tools/gen2_source_contract.py: executes line 286; or executes line 280"
  },
  "2QI-locator-owner-binding": {
   "controls": [
    "test_locators.QualifiedScopeTest.test_class_attributes_keep_scope_and_function_locals_are_excluded"
   ],
-  "why": "The initial unique C.f case resolves its sole class owner through the changed occurrence guard; a function local and a short module name remain refused under the mutant."
+  "why": "tools/gen2_source_index.py: executes line 527"
  },
  "2QI-map-without-comparison": {
   "controls": [
    "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
   ],
-  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+  "why": "tools/gen2_metrics_ledger.py: executes line 325; or executes line 320"
  },
  "2QI-missing-means-improvement": {
   "controls": [
    "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
   ],
-  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+  "why": "tools/gen2_metrics_ledger.py: executes line 281; or executes line 276"
  },
  "2QI-pair-disappearance": {
   "controls": [
    "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
   ],
-  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+  "why": "tools/gen2_metrics_ledger.py: executes line 276"
  },
  "2QI-qualified-short-name": {
   "controls": [
-   "test_locators.ModulePathTest.test_a_full_module_path_names_a_module_and_a_name_in_it"
+   "test_locators.QualifiedScopeTest.test_empty_call_suffix_is_checked_as_a_supported_symbol_locator"
   ],
-  "why": "A module and class attribute that actually exist pass through the qualified lookup under both indexes."
+  "rejected": [
+   "test_locators.ModulePathTest.test_a_full_module_path_names_a_module_and_a_name_in_it",
+   "test_locators.QualifiedScopeTest.test_a_star_import_in_the_module_leaves_every_name_uncertain",
+   "test_locators.QualifiedScopeTest.test_class_attributes_keep_scope_and_function_locals_are_excluded"
+  ],
+  "why": "tools/check_gen2_locators.py: executes line 181"
  },
  "2QI-reasonless-admission": {
   "controls": [
-   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+   "test_metrics_identity.IdentityTest.test_mapped_file_rename_keeps_every_relation_budget_and_id"
   ],
-  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
- },
- "2QI-star-export-scope": {
-  "controls": [
-   "test_metrics_identity.BindingTest.test_star_export_visibility_matches_python_or_is_unresolved"
-  ],
-  "why": "Literal module __all__ is read through the changed namespace traversal; its visibility control uses no local replacement and still matches Python under the mutant."
+  "why": "tools/gen2_metrics_ledger.py: executes line 139"
  },
  "2QI-uncommitted-ledger": {
   "controls": [
-   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+   "test_metrics_identity.IdentityTest.test_new_reach_needs_admission_even_when_edge_and_numeric_growth_are_approved"
   ],
-  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+  "why": "tools/gen2_metrics.py: executes line 997"
+ },
+ "2QR-collab-classify-accepted": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_the_move_entry_needs_both_paths_a_reason_and_a_task"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 136"
  },
  "2QR-collab-depth-first-order": {
   "controls": [
-   "test_metrics_collaboration.MethodResolutionOrderTest.test_the_order_of_the_bases_decides"
+   "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls"
   ],
-  "why": "tools/gen2_metrics.py: executes line 490"
+  "why": "tools/gen2_source_index.py: executes line 475"
  },
  "2QR-collab-external-base-unresolved": {
   "controls": [
-   "test_metrics_collaboration.UnresolvedBaseTest.test_a_base_from_the_other_service_is_reported"
+   "test_source_contract.RefusalTest.test_refuses_src_class_hook"
   ],
-  "why": "tools/gen2_metrics.py: executes line 450; or executes line 449"
+  "rejected": [
+   "test_source_contract.RefusalTest.test_refuses_src_base_mixed",
+   "test_source_contract.RefusalTest.test_refuses_src_base_subscript"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 416"
  },
  "2QR-collab-from-import-unbound": {
   "controls": [
-   "test_metrics_collaboration.NestedClassTest.test_a_nested_class_has_its_own_self"
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
   ],
   "rejected": [
    "test_metrics_collaboration.OverlappingFamiliesTest.test_a_site_in_two_families_is_one_site",
@@ -8788,82 +8789,96 @@
    "test_metrics_collaboration.SupportedSurfaceTest.test_the_spelling_changes_nothing_else",
    "test_metrics_collaboration.UnresolvedBaseTest.test_a_base_from_the_other_service_is_reported"
   ],
-  "why": "tools/gen2_metrics.py: executes line 459; or executes line 458"
+  "why": "tools/gen2_source_index.py: executes line 428; or executes line 427"
  },
  "2QR-collab-import-alias-unbound": {
   "controls": [
-   "test_metrics_collaboration.SupportedSurfaceTest.test_a_nested_class_is_named_through_its_outer_class"
+   "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls"
   ],
-  "why": "tools/gen2_metrics.py: executes line 457; or executes line 456"
+  "rejected": [
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 426; or executes line 425"
  },
  "2QR-collab-inconsistent-order-guessed": {
   "controls": [
-   "test_metrics_collaboration.MethodResolutionOrderTest.test_the_order_of_the_bases_decides"
+   "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls"
   ],
-  "why": "tools/gen2_metrics.py: leaves line 343 for a line outside 343-344 (or returns)"
+  "why": "tools/gen2_source_index.py: leaves line 358 for a line outside 358-359 (or returns)"
  },
  "2QR-collab-module-members-unread": {
   "controls": [
-   "test_metrics_collaboration.SupportedSurfaceTest.test_the_spelling_changes_nothing_else"
+   "test_locators.FileLocatorTest.test_a_tail_must_start_at_a_path_component"
   ],
   "rejected": [
+   "test_locators.ModulePathTest.test_a_full_module_path_names_a_module_and_a_name_in_it",
+   "test_locators.SymbolLocatorTest.test_a_name_in_a_markdown_file_is_found_as_a_word",
    "test_metrics_collaboration.OverlappingFamiliesTest.test_a_site_in_two_families_is_one_site",
    "test_metrics_collaboration.OverlappingFamiliesTest.test_two_calls_on_one_line_are_two_sites",
+   "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls",
    "test_metrics_collaboration.SupportedSurfaceTest.test_a_nested_class_is_named_through_its_outer_class"
   ],
-  "why": "tools/gen2_metrics.py: executes line 437"
+  "why": "tools/gen2_source_index.py: executes line 446"
  },
  "2QR-collab-namespace-package-unknown": {
   "controls": [
-   "test_metrics_collaboration.UnresolvedBaseTest.test_bases_outside_the_measured_files_are_classified_without_an_exemption"
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
   ],
   "rejected": [
    "test_metrics_collaboration.RouterInMiniatureTest.test_rewriting_the_bases_is_neither_an_improvement_nor_recorded_by_a_rebaseline",
    "test_metrics_collaboration.SupportedSurfaceTest.test_a_reexport_through_a_package_is_followed",
    "test_metrics_collaboration.SupportedSurfaceTest.test_the_spelling_changes_nothing_else"
   ],
-  "why": "tools/gen2_metrics.py: executes line 421"
+  "why": "tools/gen2_source_index.py: executes line 395"
  },
  "2QR-collab-nested-class-self-counted": {
   "controls": [
    "test_metrics_collaboration.OverlappingFamiliesTest.test_a_site_in_two_families_is_one_site"
   ],
-  "why": "tools/gen2_metrics.py: executes line 499"
+  "why": "tools/gen2_metrics.py: executes line 275"
  },
  "2QR-collab-nested-class-unfound": {
-  "controls": [
-   "test_metrics_collaboration.SupportedSurfaceTest.test_a_reexport_through_a_package_is_followed"
+  "by_hand": true,
+  "controls": [],
+  "rejected": [
+   "test_metrics_identity.BindingTest.test_class_scope_assignment_cannot_leave_a_stale_nested_class_binding"
   ],
-  "why": "tools/gen2_metrics.py: executes line 431; or executes line 429"
+  "why": "the mutant makes every lookup of a nested class through its outer class a refusal (tools/gen2_source_index.py Facts.member's class branch): the accepted path is the lookup itself, and the one traced test that takes it beyond the killer (a class-scope assignment after the nested class) fails under the mutant, which changes what the accepted path does rather than removing a refusal. There is no accepted alternative through it to pair"
  },
  "2QR-collab-other-service-base-accepted": {
   "controls": [
-   "test_metrics_collaboration.UnresolvedBaseTest.test_bases_outside_the_measured_files_are_classified_without_an_exemption"
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
   ],
-  "why": "tools/gen2_metrics.py: executes line 521"
+  "why": "tools/gen2_source_contract.py: leaves line 291 for a line outside 291-292 (or returns)"
+ },
+ "2QR-collab-refusal-exits-zero": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_passing_report_says_so"
+  ],
+  "why": "tools/gen2_metrics.py: executes line 1179; or leaves line 1176 for a line outside 1175-1182 (or returns)"
  },
  "2QR-collab-root-needs-a-direct-base-elsewhere": {
   "controls": [
    "test_metrics_collaboration.SameFileIntermediateTest.test_an_override_in_the_same_file_binds_the_calls_of_the_base_to_that_file"
   ],
-  "why": "tools/gen2_metrics.py: executes line 530"
+  "why": "tools/gen2_metrics.py: executes line 298"
  },
  "2QR-collab-site-counted-per-family": {
   "controls": [
    "test_metrics_collaboration.OverlappingFamiliesTest.test_two_calls_on_one_line_are_two_sites"
   ],
-  "why": "tools/gen2_metrics.py: executes line 514; or executes line 542; or executes line 518"
+  "why": "tools/gen2_metrics.py: executes line 291; or executes line 314; or executes line 294"
  },
- "2QR-collab-star-reexport-dropped": {
+ "2QR-collab-star-import-accepted": {
   "controls": [
-   "test_metrics_collaboration.SupportedSurfaceTest.test_a_nested_class_is_named_through_its_outer_class"
+   "test_source_contract.RefusalTest.test_a_refusal_names_file_line_construct_and_remediation_in_the_text_a_command_prints"
   ],
-  "why": "tools/gen2_metrics.py: executes line 439; or executes line 433"
+  "why": "tools/gen2_source_index.py: executes line 319; or executes line 318"
  },
  "2QR-collab-submodule-not-an-attribute": {
   "by_hand": true,
   "controls": [
-   "test_metrics_collaboration.UnresolvedBaseTest.test_control_a_name_a_measured_module_does_not_define_is_unresolved_with_that_reason"
+   "test_metrics_collaboration.RefusedBaseTest.test_control_a_name_a_measured_module_does_not_define_is_refused_with_that_reason"
   ],
   "rejected": [
    "test_metrics_collaboration.RouterInMiniatureTest.test_rewriting_the_bases_is_neither_an_improvement_nor_recorded_by_a_rebaseline",
@@ -8874,63 +8889,47 @@
    "test_metrics_collaboration.UnresolvedBaseTest.test_the_syntax_that_erased_the_inventory_is_now_a_resolved_base_and_an_unfollowable_one_is_a_failure_not_a_zero",
    "test_metrics_measure.CollaborationTest.test_a_base_named_through_a_module_attribute_is_found"
   ],
-  "why": "evaluates tools/gen2_metrics.py Classes.member's changed return for a name a measured module defines nowhere, so no submodule is looked up either: unresolved with the reason `defines no`, which the mutant's constant return gives too"
+  "why": "evaluates tools/gen2_source_index.py Facts.member's changed branch for a name a measured module defines nowhere, so no submodule is looked up either: refused with the reason `defines no`, which the mutant's always-false submodule test gives too"
  },
  "2QR-collab-subscripted-base": {
   "controls": [
-   "test_metrics_collaboration.UnresolvedBaseTest.test_a_base_the_tool_cannot_follow_fails_the_check_naming_the_class_and_why"
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
   ],
   "rejected": [
    "test_metrics_collaboration.SupportedSurfaceTest.test_the_spelling_changes_nothing_else",
    "test_metrics_collaboration.UnresolvedBaseTest.test_bases_outside_the_measured_files_are_classified_without_an_exemption"
   ],
-  "why": "tools/gen2_metrics.py: executes line 467"
+  "why": "tools/gen2_source_contract.py: leaves line 282 for a line outside 282-283 (or returns)"
  },
  "2QR-collab-unmeasured-first-party-module-external": {
   "controls": [
-   "test_metrics_collaboration.UnresolvedBaseTest.test_bases_outside_the_measured_files_are_classified_without_an_exemption"
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
   ],
-  "why": "tools/gen2_metrics.py: executes line 423"
- },
- "2QR-collab-unresolved-cannot-be-exempted": {
-  "controls": [
-   "test_metrics_ratchet.ExemptionTest.test_a_set_metric_entry_names_the_instance_and_lets_it_pass"
-  ],
-  "why": "tools/gen2_metrics.py: executes line 987"
- },
- "2QR-collab-unresolved-not-gated": {
-  "controls": [
-   "test_metrics_collaboration.RouterInMiniatureTest.test_rewriting_the_bases_is_neither_an_improvement_nor_recorded_by_a_rebaseline"
-  ],
-  "rejected": [
-   "test_metrics_collaboration.UnresolvedBaseTest.test_a_ledger_classifies_it_and_a_stale_one_fails",
-   "test_metrics_collaboration.UnresolvedBaseTest.test_the_syntax_that_erased_the_inventory_is_now_a_resolved_base_and_an_unfollowable_one_is_a_failure_not_a_zero"
-  ],
-  "why": "tools/gen2_metrics.py: executes line 735 (else 729); or executes line 723"
+  "why": "tools/gen2_source_index.py: leaves line 397 for a line outside 397-398 (or returns)"
  },
  "2QR-collab-unresolved-not-reported": {
   "controls": [
-   "test_metrics_collaboration.UnresolvedBaseTest.test_bases_outside_the_measured_files_are_classified_without_an_exemption"
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
   ],
-  "why": "tools/gen2_metrics.py: executes line 521"
+  "why": "tools/gen2_source_contract.py: executes line 294; or leaves line 280-292 for a line outside 279-295 (or returns)"
  },
  "2QR-dep-fan-in-counts-new-files": {
   "controls": [
    "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
   ],
-  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+  "why": "tools/gen2_metrics.py: executes line 591; or executes line 590"
  },
  "2QR-dep-fan-in-gated-for-every-file": {
   "controls": [
    "test_metrics_dependencies.FanInTest.test_a_stable_file_gaining_a_dependent_among_the_existing_files_is_a_regression"
   ],
-  "why": "tools/gen2_metrics.py: executes line 832"
+  "why": "tools/gen2_metrics.py: executes line 590"
  },
  "2QR-dep-fan-in-ignored": {
   "controls": [
    "test_metrics_dependencies.FanInTest.test_an_unstable_file_gaining_a_dependent_is_not"
   ],
-  "why": "tools/gen2_metrics.py: executes line 834; or executes line 832"
+  "why": "tools/gen2_metrics.py: executes line 592; or executes line 590"
  },
  "2QR-dep-fan-out-equal-fails": {
   "controls": [
@@ -8941,7 +8940,7 @@
    "test_metrics_ratchet.ExemptionTest.test_a_complete_matching_entry_lets_the_regression_pass_and_is_reported",
    "test_metrics_ratchet.ExemptionTest.test_a_wrapped_reason_is_one_value_too"
   ],
-  "why": "tools/gen2_metrics.py: executes line 829; or executes line 828"
+  "why": "tools/gen2_metrics.py: executes line 587; or executes line 586"
  },
  "2QR-dep-fan-out-ignored": {
   "controls": [
@@ -8951,37 +8950,37 @@
    "test_metrics_dependencies.AstrasProbesTest.test_a_dependency_hidden_by_an_unrelated_file_is_counted_in_absolute_reachable_pairs",
    "test_metrics_dependencies.FanOutTest.test_an_existing_file_importing_a_new_file_takes_on_a_dependency"
   ],
-  "why": "tools/gen2_metrics.py: executes line 829; or executes line 828"
+  "why": "tools/gen2_metrics.py: executes line 587; or executes line 586"
  },
  "2QR-dep-new-files-are-baselined": {
   "controls": [
-   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+   "test_metrics_identity.IdentityTest.test_a_new_dependent_of_a_stable_target_is_counted"
   ],
-  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+  "why": "tools/gen2_metrics_ledger.py: executes line 291"
  },
  "2QR-dep-reach-compared-by-total": {
   "controls": [
    "test_metrics_dependencies.FanOutTest.test_an_existing_file_importing_a_new_file_takes_on_a_dependency"
   ],
-  "why": "tools/gen2_metrics.py: executes line 836"
+  "why": "tools/gen2_metrics.py: executes line 594"
  },
  "2QR-dep-reach-gain-ignored": {
   "controls": [
    "test_metrics_dependencies.FanOutTest.test_an_existing_file_importing_a_new_file_takes_on_a_dependency"
   ],
-  "why": "tools/gen2_metrics.py: executes line 837"
+  "why": "tools/gen2_metrics.py: executes line 595"
  },
  "2QR-dep-stable-limit-exclusive": {
   "controls": [
    "test_metrics_dependencies.StableLimitTest.test_one_import_more_is_not_stable"
   ],
-  "why": "tools/gen2_metrics.py: executes line 832"
+  "why": "tools/gen2_metrics.py: executes line 590"
  },
  "2QR-loc-every-dotted-name-a-module-path": {
   "controls": [
    "test_locators.ToolFailureTest.test_the_summary_counts_what_was_checked"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 227"
+  "why": "tools/check_gen2_locators.py: executes line 245"
  },
  "2QR-loc-first-party-package-narrowed": {
   "controls": [
@@ -8990,133 +8989,871 @@
   "rejected": [
    "test_locators.ModulePathTest.test_a_name_that_is_not_defined_or_a_module_that_is_not_there_fails"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 227"
+  "why": "tools/check_gen2_locators.py: executes line 245, 254"
  },
  "2QR-loc-marker-ignored": {
   "controls": [
    "test_locators.UnmarkedDottedNameTest.test_a_marker_needs_a_space_and_text_after_it"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 200"
+  "why": "tools/check_gen2_locators.py: executes line 214"
  },
  "2QR-loc-marker-needs-no-space": {
   "controls": [
    "test_locators.UnmarkedDottedNameTest.test_a_dotted_name_that_is_neither_a_locator_form_nor_marked_is_an_error_whatever_its_prefix"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 199"
+  "why": "tools/check_gen2_locators.py: executes line 213"
  },
  "2QR-loc-module-path-name-unchecked": {
   "controls": [
    "test_locators.ModulePathTest.test_a_full_module_path_names_a_module_and_a_name_in_it"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 245; or executes line 243"
+  "why": "tools/check_gen2_locators.py: executes line 266; or executes line 264"
  },
  "2QR-loc-module-path-shortest-module": {
   "controls": [
    "test_locators.ModulePathTest.test_a_full_module_path_names_a_module_and_a_name_in_it"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 241"
+  "why": "tools/check_gen2_locators.py: executes line 262"
  },
  "2QR-loc-module-path-unchecked": {
   "controls": [
    "test_locators.ModulePathTest.test_a_full_module_path_names_a_module_and_a_name_in_it"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 233"
+  "why": "tools/check_gen2_locators.py: executes line 251"
  },
  "2QR-loc-namespace-package-not-a-module-path": {
   "controls": [
    "test_locators.ModulePathTest.test_a_name_that_is_not_defined_or_a_module_that_is_not_there_fails"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 246"
+  "why": "tools/check_gen2_locators.py: executes line 268"
  },
  "2QR-loc-unmarked-dotted-name-passes": {
   "controls": [
    "test_locators.DeletedPrefixTest.test_a_full_module_path_is_checked_and_stops_passing_when_the_module_goes"
   ],
-  "why": "tools/check_gen2_locators.py: executes line 228; or executes line 227"
+  "why": "tools/check_gen2_locators.py: executes line 246; or executes line 245"
  },
  "2QR-offender-cognitive-growth-ignored": {
   "controls": [
    "test_metrics_offenders.BaselinedOffenderTest.test_a_score_that_stays_where_it_was_is_no_growth_even_under_the_thresholds"
   ],
-  "why": "tools/gen2_metrics.py: executes line 896; or executes line 891"
+  "why": "tools/gen2_metrics.py: executes line 652; or executes line 647"
  },
  "2QR-offender-cyclomatic-growth-ignored": {
   "controls": [
    "test_metrics_offenders.BaselinedOffenderTest.test_a_score_that_stays_where_it_was_is_no_growth_even_under_the_thresholds"
   ],
-  "why": "tools/gen2_metrics.py: executes line 896; or executes line 891"
+  "why": "tools/gen2_metrics.py: executes line 652; or executes line 647"
  },
  "2QR-offender-dropped-while-still-over": {
   "controls": [
    "test_metrics_offenders.BaselinedOffenderTest.test_an_exempted_growth_is_never_recorded_and_the_entry_stays_with_the_old_value"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1059"
+  "why": "tools/gen2_metrics.py: executes line 818; or executes line 815"
  },
  "2QR-offender-dropped-with-an-exempted-growth": {
   "controls": [
    "test_metrics_offenders.BaselinedOffenderTest.test_one_score_improving_and_the_other_unchanged_passes_and_records_the_lower_value"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1059"
+  "why": "tools/gen2_metrics.py: executes line 818; or executes line 815"
  },
  "2QR-offender-growth-needs-a-threshold": {
   "controls": [
    "test_metrics_offenders.BaselinedOffenderTest.test_a_score_that_stays_where_it_was_is_no_growth_even_under_the_thresholds"
   ],
-  "why": "tools/gen2_metrics.py: executes line 896; or executes line 891"
+  "why": "tools/gen2_metrics.py: executes line 652; or executes line 647"
  },
  "2QR-offender-kept-after-it-improves": {
   "controls": [
    "test_metrics_offenders.BaselinedOffenderTest.test_an_exempted_growth_is_never_recorded_and_the_entry_stays_with_the_old_value"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1059"
+  "why": "tools/gen2_metrics.py: executes line 818; or executes line 815"
  },
  "2QR-offender-tracked-dropped": {
   "controls": [
-   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+   "test_metrics_plan.MoveTest.test_a_move_admits_nothing_so_a_new_import_in_the_moved_file_still_needs_admission"
   ],
-  "why": "Explicit accepted control traverses the same inventory/lookup contract without the forbidden transition (task 2q-a-repair-2)."
+  "why": "tools/gen2_metrics_ledger.py: executes line 308; or executes line 307"
  },
  "2QR-rebaseline-fan-in-loosens": {
   "controls": [
    "test_metrics_dependencies.RecordingTest.test_an_exempted_rise_is_never_recorded"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1048; or executes line 1038"
+  "why": "tools/gen2_metrics.py: executes line 805; or executes line 794"
  },
  "2QR-rebaseline-fan-out-loosens": {
   "controls": [
    "test_metrics_dependencies.RecordingTest.test_an_exempted_fan_in_rise_is_never_recorded"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1047; or executes line 1038"
+  "why": "tools/gen2_metrics.py: executes line 804; or executes line 794"
  },
  "2QR-rebaseline-new-file-unrecorded": {
   "controls": [
-   "test_metrics_dependencies.FanOutTest.test_fewer_imports_pass_say_so_and_lower_the_ceiling"
+   "test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1047; or executes line 1038"
+  "why": "tools/gen2_metrics_ledger.py: executes line 431; or executes line 430"
  },
  "2QR-rebaseline-reach-loosens": {
   "controls": [
-   "test_metrics_identity.IdentityTest.test_ordinary_unchanged_source_passes_with_empty_ledger"
+   "test_metrics_identity.IdentityTest.test_a_new_dependent_of_a_stable_target_is_counted"
   ],
-  "why": "Existing reach budgets take the same inventory accounting without new reach."
+  "why": "tools/gen2_metrics_ledger.py: executes line 291"
  },
  "2QR-upgrade-forgives-regressions": {
   "controls": [
    "test_metrics_dependencies.UpgradeTest.test_rebaseline_upgrades_it_once"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1269"
+  "why": "tools/gen2_metrics.py: executes line 1087"
  },
  "2QR-upgrade-reads-as-unchanged": {
   "controls": [
    "test_metrics_dependencies.RecordingTest.test_an_exempted_fan_in_rise_is_never_recorded"
   ],
-  "why": "tools/gen2_metrics.py: executes line 1282"
+  "why": "tools/gen2_metrics.py: executes line 1123"
  },
  "2QR-upgrade-refusal-removed": {
   "controls": [
    "test_metrics_dependencies.UpgradeTest.test_an_upgrade_does_not_forgive_a_regression_of_what_the_old_baseline_held"
   ],
-  "why": "tools/gen2_metrics.py: leaves line 763 for a line outside 763-765 (or returns)"
+  "why": "tools/gen2_metrics.py: leaves line 525 for a line outside 525-527 (or returns)"
+ },
+ "2QS-con-all-any-value-literal": {
+  "controls": [
+   "test_source_contract.AcceptanceTest.test_accepts_imports_and_exports"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 593"
+ },
+ "2QS-con-all-mutation-unreported": {
+  "by_hand": true,
+  "controls": [
+   "test_source_contract.AcceptanceTest.test_accepts_imports_and_exports"
+  ],
+  "why": "reads an __all__ without changing it (tools/gen2_source_contract.py Contract.exports' changed elif is evaluated and false for a Load that is no method call and no subscript store) beside the literal __all__ the row accepts: the mutant's `elif False` leaves it accepted"
+ },
+ "2QS-con-all-repeated-accepted": {
+  "controls": [
+   "test_source_contract.AcceptanceTest.test_accepts_imports_and_exports"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 423"
+ },
+ "2QS-con-base-function-accepted": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: leaves line 289 for a line outside 289-290 (or returns)"
+ },
+ "2QS-con-base-module-accepted": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: leaves line 287 for a line outside 287-288 (or returns)"
+ },
+ "2QS-con-category-unlisted": {
+  "controls": [
+   "test_source_contract.DocumentAndToolTest.test_the_loader_inventory_is_the_tools"
+  ],
+  "rejected": [
+   "test_source_contract.DocumentAndToolTest.test_every_category_is_named_in_the_contract_table"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 235, 614"
+ },
+ "2QS-con-class-attribute-override-unreported": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 387"
+ },
+ "2QS-con-class-attribute-write-unreported": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_attr_override"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 475"
+ },
+ "2QS-con-class-hook-unreported": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_report_shows_the_input_as_incomplete_and_non_passing_and_still_writes_what_it_could_read"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 261"
+ },
+ "2QS-con-class-keyword-unreported": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_report_shows_the_input_as_incomplete_and_non_passing_and_still_writes_what_it_could_read"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 258"
+ },
+ "2QS-con-class-namespace-write-unreported": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_loader_uninventoried"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 482"
+ },
+ "2QS-con-classmethod-receiver-is-a-class": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_attr_override"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 458; or executes line 459"
+ },
+ "2QS-con-dataclass-frozen-ignored": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_report_shows_the_input_as_incomplete_and_non_passing_and_still_writes_what_it_could_read"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 272; or executes line 265"
+ },
+ "2QS-con-dataclass-generates-nothing": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_report_shows_the_input_as_incomplete_and_non_passing_and_still_writes_what_it_could_read"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 273; or executes line 265"
+ },
+ "2QS-con-dataclass-overrides-its-own-body": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_report_shows_the_input_as_incomplete_and_non_passing_and_still_writes_what_it_could_read"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 275"
+ },
+ "2QS-con-dataclass-slots-allowed": {
+  "controls": [
+   "test_source_contract.AcceptanceTest.test_accepts_decorators_and_descriptors"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 82"
+ },
+ "2QS-con-decorator-arguments-unchecked": {
+  "controls": [
+   "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls"
+  ],
+  "why": "tools/gen2_source_contract.py: leaves line 165 for a line outside 165-166 (or returns)"
+ },
+ "2QS-con-diagnostics-without-remediation": {
+  "by_hand": true,
+  "controls": [
+   "test_source_contract.RefusalTest.test_a_contract_refusal_names_its_category_file_line_and_construct"
+  ],
+  "rejected": [
+   "test_source_contract.RefusalTest.test_refuses_src_attr_override",
+   "test_source_contract.RefusalTest.test_refuses_src_base_alias",
+   "test_source_contract.RefusalTest.test_refuses_src_base_hierarchy",
+   "test_source_contract.RefusalTest.test_refuses_src_base_mixed",
+   "test_source_contract.RefusalTest.test_refuses_src_base_shape",
+   "test_source_contract.RefusalTest.test_refuses_src_base_subscript",
+   "test_source_contract.RefusalTest.test_refuses_src_binding_competing",
+   "test_source_contract.RefusalTest.test_refuses_src_class_dynamic",
+   "test_source_contract.RefusalTest.test_refuses_src_method_alias",
+   "test_source_contract.RefusalTest.test_refuses_src_name_unresolved"
+  ],
+  "why": "makes the contract's own refusal (tools/gen2_source_contract.py Contract.refuse, a class hook) and asserts its category, file, line and construct, none of which the mutant's empty remediation changes; every other refusal test asserts the remediation and is a killer. Written after the trace"
+ },
+ "2QS-con-dunder-class-is-a-class": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_attr_override"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 462; or executes line 463"
+ },
+ "2QS-con-family-methods-own-class-only": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_passing_report_says_so"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 375; or executes line 373"
+ },
+ "2QS-con-globals-write-unreported": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_loader_uninventoried"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 484"
+ },
+ "2QS-con-hierarchy-unchecked": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 307"
+ },
+ "2QS-con-hooks-narrowed": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_report_shows_the_input_as_incomplete_and_non_passing_and_still_writes_what_it_could_read"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 261, 616"
+ },
+ "2QS-con-instance-write-override-unreported": {
+  "controls": [
+   "test_source_contract.AcceptanceTest.test_accepts_class_and_method_declarations"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 477"
+ },
+ "2QS-con-inv-module-collision": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_passing_report_says_so"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 218"
+ },
+ "2QS-con-inv-parse-unreported": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_passing_report_says_so"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 196; or leaves line 193-194 for a line outside 192-196 (or returns)"
+ },
+ "2QS-con-inv-path-not-a-module": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_passing_report_says_so"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 216"
+ },
+ "2QS-con-inv-untracked-ignored": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_passing_report_says_so"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 221"
+ },
+ "2QS-con-loader-argument-unchecked": {
+  "controls": [
+   "test_source_contract.LoaderInventoryTest.test_the_real_loader_over_exactly_the_inventoried_adapters_is_accepted"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 529"
+ },
+ "2QS-con-loader-calls-narrowed": {
+  "controls": [
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 497, 616"
+ },
+ "2QS-con-loader-calls-unreported": {
+  "controls": [
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 497"
+ },
+ "2QS-con-loader-discovered-files-unchecked": {
+  "controls": [
+   "test_source_contract.LoaderInventoryTest.test_the_real_loader_over_exactly_the_inventoried_adapters_is_accepted"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 547"
+ },
+ "2QS-con-loader-discovery-unchecked": {
+  "controls": [
+   "test_source_contract.LoaderInventoryTest.test_the_real_loader_over_exactly_the_inventoried_adapters_is_accepted"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 531"
+ },
+ "2QS-con-loader-filter-unchecked": {
+  "controls": [
+   "test_source_contract.LoaderInventoryTest.test_the_real_loader_over_exactly_the_inventoried_adapters_is_accepted"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 544"
+ },
+ "2QS-con-loader-site-by-file-only": {
+  "controls": [
+   "test_source_contract.LoaderInventoryTest.test_the_real_loader_over_exactly_the_inventoried_adapters_is_accepted"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 521"
+ },
+ "2QS-con-loader-site-by-function-only": {
+  "controls": [
+   "test_source_contract.LoaderInventoryTest.test_the_real_loader_over_exactly_the_inventoried_adapters_is_accepted"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 521"
+ },
+ "2QS-con-loader-skip-set-unchecked": {
+  "controls": [
+   "test_source_contract.LoaderInventoryTest.test_the_real_loader_over_exactly_the_inventoried_adapters_is_accepted"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 555"
+ },
+ "2QS-con-loader-skipped-names-discovered": {
+  "controls": [
+   "test_source_contract.LoaderInventoryTest.test_a_subpackage_the_loader_would_discover_counts"
+  ],
+  "rejected": [
+   "test_source_contract.LoaderInventoryTest.test_the_real_loader_over_exactly_the_inventoried_adapters_is_accepted"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 546"
+ },
+ "2QS-con-loader-subpackages-ignored": {
+  "controls": [
+   "test_source_contract.LoaderInventoryTest.test_the_real_loader_over_exactly_the_inventoried_adapters_is_accepted"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 566; or executes line 564"
+ },
+ "2QS-con-loader-underscore-files-discovered": {
+  "controls": [
+   "test_source_contract.LoaderInventoryTest.test_a_subpackage_the_loader_would_discover_counts"
+  ],
+  "rejected": [
+   "test_source_contract.LoaderInventoryTest.test_the_real_loader_over_exactly_the_inventoried_adapters_is_accepted"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 546"
+ },
+ "2QS-con-method-alias-unreported": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 382"
+ },
+ "2QS-con-mixable-externals-widened": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 302, 616"
+ },
+ "2QS-con-mixed-bases-accepted": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 303"
+ },
+ "2QS-con-new-class-unreported": {
+  "controls": [
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 493"
+ },
+ "2QS-con-property-role-lost": {
+  "controls": [
+   "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 323; or executes line 316"
+ },
+ "2QS-con-receiver-closure-parameter-ignored": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 345 (else 344); or executes line 342"
+ },
+ "2QS-con-receiver-except-name-ignored": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 347 (else 344); or executes line 342"
+ },
+ "2QS-con-receiver-global-ignored": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 349 (else 344); or executes line 342"
+ },
+ "2QS-con-receiver-is-self": {
+  "controls": [
+   "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 328; or executes line 324"
+ },
+ "2QS-con-receiver-rebinding-unchecked": {
+  "controls": [
+   "test_locators.FileLocatorTest.test_the_design_record_kept_outside_the_repository_is_cited_by_identity"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 332"
+ },
+ "2QS-con-record-effect-drifts-from-the-text": {
+  "controls": [
+   "test_source_contract.DocumentAndToolTest.test_every_category_is_named_in_the_contract_table"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 615"
+ },
+ "2QS-con-setattr-class-unreported": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_attr_override"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 511"
+ },
+ "2QS-con-setattr-computed-name-unreported": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_attr_override"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 513"
+ },
+ "2QS-con-setattr-override-unreported": {
+  "controls": [
+   "test_source_contract.AcceptanceTest.test_accepts_receiver_calls_and_attributes"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 515"
+ },
+ "2QS-con-stage-exit-zero": {
+  "by_hand": true,
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_clean_source_passes_every_command"
+  ],
+  "rejected": [
+   "test_source_contract.RefusalTest.test_a_refusal_is_reported_where_the_construct_is_even_when_nothing_uses_it",
+   "test_source_contract.RefusalTest.test_a_refusal_names_file_line_construct_and_remediation_in_the_text_a_command_prints",
+   "test_source_contract.RefusalTest.test_refuses_src_base_hierarchy",
+   "test_source_contract.RefusalTest.test_refuses_src_base_mixed",
+   "test_source_contract.RefusalTest.test_refuses_src_class_conditional",
+   "test_source_contract.RefusalTest.test_refuses_src_class_dynamic",
+   "test_source_contract.RefusalTest.test_refuses_src_inv_module",
+   "test_source_contract.RefusalTest.test_refuses_src_method_alias",
+   "test_source_contract.RefusalTest.test_refuses_src_method_conditional",
+   "test_source_contract.RefusalTest.test_refuses_src_star_import"
+  ],
+  "why": "runs the contract's stage alone (tools/gen2_source_contract.py main) over source inside the contract: exit 0 either way, which the mutant's constant `return 0` leaves as it was; every other test of the stage's exit is a refusal"
+ },
+ "2QS-con-static-has-a-receiver": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_passing_report_says_so"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 328; or executes line 324"
+ },
+ "2QS-con-structural-write-unreported": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_attr_override"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 473"
+ },
+ "2QS-con-subscript-erasure-widened": {
+  "controls": [
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
+  ],
+  "why": "tools/gen2_source_contract.py: leaves line 282 for a line outside 282-283 (or returns)"
+ },
+ "2QS-con-sys-modules-write-unreported": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_loader_uninventoried"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 486"
+ },
+ "2QS-con-three-argument-type-unreported": {
+  "controls": [
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 493"
+ },
+ "2QS-con-type-call-is-a-class": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_attr_override"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 460; or executes line 461"
+ },
+ "2QS-con-typing-forms-narrowed": {
+  "controls": [
+   "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 282-283, 616"
+ },
+ "2QS-con-unknown-decorator-accepted": {
+  "controls": [
+   "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 162"
+ },
+ "2QS-con-version-unchanged": {
+  "controls": [
+   "test_source_contract.DocumentAndToolTest.test_every_category_is_named_in_the_contract_table"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 614"
+ },
+ "2QS-loc-owner-decorators-ignored": {
+  "controls": [
+   "test_locators.QualifiedScopeTest.test_class_attributes_keep_scope_and_function_locals_are_excluded"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 176; or executes line 175"
+ },
+ "2QS-loc-owner-keywords-ignored": {
+  "controls": [
+   "test_locators.QualifiedScopeTest.test_class_attributes_keep_scope_and_function_locals_are_excluded"
+  ],
+  "why": "tools/gen2_source_contract.py: executes line 172"
+ },
+ "2QS-loc-star-import-uncertainty-ignored": {
+  "controls": [
+   "test_locators.QualifiedScopeTest.test_class_attributes_keep_scope_and_function_locals_are_excluded"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 522"
+ },
+ "2QS-plan-a-map-onto-a-present-identity": {
+  "controls": [
+   "test_metrics_plan.MapFailureTest.test_a_retirement_of_an_identity_that_is_still_present_is_refused_as_such"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 243; or executes line 242"
+ },
+ "2QS-plan-budget-limit-not-drafted": {
+  "controls": [
+   "test_metrics_plan.IdempotentDraftingTest.test_drafting_twice_changes_nothing_before_or_after_the_reasons_are_filled"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 381; or executes line 380"
+ },
+ "2QS-plan-claims-the-old-location": {
+  "controls": [
+   "test_metrics_plan.RenameAndNewFileTest.test_without_a_map_the_drafter_owes_a_retirement_and_three_admissions"
+  ],
+  "rejected": [
+   "test_metrics_plan.RenameAndNewFileTest.test_the_filled_ledger_passes_keeps_the_old_ceilings_and_the_persistent_ids_and_adds_new_ones",
+   "test_metrics_plan.RenameAndNewFileTest.test_with_an_explicit_map_the_drafter_drafts_no_retirement_of_the_mapped_identity"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 241; or executes line 240"
+ },
+ "2QS-plan-collisions-unreported": {
+  "controls": [
+   "test_metrics_plan.MapFailureTest.test_a_retirement_of_an_identity_that_is_still_present_is_refused_as_such"
+  ],
+  "rejected": [
+   "test_metrics_plan.MapFailureTest.test_a_map_onto_the_location_of_an_identity_that_is_still_present_is_a_collision"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 243; or executes line 242"
+ },
+ "2QS-plan-directory-move-maps-missing-counterparts": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_a_directory_move_maps_the_files_it_finds_at_the_destination_and_the_edges_that_mention_them"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 190"
+ },
+ "2QS-plan-directory-move-skips-the-prefix": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_a_wildcard_or_a_similarity_maps_nothing"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 188"
+ },
+ "2QS-plan-draft-ignores-existing-entries": {
+  "controls": [
+   "test_metrics_plan.IdempotentDraftingTest.test_a_ledger_that_already_covers_the_plan_drafts_nothing"
+  ],
+  "why": "tools/gen2_metrics.py: executes line 1026"
+ },
+ "2QS-plan-expansion-overrides-an-explicit-entry": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_a_wildcard_or_a_similarity_maps_nothing"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 237"
+ },
+ "2QS-plan-expansion-unnamed": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_a_move_admits_nothing_so_a_new_import_in_the_moved_file_still_needs_admission"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 272 (else 271); or executes line 270"
+ },
+ "2QS-plan-fold-keeps-the-entries": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_a_move_rewrites_every_path_a_reference_names_and_keeps_a_cycle_sorted"
+  ],
+  "why": "tools/gen2_metrics.py: executes line 1128; or executes line 1127"
+ },
+ "2QS-plan-groups-by-nothing": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_a_wildcard_or_a_similarity_maps_nothing"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 396; or executes line 394"
+ },
+ "2QS-plan-ignores-explicit-entries": {
+  "controls": [
+   "test_metrics_plan.RenameAndNewFileTest.test_without_a_map_the_drafter_owes_a_retirement_and_three_admissions"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 236; or executes line 235"
+ },
+ "2QS-plan-map-across-kinds-accepted": {
+  "controls": [
+   "test_metrics_plan.MapFailureTest.test_a_map_onto_the_location_of_an_identity_that_is_still_present_is_a_collision"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 270"
+ },
+ "2QS-plan-move-cycle-unsorted": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_a_wildcard_or_a_similarity_maps_nothing"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 161; or executes line 160"
+ },
+ "2QS-plan-move-file-needs-both-paths": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_a_move_that_maps_nothing_is_an_unused_entry"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 138; or executes line 129"
+ },
+ "2QS-plan-move-function-qualified-name-lost": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_a_wildcard_or_a_similarity_maps_nothing"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 157; or executes line 155"
+ },
+ "2QS-plan-move-leaves-the-far-side": {
+  "controls": [
+   "test_metrics_plan.MoveTest.test_a_wildcard_or_a_similarity_maps_nothing"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 159; or executes line 158"
+ },
+ "2QS-plan-new-ids-after-the-serial": {
+  "controls": [
+   "test_metrics_plan.RenameAndNewFileTest.test_without_a_map_the_drafter_owes_a_retirement_and_three_admissions"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 297; or executes line 296"
+ },
+ "2QS-plan-retirement-of-a-present-identity-accepted": {
+  "controls": [
+   "test_metrics_plan.IdempotentDraftingTest.test_drafting_twice_changes_nothing_before_or_after_the_reasons_are_filled"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 265"
+ },
+ "2QS-plan-stale-map-accepted": {
+  "controls": [
+   "test_metrics_plan.MapFailureTest.test_a_map_onto_the_location_of_an_identity_that_is_still_present_is_a_collision"
+  ],
+  "why": "tools/gen2_metrics_ledger.py: executes line 270"
+ },
+ "2QS-run-exception-drops-the-output": {
+  "controls": [
+   "test_tool_completion.DidNotCompleteTest.test_a_traceback_is_a_crash_even_with_exit_one"
+  ],
+  "why": "gen2/tests/tool_repo_fixtures.py: executes line 52"
+ },
+ "2QS-run-exit-two-without-message-is-complete": {
+  "controls": [
+   "test_tool_completion.ErrorNotFailureTest.test_a_clean_child_passes"
+  ],
+  "why": "gen2/tests/tool_repo_fixtures.py: executes line 66"
+ },
+ "2QS-run-load-failure-is-complete": {
+  "controls": [
+   "test_tool_completion.ErrorNotFailureTest.test_a_clean_child_passes"
+  ],
+  "why": "gen2/tests/tool_repo_fixtures.py: executes line 62"
+ },
+ "2QS-run-log-ignored": {
+  "controls": [
+   "test_tool_completion.RunLogTest.test_nothing_is_logged_unless_asked"
+  ],
+  "why": "gen2/tests/tool_repo_fixtures.py: executes line 128"
+ },
+ "2QS-run-odd-status-is-complete": {
+  "controls": [
+   "test_tool_completion.ErrorNotFailureTest.test_a_clean_child_passes"
+  ],
+  "why": "gen2/tests/tool_repo_fixtures.py: executes line 64"
+ },
+ "2QS-run-result-not-kept": {
+  "controls": [
+   "test_tool_completion.CompletedRunTest.test_exit_zero_and_one_are_completed_runs_whatever_they_print"
+  ],
+  "why": "gen2/tests/tool_repo_fixtures.py: executes line 119"
+ },
+ "2QS-run-signal-is-complete": {
+  "controls": [
+   "test_tool_completion.ErrorNotFailureTest.test_a_clean_child_passes"
+  ],
+  "why": "gen2/tests/tool_repo_fixtures.py: executes line 58"
+ },
+ "2QS-run-timeout-is-complete": {
+  "controls": [
+   "test_tool_completion.ErrorNotFailureTest.test_a_clean_child_passes"
+  ],
+  "why": "gen2/tests/tool_repo_fixtures.py: leaves line 113 for a line outside 112-117 (or returns)"
+ },
+ "2QS-run-tool-refusal-is-incomplete": {
+  "controls": [
+   "test_tool_completion.CompletedRunTest.test_exit_zero_and_one_are_completed_runs_whatever_they_print"
+  ],
+  "why": "gen2/tests/tool_repo_fixtures.py: executes line 66"
+ },
+ "2QS-run-traceback-is-complete": {
+  "controls": [
+   "test_tool_completion.ErrorNotFailureTest.test_a_clean_child_passes"
+  ],
+  "why": "gen2/tests/tool_repo_fixtures.py: executes line 60"
+ },
+ "2QS-src-annotation-binds": {
+  "controls": [
+   "test_source_contract.AcceptanceTest.test_a_function_and_a_class_of_the_same_short_name_in_different_scopes_have_distinct_identities"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 304; or executes line 301"
+ },
+ "2QS-src-base-assignment-alias-accepted": {
+  "by_hand": true,
+  "controls": [
+   "test_metrics_collaboration.SupportedSurfaceTest.test_every_spelling_of_a_base_is_resolved_to_the_class"
+  ],
+  "why": "resolves bases bound by an import or a class statement through tools/gen2_source_index.py Facts.follow's class, import and from branches, which return before the changed fall-through (a binding by assignment or parameter): the mutant, which reads that as external, leaves them resolved"
+ },
+ "2QS-src-base-shape-guessed": {
+  "by_hand": true,
+  "controls": [
+   "test_metrics_collaboration.SupportedSurfaceTest.test_every_spelling_of_a_base_is_resolved_to_the_class"
+  ],
+  "why": "resolves bases written as names and as attribute chains through tools/gen2_source_index.py Facts.expr's Name and Attribute branches, which return before the changed fall-through (a base that is neither): the mutant, which reads that fall-through as an external base, leaves them resolved"
+ },
+ "2QS-src-decorator-shadowing-read-as-unknown": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_class_dynamic"
+  ],
+  "why": "tools/gen2_source_index.py: leaves line 495 for a line outside 495-497 (or returns)"
+ },
+ "2QS-src-def-duplicate-unreported": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_a_refusal_is_reported_where_the_construct_is_even_when_nothing_uses_it"
+  ],
+  "rejected": [
+   "test_source_contract.RefusalTest.test_a_refusal_names_file_line_construct_and_remediation_in_the_text_a_command_prints"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 312"
+ },
+ "2QS-src-global-write-unrouted": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_a_refusal_names_file_line_construct_and_remediation_in_the_text_a_command_prints"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 210"
+ },
+ "2QS-src-hotspots-exit-zero-when-refused": {
+  "controls": [
+   "test_metrics_measure.HistoryTest.test_files_that_change_together_by_joint_commits_and_jaccard"
+  ],
+  "why": "tools/gen2_metrics.py: executes line 1154; or executes line 1152"
+ },
+ "2QS-src-lambda-writes-bind-the-enclosing-scope": {
+  "controls": [
+   "test_source_contract.AcceptanceTest.test_a_function_and_a_class_of_the_same_short_name_in_different_scopes_have_distinct_identities"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 302"
+ },
+ "2QS-src-locator-command-skips-the-stage": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_clean_source_passes_every_command"
+  ],
+  "why": "tools/check_gen2_locators.py: executes line 286"
+ },
+ "2QS-src-method-conditional-unreported": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_base_subscript"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 250"
+ },
+ "2QS-src-mro-single-linearization": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_base_mixed"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 475"
+ },
+ "2QS-src-refusal-exit-zero": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_passing_report_says_so"
+  ],
+  "why": "tools/gen2_metrics.py: executes line 1179; or leaves line 1176 for a line outside 1175-1182 (or returns)"
+ },
+ "2QS-src-report-exit-zero-when-refused": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_passing_report_says_so"
+  ],
+  "why": "tools/gen2_metrics.py: executes line 1143; or executes line 1140"
+ },
+ "2QS-src-report-passing-whatever-was-refused": {
+  "controls": [
+   "test_source_contract.EveryCommandTest.test_a_passing_report_says_so"
+  ],
+  "why": "tools/gen2_metrics.py: executes line 470 (else 469)"
+ },
+ "2QS-src-same-file-class-key": {
+  "controls": [
+   "test_source_contract.AcceptanceTest.test_a_function_and_a_class_of_the_same_short_name_in_different_scopes_have_distinct_identities"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 237"
+ },
+ "2QS-src-star-import-not-a-binding": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_base_subscript"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 276; or executes line 275"
+ },
+ "2QS-src-tests-are-candidates": {
+  "controls": [
+   "test_source_contract.UntrackedTest.test_a_tracked_file_missing_from_the_working_tree_is_skipped_and_left_to_the_ledger"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 55"
+ },
+ "2QS-src-untracked-ignored-files-listed": {
+  "controls": [
+   "test_source_contract.UntrackedTest.test_a_tracked_file_missing_from_the_working_tree_is_skipped_and_left_to_the_ledger"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 71"
  },
  "2R-growth-counts-the-gateway": {
   "controls": [

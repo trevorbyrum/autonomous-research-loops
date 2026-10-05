@@ -404,10 +404,6 @@ MANUAL: dict[str, dict] = {
                "(probed: 0 of 9 candidates pass)"},
     # task 2q-a: five branches that, in the traced run, only a mutant's own killer entered; each got a test of its own, added after the
     # trace, that takes the accepted path through the changed line (the mutant leaves it passing)
-    "2Q-collab-module-attribute-base": {
-        "controls": ["test_metrics_measure.CollaborationTest.test_an_attribute_base_that_is_not_a_project_class_is_no_family"],
-        "why": "evaluates tools/gen2_metrics.py project_bases' changed elif for a base named through a module attribute (abc.ABC) that is "
-               "no project class: false, on the accepted path to no family; the mutant's `False and ...` leaves it so"},
     "2Q-exempt-continuation-lost": {
         "controls": ["test_metrics_ratchet.ExemptionTest.test_a_wrapped_reason_is_one_value_too"],
         "why": "runs tools/gen2_metrics.py parse_entries' changed continuation branch on a reason wrapped over two lines, accepted either "
@@ -431,13 +427,42 @@ MANUAL: dict[str, dict] = {
     # task 2q-a-repair: every traced candidate resolves a base through a submodule (a package's attribute), which this mutant breaks; the control
     # written for it takes the line's other branch alone
     "2QR-collab-submodule-not-an-attribute": {
-        "controls": ["test_metrics_collaboration.UnresolvedBaseTest.test_control_a_name_a_measured_module_does_not_define_is_unresolved_with_that_reason"],
-        "why": "evaluates tools/gen2_metrics.py Classes.member's changed return for a name a measured module defines nowhere, so no submodule is looked up "
-               "either: unresolved with the reason `defines no`, which the mutant's constant return gives too"},
+        "controls": ["test_metrics_collaboration.RefusedBaseTest.test_control_a_name_a_measured_module_does_not_define_is_refused_with_that_reason"],
+        "why": "evaluates tools/gen2_source_index.py Facts.member's changed branch for a name a measured module defines nowhere, so no submodule is looked up "
+               "either: refused with the reason `defines no`, which the mutant's always-false submodule test gives too"},
+    # task 2q-a-repair-3: two fall-throughs of the source index's resolver and the guard of the `__all__` check; each is a refusal no traced test passed through
+    # on an accepted path (the refusal is the last statement of its function, or its guard is only entered by `__all__` forms no fixture had), so each control
+    # is the test of the accepted path the mutant leaves as it was
+    "2QS-src-base-shape-guessed": {
+        "controls": ["test_metrics_collaboration.SupportedSurfaceTest.test_every_spelling_of_a_base_is_resolved_to_the_class"],
+        "why": "resolves bases written as names and as attribute chains through tools/gen2_source_index.py Facts.expr's Name and Attribute branches, which return before the "
+               "changed fall-through (a base that is neither): the mutant, which reads that fall-through as an external base, leaves them resolved"},
+    "2QS-src-base-assignment-alias-accepted": {
+        "controls": ["test_metrics_collaboration.SupportedSurfaceTest.test_every_spelling_of_a_base_is_resolved_to_the_class"],
+        "why": "resolves bases bound by an import or a class statement through tools/gen2_source_index.py Facts.follow's class, import and from branches, which return before "
+               "the changed fall-through (a binding by assignment or parameter): the mutant, which reads that as external, leaves them resolved"},
+    "2QS-con-diagnostics-without-remediation": {
+        "controls": ["test_source_contract.RefusalTest.test_a_contract_refusal_names_its_category_file_line_and_construct"],
+        "why": "makes the contract's own refusal (tools/gen2_source_contract.py Contract.refuse, a class hook) and asserts its category, file, line and construct, none of which the "
+               "mutant's empty remediation changes; every other refusal test asserts the remediation and is a killer. Written after the trace"},
+    "2QS-con-stage-exit-zero": {
+        "controls": ["test_source_contract.EveryCommandTest.test_a_clean_source_passes_every_command"],
+        "why": "runs the contract's stage alone (tools/gen2_source_contract.py main) over source inside the contract: exit 0 either way, which the mutant's constant `return 0` leaves "
+              "as it was; every other test of the stage's exit is a refusal"},
+    # task 2q-a-repair-3: two mutants that over-restrict the accepted path itself; every test that takes it asserts what it resolves, so none can pair
+    "2QR-collab-nested-class-unfound": {
+        "controls": [],
+        "why": "the mutant makes every lookup of a nested class through its outer class a refusal (tools/gen2_source_index.py Facts.member's class branch): the accepted path is the "
+               "lookup itself, and the one traced test that takes it beyond the killer (a class-scope assignment after the nested class) fails under the mutant, which changes "
+               "what the accepted path does rather than removing a refusal. There is no accepted alternative through it to pair"},
+    "2QS-con-all-mutation-unreported": {
+        "controls": ["test_source_contract.AcceptanceTest.test_accepts_imports_and_exports"],
+        "why": "reads an __all__ without changing it (tools/gen2_source_contract.py Contract.exports' changed elif is evaluated and false for a Load that is no method call and no "
+               "subscript store) beside the literal __all__ the row accepts: the mutant's `elif False` leaves it accepted"},
     "2Q-rebaseline-crossing-offenders-dropped": {
-        "controls": ["test_metrics_ratchet.ExemptedRegressionsAreNeverRecordedTest.test_a_new_function_over_the_threshold"],
-        "why": "evaluates tools/gen2_metrics.py tighten's changed elif for a new offender that an exemption covers (and so was an offender "
-               "under the old thresholds too): false, so it is not recorded, and the mutant's `elif False` records it no more"},
+        "controls": ["test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"],
+        "why": "folds an admitted file through tools/gen2_metrics_ledger.py fold's admission loop (task 2q-a-repair-2 moved the budget of a threshold offender there): the admitted isolated "
+               "file has no function budget, so the changed function branch is not taken and the mutant leaves the fold as it was"},
     # task 1e-repair: the server's handle_error override runs only for a failed connection
     "1E-engine-connection-fault-traceback": {
         "controls": [],

@@ -77,6 +77,14 @@ class RefusalTest(ContractCase):
         self.assertEqual(done.returncode, 1)
         self.assertRegex(done.stderr, r"SOURCE REFUSED: gen2/a\.py:4: SRC-DEF-DUPLICATE: A is defined more than once in the module \(first at line 1\)\. give each definition")
 
+    def test_a_contract_refusal_names_its_category_file_line_and_construct(self) -> None:
+        """A refusal the contract itself makes (a class hook), not the index: its category, file, line and the construct it names. What it says to do is the other test's."""
+        for service, (prefix, _) in SERVICES.items():
+            with self.subTest(service=service):
+                status, view = self.view(self.repo(package(service, {"c.py": py("class C:", "    def __init_subclass__(cls):", "        pass")})))
+                self.assertEqual((status, [(d["category"], d["file"], d["line"]) for d in view["diagnostics"]]), (1, [("SRC-CLASS-HOOK", prefix + "c.py", 2)]))
+                self.assertIn("defines __init_subclass__", view["diagnostics"][0]["construct"])
+
     def test_every_category_of_the_contract_has_a_refusal_fixture_in_each_service_it_applies_to(self) -> None:
         covered = {f.category for f in REFUSALS} | {"SRC-INV-UNTRACKED", "SRC-LOADER-INVENTORY"}   # the last two are built in LoaderInventoryTest and UntrackedTest
         self.assertEqual(covered, set(categories_in_the_tool()))
