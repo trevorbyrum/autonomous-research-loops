@@ -364,6 +364,8 @@ CLOSURE_ACCEPTS: dict[str, list[Fixture]] = {
                members={"a.py::A": {"one": ["data", "authored"], "two": ["data", "authored"], "four": ["data", "authored"], "five": ["data", "authored"], "six": ["data", "authored"],
                                     "seven": ["data", "authored"], "eight": ["data", "authored"], "nine": ["data", "authored"], "ten": ["data", "authored"], "eleven": ["data", "authored"],
                                     "Inner": ["data", "authored"], "run": ["method", "authored"]}}),
+        accept("a private method is a member the class has, under its name as written", {"a.py": py("class A:", "    def __helper(self):", "        return 1", "    def run(self):", "        return self.__helper()")},
+               members={"a.py::A": {"__helper": ["method", "authored"], "run": ["method", "authored"]}}),
         accept("an annotation alone binds nothing in the class", {"a.py": py("class A:", "    x: int", "    def f(self):", "        return 1")}, members={"a.py::A": {"f": ["method", "authored"], "x": None}}),
     ],
     "implicit_and_generated_members": [

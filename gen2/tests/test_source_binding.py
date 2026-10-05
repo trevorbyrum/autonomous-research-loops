@@ -107,22 +107,103 @@ class ScopeTest(unittest.TestCase):
 
     def test_a_name_only_an_unevaluated_annotation_mentions_is_the_modules(self) -> None:
         text = lines("from __future__ import annotations", "import typing", "def make():", "    class D:", "        v: typing.ClassVar[int] = 0", "    return D")
-        self.assertEqual(holders(text, ("function", "make", "typing")), [["module", ""]])
+        self.assertEqual(holders(text, ("class", "make.D", "typing"), ("function", "make", "typing")), [["module", ""], ["module", ""]], msg="where the annotation is written, and a scope that never writes the name")
 
     def test_a_scope_the_compilers_table_does_not_match_is_refused_and_so_is_a_table_no_scope_matches(self) -> None:
-        said = in_the_tools("rows = [si.FileIndex('gen2/a.py', ast.parse('f = lambda a: a'), 'f = lambda b: b'), si.FileIndex('gen2/a.py', ast.parse('x = 1'), 'def f(): pass')]\n"
+        said = in_the_tools("rows = [si.FileIndex('gen2/a.py', ast.parse('f = lambda a: a'), 'f = 1'), si.FileIndex('gen2/a.py', ast.parse('x = 1'), 'def f(): pass')]\n"
                             "print(json.dumps([[d.construct for d in index.diagnostics] for index in rows]))")
         scope_without_table, table_without_scope = said
         self.assertTrue(any("no matching scope for lambda" in construct for construct in scope_without_table), msg=scope_without_table)
-        self.assertTrue(table_without_scope and all("has no scope of the index to match" in construct for construct in table_without_scope), msg=table_without_scope)
+        self.assertTrue(table_without_scope and any("has no scope of the index to match" in construct for construct in table_without_scope), msg=table_without_scope)
 
-    def test_scopes_that_share_a_line_are_told_apart_by_their_parameters_and_iteration_variables(self) -> None:
-        """Two lambdas the compiler lists in the other order, and a generator expression inside the first iterable of another (the compiler's table for the inner one comes first)."""
-        said = in_the_tools("swapped = si.FileIndex('gen2/a.py', ast.parse('f = (lambda a: a, lambda b: b)'), 'f = (lambda b: b, lambda a: a)')\n"
-                            "nested = si.index_text('gen2/a.py', 'ok = all(p for p in [*(g for g in xs)])')\n"
-                            "print(json.dumps([[sorted(s.table.get_parameters()) for s in swapped.scopes if s.kind == 'lambda'], [d.construct for d in swapped.diagnostics],\n"
-                            "                  [sorted(n for n in s.table.get_identifiers() if n in 'pg') for s in nested.scopes if s.kind == 'comprehension'], [d.construct for d in nested.diagnostics]]))")
-        self.assertEqual(said, [[["a"], ["b"]], [], [["p"], ["g"]], []])
+    def test_a_name_only_an_unevaluated_annotation_writes_is_no_name_the_table_must_hold_and_a_lambda_in_one_is_refused(self) -> None:
+        said = in_the_tools("future = 'from __future__ import annotations\\n'\n"
+                            "rows = [si.index_text('gen2/a.py', future + 'def f(a: Missing) -> Gone: pass\\nx: Absent = 1'), si.index_text('gen2/a.py', future + 'def f(a: (lambda m: 0)): pass')]\n"
+                            "print(json.dumps([[d.construct for d in index.diagnostics] for index in rows]))")
+        self.assertEqual(said[0], [], msg="the compiler holds no name of these annotations, and the tree is not asked to")
+        self.assertTrue(any("builds no table" in construct for construct in said[1]), msg=said[1])
+
+
+def tables_of(text: str) -> list:
+    """For each comprehension scope of the text, in the order the walker finds them: the identifiers of the table it was given."""
+    return in_the_tools(f"index = si.index_text('gen2/x.py', {text!r})\nprint(json.dumps([sorted(s.table.get_identifiers()) for s in index.scopes if s.kind == 'comprehension' and s.table]))")
+
+
+class PairingTest(unittest.TestCase):
+    """Each scope gets the table the compiler built for it, found by the order in which the compiler enters scopes and proved both ways: the names the tree writes in a scope are its table's."""
+
+    ORDER = lines(
+        "def one(p: (lambda m1: 1), /, a: (lambda m2: 1) = (lambda m3: 1), *v: (lambda m4: 1), k: (lambda m5: 1) = (lambda m6: 1), **kw: (lambda m7: 1)) -> (lambda m8: 1): pass",
+        "@(lambda m9: 1)",
+        "def two(x=(lambda m10: 1), *, y=(lambda m11: 1)) -> (lambda m12: 1): pass",
+        "@(lambda m13: 1)",
+        "class K((lambda m14: 1)(1), metaclass=(lambda m15: 1), other=(lambda m16: 1)):",
+        "    f = (lambda m17=(lambda m18: 1): (lambda m19: 1))",
+        "d = {(lambda m20: 1)(): (lambda m21: 1)() for i in (lambda m22: 1)() if (lambda m23: 1)()}",
+        "g = list(((lambda m24: 1)(), (lambda m25: 1)()) for i in (lambda m26: 1)() if (lambda m27: 1)() for j in (lambda m28: 1)())",
+        "try:",
+        "    (lambda m29: 1)",
+        "except (lambda m30: 1) as e:",
+        "    (lambda m31: 1)",
+        "else:",
+        "    (lambda m32: 1)",
+        "finally:",
+        "    (lambda m33: 1)")
+
+    def test_every_scope_the_compiler_enters_in_its_order_gets_its_own_table_and_none_is_refused(self) -> None:
+        said = in_the_tools(f"index = si.index_text('gen2/x.py', {self.ORDER!r})\nlam = [s for s in index.scopes if s.kind == 'lambda']\n"
+                            "print(json.dumps([len(lam), [a.arg for s in lam for a in s.node.args.args if sorted(s.table.get_parameters()) != sorted(x.arg for x in s.node.args.args)], [d.construct for d in index.diagnostics]]))")
+        self.assertEqual(said, [33, [], []], msg="every lambda has the table of its own parameters")
+
+    def test_a_generator_in_the_first_iterable_of_another_is_entered_first_and_the_walrus_belongs_to_the_outer_one(self) -> None:
+        text = lines("def factory():", "    from pkg.a import A", "    tuple((A := object) for q in (q for q in (1,)))", "    return A")
+        self.assertEqual(tables_of(text), [[".0", "A", "object", "q"], [".0", "q"]])
+        self.assertEqual(roles((text, "factory"), (text, ""))[0]["A"], ["from", "walrus"])
+        self.assertEqual(sorted(roles((text, ""))[0]), ["factory"], msg="the walrus is not a write to the module")
+
+    def test_a_pairing_the_tree_and_the_table_disagree_about_is_refused_both_ways(self) -> None:
+        said = in_the_tools("rows = [si.FileIndex('gen2/a.py', ast.parse('f = (lambda a: a, lambda b: b)'), 'f = (lambda b: b, lambda a: a)'), si.FileIndex('gen2/a.py', ast.parse('def f(a):\\n    return a, c'), 'def f(a):\\n    return a'),\n"
+                            "        si.FileIndex('gen2/a.py', ast.parse('def f(a):\\n    return a'), 'def f(a):\\n    return a, c')]\nprint(json.dumps([[d.construct for d in index.diagnostics] for index in rows]))")
+        swapped, tree_only, table_only = said
+        self.assertTrue(any("tree writes a but" in c for c in swapped) and any("holds b that the tree does not write" in c for c in swapped), msg=swapped)
+        self.assertEqual([c for c in tree_only if "no such name" in c], ["in f: the tree writes c but the compiler's table has no such name"], msg=tree_only)
+        self.assertEqual([c for c in table_only if "tree does not write" in c], ["in f: the compiler's table holds c that the tree does not write here"], msg=table_only)
+        self.assertEqual((len(tree_only), len(table_only)), (1, 1), msg="each direction alone is one refusal")
+
+    def test_the_names_the_compiler_adds_itself_are_not_disagreements(self) -> None:
+        """Free names passed up through a function and a class, the `global` name of a nested function in the module's table, `super`'s `__class__`, `.0` of a generator, and an inlined comprehension."""
+        text = lines("def f():", "    x = 1", "    global zz", "    class K:", "        def g(self):", "            return x, super().g(), [y for y in range(2)], (w for w in 'ab')", "    return K")
+        self.assertEqual(in_the_tools(f"print(json.dumps([d.construct for d in si.index_text('gen2/x.py', {text!r}).diagnostics]))"), [])
+
+
+class MangleTest(unittest.TestCase):
+    """Python's private-name mangling, and a private name the compiler holds mangled being found (R6-2)."""
+
+    def test_the_language_rule(self) -> None:
+        cases = [("C", "__x", "_C__x"), ("__C", "__x", "_C__x"), ("_C_", "__x", "_C___x"), ("_", "__x", "__x"), ("___", "__x", "__x"), (None, "__x", "__x"), ("C", "__x__", "__x__"),
+                 ("C", "_x", "_x"), ("C", "__", "__"), ("C", "___", "___"), ("C", "__a.b", "__a.b"), ("C", "x__y", "x__y")]
+        self.assertEqual(in_the_tools(f"print(json.dumps([si.mangle(p, n) for p, n, _ in {cases!r}]))"), [expected for _p, _n, expected in cases])
+
+    def test_a_mangled_private_name_is_a_python_identifier_whatever_the_class(self) -> None:
+        """The control of the mangling mutant: the rule's result for a private name, asked of three class names and checked only for being a name."""
+        self.assertEqual(in_the_tools("print(json.dumps([si.mangle(c, '__x').isidentifier() for c in ('C', '__C', 'My_Class')]))"), [True, True, True])
+
+    def test_a_private_name_is_looked_up_as_the_compiler_holds_it_in_every_scope_of_the_class(self) -> None:
+        text = lines("class Factory:", "    def build(self, __p):", "        from pkg.a import A as __A", "        class B(__A):", "            def run(self): return __A", "        return B, __p", "    __v = 1")
+        self.assertEqual(holders(text, ("function", "Factory.build", "__A"), ("function", "Factory.build", "__p"), ("class", "Factory", "__v"), ("function", "Factory.build.B.run", "__A")),
+                         [["function", "Factory.build"], ["function", "Factory.build"], ["class", "Factory"], None],
+                         msg="a nested class has its own name: B's `__A` is `_B__A`, which nothing binds")
+        self.assertEqual(roles((text, "Factory.build"), (text, "Factory"))[0], {"self": ["param"], "__p": ["param"], "__A": ["from"], "B": ["class"]}, msg="recorded under the name as written")
+
+    def test_a_global_a_class_declares_is_the_modules_name_as_the_compiler_mangles_it(self) -> None:
+        text = lines("def __g(): pass", "class C:", "    def f(self):", "        global __g", "        __g = 1", "        return __g")
+        self.assertEqual(roles((text, ""))[0], {"__g": ["def"], "C": ["class"], "_C__g": ["global_write"]}, msg="not a rebinding of the module's own `__g`")
+        self.assertEqual(in_the_tools(f"print(json.dumps([d.construct for d in si.index_text('gen2/x.py', {text!r}).diagnostics]))"), [])
+
+    def test_a_binding_the_table_has_no_symbol_for_is_refused_and_is_never_the_modules(self) -> None:
+        said = in_the_tools("index = si.FileIndex('gen2/a.py', ast.parse('class C:\\n    __h = 1'), 'class C:\\n    h = 1')\nprint(json.dumps([sorted(index.module.bindings), [d.construct for d in index.diagnostics]]))")
+        self.assertEqual(said[0], ["C"], msg="no global write of the private name")
+        self.assertTrue(any("holds no symbol _C__h" in construct for construct in said[1]), msg=said[1])
 
 
 class ResolverTest(unittest.TestCase):

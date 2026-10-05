@@ -7846,7 +7846,7 @@
    "test_source_contract.RefusalTest.test_refuses_src_base_mixed",
    "test_source_contract.RefusalTest.test_refuses_src_class_dynamic"
   ],
-  "why": "tools/gen2_source_index.py: executes line 827"
+  "why": "tools/gen2_source_index.py: executes line 949"
  },
  "2Q-collab-same-file-counted": {
   "controls": [
@@ -8240,7 +8240,7 @@
    "test_metrics_measure.GraphTest.test_the_summary_line_states_the_cost_as_a_percentage",
    "test_source_contract.AcceptanceTest.test_accepts_imports_and_exports"
   ],
-  "why": "tools/gen2_source_index.py: executes line 105"
+  "why": "tools/gen2_source_index.py: executes line 113"
  },
  "2Q-graph-self-edge": {
   "controls": [
@@ -8262,7 +8262,7 @@
   "controls": [
    "test_metrics_measure.GraphTest.test_an_import_between_the_services_is_reported_and_enters_neither_graph"
   ],
-  "why": "tools/gen2_source_index.py: executes line 73"
+  "why": "tools/gen2_source_index.py: executes line 81"
  },
  "2Q-history-advisory-fails": {
   "controls": [
@@ -8316,7 +8316,7 @@
   "controls": [
    "test_locators.SymbolLocatorTest.test_a_removed_or_misspelled_name_fails_naming_the_file"
   ],
-  "why": "tools/gen2_source_index.py: executes line 869"
+  "why": "tools/gen2_source_index.py: executes line 991"
  },
  "2Q-loc-bare-suffix-is-a-file": {
   "controls": [
@@ -8420,7 +8420,7 @@
   "controls": [
    "test_locators.SymbolLocatorTest.test_a_removed_or_misspelled_name_fails_naming_the_file"
   ],
-  "why": "tools/gen2_source_index.py: executes line 869"
+  "why": "tools/gen2_source_index.py: executes line 991"
  },
  "2Q-loc-sql-only-tables": {
   "controls": [
@@ -8702,51 +8702,51 @@
  },
  "2Q6-idx-absent-name-is-local": {
   "controls": [
-   "test_source_binding.ScopeTest.test_scopes_that_share_a_line_are_told_apart_by_their_parameters_and_iteration_variables"
+   "test_source_binding.ScopeTest.test_a_comprehension_keeps_its_iteration_variable_and_a_walrus_target_is_the_scope_that_writes_it"
   ],
-  "why": "tools/gen2_source_index.py: executes line 687"
+  "why": "tools/gen2_source_index.py: executes line 805; or executes line 804"
  },
  "2Q6-idx-alias-of-data-is-unresolved": {
   "controls": [
    "test_source_binding.ResolverTest.test_an_alias_chain_that_ends_in_an_import_is_that_import"
   ],
-  "why": "tools/gen2_source_index.py: leaves line 790 for a line outside 790-791 (or returns); or leaves line 788 for a line outside 787-792 (or returns)"
+  "why": "tools/gen2_source_index.py: leaves line 912 for a line outside 912-913 (or returns); or leaves line 910 for a line outside 909-914 (or returns)"
  },
  "2Q6-idx-alias-uncertainty-unmarked": {
   "controls": [
    "test_source_binding.ResolverTest.test_an_alias_chain_that_ends_in_an_import_is_that_import"
   ],
-  "why": "tools/gen2_source_index.py: leaves line 788 for a line outside 787-792 (or returns)"
+  "why": "tools/gen2_source_index.py: leaves line 910 for a line outside 909-914 (or returns)"
  },
  "2Q6-idx-competing-bindings-carry-no-identity": {
   "controls": [
    "test_source_binding.ResolverTest.test_a_decorator_written_as_its_qualified_identity_has_that_identity"
   ],
-  "why": "tools/gen2_source_index.py: leaves line 762 for a line outside 762-764 (or returns)"
+  "why": "tools/gen2_source_index.py: leaves line 884 for a line outside 884-886 (or returns)"
  },
  "2Q6-idx-compiler-refusal-unreported": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 249; or leaves line 247 for a line outside 246-250 (or returns)"
+  "why": "tools/gen2_source_index.py: executes line 268; or leaves line 266 for a line outside 265-269 (or returns)"
  },
  "2Q6-idx-comprehension-target-binds-outside": {
   "controls": [
-   "test_source_closure.ClosureAcceptanceTest.test_accepts_class_bodies_that_bind_data"
+   "test_source_closure.EffectiveMemberTest.test_the_hash_member_of_every_class_is_what_the_interpreter_builds"
   ],
-  "why": "tools/gen2_source_index.py: executes line 416"
+  "why": "tools/gen2_source_index.py: executes line 517"
  },
  "2Q6-idx-comprehension-variable-escapes": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_global_redirect_of_every_kind_of_binding"
   ],
-  "why": "tools/gen2_source_index.py: executes line 683; or executes line 684"
+  "why": "tools/gen2_source_index.py: executes line 799; or executes line 800"
  },
  "2Q6-idx-free-binder-is-the-nearest-scope": {
   "controls": [
    "test_source_binding.ScopeTest.test_a_global_declaration_sends_a_read_to_the_module_and_without_one_a_local_shadow_is_the_functions"
   ],
-  "why": "tools/gen2_source_index.py: executes line 691"
+  "why": "tools/gen2_source_index.py: executes line 813"
  },
  "2Q6-idx-free-binder-is-the-outermost": {
   "controls": [
@@ -8755,43 +8755,121 @@
   "rejected": [
    "test_source_binding.ScopeTest.test_a_global_declaration_sends_a_read_to_the_module_and_without_one_a_local_shadow_is_the_functions"
   ],
-  "why": "tools/gen2_source_index.py: executes line 692"
+  "why": "tools/gen2_source_index.py: executes line 814"
  },
  "2Q6-idx-free-name-is-local": {
   "controls": [
    "test_source_binding.ScopeTest.test_a_comprehension_keeps_its_iteration_variable_and_a_walrus_target_is_the_scope_that_writes_it"
   ],
-  "why": "tools/gen2_source_index.py: executes line 689"
+  "why": "tools/gen2_source_index.py: executes line 811"
  },
  "2Q6-idx-free-search-enters-a-class": {
   "controls": [
    "test_source_binding.ScopeTest.test_a_global_declaration_sends_a_read_to_the_module_and_without_one_a_local_shadow_is_the_functions"
   ],
-  "why": "tools/gen2_source_index.py: executes line 691"
- },
- "2Q6-idx-header-names-unchecked": {
-  "controls": [
-   "test_source_binding.ScopeTest.test_a_comprehension_keeps_its_iteration_variable_and_a_walrus_target_is_the_scope_that_writes_it"
-  ],
-  "why": "tools/gen2_source_index.py: executes line 381"
+  "why": "tools/gen2_source_index.py: executes line 813"
  },
  "2Q6-idx-leftover-table-accepted": {
   "controls": [
-   "test_source_binding.ScopeTest.test_scopes_that_share_a_line_are_told_apart_by_their_parameters_and_iteration_variables"
+   "test_source_binding.ScopeTest.test_a_comprehension_keeps_its_iteration_variable_and_a_walrus_target_is_the_scope_that_writes_it"
   ],
-  "why": "tools/gen2_source_index.py: executes line 355; or executes line 354"
+  "why": "tools/gen2_source_index.py: executes line 433; or executes line 432"
  },
  "2Q6-idx-scope-ignores-global": {
   "controls": [
-   "test_source_binding.ScopeTest.test_scopes_that_share_a_line_are_told_apart_by_their_parameters_and_iteration_variables"
+   "test_source_binding.ScopeTest.test_a_comprehension_keeps_its_iteration_variable_and_a_walrus_target_is_the_scope_that_writes_it"
   ],
-  "why": "tools/gen2_source_index.py: executes line 687"
+  "why": "tools/gen2_source_index.py: executes line 809"
  },
  "2Q6-idx-table-mismatch-accepted": {
   "controls": [
-   "test_source_binding.ScopeTest.test_scopes_that_share_a_line_are_told_apart_by_their_parameters_and_iteration_variables"
+   "test_source_binding.ScopeTest.test_a_comprehension_keeps_its_iteration_variable_and_a_walrus_target_is_the_scope_that_writes_it"
   ],
-  "why": "tools/gen2_source_index.py: executes line 383; or executes line 382"
+  "why": "tools/gen2_source_index.py: executes line 436; or executes line 434-435 (else 434)"
+ },
+ "2Q6B-idx-annotation-names-are-demanded": {
+  "controls": [
+   "test_source_binding.ScopeTest.test_a_comprehension_keeps_its_iteration_variable_and_a_walrus_target_is_the_scope_that_writes_it"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 450"
+ },
+ "2Q6B-idx-annotations-in-tree-order": {
+  "controls": [
+   "test_source_binding.PairingTest.test_a_pairing_the_tree_and_the_table_disagree_about_is_refused_both_ways"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 364"
+ },
+ "2Q6B-idx-decorators-after-annotations": {
+  "controls": [
+   "test_source_binding.PairingTest.test_a_pairing_the_tree_and_the_table_disagree_about_is_refused_both_ways"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 365"
+ },
+ "2Q6B-idx-dict-comprehension-key-first": {
+  "controls": [
+   "test_source_binding.PairingTest.test_the_names_the_compiler_adds_itself_are_not_disagreements"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 376"
+ },
+ "2Q6B-idx-first-iterable-is-read-inside": {
+  "controls": [
+   "test_source_binding.PairingTest.test_a_pairing_the_tree_and_the_table_disagree_about_is_refused_both_ways"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 384; or executes line 383; or executes line 385"
+ },
+ "2Q6B-idx-global-write-keeps-the-written-name": {
+  "controls": [
+   "test_source_contract.RefusalTest.test_refuses_src_def_rebound"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 524; or executes line 523"
+ },
+ "2Q6B-idx-mangling-skipped": {
+  "by_hand": true,
+  "controls": [
+   "test_source_binding.MangleTest.test_a_mangled_private_name_is_a_python_identifier_whatever_the_class"
+  ],
+  "rejected": [
+   "test_source_binding.MangleTest.test_a_binding_the_table_has_no_symbol_for_is_refused_and_is_never_the_modules",
+   "test_source_binding.MangleTest.test_a_global_a_class_declares_is_the_modules_name_as_the_compiler_mangles_it",
+   "test_source_closure.ClosureAcceptanceTest.test_accepts_class_bodies_that_bind_data"
+  ],
+  "why": "a narrow control and nothing more (task 2q-a-repair-6b, 2026-10-05): it calls tools/gen2_source_index.py `mangle` for a private name and checks only that the result is an identifier, which the unmangled name is as well; it does not show that any lookup of a private name works. Its killers (the language rule, the probes, the lookups of a private name) are what show that"
+ },
+ "2Q6B-idx-missing-symbol-is-global": {
+  "controls": [
+   "test_source_binding.MangleTest.test_a_private_name_is_looked_up_as_the_compiler_holds_it_in_every_scope_of_the_class"
+  ],
+  "why": "tools/gen2_source_index.py: leaves line 806 for a line outside 806-807 (or returns)"
+ },
+ "2Q6B-idx-pairing-unvalidated": {
+  "controls": [
+   "test_source_binding.PairingTest.test_the_names_the_compiler_adds_itself_are_not_disagreements"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 424; or executes line 421"
+ },
+ "2Q6B-idx-private-spellings-kept-apart": {
+  "controls": [
+   "test_source_binding.ResolverTest.test_an_alias_chain_that_ends_in_an_import_is_that_import"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 725; or executes line 724"
+ },
+ "2Q6B-idx-try-fields-in-tree-order": {
+  "controls": [
+   "test_source_binding.PairingTest.test_a_pairing_the_tree_and_the_table_disagree_about_is_refused_both_ways"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 389"
+ },
+ "2Q6B-idx-validation-ignores-the-tables-names": {
+  "controls": [
+   "test_source_binding.PairingTest.test_the_names_the_compiler_adds_itself_are_not_disagreements"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 470; or executes line 466"
+ },
+ "2Q6B-idx-validation-ignores-the-trees-names": {
+  "controls": [
+   "test_source_binding.PairingTest.test_the_names_the_compiler_adds_itself_are_not_disagreements"
+  ],
+  "why": "tools/gen2_source_index.py: executes line 469; or executes line 466"
  },
  "2QB-con-base-follows-an-assignment": {
   "by_hand": true,
@@ -9203,73 +9281,73 @@
   "rejected": [
    "test_source_binding.ResolverTest.test_an_alias_chain_that_ends_in_an_import_is_that_import"
   ],
-  "why": "tools/gen2_source_index.py: executes line 784"
+  "why": "tools/gen2_source_index.py: executes line 906"
  },
  "2QC-idx-alias-identity-not-recorded": {
   "controls": [
-   "test_source_closure.ClosureAcceptanceTest.test_accepts_class_bodies_that_bind_data"
+   "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 424"
+  "why": "tools/gen2_source_index.py: executes line 528"
  },
  "2QC-idx-annotation-of-an-assignment-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 525"
+  "why": "tools/gen2_source_index.py: executes line 635"
  },
  "2QC-idx-annotation-only-attribute-is-a-store": {
   "controls": [
-   "test_source_closure.ClosureAcceptanceTest.test_accepts_class_bodies_that_bind_data"
+   "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 521"
+  "why": "tools/gen2_source_index.py: executes line 631"
  },
  "2QC-idx-attribute-stores-not-recorded": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_hooks_bound_by_any_statement"
   ],
-  "why": "tools/gen2_source_index.py: executes line 594"
+  "why": "tools/gen2_source_index.py: executes line 706"
  },
  "2QC-idx-call-arguments-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 606"
+  "why": "tools/gen2_source_index.py: executes line 718"
  },
  "2QC-idx-calls-not-recorded": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 605"
+  "why": "tools/gen2_source_index.py: executes line 717"
  },
  "2QC-idx-class-header-bases-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 454"
+  "why": "tools/gen2_source_index.py: executes line 558"
  },
  "2QC-idx-class-header-decorators-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 454"
+  "why": "tools/gen2_source_index.py: executes line 558"
  },
  "2QC-idx-class-header-keywords-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 454"
+  "why": "tools/gen2_source_index.py: executes line 558"
  },
  "2QC-idx-compound-header-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_method_aliases_by_any_statement"
   ],
-  "why": "tools/gen2_source_index.py: executes line 544"
+  "why": "tools/gen2_source_index.py: executes line 654"
  },
  "2QC-idx-comprehension-conditions-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_global_redirect_of_every_kind_of_binding"
   ],
-  "why": "tools/gen2_source_index.py: executes line 490; or executes line 487"
+  "why": "tools/gen2_source_index.py: executes line 596; or executes line 593"
  },
  "2QC-idx-comprehension-element-not-visited": {
   "controls": [
@@ -9279,19 +9357,19 @@
    "test_source_closure.ClosureRefusalTest.test_refuses_global_redirect_of_every_kind_of_binding",
    "test_source_closure.WalkerUnitTest.test_every_role_the_walker_gives_a_binding_is_one_the_contract_lists"
   ],
-  "why": "tools/gen2_source_index.py: executes line 491"
+  "why": "tools/gen2_source_index.py: executes line 597"
  },
  "2QC-idx-external-base-has-no-object": {
   "controls": [
    "test_source_closure.EffectiveMemberTest.test_the_hash_member_of_every_class_is_what_the_interpreter_builds"
   ],
-  "why": "tools/gen2_source_index.py: executes line 855; or executes line 852"
+  "why": "tools/gen2_source_index.py: executes line 977; or executes line 974"
  },
  "2QC-idx-global-redirect-skips-definitions": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 417"
+  "why": "tools/gen2_source_index.py: executes line 521"
  },
  "2QC-idx-global-redirect-skips-imports": {
   "controls": [
@@ -9300,55 +9378,55 @@
   "rejected": [
    "test_source_closure.ClosureRefusalTest.test_refuses_nonlocal_and_global_inside_closures"
   ],
-  "why": "tools/gen2_source_index.py: executes line 417"
+  "why": "tools/gen2_source_index.py: executes line 521"
  },
  "2QC-idx-global-redirect-skips-targets": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 417"
+  "why": "tools/gen2_source_index.py: executes line 521"
  },
  "2QC-idx-header-annotations-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_method_aliases_by_any_statement"
   ],
-  "why": "tools/gen2_source_index.py: executes line 475"
+  "why": "tools/gen2_source_index.py: executes line 581"
  },
  "2QC-idx-header-decorators-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_method_aliases_by_any_statement"
   ],
-  "why": "tools/gen2_source_index.py: executes line 475"
+  "why": "tools/gen2_source_index.py: executes line 580"
  },
  "2QC-idx-header-defaults-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_method_aliases_by_any_statement"
   ],
-  "why": "tools/gen2_source_index.py: executes line 475"
+  "why": "tools/gen2_source_index.py: executes line 580"
  },
  "2QC-idx-header-return-annotation-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_method_aliases_by_any_statement"
   ],
-  "why": "tools/gen2_source_index.py: executes line 475"
+  "why": "tools/gen2_source_index.py: executes line 581"
  },
  "2QC-idx-lambda-defaults-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_hooks_bound_by_any_statement"
   ],
-  "why": "tools/gen2_source_index.py: executes line 479"
+  "why": "tools/gen2_source_index.py: executes line 585"
  },
  "2QC-idx-loop-iterable-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_method_aliases_by_any_statement"
   ],
-  "why": "tools/gen2_source_index.py: executes line 533"
+  "why": "tools/gen2_source_index.py: executes line 643"
  },
  "2QC-idx-object-not-implicit": {
   "controls": [
    "test_source_closure.EffectiveMemberTest.test_the_hash_member_of_every_class_is_what_the_interpreter_builds"
   ],
-  "why": "tools/gen2_source_index.py: executes line 856"
+  "why": "tools/gen2_source_index.py: executes line 978"
  },
  "2QC-idx-subscript-stores-not-recorded": {
   "controls": [
@@ -9358,25 +9436,25 @@
    "test_source_closure.ClosureRefusalTest.test_refuses_stores_on_modules_and_packages",
    "test_source_closure.ClosureRefusalTest.test_refuses_unrecognised_forms"
   ],
-  "why": "tools/gen2_source_index.py: executes line 599"
+  "why": "tools/gen2_source_index.py: executes line 711"
  },
  "2QC-idx-unrecognised-node-read-as-harmless": {
   "controls": [
    "test_source_closure.WalkerUnitTest.test_a_name_stored_where_no_statement_says_how_is_refused"
   ],
-  "why": "tools/gen2_source_index.py: executes line 392"
+  "why": "tools/gen2_source_index.py: executes line 479"
  },
  "2QC-idx-value-of-an-annotated-assignment-not-visited": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_dataclass_forms_the_record_does_not_allow"
   ],
-  "why": "tools/gen2_source_index.py: executes line 526"
+  "why": "tools/gen2_source_index.py: executes line 636"
  },
  "2QC-idx-walrus-in-a-comprehension-binds-inside-it": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_method_aliases_by_any_statement"
   ],
-  "why": "tools/gen2_source_index.py: executes line 416"
+  "why": "tools/gen2_source_index.py: executes line 517"
  },
  "2QC-met-command-says-partial-when-it-measured-nothing": {
   "controls": [
@@ -9441,19 +9519,19 @@
   "controls": [
    "test_metrics_identity.IdentityTest.test_a_new_dependent_of_a_stable_target_is_counted"
   ],
-  "why": "tools/gen2_source_index.py: executes line 617"
+  "why": "tools/gen2_source_index.py: executes line 732"
  },
  "2QI-conditional-class": {
   "controls": [
    "test_source_contract.RefusalTest.test_a_refusal_names_file_line_construct_and_remediation_in_the_text_a_command_prints"
   ],
-  "why": "tools/gen2_source_index.py: executes line 444"
+  "why": "tools/gen2_source_index.py: executes line 548"
  },
  "2QI-last-entry-binding": {
   "controls": [
    "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
   ],
-  "why": "tools/gen2_source_index.py: leaves line 762 for a line outside 762-764 (or returns)"
+  "why": "tools/gen2_source_index.py: leaves line 884 for a line outside 884-886 (or returns)"
  },
  "2QI-lexical-base-scope": {
   "controls": [
@@ -9465,7 +9543,7 @@
   "controls": [
    "test_locators.QualifiedScopeTest.test_class_attributes_keep_scope_and_function_locals_are_excluded"
   ],
-  "why": "tools/gen2_source_index.py: executes line 882"
+  "why": "tools/gen2_source_index.py: executes line 1004"
  },
  "2QI-map-without-comparison": {
   "controls": [
@@ -9518,7 +9596,7 @@
   "controls": [
    "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls"
   ],
-  "why": "tools/gen2_source_index.py: executes line 856"
+  "why": "tools/gen2_source_index.py: executes line 978"
  },
  "2QR-collab-external-base-unresolved": {
   "controls": [
@@ -9528,7 +9606,7 @@
    "test_source_contract.RefusalTest.test_refuses_src_base_mixed",
    "test_source_contract.RefusalTest.test_refuses_src_base_subscript"
   ],
-  "why": "tools/gen2_source_index.py: executes line 771"
+  "why": "tools/gen2_source_index.py: executes line 893"
  },
  "2QR-collab-from-import-unbound": {
   "controls": [
@@ -9542,7 +9620,7 @@
    "test_metrics_collaboration.SupportedSurfaceTest.test_the_spelling_changes_nothing_else",
    "test_metrics_collaboration.UnresolvedBaseTest.test_a_base_from_the_other_service_is_reported"
   ],
-  "why": "tools/gen2_source_index.py: executes line 783; or executes line 782"
+  "why": "tools/gen2_source_index.py: executes line 905; or executes line 904"
  },
  "2QR-collab-import-alias-unbound": {
   "controls": [
@@ -9551,13 +9629,13 @@
   "rejected": [
    "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
   ],
-  "why": "tools/gen2_source_index.py: executes line 781; or executes line 780"
+  "why": "tools/gen2_source_index.py: executes line 903; or executes line 902"
  },
  "2QR-collab-inconsistent-order-guessed": {
   "controls": [
    "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls"
   ],
-  "why": "tools/gen2_source_index.py: leaves line 712 for a line outside 712-713 (or returns)"
+  "why": "tools/gen2_source_index.py: leaves line 834 for a line outside 834-835 (or returns)"
  },
  "2QR-collab-module-members-unread": {
   "controls": [
@@ -9571,7 +9649,7 @@
    "test_metrics_collaboration.PropertyAndGeneratedMethodTest.test_a_class_method_has_the_class_for_its_receiver_and_its_calls_are_not_instance_self_calls",
    "test_metrics_collaboration.SupportedSurfaceTest.test_a_nested_class_is_named_through_its_outer_class"
   ],
-  "why": "tools/gen2_source_index.py: executes line 810"
+  "why": "tools/gen2_source_index.py: executes line 932"
  },
  "2QR-collab-namespace-package-unknown": {
   "controls": [
@@ -9582,7 +9660,7 @@
    "test_metrics_collaboration.SupportedSurfaceTest.test_a_reexport_through_a_package_is_followed",
    "test_metrics_collaboration.SupportedSurfaceTest.test_the_spelling_changes_nothing_else"
   ],
-  "why": "tools/gen2_source_index.py: executes line 750"
+  "why": "tools/gen2_source_index.py: executes line 872"
  },
  "2QR-collab-nested-class-self-counted": {
   "controls": [
@@ -9626,7 +9704,7 @@
   "controls": [
    "test_source_contract.RefusalTest.test_a_refusal_names_file_line_construct_and_remediation_in_the_text_a_command_prints"
   ],
-  "why": "tools/gen2_source_index.py: executes line 621; or executes line 620"
+  "why": "tools/gen2_source_index.py: executes line 736; or executes line 735"
  },
  "2QR-collab-submodule-not-an-attribute": {
   "by_hand": true,
@@ -9658,7 +9736,7 @@
   "controls": [
    "test_metrics_collaboration.RefusedBaseTest.test_bases_outside_the_measured_files_are_leaves_outside_project_collaboration"
   ],
-  "why": "tools/gen2_source_index.py: leaves line 752 for a line outside 752-753 (or returns)"
+  "why": "tools/gen2_source_index.py: leaves line 874 for a line outside 874-875 (or returns)"
  },
  "2QR-collab-unresolved-not-reported": {
   "controls": [
@@ -10306,7 +10384,7 @@
   "controls": [
    "test_locators.QualifiedScopeTest.test_class_attributes_keep_scope_and_function_locals_are_excluded"
   ],
-  "why": "tools/gen2_source_index.py: executes line 877"
+  "why": "tools/gen2_source_index.py: executes line 999"
  },
  "2QS-plan-a-map-onto-a-present-identity": {
   "controls": [
@@ -10503,7 +10581,7 @@
    "test_source_closure.ClosureAcceptanceTest.test_accepts_class_bodies_that_bind_data",
    "test_source_closure.WalkerUnitTest.test_every_role_the_walker_gives_a_binding_is_one_the_contract_lists"
   ],
-  "why": "tools/gen2_source_index.py: executes line 524; or executes line 521"
+  "why": "tools/gen2_source_index.py: executes line 634; or executes line 631"
  },
  "2QS-src-base-assignment-alias-accepted": {
   "by_hand": true,
@@ -10523,7 +10601,7 @@
   "controls": [
    "test_source_contract.RefusalTest.test_refuses_src_class_dynamic"
   ],
-  "why": "tools/gen2_source_index.py: leaves line 837 for a line outside 836-839 (or returns)"
+  "why": "tools/gen2_source_index.py: leaves line 959 for a line outside 958-961 (or returns)"
  },
  "2QS-src-def-duplicate-unreported": {
   "controls": [
@@ -10532,13 +10610,13 @@
   "rejected": [
    "test_source_contract.RefusalTest.test_a_refusal_names_file_line_construct_and_remediation_in_the_text_a_command_prints"
   ],
-  "why": "tools/gen2_source_index.py: executes line 614"
+  "why": "tools/gen2_source_index.py: executes line 729"
  },
  "2QS-src-global-write-unrouted": {
   "controls": [
    "test_source_contract.RefusalTest.test_a_refusal_names_file_line_construct_and_remediation_in_the_text_a_command_prints"
   ],
-  "why": "tools/gen2_source_index.py: executes line 417"
+  "why": "tools/gen2_source_index.py: executes line 521"
  },
  "2QS-src-hotspots-exit-zero-when-refused": {
   "controls": [
@@ -10550,7 +10628,7 @@
   "controls": [
    "test_source_contract.RefusalTest.test_refuses_src_attr_override"
   ],
-  "why": "tools/gen2_source_index.py: executes line 480"
+  "why": "tools/gen2_source_index.py: executes line 586"
  },
  "2QS-src-locator-command-skips-the-stage": {
   "controls": [
@@ -10562,13 +10640,13 @@
   "controls": [
    "test_source_contract.RefusalTest.test_refuses_src_base_subscript"
   ],
-  "why": "tools/gen2_source_index.py: executes line 465"
+  "why": "tools/gen2_source_index.py: executes line 570"
  },
  "2QS-src-mro-single-linearization": {
   "controls": [
    "test_source_contract.RefusalTest.test_refuses_src_base_mixed"
   ],
-  "why": "tools/gen2_source_index.py: executes line 856"
+  "why": "tools/gen2_source_index.py: executes line 978"
  },
  "2QS-src-refusal-exit-zero": {
   "controls": [
@@ -10595,25 +10673,25 @@
   "controls": [
    "test_source_contract.AcceptanceTest.test_a_function_and_a_class_of_the_same_short_name_in_different_scopes_have_distinct_identities"
   ],
-  "why": "tools/gen2_source_index.py: executes line 447"
+  "why": "tools/gen2_source_index.py: executes line 551"
  },
  "2QS-src-star-import-not-a-binding": {
   "controls": [
    "test_source_contract.RefusalTest.test_refuses_src_base_subscript"
   ],
-  "why": "tools/gen2_source_index.py: executes line 504; or executes line 503"
+  "why": "tools/gen2_source_index.py: executes line 610; or executes line 609"
  },
  "2QS-src-tests-are-candidates": {
   "controls": [
    "test_source_contract.UntrackedTest.test_a_tracked_file_missing_from_the_working_tree_is_skipped_and_left_to_the_ledger"
   ],
-  "why": "tools/gen2_source_index.py: executes line 73"
+  "why": "tools/gen2_source_index.py: executes line 81"
  },
  "2QS-src-untracked-ignored-files-listed": {
   "controls": [
    "test_source_contract.UntrackedTest.test_a_tracked_file_missing_from_the_working_tree_is_skipped_and_left_to_the_ledger"
   ],
-  "why": "tools/gen2_source_index.py: executes line 89"
+  "why": "tools/gen2_source_index.py: executes line 97"
  },
  "2R-growth-counts-the-gateway": {
   "controls": [

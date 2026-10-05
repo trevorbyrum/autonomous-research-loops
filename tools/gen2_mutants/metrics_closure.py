@@ -33,7 +33,8 @@ def c(mid: str, description: str, killers: tuple[str, ...], target: str, old: st
     return Mutation(f"2QC-{mid}", "2q-a-repair-4", description, killers, target=target, old=old, new=new, also=also)
 
 
-HEADER = "        self.each((*node.decorator_list, *args.defaults, *args.kw_defaults, *(a.annotation for a in every), node.returns), scope, nested)"
+HEADER = "        self.each((*node.decorator_list, *args.defaults, *args.kw_defaults), scope, nested)"   # the decorators and defaults; the annotations are walked on the next line (task 2q-a-repair-6b)
+NOTES = "        self.annotations((*(a.annotation for a in every), node.returns), scope, nested)"
 CLASS_HEADER = "        self.each((*node.decorator_list, *node.bases, *(k.value for k in node.keywords)), scope, nested)"
 FINGERPRINT = "d92736324e8162a92f838d37cfc5f55df496ae08374f1b1627857558522ff842"   # the recorded fingerprint of the real loader (tools/gen2_source_contract.py LOADERS)
 STORE_FORMS = '    STORE_FORMS = {"receiver": "store_receiver", "data": "store_data", "class": "store_namespace", "namespace": "store_namespace", "ns_dict": "store_namespace",\n'
@@ -43,24 +44,24 @@ MUTATIONS: list[Mutation] = [
     c("idx-unrecognised-node-read-as-harmless", "a syntax node class with no entry in the table is walked as an ordinary one", (WU + "test_a_node_class_the_table_has_no_entry_for_is_refused_and_not_read_as_harmless",
                                                                                                                               WU + "test_a_node_class_inside_an_expression_is_refused_as_well", FORMS), IDX,
       "        form = FORMS.get(type(node).__name__)\n        if form is None:", '        form = FORMS.get(type(node).__name__, "generic")\n        if form is None:'),
-    c("idx-header-annotations-not-visited", "the annotations of a function's parameters are not walked", (WALRUS,), IDX, HEADER,
-      "        self.each((*node.decorator_list, *args.defaults, *args.kw_defaults, node.returns), scope, nested)"),
-    c("idx-header-return-annotation-not-visited", "the return annotation of a function is not walked", (WALRUS,), IDX, HEADER,
-      "        self.each((*node.decorator_list, *args.defaults, *args.kw_defaults, *(a.annotation for a in every)), scope, nested)"),
+    c("idx-header-annotations-not-visited", "the annotations of a function's parameters are not walked", (WALRUS,), IDX, NOTES,
+      "        self.annotations((node.returns,), scope, nested)"),
+    c("idx-header-return-annotation-not-visited", "the return annotation of a function is not walked", (WALRUS,), IDX, NOTES,
+      "        self.annotations((*(a.annotation for a in every),), scope, nested)"),
     c("idx-header-defaults-not-visited", "the defaults of a function are not walked", (WALRUS,), IDX, HEADER,
-      "        self.each((*node.decorator_list, *(a.annotation for a in every), node.returns), scope, nested)"),
+      "        self.each(node.decorator_list, scope, nested)"),
     c("idx-header-decorators-not-visited", "the decorators of a function are not walked", (WALRUS,), IDX, HEADER,
-      "        self.each((*args.defaults, *args.kw_defaults, *(a.annotation for a in every), node.returns), scope, nested)"),
+      "        self.each((*args.defaults, *args.kw_defaults), scope, nested)"),
     c("idx-class-header-keywords-not-visited", "the keyword values of a class are not walked", (WALRUS,), IDX, CLASS_HEADER, "        self.each((*node.decorator_list, *node.bases), scope, nested)"),
     c("idx-class-header-bases-not-visited", "the bases of a class are not walked", (WALRUS,), IDX, CLASS_HEADER, "        self.each((*node.decorator_list, *(k.value for k in node.keywords)), scope, nested)"),
     c("idx-class-header-decorators-not-visited", "the decorators of a class are not walked", (WALRUS,), IDX, CLASS_HEADER, "        self.each((*node.bases, *(k.value for k in node.keywords)), scope, nested)"),
     c("idx-lambda-defaults-not-visited", "the defaults of a lambda are not walked", (WALRUS,), IDX, "        self.each((*node.args.defaults, *node.args.kw_defaults), scope, nested)", "        self.each((), scope, nested)"),
     c("idx-walrus-in-a-comprehension-binds-inside-it", "an assignment expression in a comprehension binds in the comprehension's own scope", (WALRUS, GLOBAL), IDX,
-      '        owner = scope if scope.kind == "comprehension" and role == "target" else locate(scope, name)', '        owner = scope if scope.kind == "comprehension" else locate(scope, name)'),
+      '            owner = scope if role == "star" or (scope.kind == "comprehension" and role == "target") else locate(scope, name, bound=True)', '            owner = scope if role == "star" or scope.kind == "comprehension" else locate(scope, name, bound=True)'),
     c("idx-comprehension-conditions-not-visited", "the conditions of a comprehension are not walked", (WALRUS,), IDX, "            self.each(generator.ifs, inner, nested)", "            pass"),
     c("idx-comprehension-element-not-visited", "the element of a comprehension is not walked", (WALRUS,), IDX,
       "        self.each((node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,), inner, nested)", "        pass"),
-    c("idx-annotation-of-an-assignment-not-visited", "the annotation of an annotated assignment is not walked", (WALRUS,), IDX, "        self.visit(node.annotation, scope, nested)\n", "        pass\n"),
+    c("idx-annotation-of-an-assignment-not-visited", "the annotation of an annotated assignment is not walked", (WALRUS,), IDX, "        self.annotations([node.annotation], scope, nested)\n", "        pass\n"),
     c("idx-value-of-an-annotated-assignment-not-visited", "the value of an annotated assignment is not walked", (WALRUS,), IDX, "        self.each([node.value], scope, nested)\n", "        pass\n"),
     c("idx-compound-header-not-visited", "the header expressions of an if, while, try or match are not walked", (WALRUS,), IDX,
       "            elif isinstance(value, ast.AST):\n                self.visit(value, scope, nested)\n", "            elif False:\n                self.visit(value, scope, nested)\n"),

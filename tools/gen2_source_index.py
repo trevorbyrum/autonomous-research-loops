@@ -31,8 +31,15 @@ these facts, so a form the index cannot state is refused before anything is meas
 
 SCOPE IS THE COMPILER'S (task 2q-a-repair-6; Astra's 2q-a-repair-5 review F1). Which scope a name lives in (local, declared or implicit global, nonlocal, free) is answered by the
 standard library's `symtable`, the compiler's own scope analysis, and by nothing hand-written here (`locate`, the one rule every use and every write goes through). The index records
-WHAT a binding refers to; the table decides WHERE the name lives. Each scope the walker finds is paired with the compiler's table for it by type, name and line, or the file is refused;
-a file the compiler itself refuses (an invalid `nonlocal`) is refused with the compiler's message and has no facts.
+WHAT a binding refers to; the table decides WHERE the name lives. A file the compiler itself refuses (an invalid `nonlocal`) is refused with the compiler's message and has no facts.
+
+THE PAIRING IS THE COMPILER'S ORDER, AND PROVED (task 2q-a-repair-6b; Astra's 2q-a-repair-6 review R6-1 and R6-2). Each scope of the tree gets the table the compiler built for it by
+following the order in which the compiler enters scopes (`entered`: a comprehension's first iterable, a function's defaults, decorators and annotations and a class's decorators and
+bases are read where the scope is written, before its block), never by a header that two scopes can share. Every pairing is then VALIDATED BOTH WAYS (`validate`): the names the tree
+mentions in a scope, spelled as the compiler spells them (private names mangled, `mangle`), must be the table's identifiers, and the table may hold nothing else but the compiler's own
+names and the free names of the scopes below it; a scope without a table, a table without a scope or any disagreement refuses the file. A name the table lacks is never a global: a
+binding written for a name the table does not hold is refused, and only a name an unevaluated annotation mentions (`from __future__ import annotations`) takes the module's namespace.
+The correspondence is validated for the reference interpreter, CPython 3.12.3, only (docs/gen2/SOURCE-CONTRACT.md).
 
 Standard library only. Files outside the production inventory (tests, tools) can be indexed with the same code for the locator checker's
 queries (`index_text`); their diagnostics are not the contract's concern.
@@ -44,6 +51,7 @@ import builtins
 import subprocess
 import symtable
 from dataclasses import dataclass, field
+from itertools import zip_longest
 from pathlib import Path
 
 SERVICES = ("engine", "gateway")
@@ -139,22 +147,33 @@ class Binding:
     origin: "Scope | None" = None      # the scope the binding statement ran in (a `global` or `nonlocal` write is recorded in another scope, but `source` is evaluated here)
 
 
+def mangle(private: str | None, name: str) -> str:
+    """Python's private-name mangling (the language reference, "Private name mangling"; CPython `_Py_Mangle`): inside a class body `__name` (not ending in two underscores, no dot)
+    is `_Class__name` with the class name's leading underscores stripped, and nothing is mangled when the class name is all underscores. `private` is the class the name is written in."""
+    if private is None or not name.startswith("__") or name.endswith("__") or "." in name or not (stripped := private.lstrip("_")):
+        return name
+    return f"_{stripped}{name}"
+
+
 class Scope:
-    __slots__ = ("kind", "qual", "node", "parent", "bindings", "table", "pending")
+    __slots__ = ("kind", "qual", "node", "parent", "bindings", "table", "private", "mentioned", "hidden", "below")
 
     def __init__(self, kind: str, qual: str, node: ast.AST, parent: "Scope | None") -> None:
         self.kind, self.qual, self.node, self.parent = kind, qual, node, parent   # module | class | function | lambda | comprehension
-        self.bindings: dict[str, list[Binding]] = {}
+        self.bindings: dict[str, list[Binding]] = {}   # keyed by the name as WRITTEN: the compiler's mangled spelling (`mangle`) is the table's key, never this one
         self.table: symtable.SymbolTable | None = None   # the compiler's table for this scope (a list, set or dict comprehension CPython inlines has none)
-        self.pending: dict[tuple, list[symtable.SymbolTable]] = {}   # the tables of scopes nested in this one that no scope has taken yet, by (type, name, line)
+        self.private: str | None = node.name if kind == "class" else parent.private if parent else None   # the class whose name mangles the names written here (a nested function has its class's)
+        self.mentioned: set[str] = set()   # the names the tree writes in this scope, as the compiler spells them: `validate` compares them with the table
+        self.hidden: set[str] = set()      # the names only an unevaluated annotation writes here (`from __future__ import annotations`): the compiler's table does not hold them
+        self.below: set[str] = set()       # the names the scopes nested in this one write (`validate`: the free ones the compiler passes up into this table)
 
     def bind(self, name: str, binding: Binding) -> None:
         self.bindings.setdefault(name, []).append(binding)
 
-    def symbol(self, name: str) -> symtable.Symbol | None:
-        """The compiler's entry for a name in this scope's table, or None: the table holds no entry for a name only an annotation mentions under `from __future__ import annotations`."""
+    def symbol(self, spelled: str) -> symtable.Symbol | None:
+        """The compiler's entry for a name, as the compiler spells it, in this scope's table, or None: the table holds no entry for a name this scope does not write."""
         try:
-            return self.table.lookup(name) if self.table is not None else None
+            return self.table.lookup(spelled) if self.table is not None else None
         except KeyError:
             return None
 
@@ -329,61 +348,129 @@ def parameters_of(args: ast.arguments) -> list[ast.arg]:
     return [*args.posonlyargs, *args.args, *args.kwonlyargs, *(a for a in (args.vararg, args.kwarg) if a is not None)]
 
 
-def header_names(node: ast.AST) -> set[str]:
-    """The names a scope's own header binds: the parameters of a function or lambda, the iteration variables of a comprehension, nothing for a class."""
-    if isinstance(node, (*FUNCTIONS, ast.Lambda)):
-        return {a.arg for a in parameters_of(node.args)}
-    generators = getattr(node, "generators", ())
-    return {n.id for g in generators for n in ast.walk(g.target) if isinstance(n, ast.Name)}
+SCOPES = (*FUNCTIONS, ast.ClassDef, ast.Lambda, *INLINED, ast.GeneratorExp)
+READ_ORDER = {ast.Try: ("body", "orelse", "handlers", "finalbody"), ast.TryStar: ("body", "orelse", "handlers", "finalbody")}   # the statements whose fields the compiler reads in another order than the tree lists them
+
+
+def before(node: ast.AST, future: bool) -> list:
+    """What the compiler reads where a scope is WRITTEN, before it enters the scope (CPython 3.12.3 `Python/symtable.c`, verified against `symtable` itself for every construct below): a
+    comprehension's first iterable; a lambda's defaults; a function's defaults, keyword defaults, decorators, then annotations (positional, `*args`, `**kwargs`, keyword-only, the
+    return: none at all under `from __future__ import annotations`); a class's decorators, bases and keywords."""
+    if isinstance(node, ast.ClassDef):
+        return [*node.decorator_list, *node.bases, *(k.value for k in node.keywords)]
+    if not isinstance(node, (*FUNCTIONS, ast.Lambda)):
+        return [node.generators[0].iter]
+    args = node.args
+    notes = [] if future or isinstance(node, ast.Lambda) else [a.annotation for a in (*args.posonlyargs, *args.args, args.vararg, args.kwarg, *args.kwonlyargs) if a] + [node.returns]
+    return [*args.defaults, *args.kw_defaults, *getattr(node, "decorator_list", ()), *notes]
+
+
+def within(node: ast.AST) -> list:
+    """What the compiler reads inside the block of a scope, in its order: a comprehension reads its first target and conditions, then the other generators, then the VALUE of a
+    dictionary comprehension before its key."""
+    if isinstance(node, (ast.Module, *FUNCTIONS, ast.ClassDef)):
+        return node.body
+    if isinstance(node, ast.Lambda):
+        return [node.body]
+    first, *rest = node.generators
+    return [first.target, *first.ifs, *(x for g in rest for x in (g.target, g.iter, *g.ifs)), *((node.value, node.key) if isinstance(node, ast.DictComp) else (node.elt,))]
+
+
+def entered(nodes, future: bool):
+    """The scopes the compiler enters, in the order it enters them, while it reads `nodes` in one block. A list, set or dict comprehension is inlined (PEP 709): what is written
+    inside it is read in the block that holds it, and the comprehension itself has no table."""
+    for node in nodes:
+        if isinstance(node, SCOPES):
+            yield from entered(before(node, future), future)
+            yield node
+            if isinstance(node, INLINED):
+                yield from entered(within(node), future)
+        elif isinstance(node, ast.AST):
+            names = READ_ORDER.get(type(node), node._fields)
+            yield from entered([child for name in names if not (future and name == "annotation") for value in [getattr(node, name, None)] for child in (value if isinstance(value, list) else [value])], future)
+
+
+def internal(name: str) -> bool:
+    """A name the compiler adds to a table itself: a comprehension's `.0`, `__class__` for a function that uses `super`."""
+    return name.startswith(".") or name == "__class__"
+
+
+def scope_kind(node: ast.AST) -> str:
+    return "class" if isinstance(node, ast.ClassDef) else "lambda" if isinstance(node, ast.Lambda) else "function" if isinstance(node, FUNCTIONS) else "comprehension"
 
 
 class _Builder:
     def __init__(self, index: FileIndex, table: symtable.SymbolTable) -> None:
         self.index, self.table = index, table
         self.nonlocals: list[tuple[Scope, str, Binding]] = []   # the `nonlocal` writes, placed once every scope has its bindings (the owner is the compiler's; the order is the source's)
+        self.future = any(isinstance(s, ast.ImportFrom) and s.module == "__future__" and not s.level and any(a.name == "annotations" for a in s.names) for s in index.tree.body)
+        self.hidden = 0   # above zero while an annotation the compiler does not read (`from __future__ import annotations`) is being walked
+        self.tables: dict[int, symtable.SymbolTable | None] = {}   # the compiler's table for each scope node of the tree, None for the comprehensions it inlines
+        self.unpaired: list[tuple[int, str, str]] = []   # (line, what, remedy) of each scope and table that could not be paired: reported after the walk, behind the form that explains them
+        self.refused = False   # a form was refused: the tree is then not what the compiler read, and the pairing's refusals would only repeat that one
 
     def run(self) -> None:
         index = self.index
-        self.adopt(index.module, self.table)
+        self.pair(index.tree, self.table)
+        index.module.table = self.table
         self.block(index.tree.body, index.module, False)
         for owner, name, binding in self.nonlocals:
             owner.bind(name, binding)
         for scope in index.scopes:
             self.structure(scope)
-            for tables in scope.pending.values():
-                for table in tables:
-                    self.diagnose("SRC-FORM-UNRECOGNISED", table.get_lineno(), f"the compiler's table for {table.get_name()} has no scope of the index to match", MISMATCH)
+        if not self.refused:
+            for line, construct, remedy in self.unpaired:
+                self.diagnose("SRC-FORM-UNRECOGNISED", line, construct, remedy)
+            self.validate()
 
-    def adopt(self, scope: Scope, table: symtable.SymbolTable) -> None:
-        scope.table = table
-        self.collect(scope, table)
-
-    def collect(self, scope: Scope, table: symtable.SymbolTable) -> None:
-        for child in table.get_children():
-            kind = getattr(child.get_type(), "value", child.get_type())
-            if kind in ("function", "class"):
-                scope.pending.setdefault((kind, child.get_name(), child.get_lineno()), []).append(child)
-            else:   # an annotation scope (type parameters, a type alias): those forms are refused as they are, and what they hold is looked for in the scope that holds them
-                self.collect(scope, child)
+    def pair(self, owner: ast.AST, table: symtable.SymbolTable) -> None:
+        """Give every scope written in the block of `owner` the compiler's table for it, in the order the compiler entered them (`entered`): one table per scope, each of the kind, name and line the
+        scope has. A scope with no table, a table with no scope and a pair that differs are refused; only a list, set or dict comprehension has no table (CPython inlines it)."""
+        nodes = list(entered(within(owner), self.future))
+        self.tables.update({id(n): None for n in nodes if isinstance(n, INLINED)})
+        for node, child in zip_longest([n for n in nodes if not isinstance(n, INLINED)], table.get_children()):
+            if node is None:
+                self.unpaired.append((child.get_lineno(), f"the compiler's table for {child.get_name()} has no scope of the index to match", MISMATCH))
+            elif child is None or (getattr(child.get_type(), "value", child.get_type()), child.get_name(), child.get_lineno()) != (
+                    "class" if isinstance(node, ast.ClassDef) else "function", TABLE_NAMES.get(type(node)) or node.name, node.lineno):
+                self.unpaired.append((node.lineno, f"the compiler's symbol table has no matching scope for {scope_kind(node)} {TABLE_NAMES.get(type(node)) or node.name} at this line", MISMATCH))
+            else:
+                self.tables[id(node)] = child
+                self.pair(node, child)
 
     def attach(self, scope: Scope) -> None:
-        """Pair a new scope with the compiler's table for it: by type, name and line among the tables of the nearest scope that has one, and among those the first (the compiler's order is
-        source order, but not the walker's for a generator expression inside another's first iterable) whose parameters or iteration variables are the scope's. A scope with no such table
-        is refused; only a list, set or dict comprehension may have none at all, which CPython inlines."""
-        node, holder = scope.node, scope.parent
-        while holder.table is None and holder.parent is not None:
-            holder = holder.parent
-        name = TABLE_NAMES.get(type(node)) or node.name
-        found = holder.pending.get(("class" if scope.kind == "class" else "function", name, node.lineno), [])
-        if not found and isinstance(node, INLINED):
-            return
-        names = header_names(node)
-        table = next((t for t in found if names <= {s.get_name() for s in t.get_symbols() if s.is_parameter() or s.is_assigned()}), None)
-        if table is None:
-            self.diagnose("SRC-FORM-UNRECOGNISED", node.lineno, f"the compiler's symbol table has no matching scope for {scope.kind} {name} at this line", MISMATCH)
+        """A scope of the walk takes the table `pair` gave its node: a scope it never reached (one inside an annotation the compiler does not read) has none, and is refused."""
+        if id(scope.node) in self.tables:
+            scope.table = self.tables[id(scope.node)]
         else:
-            found.remove(table)
-            self.adopt(scope, table)
+            self.unpaired.append((scope.node.lineno, f"a {scope.kind} the compiler builds no table for (it is written where the compiler reads nothing)", FORM_REMEDY))
+
+    def mention(self, scope: Scope, name: str) -> None:
+        """The tree writes `name` in `scope`: the compiler holds it, spelled `mangle`d, in the scope's table, unless an annotation it does not read is all that writes it."""
+        (scope.hidden if self.hidden else scope.mentioned).add(mangle(scope.private, name))
+
+    def validate(self) -> None:
+        """Every pairing is proved both ways. The names the tree writes in a scope (a comprehension the compiler inlines belongs to the scope that holds it) must all be in its table; and
+        the table may hold only those, the compiler's own names (`.0`, `__class__`) and the free names of the scopes below that it passes up. Anything else means this scope is not the one the
+        table was built for."""
+        scopes = [s for s in self.index.scopes if s.table is not None or s.parent is None]
+        def holder(scope: Scope) -> Scope:
+            while scope.table is None and scope.parent is not None:
+                scope = scope.parent
+            return scope
+        for scope in self.index.scopes:
+            holder(scope).mentioned |= scope.mentioned
+        for scope in reversed(scopes):
+            if scope.parent is not None:
+                holder(scope.parent).below |= scope.mentioned | scope.below
+        for scope in scopes:
+            table, written = scope.table, scope.mentioned
+            held = {s.get_name() for s in table.get_symbols()}
+            lacking = sorted(n for n in written - held if not internal(n))
+            extra = sorted(n for n in held - written if not internal(n) and not (n in scope.below and table.lookup(n).is_free()))
+            for names, what in ((lacking, "the tree writes {} but the compiler's table has no such name"), (extra, "the compiler's table holds {} that the tree does not write here")):
+                if names:
+                    self.diagnose("SRC-FORM-UNRECOGNISED", getattr(scope.node, "lineno", 1), f"in {scope.qual or 'the module'}: " + what.format(", ".join(names)), MISMATCH)
 
     # -- the dispatcher ----------------------------------------------------------------------------------------------
 
@@ -391,6 +478,7 @@ class _Builder:
         """Every node goes through here, once: the form's handler records its effect, and a node class with no form is refused."""
         form = FORMS.get(type(node).__name__)
         if form is None:
+            self.refused = True
             self.diagnose("SRC-FORM-UNRECOGNISED", getattr(node, "lineno", 0), f"the syntax {type(node).__name__} has no recorded effect on a namespace", FORM_REMEDY)
             return
         getattr(self, f"form_{form}")(node, scope, nested, target)
@@ -404,6 +492,12 @@ class _Builder:
             if node is not None:
                 self.visit(node, scope, nested, target)
 
+    def annotations(self, nodes, scope: Scope, nested: bool) -> None:
+        """Annotations: the compiler reads none under `from __future__ import annotations`, so the names in them are the tree's alone (`mention`) and they bind nothing."""
+        self.hidden += self.future
+        self.each(nodes, scope, nested)
+        self.hidden -= self.future
+
     # -- scopes and definitions --
 
     def diagnose(self, category: str, line: int, construct: str, remediation: str) -> None:
@@ -413,11 +507,21 @@ class _Builder:
              annotated: ast.AST | None = None) -> None:
         """The one place a binding is recorded. WHERE the name lives is the compiler's answer (`locate`): a `global` or `nonlocal` declaration sends EVERY kind of binding (an import
         and a definition as much as an assignment) to the module or to the enclosing function that binds the name, and a comprehension's iteration variable stays in it."""
-        owner = scope if scope.kind == "comprehension" and role == "target" else locate(scope, name)
+        if self.hidden:   # an annotation the compiler does not read binds nothing
+            return
+        if role != "star":
+            self.mention(scope, name)
+        if role == "walrus":   # the compiler records it in the scope that holds the comprehension too
+            self.mention(holding(scope), name)
+        try:
+            owner = scope if role == "star" or (scope.kind == "comprehension" and role == "target") else locate(scope, name, bound=True)
+        except Unresolved as exc:   # the table has no symbol for a name written here: it is never read as a global
+            self.diagnose("SRC-FORM-UNRECOGNISED", line, exc.why, MISMATCH)
+            return
         if owner is not scope and owner is not holding(scope):
             binding = Binding("global_write" if owner.kind == "module" else "nonlocal_write", line, conditional, (), source, direct, annotated, scope)
             if owner.kind == "module":
-                owner.bind(name, binding)
+                owner.bind(mangle(scope.private, name), binding)   # a module's names are the compiler's: the one a class writes `global __g` for is `_C__g`, not the module's own `__g`
             else:
                 self.nonlocals.append((owner, name, binding))
             return
@@ -458,6 +562,7 @@ class _Builder:
         every = parameters_of(args)
         for arg in every:
             inner.bind(arg.arg, Binding("param", arg.lineno))
+            self.mention(inner, arg.arg)
         return every
 
     def form_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef, scope: Scope, nested: bool, target) -> None:
@@ -472,7 +577,8 @@ class _Builder:
         every = self.parameters(args, inner)
         # everything in the header is evaluated where the function is DEFINED: decorators, defaults, every annotation, the return annotation
         self.each(getattr(node, "type_params", ()), scope, nested)
-        self.each((*node.decorator_list, *args.defaults, *args.kw_defaults, *(a.annotation for a in every), node.returns), scope, nested)
+        self.each((*node.decorator_list, *args.defaults, *args.kw_defaults), scope, nested)
+        self.annotations((*(a.annotation for a in every), node.returns), scope, nested)
         self.block(node.body, inner, False)
 
     def form_lambda(self, node: ast.Lambda, scope: Scope, nested: bool, target) -> None:
@@ -507,7 +613,11 @@ class _Builder:
                 self.bind(scope, alias.asname or alias.name, "from", node.lineno, nested, ("from", base, alias.name))
 
     def form_declaration(self, node: ast.Global | ast.Nonlocal, scope: Scope, nested: bool, target) -> None:
-        return None   # `global` and `nonlocal` only say where a name lives, and the compiler's table answers that (`locate`): they record nothing here
+        """`global` and `nonlocal` only say where a name lives, and the compiler's table answers that (`locate`): they record no binding. The compiler does hold the names, and a `global` one in the module's table too."""
+        for name in node.names:
+            self.mention(scope, name)
+            if isinstance(node, ast.Global):
+                self.mention(self.index.module, mangle(scope.private, name))   # already spelled: the module's own `private` is None, so it is not mangled again
 
     def form_assign(self, node: ast.Assign, scope: Scope, nested: bool, target) -> None:
         self.each(node.targets, scope, nested, Target("assign", node.value))
@@ -522,7 +632,7 @@ class _Builder:
             self.each(ast.iter_child_nodes(node.target), scope, nested)   # `a.b: int` declares and stores nothing
         else:
             self.visit(node.target, scope, nested, Target("assign" if node.value is not None else "annotation", node.value, annotated=node.annotation))
-        self.visit(node.annotation, scope, nested)
+        self.annotations([node.annotation], scope, nested)
         self.each([node.value], scope, nested)
 
     def form_delete(self, node: ast.Delete, scope: Scope, nested: bool, target) -> None:
@@ -574,8 +684,10 @@ class _Builder:
     # -- names, attributes, items, calls --
 
     def form_name(self, node: ast.Name, scope: Scope, nested: bool, target: Target | None) -> None:
+        self.mention(scope, node.id)
         if isinstance(node.ctx, (ast.Store, ast.Del)):
             if target is None:
+                self.refused = True
                 self.diagnose("SRC-FORM-UNRECOGNISED", node.lineno, f"the name {node.id} is written where no statement says how", FORM_REMEDY)
                 return
             self.bind(scope, node.id, "delete" if isinstance(node.ctx, ast.Del) else target.role, node.lineno, nested, source=target.source, direct=target.direct,
@@ -608,7 +720,10 @@ class _Builder:
     # -- one definition, one binding ---------------------------------------------------------------------------------------
 
     def structure(self, scope: Scope) -> None:
+        spellings: dict[str, tuple[str, list[Binding]]] = {}   # one name to the compiler, however it is written: `__h` and `_C__h` are the one name in class C
         for name, bindings in scope.bindings.items():
+            spellings.setdefault(mangle(scope.private, name), (name, []))[1].extend(bindings)
+        for name, bindings in spellings.values():
             defs = [b for b in bindings if b.role in DEFINING]
             others = [b for b in bindings if b.role not in DEFINING and b.role != "annotation"]
             if len(defs) > 1:
@@ -671,24 +786,31 @@ def holding(scope: Scope) -> Scope:
     return scope
 
 
-def locate(scope: Scope, name: str) -> Scope:
+def locate(scope: Scope, name: str, bound: bool = False) -> Scope:
     """The scope whose namespace a name used or written in `scope` belongs to, as the COMPILER decides it (task 2q-a-repair-6): the standard library's `symtable` is the only authority for
-    local, declared or implicit global, nonlocal and free, so no rule of this index decides a scope. A local name is the scope's own, a global one the module's, a free or nonlocal one
-    the nearest enclosing function whose table has it local (a class body between is never one). What the table does not say, in three places only: a comprehension's own iteration
-    variables stay inside it; a list, set or dict comprehension CPython inlines has no table, so its other names are those of the scope holding it (PEP 709); and a name the table
-    does not hold at all is one the compiler never evaluates (an annotation under `from __future__ import annotations`), which the module's namespace answers, as it does for
-    `typing.get_type_hints` and `dataclasses`."""
+    local, declared or implicit global, nonlocal and free, so no rule of this index decides a scope; the name is asked for as the compiler spells it (`mangle`, task 2q-a-repair-6b). A local
+    name is the scope's own, a global one the module's, a free or nonlocal one the nearest enclosing function whose table has it local (a class body between is never one). What the table
+    does not say, in four places only: a comprehension's own iteration variables stay inside it; a list, set or dict comprehension CPython inlines has no table, so its other names are those of
+    the scope holding it (PEP 709); a name only an unevaluated annotation writes in the scope (`from __future__ import annotations`) is the module's, as `typing.get_type_hints` takes it
+    from the module's globals; and a name the table does not hold, asked about by a consumer in a scope that never writes it, is looked up outward as any name a function does not bind.
+    `bound` is a binding the tree writes in `scope`: the table must hold its name, and a name it lacks is Unresolved, never a global."""
     here = scope
     while here.table is None and here.parent is not None:
         if name in here.bindings:
             return here
         here = here.parent
-    symbol = here.symbol(name)
-    if symbol is None or symbol.is_global():
+    spelled = mangle(here.private, name)
+    symbol = here.symbol(spelled)
+    if symbol is None and spelled in here.hidden:
         return module_of(here)
-    if not symbol.is_free():   # a declared `nonlocal` is free too
-        return here
-    binders = [outer for outer in enclosing(here) if outer.kind != "class" and (name in outer.bindings if outer.table is None else (found := outer.symbol(name)) is not None and found.is_local())]
+    if symbol is None and bound:
+        raise Unresolved("SRC-NAME-UNRESOLVED", f"the compiler's table for {here.qual or 'the module'} holds no symbol {spelled} for the binding of {name} written there")
+    if symbol is not None:
+        if symbol.is_global():
+            return module_of(here)
+        if not symbol.is_free():   # a declared `nonlocal` is free too
+            return here
+    binders = [outer for outer in enclosing(here) if outer.kind != "class" and (name in outer.bindings if outer.table is None else (found := outer.symbol(spelled)) is not None and found.is_local())]
     return binders[0] if binders else module_of(here)
 
 

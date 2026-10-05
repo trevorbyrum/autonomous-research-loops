@@ -229,7 +229,7 @@ class WalkerUnitTest(unittest.TestCase):
 
     def test_a_name_stored_where_no_statement_says_how_is_refused(self) -> None:
         said = in_the_tools('tree = ast.parse("x = 1")\ntree.body = [ast.Expr(value=ast.Name(id="y", ctx=ast.Store()))]\nast.fix_missing_locations(tree)\n'
-                            'print(json.dumps([[d.category, d.construct] for d in si.FileIndex("gen2/a.py", tree, "x = 1").diagnostics]))')
+                            'print(json.dumps([[d.category, d.construct] for d in si.FileIndex("gen2/a.py", tree, "y = 1").diagnostics]))')
         self.assertEqual(said, [["SRC-FORM-UNRECOGNISED", "the name y is written where no statement says how"]])
 
     def test_a_node_class_the_table_has_no_entry_for_is_refused_and_not_read_as_harmless(self) -> None:

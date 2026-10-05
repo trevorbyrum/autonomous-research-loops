@@ -462,6 +462,13 @@ MANUAL: dict[str, dict] = {
         "why": "a narrow control and nothing more (task 2q-a-repair-5, 2026-10-05): it exercises only tools/gen2_source_contract.py Contract.kind_of's NamedExpr branch, with an attribute written "
                "through an assignment expression whose value is an ordinary call (`(obj := make()).value = 1`), which the mutant that says data for every such expression accepts as well. It does "
                "not show that such a value cannot hold a module or a class (call-time owner effects, slice 2), and its family is no closure evidence (ordinary_data_stores)"},
+    # task 2q-a-repair-6b: a test written for the mangling mutant after the trace. Every traced test that takes the mangling's return passes through a private name whose result the lookup then
+    # depends on, so the mutant that returns the name as written fails each of them; this one asks the rule itself and looks at nothing but that its answer is an identifier
+    "2Q6B-idx-mangling-skipped": {
+        "controls": ["test_source_binding.MangleTest.test_a_mangled_private_name_is_a_python_identifier_whatever_the_class"],
+        "why": "a narrow control and nothing more (task 2q-a-repair-6b, 2026-10-05): it calls tools/gen2_source_index.py `mangle` for a private name and checks only that the result is an "
+               "identifier, which the unmangled name is as well; it does not show that any lookup of a private name works. Its killers (the language rule, the probes, the lookups of a private "
+               "name) are what show that"},
     # task 2q-a-repair-5: the pairing of an unpacking and the consumers of the one resolver (task 2q-a-repair-6 made the nonlocal owner the compiler's: its mutants are 2Q6-idx-free-*). Their
     # killers are tests written for them after the trace, so none is traced for them; each control is a test that takes another path through the same code and passes under the mutant.
     # Astra's 2q-a-repair-5 review F2 rejected three pairings that never reached the changed line or the guard; task 2q-a-repair-6 replaced each with a test that does
