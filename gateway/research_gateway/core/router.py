@@ -17,19 +17,18 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Callable
+from typing import Callable, Protocol
 from urllib.parse import urlsplit
 
-from ..adapters.base import AdapterError, Client, ContinuationInvalid, PayloadError, SourceUnavailable
 from . import calllog, dedup, licenses
 from . import canonical as canonical_mod
 from . import identity as ident
 from . import request_identity as request_ident
 from .cache import Cache
-from .payload import plain
+from .payload import AdapterError, ContinuationInvalid, PayloadError, SourceUnavailable, plain
+from .request_identity import DOMAINS   # one domain vocabulary (I-2, D-24)
 from .secrets import SecretsBackendFailing
 
-from ..registry.load import DOMAINS  # one domain vocabulary: the registry's (I-2, D-24)
 OTHER = "other"
 RECENT_DAYS = 30
 FIND_KINDS = ("article", "dataset", "venue", "repository")   # venue/repository come from the local index (§8)
@@ -365,7 +364,28 @@ class Router:
 
 
 # ---------------------------------------------------------------- execution
-def _call_find(mod, client: Client, payload: dict) -> dict:
+class LaneClient(Protocol):
+    """What the executor reads and sets of the metered client a lane runs through (adapters/base.py `Client` is the one implementation). The executor owns this interface and the
+    client satisfies it, so core never imports the adapters: the dependency runs adapters → core (task 2q-b1)."""
+    abort: threading.Event
+    batch_entry: int | None
+    client_id: str | None
+    commercial: bool
+    conn: object | None
+    db_lock: threading.Lock
+    domain_resolved: str | None
+    iteration: str | None
+    job_id: int | None
+    log: list[calllog.CallRecord]
+    request_fingerprint: str | None
+    request_identity: str | None
+    secret_values: set
+    topic: str | None
+
+    def correlation(self) -> dict: ...
+
+
+def _call_find(mod, client: LaneClient, payload: dict) -> dict:
     params = inspect.signature(mod.find).parameters
     kwargs = {"limit": payload.get("limit") or 20, "year_from_": payload.get("year_from"),
               "kind": payload.get("kind"), "domain": resolve_domain(payload.get("domain"))}
@@ -385,7 +405,7 @@ def _lane_next(res: dict):
     return None
 
 
-def _log_cache_hit(client: Client, request_type: str, identity: str | None, query: str | None) -> None:
+def _log_cache_hit(client: LaneClient, request_type: str, identity: str | None, query: str | None) -> None:
     # a cache hit is REAL retrieval activity: it carries the same tracing as a dispatch,
     # or warm-cache iterations vanish from the throughput report exactly when cache state
     # matters for attribution (9·0 amendment)
@@ -434,7 +454,7 @@ def _valid_records(items, facts: list[str], source_id: str) -> tuple[list[dict],
     return good, dropped
 
 
-def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: Client, out: dict) -> tuple[list[dict], str | None, int]:
+def _run_lane(router: Router, rt: str, lane: Lane, payload: dict, client: LaneClient, out: dict) -> tuple[list[dict], str | None, int]:
     mod = router.adapters[lane.source_id]
     if rt == "find":
         res = _call_find(mod, client, payload)
@@ -602,7 +622,7 @@ def _lane_observed(entry: dict, got: list[dict], fact: str | None, dropped: int,
         entry["error_class"] = ERR_PAYLOAD
 
 
-def _find_lane_result(router: Router, lane: Lane, payload: dict, client: Client,
+def _find_lane_result(router: Router, lane: Lane, payload: dict, client: LaneClient,
                       abort: threading.Event | None = None) -> dict:
     """One find lane, LANE-LOCALLY (9·2b): facts, records, coverage, continuation — nothing
     shared is touched, so lanes may run concurrently and merge deterministically in plan
@@ -649,7 +669,7 @@ def _find_lane_result(router: Router, lane: Lane, payload: dict, client: Client,
     return {"entry": entry, "records": got, "facts": lane_out["facts"], "next": nxt}
 
 
-def _run_find_lanes(router: Router, payload: dict, client: Client, plan: Plan, out: dict, rt: str = "find") -> list[dict]:
+def _run_find_lanes(router: Router, payload: dict, client: LaneClient, plan: Plan, out: dict, rt: str = "find") -> list[dict]:
     """All find lanes, overlapped up to RESEARCH_GATEWAY_LANE_CONCURRENCY (default 4) and
     merged IN PLAN ORDER — the answer is byte-identical to serial execution for the same
     responses. AuditError cancels unstarted lanes, JOINS running ones (a future's timeout
@@ -694,7 +714,7 @@ def _run_find_lanes(router: Router, payload: dict, client: Client, plan: Plan, o
     return records
 
 
-def _run_serial_lanes(router: Router, payload: dict, client: Client, plan: Plan, out: dict, rt: str) -> list[dict]:
+def _run_serial_lanes(router: Router, payload: dict, client: LaneClient, plan: Plan, out: dict, rt: str) -> list[dict]:
     """resolve/enrich/fetch/data/catalog lanes stay serial (9·2b): these plans are fallback
     chains — a later lane runs only because the earlier one did not answer — so overlapping
     them would spend provider budget on answers the merge then throws away."""
@@ -750,7 +770,7 @@ def _search_payload(payload: dict) -> dict:
     return {k: v for k, v in payload.items() if k != "request_type"}
 
 
-def execute(router: Router, payload: dict, client: Client, cache: Cache | None = None) -> dict:
+def execute(router: Router, payload: dict, client: LaneClient, cache: Cache | None = None) -> dict:
     """Run a request end to end. Never raises for source trouble: those become facts (R-10)."""
     rt = payload.get("request_type")
     client.domain_resolved = resolve_domain(payload.get("domain"))
@@ -924,7 +944,7 @@ def redact_for_storage(result: dict, sources: dict | None = None) -> dict:
 
 def make_handlers(router: Router, cache: Cache | None = None) -> dict[str, Callable]:
     """Queue handlers: (client, job) → result, one per request type. The stored result is redacted."""
-    def handler(client: Client, job: dict) -> dict:
+    def handler(client: LaneClient, job: dict) -> dict:
         payload = dict(job["payload"])
         payload.setdefault("request_type", job["request_type"])
         payload.setdefault("commercial", bool(job.get("commercial")))

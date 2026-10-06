@@ -20,9 +20,10 @@ from __future__ import annotations
 import hashlib
 import json
 
-from ..registry.load import DOMAINS
-
 SCHEME = "gw-request/1"
+# The one research-domain vocabulary (I-2, D-24): the domains a request may name, anything else resolving to `other`. The registry's seed rows declare theirs from it (registry/load.py
+# validates against this one), so it is owned here, below both: the router read it from the registry, a package that depends on core (task 2q-b1).
+DOMAINS = {"finance", "market", "social", "management", "ai-ml", "software", "biomed"}
 DEFAULT_LIMIT = 20   # the executor's default page size (router._call_find, catalog)
 
 

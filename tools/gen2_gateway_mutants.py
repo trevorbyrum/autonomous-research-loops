@@ -927,3 +927,8 @@ MUTANTS.extend(_inventory_mutants(Mutant))
 from gen2_gateway_payload_mutants import build as _payload_mutants  # noqa: E402
 
 MUTANTS.extend(_payload_mutants(Mutant))
+
+# task 2q-b1: the executor's own client interface (tools/gen2_gateway_direction_mutants.py)
+from gen2_gateway_direction_mutants import build as _direction_mutants  # noqa: E402
+
+MUTANTS.extend(_direction_mutants(Mutant))

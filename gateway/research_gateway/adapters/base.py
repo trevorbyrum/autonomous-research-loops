@@ -33,7 +33,7 @@ from urllib.parse import quote  # re-exported: adapters quote path segments thro
 from ..core import calllog, uri
 from ..core.broker import Broker, BreakerOpen, BudgetExhausted, NoPolicy
 from ..core.identity import meaningful
-from ..core.payload import MEMBER_ERRORS, OMIT, MemberList, PayloadError, Rec, Sealed, SealedAnswer, is_unreadable  # noqa: F401 (re-exported: adapters read and raise through base)
+from ..core.payload import MEMBER_ERRORS, OMIT, AdapterError, ContinuationInvalid, MemberList, PayloadError, Rec, Sealed, SealedAnswer, SourceUnavailable, is_unreadable  # noqa: F401 (re-exported: adapters read and raise through base)
 from ..core.schema import decode as _decode
 from ..core.wire import Malformed, open_json as _open_json
 
@@ -685,26 +685,6 @@ class Client:
                 except calllog.AuditError:
                     self.abort.set()
                     raise
-
-
-class AdapterError(Exception):
-    """Raised by adapters for malformed input; never for source failures (those are Responses)."""
-
-
-class ContinuationInvalid(Exception):
-    """A continuation its source can no longer honour — the population it was counted in has
-    changed (2b-repair-7 F3-R1). Nothing is read for it and nothing ends: more may remain
-    that it cannot ask for. The router reports it unobserved, `partial_pagination`."""
-
-
-class SourceUnavailable(Exception):
-    """A source answered with an error (or the broker refused). The router turns
-    this into a capability fact on the job (R-10); it is never a 'not found'."""
-
-    def __init__(self, source_id: str, response: Response):
-        detail = response.error or f"HTTP {response.status}"
-        super().__init__(f"{source_id}: {detail}")
-        self.source_id, self.response = source_id, response
 
 
 def data_contract(mod) -> dict | None:

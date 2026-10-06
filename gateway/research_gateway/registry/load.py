@@ -15,6 +15,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+from ..core.request_identity import DOMAINS   # the gateway's one domain vocabulary (I-2, D-24): a seed row declares domains a request can name
+
 HERE = Path(__file__).resolve().parent
 SEED = HERE / "seed" / "sources.toml"
 SCHEMA = HERE / "schema.sql"
@@ -24,7 +26,6 @@ KINDS = {"article", "dataset", "citation", "resolver", "statistical", "manual"}
 CAPABILITIES = {"find", "resolve", "enrich", "fetch", "data", "catalog"}
 AUTH = {"none", "email", "key", "optional_token", "client_credentials", "username_key", "account"}
 VERDICTS = {"allow", "per-item", "deny", "unknown"}
-DOMAINS = {"finance", "market", "social", "management", "ai-ml", "software", "biomed"}
 RATE_FIELDS = {"per_second", "per_minute", "per_hour", "per_day", "cost_cap_per_day", "burst", "verified", "evidence"}
 REQUIRED = ("id", "name", "kind", "homepage", "capabilities", "auth", "use_commercial", "use_evidence", "rate")
 

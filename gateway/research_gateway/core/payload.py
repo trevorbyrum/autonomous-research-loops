@@ -59,6 +59,28 @@ class PayloadError(ValueError):
     never zero results (INVARIANTS H-5, RG-4; design review §9, task 2b). Adapters use it through adapters.base."""
 
 
+# What an adapter says when it cannot answer, and what the router turns each into (core/router.py). They are the contract between the two, so they live with the base both depend on
+# (task 2q-b1: the router, in core, imported them from adapters.base, which depends on core); adapters use them through adapters.base, as they use PayloadError.
+class AdapterError(Exception):
+    """Raised by adapters for malformed input; never for source failures (those are Responses)."""
+
+
+class ContinuationInvalid(Exception):
+    """A continuation its source can no longer honour — the population it was counted in has
+    changed (2b-repair-7 F3-R1). Nothing is read for it and nothing ends: more may remain
+    that it cannot ask for. The router reports it unobserved, `partial_pagination`."""
+
+
+class SourceUnavailable(Exception):
+    """A source answered with an error (or the broker refused). The router turns
+    this into a capability fact on the job (R-10); it is never a 'not found'."""
+
+    def __init__(self, source_id: str, response):   # response: the adapters.base Response; what is read of it is its `status` and `error`
+        detail = response.error or f"HTTP {response.status}"
+        super().__init__(f"{source_id}: {detail}")
+        self.source_id, self.response = source_id, response
+
+
 class UndeclaredRead(RuntimeError):
     """An adapter read a field its operation's schema does not declare. A programming error, not a malformed answer: it is
     deliberately not a MEMBER_ERROR, so no member is dropped to hide it and no lane reports it as a provider's fault."""

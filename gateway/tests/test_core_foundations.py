@@ -1,10 +1,13 @@
 """Phase 3 foundations: identity, secrets, canonical records, the metered client."""
+import ast
 import os
 import unittest
+from pathlib import Path
 
 from research_gateway.adapters.base import Client, FakeTransport, SourceUnavailable, check, decode
 from research_gateway.core import schema as S
 from research_gateway.core import canonical, identity, secrets
+from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.core.payload import plain
 
@@ -209,6 +212,21 @@ class MeteredClient(unittest.TestCase):
         self.assertFalse(check("src", c.get("src", "resolve", "https://api.example/missing")))
         with self.assertRaises(SourceUnavailable):
             check("src", c.get("src", "resolve", "https://api.example/broken"))
+
+
+class ExecutorClientInterface(unittest.TestCase):
+    """core/router.py owns the interface it needs of the metered client (`LaneClient`), so core never imports the adapters (task 2q-b1). A protocol is not enforced at run time, so these
+    keep it true: every member the executor reads or sets on `client` is declared, and every declared member is one a real Client has."""
+    DECLARED = set(R.LaneClient.__annotations__) | {"correlation"}
+
+    def test_every_client_member_the_executor_uses_is_declared(self):
+        tree = ast.parse(Path(R.__file__).read_text(encoding="utf-8"))
+        used = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "client"}
+        self.assertEqual(sorted(used - self.DECLARED), [], "the executor uses a member of the client that LaneClient does not declare")
+
+    def test_control_every_declared_member_is_one_a_real_client_has(self):
+        client = Client(broker=Broker({}))
+        self.assertEqual(sorted(m for m in self.DECLARED if not hasattr(client, m)), [], "LaneClient declares a member the client does not have")
 
 
 if __name__ == "__main__":
