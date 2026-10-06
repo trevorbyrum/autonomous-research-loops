@@ -1,6 +1,6 @@
 {
   "cross_service_imports": [],
-  "digest": "499d961f1951c1807f05bc6691f39b3d61b6dbeb626bd573d07a8c7373c5cbff",
+  "digest": "d27cc2616fb9d5892967af8f5fcdda6966a41ea96f0a6bee2f9cfd6aad785445",
   "identities": {
     "MI-000001": "engine|edge|gen2/app/engine.py->gen2/app/station.py",
     "MI-000002": "engine|edge|gen2/app/engine.py->gen2/operator/auth.py",
@@ -250,7 +250,6 @@
     "MI-000246": "engine|self_calls|gen2/router/status.py->gen2/router/registries.py",
     "MI-000247": "engine|self_calls|gen2/router/status.py->gen2/router/scheduling.py",
     "MI-000248": "engine|self_calls|gen2/router/status.py->gen2/router/service.py",
-    "MI-000249": "gateway|cycle_component|research_gateway.adapters,research_gateway.core,research_gateway.registry",
     "MI-000250": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/__init__.py",
     "MI-000251": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/broker.py",
     "MI-000252": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/calllog.py",
@@ -407,8 +406,6 @@
     "MI-000403": "gateway|edge|gateway/research_gateway/core/identity.py->gateway/research_gateway/core/__init__.py",
     "MI-000404": "gateway|edge|gateway/research_gateway/core/identity.py->gateway/research_gateway/core/payload.py",
     "MI-000405": "gateway|edge|gateway/research_gateway/core/identity.py->gateway/research_gateway/core/schema.py",
-    "MI-000406": "gateway|edge|gateway/research_gateway/core/request_identity.py->gateway/research_gateway/registry/load.py",
-    "MI-000407": "gateway|edge|gateway/research_gateway/core/router.py->gateway/research_gateway/adapters/base.py",
     "MI-000408": "gateway|edge|gateway/research_gateway/core/router.py->gateway/research_gateway/core/__init__.py",
     "MI-000409": "gateway|edge|gateway/research_gateway/core/router.py->gateway/research_gateway/core/cache.py",
     "MI-000410": "gateway|edge|gateway/research_gateway/core/router.py->gateway/research_gateway/core/calllog.py",
@@ -419,7 +416,6 @@
     "MI-000415": "gateway|edge|gateway/research_gateway/core/router.py->gateway/research_gateway/core/payload.py",
     "MI-000416": "gateway|edge|gateway/research_gateway/core/router.py->gateway/research_gateway/core/request_identity.py",
     "MI-000417": "gateway|edge|gateway/research_gateway/core/router.py->gateway/research_gateway/core/secrets.py",
-    "MI-000418": "gateway|edge|gateway/research_gateway/core/router.py->gateway/research_gateway/registry/load.py",
     "MI-000419": "gateway|edge|gateway/research_gateway/core/schema.py->gateway/research_gateway/core/__init__.py",
     "MI-000420": "gateway|edge|gateway/research_gateway/core/schema.py->gateway/research_gateway/core/payload.py",
     "MI-000421": "gateway|edge|gateway/research_gateway/core/schema.py->gateway/research_gateway/core/wire.py",
@@ -900,7 +896,6 @@
     "MI-000896": "gateway|reach|gateway/research_gateway/clients/cli.py->gateway/research_gateway/clients/http_client.py",
     "MI-000897": "gateway|reach|gateway/research_gateway/clients/mcp_stdio.py->gateway/research_gateway/clients/http_client.py",
     "MI-000898": "gateway|reach|gateway/research_gateway/clients/mcp_stdio.py->gateway/research_gateway/core/request_identity.py",
-    "MI-000899": "gateway|reach|gateway/research_gateway/clients/mcp_stdio.py->gateway/research_gateway/registry/load.py",
     "MI-000900": "gateway|reach|gateway/research_gateway/core/alerts.py->gateway/research_gateway/core/secrets.py",
     "MI-000901": "gateway|reach|gateway/research_gateway/core/cache.py->gateway/research_gateway/core/__init__.py",
     "MI-000902": "gateway|reach|gateway/research_gateway/core/cache.py->gateway/research_gateway/core/canonical.py",
@@ -922,10 +917,7 @@
     "MI-000918": "gateway|reach|gateway/research_gateway/core/identity.py->gateway/research_gateway/core/payload.py",
     "MI-000919": "gateway|reach|gateway/research_gateway/core/identity.py->gateway/research_gateway/core/schema.py",
     "MI-000920": "gateway|reach|gateway/research_gateway/core/identity.py->gateway/research_gateway/core/wire.py",
-    "MI-000921": "gateway|reach|gateway/research_gateway/core/request_identity.py->gateway/research_gateway/registry/load.py",
-    "MI-000922": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/adapters/base.py",
     "MI-000923": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/core/__init__.py",
-    "MI-000924": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/core/broker.py",
     "MI-000925": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/core/cache.py",
     "MI-000926": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/core/calllog.py",
     "MI-000927": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/core/canonical.py",
@@ -936,9 +928,7 @@
     "MI-000932": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/core/request_identity.py",
     "MI-000933": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/core/schema.py",
     "MI-000934": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/core/secrets.py",
-    "MI-000935": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/core/uri.py",
     "MI-000936": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/core/wire.py",
-    "MI-000937": "gateway|reach|gateway/research_gateway/core/router.py->gateway/research_gateway/registry/load.py",
     "MI-000938": "gateway|reach|gateway/research_gateway/core/schema.py->gateway/research_gateway/core/__init__.py",
     "MI-000939": "gateway|reach|gateway/research_gateway/core/schema.py->gateway/research_gateway/core/payload.py",
     "MI-000940": "gateway|reach|gateway/research_gateway/core/schema.py->gateway/research_gateway/core/wire.py",
@@ -1052,12 +1042,15 @@
     "MI-001048": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/registry/load.py",
     "MI-001049": "gateway|smell_god_component|research_gateway.core",
     "MI-001050": "gateway|smell_hub_like|gateway/research_gateway/adapters/base.py",
-    "MI-001051": "gateway|smell_unstable_dependency|gateway/research_gateway/core/schema.py->gateway/research_gateway/core/wire.py"
+    "MI-001051": "gateway|smell_unstable_dependency|gateway/research_gateway/core/schema.py->gateway/research_gateway/core/wire.py",
+    "MI-001052": "gateway|edge|gateway/research_gateway/registry/load.py->gateway/research_gateway/core/request_identity.py",
+    "MI-001053": "gateway|reach|gateway/research_gateway/registry/docs.py->gateway/research_gateway/core/request_identity.py",
+    "MI-001054": "gateway|reach|gateway/research_gateway/registry/load.py->gateway/research_gateway/core/request_identity.py"
   },
-  "identity_serial": 1051,
+  "identity_serial": 1054,
   "pin": {
-    "commit": "0d81ff73fd3b849e931ae0b1939e9f7e6b2ef33c",
-    "production_sha256": "30d842dbcc2f4db9a7dc9a918f5a499dfd325a87f76d6d668c6c1db8ca3e0f9d"
+    "commit": "7246e4d317f589406521a18df43890d973df06d5",
+    "production_sha256": "a038bf7daf2523ee6ad343a87aa9b3757ff7fd6e38a9d83a0fa6ed4ddea82ed8"
   },
   "services": {
     "engine": {
@@ -1542,18 +1535,12 @@
       }
     },
     "gateway": {
-      "cycles_component": [
-        [
-          "research_gateway.adapters",
-          "research_gateway.core",
-          "research_gateway.registry"
-        ]
-      ],
+      "cycles_component": [],
       "cycles_file": [],
       "fan_in": {
         "gateway/research_gateway/__init__.py": 3,
         "gateway/research_gateway/adapters/__init__.py": 5,
-        "gateway/research_gateway/adapters/base.py": 30,
+        "gateway/research_gateway/adapters/base.py": 29,
         "gateway/research_gateway/adapters/bea.py": 0,
         "gateway/research_gateway/adapters/bis.py": 0,
         "gateway/research_gateway/adapters/bls.py": 0,
@@ -1601,7 +1588,7 @@
         "gateway/research_gateway/core/payload.py": 10,
         "gateway/research_gateway/core/principals.py": 2,
         "gateway/research_gateway/core/queue.py": 2,
-        "gateway/research_gateway/core/request_identity.py": 3,
+        "gateway/research_gateway/core/request_identity.py": 4,
         "gateway/research_gateway/core/router.py": 1,
         "gateway/research_gateway/core/schema.py": 24,
         "gateway/research_gateway/core/sdmx.py": 2,
@@ -1616,7 +1603,7 @@
         "gateway/research_gateway/mcp/homelab_adapter.py": 1,
         "gateway/research_gateway/registry/__init__.py": 0,
         "gateway/research_gateway/registry/docs.py": 0,
-        "gateway/research_gateway/registry/load.py": 5,
+        "gateway/research_gateway/registry/load.py": 3,
         "gateway/research_gateway/registry/migrate.py": 0,
         "gateway/research_gateway/smoke.py": 1
       },
@@ -1671,8 +1658,8 @@
         "gateway/research_gateway/core/payload.py": 0,
         "gateway/research_gateway/core/principals.py": 0,
         "gateway/research_gateway/core/queue.py": 0,
-        "gateway/research_gateway/core/request_identity.py": 1,
-        "gateway/research_gateway/core/router.py": 12,
+        "gateway/research_gateway/core/request_identity.py": 0,
+        "gateway/research_gateway/core/router.py": 10,
         "gateway/research_gateway/core/schema.py": 3,
         "gateway/research_gateway/core/sdmx.py": 3,
         "gateway/research_gateway/core/secrets.py": 0,
@@ -1686,7 +1673,7 @@
         "gateway/research_gateway/mcp/homelab_adapter.py": 2,
         "gateway/research_gateway/registry/__init__.py": 0,
         "gateway/research_gateway/registry/docs.py": 1,
-        "gateway/research_gateway/registry/load.py": 0,
+        "gateway/research_gateway/registry/load.py": 1,
         "gateway/research_gateway/registry/migrate.py": 4,
         "gateway/research_gateway/smoke.py": 10
       },
@@ -2055,11 +2042,8 @@
         "gateway/research_gateway/core/payload.py": [],
         "gateway/research_gateway/core/principals.py": [],
         "gateway/research_gateway/core/queue.py": [],
-        "gateway/research_gateway/core/request_identity.py": [
-          "gateway/research_gateway/registry/load.py"
-        ],
+        "gateway/research_gateway/core/request_identity.py": [],
         "gateway/research_gateway/core/router.py": [
-          "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/cache.py",
           "gateway/research_gateway/core/calllog.py",
@@ -2069,8 +2053,7 @@
           "gateway/research_gateway/core/licenses.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/request_identity.py",
-          "gateway/research_gateway/core/secrets.py",
-          "gateway/research_gateway/registry/load.py"
+          "gateway/research_gateway/core/secrets.py"
         ],
         "gateway/research_gateway/core/schema.py": [
           "gateway/research_gateway/core/__init__.py",
@@ -2126,7 +2109,9 @@
         "gateway/research_gateway/registry/docs.py": [
           "gateway/research_gateway/registry/load.py"
         ],
-        "gateway/research_gateway/registry/load.py": [],
+        "gateway/research_gateway/registry/load.py": [
+          "gateway/research_gateway/core/request_identity.py"
+        ],
         "gateway/research_gateway/registry/migrate.py": [
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/cache.py",
@@ -2148,11 +2133,11 @@
       },
       "propagation_component": {
         "nodes": 10,
-        "reach_pairs": 49
+        "reach_pairs": 43
       },
       "propagation_file": {
         "nodes": 68,
-        "reach_pairs": 551
+        "reach_pairs": 547
       },
       "reach": {
         "gateway/research_gateway/__init__.py": [],
@@ -2554,8 +2539,7 @@
         "gateway/research_gateway/clients/http_client.py": [],
         "gateway/research_gateway/clients/mcp_stdio.py": [
           "gateway/research_gateway/clients/http_client.py",
-          "gateway/research_gateway/core/request_identity.py",
-          "gateway/research_gateway/registry/load.py"
+          "gateway/research_gateway/core/request_identity.py"
         ],
         "gateway/research_gateway/core/__init__.py": [],
         "gateway/research_gateway/core/alerts.py": [
@@ -2596,13 +2580,9 @@
         "gateway/research_gateway/core/payload.py": [],
         "gateway/research_gateway/core/principals.py": [],
         "gateway/research_gateway/core/queue.py": [],
-        "gateway/research_gateway/core/request_identity.py": [
-          "gateway/research_gateway/registry/load.py"
-        ],
+        "gateway/research_gateway/core/request_identity.py": [],
         "gateway/research_gateway/core/router.py": [
-          "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
-          "gateway/research_gateway/core/broker.py",
           "gateway/research_gateway/core/cache.py",
           "gateway/research_gateway/core/calllog.py",
           "gateway/research_gateway/core/canonical.py",
@@ -2613,9 +2593,7 @@
           "gateway/research_gateway/core/request_identity.py",
           "gateway/research_gateway/core/schema.py",
           "gateway/research_gateway/core/secrets.py",
-          "gateway/research_gateway/core/uri.py",
-          "gateway/research_gateway/core/wire.py",
-          "gateway/research_gateway/registry/load.py"
+          "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/core/schema.py": [
           "gateway/research_gateway/core/__init__.py",
@@ -2713,9 +2691,12 @@
         ],
         "gateway/research_gateway/registry/__init__.py": [],
         "gateway/research_gateway/registry/docs.py": [
+          "gateway/research_gateway/core/request_identity.py",
           "gateway/research_gateway/registry/load.py"
         ],
-        "gateway/research_gateway/registry/load.py": [],
+        "gateway/research_gateway/registry/load.py": [
+          "gateway/research_gateway/core/request_identity.py"
+        ],
         "gateway/research_gateway/registry/migrate.py": [
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/cache.py",
