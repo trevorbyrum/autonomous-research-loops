@@ -1,6 +1,6 @@
 {
   "cross_service_imports": [],
-  "digest": "6386ad03caa1b3db60ad2c6a76fa50cc5d1fcdd0881c2639d12da308703f880c",
+  "digest": "0f3b89fb0afc66c50c1d812a5133200c98147435c6405a9c1a3a65ac4eca1c8a",
   "identities": {
     "MI-000001": "engine|edge|gen2/app/engine.py->gen2/app/station.py",
     "MI-000002": "engine|edge|gen2/app/engine.py->gen2/operator/auth.py",
@@ -245,7 +245,6 @@
     "MI-000253": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/identity.py",
     "MI-000254": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/payload.py",
     "MI-000255": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/schema.py",
-    "MI-000256": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/uri.py",
     "MI-000257": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/wire.py",
     "MI-000258": "gateway|edge|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/adapters/base.py",
     "MI-000259": "gateway|edge|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/core/__init__.py",
@@ -521,7 +520,7 @@
     "MI-000532": "gateway|file|gateway/research_gateway/registry/migrate.py",
     "MI-000533": "gateway|file|gateway/research_gateway/smoke.py",
     "MI-000534": "gateway|function|gateway/research_gateway/adapters/base.py::Client._call",
-    "MI-000535": "gateway|function|gateway/research_gateway/adapters/base.py::parse_links",
+    "MI-000535": "gateway|function|gateway/research_gateway/adapters/_links.py::parse_links",
     "MI-000536": "gateway|function|gateway/research_gateway/adapters/bea.py::catalog",
     "MI-000537": "gateway|function|gateway/research_gateway/adapters/bis.py::catalog",
     "MI-000538": "gateway|function|gateway/research_gateway/adapters/census.py::catalog",
@@ -558,7 +557,6 @@
     "MI-000569": "gateway|reach|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/identity.py",
     "MI-000570": "gateway|reach|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/payload.py",
     "MI-000571": "gateway|reach|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/schema.py",
-    "MI-000572": "gateway|reach|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/uri.py",
     "MI-000573": "gateway|reach|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/wire.py",
     "MI-000574": "gateway|reach|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/adapters/base.py",
     "MI-000575": "gateway|reach|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/core/__init__.py",
@@ -568,7 +566,6 @@
     "MI-000579": "gateway|reach|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/core/identity.py",
     "MI-000580": "gateway|reach|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/core/payload.py",
     "MI-000581": "gateway|reach|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/core/schema.py",
-    "MI-000582": "gateway|reach|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/core/uri.py",
     "MI-000583": "gateway|reach|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/core/wire.py",
     "MI-000584": "gateway|reach|gateway/research_gateway/adapters/bis.py->gateway/research_gateway/adapters/base.py",
     "MI-000585": "gateway|reach|gateway/research_gateway/adapters/bis.py->gateway/research_gateway/core/__init__.py",
@@ -579,7 +576,6 @@
     "MI-000590": "gateway|reach|gateway/research_gateway/adapters/bis.py->gateway/research_gateway/core/payload.py",
     "MI-000591": "gateway|reach|gateway/research_gateway/adapters/bis.py->gateway/research_gateway/core/schema.py",
     "MI-000592": "gateway|reach|gateway/research_gateway/adapters/bis.py->gateway/research_gateway/core/sdmx.py",
-    "MI-000593": "gateway|reach|gateway/research_gateway/adapters/bis.py->gateway/research_gateway/core/uri.py",
     "MI-000594": "gateway|reach|gateway/research_gateway/adapters/bis.py->gateway/research_gateway/core/wire.py",
     "MI-000595": "gateway|reach|gateway/research_gateway/adapters/bls.py->gateway/research_gateway/adapters/base.py",
     "MI-000596": "gateway|reach|gateway/research_gateway/adapters/bls.py->gateway/research_gateway/core/__init__.py",
@@ -589,7 +585,6 @@
     "MI-000600": "gateway|reach|gateway/research_gateway/adapters/bls.py->gateway/research_gateway/core/identity.py",
     "MI-000601": "gateway|reach|gateway/research_gateway/adapters/bls.py->gateway/research_gateway/core/payload.py",
     "MI-000602": "gateway|reach|gateway/research_gateway/adapters/bls.py->gateway/research_gateway/core/schema.py",
-    "MI-000603": "gateway|reach|gateway/research_gateway/adapters/bls.py->gateway/research_gateway/core/uri.py",
     "MI-000604": "gateway|reach|gateway/research_gateway/adapters/bls.py->gateway/research_gateway/core/wire.py",
     "MI-000605": "gateway|reach|gateway/research_gateway/adapters/census.py->gateway/research_gateway/adapters/base.py",
     "MI-000606": "gateway|reach|gateway/research_gateway/adapters/census.py->gateway/research_gateway/core/__init__.py",
@@ -599,7 +594,6 @@
     "MI-000610": "gateway|reach|gateway/research_gateway/adapters/census.py->gateway/research_gateway/core/identity.py",
     "MI-000611": "gateway|reach|gateway/research_gateway/adapters/census.py->gateway/research_gateway/core/payload.py",
     "MI-000612": "gateway|reach|gateway/research_gateway/adapters/census.py->gateway/research_gateway/core/schema.py",
-    "MI-000613": "gateway|reach|gateway/research_gateway/adapters/census.py->gateway/research_gateway/core/uri.py",
     "MI-000614": "gateway|reach|gateway/research_gateway/adapters/census.py->gateway/research_gateway/core/wire.py",
     "MI-000615": "gateway|reach|gateway/research_gateway/adapters/core.py->gateway/research_gateway/adapters/base.py",
     "MI-000616": "gateway|reach|gateway/research_gateway/adapters/core.py->gateway/research_gateway/core/__init__.py",
@@ -609,7 +603,6 @@
     "MI-000620": "gateway|reach|gateway/research_gateway/adapters/core.py->gateway/research_gateway/core/identity.py",
     "MI-000621": "gateway|reach|gateway/research_gateway/adapters/core.py->gateway/research_gateway/core/payload.py",
     "MI-000622": "gateway|reach|gateway/research_gateway/adapters/core.py->gateway/research_gateway/core/schema.py",
-    "MI-000623": "gateway|reach|gateway/research_gateway/adapters/core.py->gateway/research_gateway/core/uri.py",
     "MI-000624": "gateway|reach|gateway/research_gateway/adapters/core.py->gateway/research_gateway/core/wire.py",
     "MI-000625": "gateway|reach|gateway/research_gateway/adapters/crossref.py->gateway/research_gateway/adapters/base.py",
     "MI-000626": "gateway|reach|gateway/research_gateway/adapters/crossref.py->gateway/research_gateway/core/__init__.py",
@@ -619,7 +612,6 @@
     "MI-000630": "gateway|reach|gateway/research_gateway/adapters/crossref.py->gateway/research_gateway/core/identity.py",
     "MI-000631": "gateway|reach|gateway/research_gateway/adapters/crossref.py->gateway/research_gateway/core/payload.py",
     "MI-000632": "gateway|reach|gateway/research_gateway/adapters/crossref.py->gateway/research_gateway/core/schema.py",
-    "MI-000633": "gateway|reach|gateway/research_gateway/adapters/crossref.py->gateway/research_gateway/core/uri.py",
     "MI-000634": "gateway|reach|gateway/research_gateway/adapters/crossref.py->gateway/research_gateway/core/wire.py",
     "MI-000635": "gateway|reach|gateway/research_gateway/adapters/datacite.py->gateway/research_gateway/adapters/base.py",
     "MI-000636": "gateway|reach|gateway/research_gateway/adapters/datacite.py->gateway/research_gateway/core/__init__.py",
@@ -629,7 +621,6 @@
     "MI-000640": "gateway|reach|gateway/research_gateway/adapters/datacite.py->gateway/research_gateway/core/identity.py",
     "MI-000641": "gateway|reach|gateway/research_gateway/adapters/datacite.py->gateway/research_gateway/core/payload.py",
     "MI-000642": "gateway|reach|gateway/research_gateway/adapters/datacite.py->gateway/research_gateway/core/schema.py",
-    "MI-000643": "gateway|reach|gateway/research_gateway/adapters/datacite.py->gateway/research_gateway/core/uri.py",
     "MI-000644": "gateway|reach|gateway/research_gateway/adapters/datacite.py->gateway/research_gateway/core/wire.py",
     "MI-000645": "gateway|reach|gateway/research_gateway/adapters/doaj.py->gateway/research_gateway/adapters/base.py",
     "MI-000646": "gateway|reach|gateway/research_gateway/adapters/doaj.py->gateway/research_gateway/core/__init__.py",
@@ -639,7 +630,6 @@
     "MI-000650": "gateway|reach|gateway/research_gateway/adapters/doaj.py->gateway/research_gateway/core/identity.py",
     "MI-000651": "gateway|reach|gateway/research_gateway/adapters/doaj.py->gateway/research_gateway/core/payload.py",
     "MI-000652": "gateway|reach|gateway/research_gateway/adapters/doaj.py->gateway/research_gateway/core/schema.py",
-    "MI-000653": "gateway|reach|gateway/research_gateway/adapters/doaj.py->gateway/research_gateway/core/uri.py",
     "MI-000654": "gateway|reach|gateway/research_gateway/adapters/doaj.py->gateway/research_gateway/core/wire.py",
     "MI-000655": "gateway|reach|gateway/research_gateway/adapters/doi_org.py->gateway/research_gateway/adapters/__init__.py",
     "MI-000656": "gateway|reach|gateway/research_gateway/adapters/doi_org.py->gateway/research_gateway/adapters/base.py",
@@ -649,7 +639,6 @@
     "MI-000660": "gateway|reach|gateway/research_gateway/adapters/doi_org.py->gateway/research_gateway/core/identity.py",
     "MI-000661": "gateway|reach|gateway/research_gateway/adapters/doi_org.py->gateway/research_gateway/core/payload.py",
     "MI-000662": "gateway|reach|gateway/research_gateway/adapters/doi_org.py->gateway/research_gateway/core/schema.py",
-    "MI-000663": "gateway|reach|gateway/research_gateway/adapters/doi_org.py->gateway/research_gateway/core/uri.py",
     "MI-000664": "gateway|reach|gateway/research_gateway/adapters/doi_org.py->gateway/research_gateway/core/wire.py",
     "MI-000665": "gateway|reach|gateway/research_gateway/adapters/ecb.py->gateway/research_gateway/adapters/base.py",
     "MI-000666": "gateway|reach|gateway/research_gateway/adapters/ecb.py->gateway/research_gateway/core/__init__.py",
@@ -660,7 +649,6 @@
     "MI-000671": "gateway|reach|gateway/research_gateway/adapters/ecb.py->gateway/research_gateway/core/payload.py",
     "MI-000672": "gateway|reach|gateway/research_gateway/adapters/ecb.py->gateway/research_gateway/core/schema.py",
     "MI-000673": "gateway|reach|gateway/research_gateway/adapters/ecb.py->gateway/research_gateway/core/sdmx.py",
-    "MI-000674": "gateway|reach|gateway/research_gateway/adapters/ecb.py->gateway/research_gateway/core/uri.py",
     "MI-000675": "gateway|reach|gateway/research_gateway/adapters/ecb.py->gateway/research_gateway/core/wire.py",
     "MI-000676": "gateway|reach|gateway/research_gateway/adapters/europepmc.py->gateway/research_gateway/adapters/base.py",
     "MI-000677": "gateway|reach|gateway/research_gateway/adapters/europepmc.py->gateway/research_gateway/core/__init__.py",
@@ -670,7 +658,6 @@
     "MI-000681": "gateway|reach|gateway/research_gateway/adapters/europepmc.py->gateway/research_gateway/core/identity.py",
     "MI-000682": "gateway|reach|gateway/research_gateway/adapters/europepmc.py->gateway/research_gateway/core/payload.py",
     "MI-000683": "gateway|reach|gateway/research_gateway/adapters/europepmc.py->gateway/research_gateway/core/schema.py",
-    "MI-000684": "gateway|reach|gateway/research_gateway/adapters/europepmc.py->gateway/research_gateway/core/uri.py",
     "MI-000685": "gateway|reach|gateway/research_gateway/adapters/europepmc.py->gateway/research_gateway/core/wire.py",
     "MI-000686": "gateway|reach|gateway/research_gateway/adapters/fred.py->gateway/research_gateway/adapters/base.py",
     "MI-000687": "gateway|reach|gateway/research_gateway/adapters/fred.py->gateway/research_gateway/core/__init__.py",
@@ -680,7 +667,6 @@
     "MI-000691": "gateway|reach|gateway/research_gateway/adapters/fred.py->gateway/research_gateway/core/identity.py",
     "MI-000692": "gateway|reach|gateway/research_gateway/adapters/fred.py->gateway/research_gateway/core/payload.py",
     "MI-000693": "gateway|reach|gateway/research_gateway/adapters/fred.py->gateway/research_gateway/core/schema.py",
-    "MI-000694": "gateway|reach|gateway/research_gateway/adapters/fred.py->gateway/research_gateway/core/uri.py",
     "MI-000695": "gateway|reach|gateway/research_gateway/adapters/fred.py->gateway/research_gateway/core/wire.py",
     "MI-000696": "gateway|reach|gateway/research_gateway/adapters/globe.py->gateway/research_gateway/adapters/base.py",
     "MI-000697": "gateway|reach|gateway/research_gateway/adapters/globe.py->gateway/research_gateway/core/__init__.py",
@@ -690,7 +676,6 @@
     "MI-000701": "gateway|reach|gateway/research_gateway/adapters/globe.py->gateway/research_gateway/core/identity.py",
     "MI-000702": "gateway|reach|gateway/research_gateway/adapters/globe.py->gateway/research_gateway/core/payload.py",
     "MI-000703": "gateway|reach|gateway/research_gateway/adapters/globe.py->gateway/research_gateway/core/schema.py",
-    "MI-000704": "gateway|reach|gateway/research_gateway/adapters/globe.py->gateway/research_gateway/core/uri.py",
     "MI-000705": "gateway|reach|gateway/research_gateway/adapters/globe.py->gateway/research_gateway/core/wire.py",
     "MI-000706": "gateway|reach|gateway/research_gateway/adapters/govinfo.py->gateway/research_gateway/adapters/base.py",
     "MI-000707": "gateway|reach|gateway/research_gateway/adapters/govinfo.py->gateway/research_gateway/core/__init__.py",
@@ -700,7 +685,6 @@
     "MI-000711": "gateway|reach|gateway/research_gateway/adapters/govinfo.py->gateway/research_gateway/core/identity.py",
     "MI-000712": "gateway|reach|gateway/research_gateway/adapters/govinfo.py->gateway/research_gateway/core/payload.py",
     "MI-000713": "gateway|reach|gateway/research_gateway/adapters/govinfo.py->gateway/research_gateway/core/schema.py",
-    "MI-000714": "gateway|reach|gateway/research_gateway/adapters/govinfo.py->gateway/research_gateway/core/uri.py",
     "MI-000715": "gateway|reach|gateway/research_gateway/adapters/govinfo.py->gateway/research_gateway/core/wire.py",
     "MI-000716": "gateway|reach|gateway/research_gateway/adapters/harvard_dataverse.py->gateway/research_gateway/adapters/base.py",
     "MI-000717": "gateway|reach|gateway/research_gateway/adapters/harvard_dataverse.py->gateway/research_gateway/core/__init__.py",
@@ -711,7 +695,6 @@
     "MI-000722": "gateway|reach|gateway/research_gateway/adapters/harvard_dataverse.py->gateway/research_gateway/core/licenses.py",
     "MI-000723": "gateway|reach|gateway/research_gateway/adapters/harvard_dataverse.py->gateway/research_gateway/core/payload.py",
     "MI-000724": "gateway|reach|gateway/research_gateway/adapters/harvard_dataverse.py->gateway/research_gateway/core/schema.py",
-    "MI-000725": "gateway|reach|gateway/research_gateway/adapters/harvard_dataverse.py->gateway/research_gateway/core/uri.py",
     "MI-000726": "gateway|reach|gateway/research_gateway/adapters/harvard_dataverse.py->gateway/research_gateway/core/wire.py",
     "MI-000727": "gateway|reach|gateway/research_gateway/adapters/huggingface.py->gateway/research_gateway/adapters/base.py",
     "MI-000728": "gateway|reach|gateway/research_gateway/adapters/huggingface.py->gateway/research_gateway/core/__init__.py",
@@ -732,7 +715,6 @@
     "MI-000743": "gateway|reach|gateway/research_gateway/adapters/kaggle.py->gateway/research_gateway/core/identity.py",
     "MI-000744": "gateway|reach|gateway/research_gateway/adapters/kaggle.py->gateway/research_gateway/core/payload.py",
     "MI-000745": "gateway|reach|gateway/research_gateway/adapters/kaggle.py->gateway/research_gateway/core/schema.py",
-    "MI-000746": "gateway|reach|gateway/research_gateway/adapters/kaggle.py->gateway/research_gateway/core/uri.py",
     "MI-000747": "gateway|reach|gateway/research_gateway/adapters/kaggle.py->gateway/research_gateway/core/wire.py",
     "MI-000748": "gateway|reach|gateway/research_gateway/adapters/openaire.py->gateway/research_gateway/adapters/base.py",
     "MI-000749": "gateway|reach|gateway/research_gateway/adapters/openaire.py->gateway/research_gateway/core/__init__.py",
@@ -742,7 +724,6 @@
     "MI-000753": "gateway|reach|gateway/research_gateway/adapters/openaire.py->gateway/research_gateway/core/identity.py",
     "MI-000754": "gateway|reach|gateway/research_gateway/adapters/openaire.py->gateway/research_gateway/core/payload.py",
     "MI-000755": "gateway|reach|gateway/research_gateway/adapters/openaire.py->gateway/research_gateway/core/schema.py",
-    "MI-000756": "gateway|reach|gateway/research_gateway/adapters/openaire.py->gateway/research_gateway/core/uri.py",
     "MI-000757": "gateway|reach|gateway/research_gateway/adapters/openaire.py->gateway/research_gateway/core/wire.py",
     "MI-000758": "gateway|reach|gateway/research_gateway/adapters/openalex_snapshot.py->gateway/research_gateway/adapters/base.py",
     "MI-000759": "gateway|reach|gateway/research_gateway/adapters/openalex_snapshot.py->gateway/research_gateway/core/__init__.py",
@@ -751,7 +732,6 @@
     "MI-000762": "gateway|reach|gateway/research_gateway/adapters/openalex_snapshot.py->gateway/research_gateway/core/identity.py",
     "MI-000763": "gateway|reach|gateway/research_gateway/adapters/openalex_snapshot.py->gateway/research_gateway/core/payload.py",
     "MI-000764": "gateway|reach|gateway/research_gateway/adapters/openalex_snapshot.py->gateway/research_gateway/core/schema.py",
-    "MI-000765": "gateway|reach|gateway/research_gateway/adapters/openalex_snapshot.py->gateway/research_gateway/core/uri.py",
     "MI-000766": "gateway|reach|gateway/research_gateway/adapters/openalex_snapshot.py->gateway/research_gateway/core/wire.py",
     "MI-000767": "gateway|reach|gateway/research_gateway/adapters/opencitations.py->gateway/research_gateway/adapters/base.py",
     "MI-000768": "gateway|reach|gateway/research_gateway/adapters/opencitations.py->gateway/research_gateway/core/__init__.py",
@@ -761,7 +741,6 @@
     "MI-000772": "gateway|reach|gateway/research_gateway/adapters/opencitations.py->gateway/research_gateway/core/identity.py",
     "MI-000773": "gateway|reach|gateway/research_gateway/adapters/opencitations.py->gateway/research_gateway/core/payload.py",
     "MI-000774": "gateway|reach|gateway/research_gateway/adapters/opencitations.py->gateway/research_gateway/core/schema.py",
-    "MI-000775": "gateway|reach|gateway/research_gateway/adapters/opencitations.py->gateway/research_gateway/core/uri.py",
     "MI-000776": "gateway|reach|gateway/research_gateway/adapters/opencitations.py->gateway/research_gateway/core/wire.py",
     "MI-000777": "gateway|reach|gateway/research_gateway/adapters/openml.py->gateway/research_gateway/adapters/base.py",
     "MI-000778": "gateway|reach|gateway/research_gateway/adapters/openml.py->gateway/research_gateway/core/__init__.py",
@@ -772,7 +751,6 @@
     "MI-000783": "gateway|reach|gateway/research_gateway/adapters/openml.py->gateway/research_gateway/core/licenses.py",
     "MI-000784": "gateway|reach|gateway/research_gateway/adapters/openml.py->gateway/research_gateway/core/payload.py",
     "MI-000785": "gateway|reach|gateway/research_gateway/adapters/openml.py->gateway/research_gateway/core/schema.py",
-    "MI-000786": "gateway|reach|gateway/research_gateway/adapters/openml.py->gateway/research_gateway/core/uri.py",
     "MI-000787": "gateway|reach|gateway/research_gateway/adapters/openml.py->gateway/research_gateway/core/wire.py",
     "MI-000788": "gateway|reach|gateway/research_gateway/adapters/qdr.py->gateway/research_gateway/adapters/__init__.py",
     "MI-000789": "gateway|reach|gateway/research_gateway/adapters/qdr.py->gateway/research_gateway/adapters/base.py",
@@ -785,7 +763,6 @@
     "MI-000796": "gateway|reach|gateway/research_gateway/adapters/qdr.py->gateway/research_gateway/core/licenses.py",
     "MI-000797": "gateway|reach|gateway/research_gateway/adapters/qdr.py->gateway/research_gateway/core/payload.py",
     "MI-000798": "gateway|reach|gateway/research_gateway/adapters/qdr.py->gateway/research_gateway/core/schema.py",
-    "MI-000799": "gateway|reach|gateway/research_gateway/adapters/qdr.py->gateway/research_gateway/core/uri.py",
     "MI-000800": "gateway|reach|gateway/research_gateway/adapters/qdr.py->gateway/research_gateway/core/wire.py",
     "MI-000801": "gateway|reach|gateway/research_gateway/adapters/semanticscholar.py->gateway/research_gateway/adapters/base.py",
     "MI-000802": "gateway|reach|gateway/research_gateway/adapters/semanticscholar.py->gateway/research_gateway/core/__init__.py",
@@ -795,7 +772,6 @@
     "MI-000806": "gateway|reach|gateway/research_gateway/adapters/semanticscholar.py->gateway/research_gateway/core/identity.py",
     "MI-000807": "gateway|reach|gateway/research_gateway/adapters/semanticscholar.py->gateway/research_gateway/core/payload.py",
     "MI-000808": "gateway|reach|gateway/research_gateway/adapters/semanticscholar.py->gateway/research_gateway/core/schema.py",
-    "MI-000809": "gateway|reach|gateway/research_gateway/adapters/semanticscholar.py->gateway/research_gateway/core/uri.py",
     "MI-000810": "gateway|reach|gateway/research_gateway/adapters/semanticscholar.py->gateway/research_gateway/core/wire.py",
     "MI-000811": "gateway|reach|gateway/research_gateway/adapters/socrata.py->gateway/research_gateway/adapters/base.py",
     "MI-000812": "gateway|reach|gateway/research_gateway/adapters/socrata.py->gateway/research_gateway/core/__init__.py",
@@ -806,7 +782,6 @@
     "MI-000817": "gateway|reach|gateway/research_gateway/adapters/socrata.py->gateway/research_gateway/core/licenses.py",
     "MI-000818": "gateway|reach|gateway/research_gateway/adapters/socrata.py->gateway/research_gateway/core/payload.py",
     "MI-000819": "gateway|reach|gateway/research_gateway/adapters/socrata.py->gateway/research_gateway/core/schema.py",
-    "MI-000820": "gateway|reach|gateway/research_gateway/adapters/socrata.py->gateway/research_gateway/core/uri.py",
     "MI-000821": "gateway|reach|gateway/research_gateway/adapters/socrata.py->gateway/research_gateway/core/wire.py",
     "MI-000822": "gateway|reach|gateway/research_gateway/adapters/unpaywall.py->gateway/research_gateway/adapters/base.py",
     "MI-000823": "gateway|reach|gateway/research_gateway/adapters/unpaywall.py->gateway/research_gateway/core/__init__.py",
@@ -816,7 +791,6 @@
     "MI-000827": "gateway|reach|gateway/research_gateway/adapters/unpaywall.py->gateway/research_gateway/core/identity.py",
     "MI-000828": "gateway|reach|gateway/research_gateway/adapters/unpaywall.py->gateway/research_gateway/core/payload.py",
     "MI-000829": "gateway|reach|gateway/research_gateway/adapters/unpaywall.py->gateway/research_gateway/core/schema.py",
-    "MI-000830": "gateway|reach|gateway/research_gateway/adapters/unpaywall.py->gateway/research_gateway/core/uri.py",
     "MI-000831": "gateway|reach|gateway/research_gateway/adapters/unpaywall.py->gateway/research_gateway/core/wire.py",
     "MI-000832": "gateway|reach|gateway/research_gateway/adapters/wms.py->gateway/research_gateway/adapters/__init__.py",
     "MI-000833": "gateway|reach|gateway/research_gateway/adapters/wms.py->gateway/research_gateway/adapters/base.py",
@@ -829,7 +803,6 @@
     "MI-000840": "gateway|reach|gateway/research_gateway/adapters/wms.py->gateway/research_gateway/core/licenses.py",
     "MI-000841": "gateway|reach|gateway/research_gateway/adapters/wms.py->gateway/research_gateway/core/payload.py",
     "MI-000842": "gateway|reach|gateway/research_gateway/adapters/wms.py->gateway/research_gateway/core/schema.py",
-    "MI-000843": "gateway|reach|gateway/research_gateway/adapters/wms.py->gateway/research_gateway/core/uri.py",
     "MI-000844": "gateway|reach|gateway/research_gateway/adapters/wms.py->gateway/research_gateway/core/wire.py",
     "MI-000845": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/__init__.py",
     "MI-000846": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/adapters/__init__.py",
@@ -854,7 +827,6 @@
     "MI-000865": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/core/router.py",
     "MI-000866": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/core/schema.py",
     "MI-000867": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/core/secrets.py",
-    "MI-000868": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/core/uri.py",
     "MI-000869": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/core/wire.py",
     "MI-000870": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/mcp/__init__.py",
     "MI-000871": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/mcp/homelab_adapter.py",
@@ -879,7 +851,6 @@
     "MI-000890": "gateway|reach|gateway/research_gateway/app.py->gateway/research_gateway/core/router.py",
     "MI-000891": "gateway|reach|gateway/research_gateway/app.py->gateway/research_gateway/core/schema.py",
     "MI-000892": "gateway|reach|gateway/research_gateway/app.py->gateway/research_gateway/core/secrets.py",
-    "MI-000893": "gateway|reach|gateway/research_gateway/app.py->gateway/research_gateway/core/uri.py",
     "MI-000894": "gateway|reach|gateway/research_gateway/app.py->gateway/research_gateway/core/wire.py",
     "MI-000895": "gateway|reach|gateway/research_gateway/app.py->gateway/research_gateway/registry/load.py",
     "MI-000896": "gateway|reach|gateway/research_gateway/clients/cli.py->gateway/research_gateway/clients/http_client.py",
@@ -962,7 +933,6 @@
     "MI-000979": "gateway|reach|gateway/research_gateway/harvest/registries.py->gateway/research_gateway/core/router.py",
     "MI-000980": "gateway|reach|gateway/research_gateway/harvest/registries.py->gateway/research_gateway/core/schema.py",
     "MI-000981": "gateway|reach|gateway/research_gateway/harvest/registries.py->gateway/research_gateway/core/secrets.py",
-    "MI-000982": "gateway|reach|gateway/research_gateway/harvest/registries.py->gateway/research_gateway/core/uri.py",
     "MI-000983": "gateway|reach|gateway/research_gateway/harvest/registries.py->gateway/research_gateway/core/wire.py",
     "MI-000984": "gateway|reach|gateway/research_gateway/harvest/registries.py->gateway/research_gateway/harvest/__init__.py",
     "MI-000985": "gateway|reach|gateway/research_gateway/harvest/registries.py->gateway/research_gateway/harvest/index.py",
@@ -991,7 +961,6 @@
     "MI-001008": "gateway|reach|gateway/research_gateway/mcp/homelab_adapter.py->gateway/research_gateway/core/router.py",
     "MI-001009": "gateway|reach|gateway/research_gateway/mcp/homelab_adapter.py->gateway/research_gateway/core/schema.py",
     "MI-001010": "gateway|reach|gateway/research_gateway/mcp/homelab_adapter.py->gateway/research_gateway/core/secrets.py",
-    "MI-001011": "gateway|reach|gateway/research_gateway/mcp/homelab_adapter.py->gateway/research_gateway/core/uri.py",
     "MI-001012": "gateway|reach|gateway/research_gateway/mcp/homelab_adapter.py->gateway/research_gateway/core/wire.py",
     "MI-001013": "gateway|reach|gateway/research_gateway/mcp/homelab_adapter.py->gateway/research_gateway/registry/load.py",
     "MI-001014": "gateway|reach|gateway/research_gateway/registry/docs.py->gateway/research_gateway/registry/load.py",
@@ -1026,7 +995,6 @@
     "MI-001043": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/core/router.py",
     "MI-001044": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/core/schema.py",
     "MI-001045": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/core/secrets.py",
-    "MI-001046": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/core/uri.py",
     "MI-001047": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/core/wire.py",
     "MI-001048": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/registry/load.py",
     "MI-001049": "gateway|smell_god_component|research_gateway.core",
@@ -1034,12 +1002,96 @@
     "MI-001051": "gateway|smell_unstable_dependency|gateway/research_gateway/core/schema.py->gateway/research_gateway/core/wire.py",
     "MI-001052": "gateway|edge|gateway/research_gateway/registry/load.py->gateway/research_gateway/core/request_identity.py",
     "MI-001053": "gateway|reach|gateway/research_gateway/registry/docs.py->gateway/research_gateway/core/request_identity.py",
-    "MI-001054": "gateway|reach|gateway/research_gateway/registry/load.py->gateway/research_gateway/core/request_identity.py"
+    "MI-001054": "gateway|reach|gateway/research_gateway/registry/load.py->gateway/research_gateway/core/request_identity.py",
+    "MI-001055": "gateway|edge|gateway/research_gateway/adapters/_links.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001056": "gateway|edge|gateway/research_gateway/adapters/_links.py->gateway/research_gateway/core/__init__.py",
+    "MI-001057": "gateway|edge|gateway/research_gateway/adapters/_links.py->gateway/research_gateway/core/uri.py",
+    "MI-001058": "gateway|edge|gateway/research_gateway/adapters/_response.py->gateway/research_gateway/core/payload.py",
+    "MI-001059": "gateway|edge|gateway/research_gateway/adapters/_transport.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001060": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001061": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001062": "gateway|edge|gateway/research_gateway/adapters/huggingface.py->gateway/research_gateway/adapters/_links.py",
+    "MI-001063": "gateway|file|gateway/research_gateway/adapters/_links.py",
+    "MI-001064": "gateway|file|gateway/research_gateway/adapters/_response.py",
+    "MI-001065": "gateway|file|gateway/research_gateway/adapters/_transport.py",
+    "MI-001066": "gateway|reach|gateway/research_gateway/adapters/_links.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001067": "gateway|reach|gateway/research_gateway/adapters/_links.py->gateway/research_gateway/core/__init__.py",
+    "MI-001068": "gateway|reach|gateway/research_gateway/adapters/_links.py->gateway/research_gateway/core/payload.py",
+    "MI-001069": "gateway|reach|gateway/research_gateway/adapters/_links.py->gateway/research_gateway/core/uri.py",
+    "MI-001070": "gateway|reach|gateway/research_gateway/adapters/_response.py->gateway/research_gateway/core/payload.py",
+    "MI-001071": "gateway|reach|gateway/research_gateway/adapters/_transport.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001072": "gateway|reach|gateway/research_gateway/adapters/_transport.py->gateway/research_gateway/core/payload.py",
+    "MI-001073": "gateway|reach|gateway/research_gateway/adapters/base.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001074": "gateway|reach|gateway/research_gateway/adapters/base.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001075": "gateway|reach|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001076": "gateway|reach|gateway/research_gateway/adapters/bea.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001077": "gateway|reach|gateway/research_gateway/adapters/bis.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001078": "gateway|reach|gateway/research_gateway/adapters/bis.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001079": "gateway|reach|gateway/research_gateway/adapters/bls.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001080": "gateway|reach|gateway/research_gateway/adapters/bls.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001081": "gateway|reach|gateway/research_gateway/adapters/census.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001082": "gateway|reach|gateway/research_gateway/adapters/census.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001083": "gateway|reach|gateway/research_gateway/adapters/core.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001084": "gateway|reach|gateway/research_gateway/adapters/core.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001085": "gateway|reach|gateway/research_gateway/adapters/crossref.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001086": "gateway|reach|gateway/research_gateway/adapters/crossref.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001087": "gateway|reach|gateway/research_gateway/adapters/datacite.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001088": "gateway|reach|gateway/research_gateway/adapters/datacite.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001089": "gateway|reach|gateway/research_gateway/adapters/doaj.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001090": "gateway|reach|gateway/research_gateway/adapters/doaj.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001091": "gateway|reach|gateway/research_gateway/adapters/doi_org.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001092": "gateway|reach|gateway/research_gateway/adapters/doi_org.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001093": "gateway|reach|gateway/research_gateway/adapters/ecb.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001094": "gateway|reach|gateway/research_gateway/adapters/ecb.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001095": "gateway|reach|gateway/research_gateway/adapters/europepmc.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001096": "gateway|reach|gateway/research_gateway/adapters/europepmc.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001097": "gateway|reach|gateway/research_gateway/adapters/fred.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001098": "gateway|reach|gateway/research_gateway/adapters/fred.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001099": "gateway|reach|gateway/research_gateway/adapters/globe.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001100": "gateway|reach|gateway/research_gateway/adapters/globe.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001101": "gateway|reach|gateway/research_gateway/adapters/govinfo.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001102": "gateway|reach|gateway/research_gateway/adapters/govinfo.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001103": "gateway|reach|gateway/research_gateway/adapters/harvard_dataverse.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001104": "gateway|reach|gateway/research_gateway/adapters/harvard_dataverse.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001105": "gateway|reach|gateway/research_gateway/adapters/huggingface.py->gateway/research_gateway/adapters/_links.py",
+    "MI-001106": "gateway|reach|gateway/research_gateway/adapters/huggingface.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001107": "gateway|reach|gateway/research_gateway/adapters/huggingface.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001108": "gateway|reach|gateway/research_gateway/adapters/kaggle.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001109": "gateway|reach|gateway/research_gateway/adapters/kaggle.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001110": "gateway|reach|gateway/research_gateway/adapters/openaire.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001111": "gateway|reach|gateway/research_gateway/adapters/openaire.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001112": "gateway|reach|gateway/research_gateway/adapters/openalex_snapshot.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001113": "gateway|reach|gateway/research_gateway/adapters/openalex_snapshot.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001114": "gateway|reach|gateway/research_gateway/adapters/opencitations.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001115": "gateway|reach|gateway/research_gateway/adapters/opencitations.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001116": "gateway|reach|gateway/research_gateway/adapters/openml.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001117": "gateway|reach|gateway/research_gateway/adapters/openml.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001118": "gateway|reach|gateway/research_gateway/adapters/qdr.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001119": "gateway|reach|gateway/research_gateway/adapters/qdr.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001120": "gateway|reach|gateway/research_gateway/adapters/semanticscholar.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001121": "gateway|reach|gateway/research_gateway/adapters/semanticscholar.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001122": "gateway|reach|gateway/research_gateway/adapters/socrata.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001123": "gateway|reach|gateway/research_gateway/adapters/socrata.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001124": "gateway|reach|gateway/research_gateway/adapters/unpaywall.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001125": "gateway|reach|gateway/research_gateway/adapters/unpaywall.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001126": "gateway|reach|gateway/research_gateway/adapters/wms.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001127": "gateway|reach|gateway/research_gateway/adapters/wms.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001128": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001129": "gateway|reach|gateway/research_gateway/api/http.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001130": "gateway|reach|gateway/research_gateway/app.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001131": "gateway|reach|gateway/research_gateway/app.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001132": "gateway|reach|gateway/research_gateway/harvest/registries.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001133": "gateway|reach|gateway/research_gateway/harvest/registries.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001134": "gateway|reach|gateway/research_gateway/mcp/homelab_adapter.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001135": "gateway|reach|gateway/research_gateway/mcp/homelab_adapter.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001136": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/adapters/_response.py",
+    "MI-001137": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001138": "gateway|smell_unstable_dependency|gateway/research_gateway/adapters/base.py->gateway/research_gateway/adapters/_transport.py"
   },
-  "identity_serial": 1054,
+  "identity_serial": 1138,
   "pin": {
-    "commit": "23a43c3c38263ad5daa90f4e5d03a5743aca838a",
-    "production_sha256": "8b14762c0ce22c046f3876f376137632616d67925be02f81025d83cf1e96f2be"
+    "commit": "cc0c84a561c065d2ec9029126d7a5edce0d230c4",
+    "production_sha256": "9bbf42b3841e1f8039b4a7114821daca0fcad59ac6d84927626ab832c392a338"
   },
   "services": {
     "engine": {
@@ -1518,6 +1570,9 @@
       "fan_in": {
         "gateway/research_gateway/__init__.py": 3,
         "gateway/research_gateway/adapters/__init__.py": 5,
+        "gateway/research_gateway/adapters/_links.py": 1,
+        "gateway/research_gateway/adapters/_response.py": 3,
+        "gateway/research_gateway/adapters/_transport.py": 1,
         "gateway/research_gateway/adapters/base.py": 29,
         "gateway/research_gateway/adapters/bea.py": 0,
         "gateway/research_gateway/adapters/bis.py": 0,
@@ -1553,7 +1608,7 @@
         "gateway/research_gateway/clients/fronted_hosts.py": 0,
         "gateway/research_gateway/clients/http_client.py": 3,
         "gateway/research_gateway/clients/mcp_stdio.py": 1,
-        "gateway/research_gateway/core/__init__.py": 34,
+        "gateway/research_gateway/core/__init__.py": 35,
         "gateway/research_gateway/core/alerts.py": 1,
         "gateway/research_gateway/core/broker.py": 4,
         "gateway/research_gateway/core/cache.py": 3,
@@ -1563,7 +1618,7 @@
         "gateway/research_gateway/core/dedup.py": 1,
         "gateway/research_gateway/core/identity.py": 17,
         "gateway/research_gateway/core/licenses.py": 7,
-        "gateway/research_gateway/core/payload.py": 10,
+        "gateway/research_gateway/core/payload.py": 11,
         "gateway/research_gateway/core/principals.py": 2,
         "gateway/research_gateway/core/queue.py": 2,
         "gateway/research_gateway/core/request_identity.py": 4,
@@ -1588,7 +1643,10 @@
       "fan_out": {
         "gateway/research_gateway/__init__.py": 0,
         "gateway/research_gateway/adapters/__init__.py": 0,
-        "gateway/research_gateway/adapters/base.py": 8,
+        "gateway/research_gateway/adapters/_links.py": 3,
+        "gateway/research_gateway/adapters/_response.py": 1,
+        "gateway/research_gateway/adapters/_transport.py": 1,
+        "gateway/research_gateway/adapters/base.py": 9,
         "gateway/research_gateway/adapters/bea.py": 4,
         "gateway/research_gateway/adapters/bis.py": 4,
         "gateway/research_gateway/adapters/bls.py": 4,
@@ -1604,7 +1662,7 @@
         "gateway/research_gateway/adapters/globe.py": 2,
         "gateway/research_gateway/adapters/govinfo.py": 4,
         "gateway/research_gateway/adapters/harvard_dataverse.py": 6,
-        "gateway/research_gateway/adapters/huggingface.py": 5,
+        "gateway/research_gateway/adapters/huggingface.py": 6,
         "gateway/research_gateway/adapters/kaggle.py": 4,
         "gateway/research_gateway/adapters/openaire.py": 5,
         "gateway/research_gateway/adapters/openalex_snapshot.py": 1,
@@ -1656,12 +1714,12 @@
         "gateway/research_gateway/smoke.py": 10
       },
       "functions": {
+        "gateway/research_gateway/adapters/_links.py::parse_links": {
+          "cognitive": 9,
+          "cyclomatic": 7
+        },
         "gateway/research_gateway/adapters/base.py::Client._call": {
           "cognitive": 35,
-          "cyclomatic": 22
-        },
-        "gateway/research_gateway/adapters/base.py::parse_links": {
-          "cognitive": 57,
           "cyclomatic": 22
         },
         "gateway/research_gateway/adapters/bea.py::catalog": {
@@ -1780,14 +1838,26 @@
       "graph": {
         "gateway/research_gateway/__init__.py": [],
         "gateway/research_gateway/adapters/__init__.py": [],
+        "gateway/research_gateway/adapters/_links.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/core/__init__.py",
+          "gateway/research_gateway/core/uri.py"
+        ],
+        "gateway/research_gateway/adapters/_response.py": [
+          "gateway/research_gateway/core/payload.py"
+        ],
+        "gateway/research_gateway/adapters/_transport.py": [
+          "gateway/research_gateway/adapters/_response.py"
+        ],
         "gateway/research_gateway/adapters/base.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
           "gateway/research_gateway/core/calllog.py",
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/bea.py": [
@@ -1885,6 +1955,7 @@
           "gateway/research_gateway/core/schema.py"
         ],
         "gateway/research_gateway/adapters/huggingface.py": [
+          "gateway/research_gateway/adapters/_links.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/canonical.py",
@@ -2114,23 +2185,39 @@
         "reach_pairs": 43
       },
       "propagation_file": {
-        "nodes": 68,
-        "reach_pairs": 547
+        "nodes": 71,
+        "reach_pairs": 591
       },
       "reach": {
         "gateway/research_gateway/__init__.py": [],
         "gateway/research_gateway/adapters/__init__.py": [],
+        "gateway/research_gateway/adapters/_links.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/core/__init__.py",
+          "gateway/research_gateway/core/payload.py",
+          "gateway/research_gateway/core/uri.py"
+        ],
+        "gateway/research_gateway/adapters/_response.py": [
+          "gateway/research_gateway/core/payload.py"
+        ],
+        "gateway/research_gateway/adapters/_transport.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/core/payload.py"
+        ],
         "gateway/research_gateway/adapters/base.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
           "gateway/research_gateway/core/calllog.py",
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/bea.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2139,10 +2226,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/bis.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2152,10 +2240,11 @@
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
           "gateway/research_gateway/core/sdmx.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/bls.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2164,10 +2253,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/census.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2176,10 +2266,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/core.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2188,10 +2279,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/crossref.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2200,10 +2292,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/datacite.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2212,10 +2305,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/doaj.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2224,11 +2318,12 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/doi_org.py": [
           "gateway/research_gateway/adapters/__init__.py",
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2236,10 +2331,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/ecb.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2249,10 +2345,11 @@
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
           "gateway/research_gateway/core/sdmx.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/europepmc.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2261,10 +2358,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/fred.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2273,10 +2371,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/globe.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2285,10 +2384,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/govinfo.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2297,10 +2397,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/harvard_dataverse.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2310,10 +2411,12 @@
           "gateway/research_gateway/core/licenses.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/huggingface.py": [
+          "gateway/research_gateway/adapters/_links.py",
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2327,6 +2430,8 @@
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/kaggle.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2335,10 +2440,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/openaire.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2347,10 +2453,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/openalex_snapshot.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2358,10 +2465,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/opencitations.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2370,10 +2478,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/openml.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2383,11 +2492,12 @@
           "gateway/research_gateway/core/licenses.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/qdr.py": [
           "gateway/research_gateway/adapters/__init__.py",
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/adapters/harvard_dataverse.py",
           "gateway/research_gateway/core/__init__.py",
@@ -2398,10 +2508,11 @@
           "gateway/research_gateway/core/licenses.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/semanticscholar.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2410,10 +2521,11 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/socrata.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2423,10 +2535,11 @@
           "gateway/research_gateway/core/licenses.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/unpaywall.py": [
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/broker.py",
@@ -2435,11 +2548,12 @@
           "gateway/research_gateway/core/identity.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/adapters/wms.py": [
           "gateway/research_gateway/adapters/__init__.py",
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/adapters/harvard_dataverse.py",
           "gateway/research_gateway/core/__init__.py",
@@ -2450,13 +2564,14 @@
           "gateway/research_gateway/core/licenses.py",
           "gateway/research_gateway/core/payload.py",
           "gateway/research_gateway/core/schema.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py"
         ],
         "gateway/research_gateway/api/__init__.py": [],
         "gateway/research_gateway/api/http.py": [
           "gateway/research_gateway/__init__.py",
           "gateway/research_gateway/adapters/__init__.py",
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/app.py",
           "gateway/research_gateway/clients/http_client.py",
@@ -2478,7 +2593,6 @@
           "gateway/research_gateway/core/router.py",
           "gateway/research_gateway/core/schema.py",
           "gateway/research_gateway/core/secrets.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py",
           "gateway/research_gateway/mcp/__init__.py",
           "gateway/research_gateway/mcp/homelab_adapter.py",
@@ -2487,6 +2601,8 @@
         "gateway/research_gateway/app.py": [
           "gateway/research_gateway/__init__.py",
           "gateway/research_gateway/adapters/__init__.py",
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/core/__init__.py",
           "gateway/research_gateway/core/alerts.py",
@@ -2505,7 +2621,6 @@
           "gateway/research_gateway/core/router.py",
           "gateway/research_gateway/core/schema.py",
           "gateway/research_gateway/core/secrets.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py",
           "gateway/research_gateway/registry/load.py"
         ],
@@ -2611,6 +2726,8 @@
         "gateway/research_gateway/harvest/registries.py": [
           "gateway/research_gateway/__init__.py",
           "gateway/research_gateway/adapters/__init__.py",
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/app.py",
           "gateway/research_gateway/clients/http_client.py",
@@ -2631,7 +2748,6 @@
           "gateway/research_gateway/core/router.py",
           "gateway/research_gateway/core/schema.py",
           "gateway/research_gateway/core/secrets.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py",
           "gateway/research_gateway/harvest/__init__.py",
           "gateway/research_gateway/harvest/index.py",
@@ -2642,6 +2758,8 @@
         "gateway/research_gateway/mcp/homelab_adapter.py": [
           "gateway/research_gateway/__init__.py",
           "gateway/research_gateway/adapters/__init__.py",
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/app.py",
           "gateway/research_gateway/clients/http_client.py",
@@ -2663,7 +2781,6 @@
           "gateway/research_gateway/core/router.py",
           "gateway/research_gateway/core/schema.py",
           "gateway/research_gateway/core/secrets.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py",
           "gateway/research_gateway/registry/load.py"
         ],
@@ -2689,6 +2806,8 @@
         "gateway/research_gateway/smoke.py": [
           "gateway/research_gateway/__init__.py",
           "gateway/research_gateway/adapters/__init__.py",
+          "gateway/research_gateway/adapters/_response.py",
+          "gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/adapters/base.py",
           "gateway/research_gateway/app.py",
           "gateway/research_gateway/clients/http_client.py",
@@ -2709,7 +2828,6 @@
           "gateway/research_gateway/core/router.py",
           "gateway/research_gateway/core/schema.py",
           "gateway/research_gateway/core/secrets.py",
-          "gateway/research_gateway/core/uri.py",
           "gateway/research_gateway/core/wire.py",
           "gateway/research_gateway/registry/load.py"
         ]
@@ -2723,6 +2841,7 @@
           "gateway/research_gateway/adapters/base.py"
         ],
         "unstable_dependency": [
+          "gateway/research_gateway/adapters/base.py->gateway/research_gateway/adapters/_transport.py",
           "gateway/research_gateway/core/schema.py->gateway/research_gateway/core/wire.py"
         ]
       }
