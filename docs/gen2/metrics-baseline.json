@@ -1,6 +1,6 @@
 {
   "cross_service_imports": [],
-  "digest": "004c5f96fc3b14a582a47823d92f1afb098f5633eb045d2dc25e929c94df9a26",
+  "digest": "6386ad03caa1b3db60ad2c6a76fa50cc5d1fcdd0881c2639d12da308703f880c",
   "identities": {
     "MI-000001": "engine|edge|gen2/app/engine.py->gen2/app/station.py",
     "MI-000002": "engine|edge|gen2/app/engine.py->gen2/operator/auth.py",
@@ -1038,8 +1038,8 @@
   },
   "identity_serial": 1054,
   "pin": {
-    "commit": "6c4302b1582d501d7d588f6ec90bce2b1bc8b86e",
-    "production_sha256": "7e68cd7bee7af16366ecf48acd0c44f5f38d37b3d5e7f16243b9f508cd7fa06c"
+    "commit": "23a43c3c38263ad5daa90f4e5d03a5743aca838a",
+    "production_sha256": "8b14762c0ce22c046f3876f376137632616d67925be02f81025d83cf1e96f2be"
   },
   "services": {
     "engine": {
@@ -1737,8 +1737,8 @@
           "cyclomatic": 37
         },
         "gateway/research_gateway/core/schema.py::_decode": {
-          "cognitive": 105,
-          "cyclomatic": 64
+          "cognitive": 4,
+          "cyclomatic": 5
         },
         "gateway/research_gateway/core/schema.py::_read": {
           "cognitive": 27,
