@@ -39,3 +39,57 @@ reason, and task. Targets use service|kind|location; file identities own fan-out
 fan-in; function IDs own both scores; edge, reach, self_calls, cycle, smell and aggregate
 IDs own their respective budgets. Cross-service imports belong to repo.
 
+### ML-0001
+- action: retire
+- identity: MI-000231
+- reason: registries.py is a collaborator the Router composes, no longer a mixin (task 2q-b3): amendments.py's one call of `_templates` is now a call of the Router's own delegating member (counted under amendments.py->service.py, below)
+- task: 2q-b3
+
+### ML-0002
+- action: retire
+- identity: MI-000235
+- reason: registries.py is a collaborator, no longer a mixin (task 2q-b3): lifecycle.py's one call of `_router_policy` is now a call of the Router's own delegating member (counted under lifecycle.py->service.py, below)
+- task: 2q-b3
+
+### ML-0003
+- action: retire
+- identity: MI-000237
+- reason: registries.py is a collaborator, no longer a mixin (task 2q-b3): its 17 calls of the core (`_one`, `_audit`, `_guarded`, `_now`) are `self._core.<member>` calls through RegistriesCore, which the metric does not count; the dependencies are declared in that protocol, not removed
+- task: 2q-b3
+
+### ML-0004
+- action: retire
+- identity: MI-000239
+- reason: registries.py is a collaborator, no longer a mixin (task 2q-b3): scheduling.py's six calls of `_active_bundle` and `_router_policy` are now calls of the Router's own delegating members (counted under scheduling.py->service.py, below)
+- task: 2q-b3
+
+### ML-0005
+- action: retire
+- identity: MI-000243
+- reason: registries.py is a collaborator, no longer a mixin (task 2q-b3): service.py's three calls of `_active_bundle`, `_bundle` and `is_qualified` are now calls of members service.py itself defines (delegating to the composed Registries)
+- task: 2q-b3
+
+### ML-0006
+- action: budget
+- metric: self_calls
+- location: engine:gen2/router/amendments.py->gen2/router/service.py
+- limit: 20
+- reason: 1 site of amendments.py's calls of registries members moved here when registries.py stopped being a mixin (task 2q-b3): the Router keeps the members the rest of the Router reads (`_active_bundle`, `_router_policy`, `_templates`) as its own, delegating to the composed Registries. A flow moved from a mixin pair to the core pair, not new coupling: the engine's cross-file self-call sites fall 109 -> 89 and its file pairs 13 -> 8 in the same change
+- task: 2q-b3
+
+### ML-0007
+- action: budget
+- metric: self_calls
+- location: engine:gen2/router/lifecycle.py->gen2/router/service.py
+- limit: 24
+- reason: 1 site of lifecycle.py's calls of registries members moved here when registries.py stopped being a mixin (task 2q-b3): the Router keeps the members the rest of the Router reads (`_active_bundle`, `_router_policy`, `_templates`) as its own, delegating to the composed Registries. A flow moved from a mixin pair to the core pair, not new coupling: the engine's cross-file self-call sites fall 109 -> 89 and its file pairs 13 -> 8 in the same change
+- task: 2q-b3
+
+### ML-0008
+- action: budget
+- metric: self_calls
+- location: engine:gen2/router/scheduling.py->gen2/router/service.py
+- limit: 26
+- reason: 6 sites of scheduling.py's calls of registries members moved here when registries.py stopped being a mixin (task 2q-b3): the Router keeps the members the rest of the Router reads (`_active_bundle`, `_router_policy`, `_templates`) as its own, delegating to the composed Registries. A flow moved from a mixin pair to the core pair, not new coupling: the engine's cross-file self-call sites fall 109 -> 89 and its file pairs 13 -> 8 in the same change
+- task: 2q-b3
+

@@ -1,4 +1,4 @@
-"""Router composition (task 2q-b2): status.py and capabilities.py are explicit collaborators the Router composes, each declaring in its own
+"""Router composition (task 2q-b2; registries.py, 2q-b3): status.py, capabilities.py and registries.py are explicit collaborators the Router composes, each declaring in its own
 module the interface it takes of the core (a `typing.Protocol` the Router implements without inheriting it; BOUNDARIES.md, "Router
 composition"). A protocol is not enforced at run time, so these keep it true: every member a collaborator reads off `self._core` is
 declared, every declared member is one the collaborator uses and the Router has, the collaborator reaches the store only through the
@@ -8,11 +8,12 @@ import inspect
 import unittest
 from pathlib import Path
 
-from gen2.router import capabilities, service, status
+from gen2.router import capabilities, registries, service, status
 from gen2.tests.router_fixtures import RouterTestCase
 
-COLLABORATORS = ((status, status.Status, status.StatusCore, "_status"), (capabilities, capabilities.Capabilities, capabilities.CapabilityCore, "_capabilities"))
-PUBLIC_API = {  # Router's public methods at be5b2f1, before status.py and capabilities.py stopped being mixins
+COLLABORATORS = ((status, status.Status, status.StatusCore, "_status"), (capabilities, capabilities.Capabilities, capabilities.CapabilityCore, "_capabilities"),
+                 (registries, registries.Registries, registries.RegistriesCore, "_registries"))
+PUBLIC_API = {  # Router's public methods at be5b2f1, before status.py, capabilities.py and registries.py stopped being mixins
     "ack_delivery", "activate_config_bundle", "apply_operator_decision", "claim", "close", "close_brief", "commit_outcome", "config_bundle", "create_topic", "draft_contract",
     "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",
     "receipt", "reconcile", "record_capability_probe", "record_gateway_facts", "record_observation", "record_qualification", "record_transition", "register_works",
@@ -61,8 +62,14 @@ class CollaboratorInterfaceTest(RouterTestCase):
                 stray = [n.lineno for n in ast.walk(tree(module)) if isinstance(n, ast.Attribute) and ((n.attr == "_store" and not is_core(n.value)) or n.attr == "transaction")]
                 self.assertEqual(stray, [], f"{module.__name__} reaches the store, or a transaction, other than as self._core._store (lines {stray})")
 
+    def test_only_the_status_read_takes_the_core_snapshot(self):
+        """`_snapshot` is the core's read transaction for status and health; it is the Store's own writable transaction, so what keeps a write out of it is this, not a type."""
+        for module, _, _, _ in COLLABORATORS:
+            with self.subTest(module=module.__name__):
+                self.assertEqual("_snapshot" in used(module), module is status)
+
     def test_the_router_composes_its_collaborators_and_keeps_its_public_methods(self):
-        self.assertFalse(isinstance(self.router, (status.Status, capabilities.Capabilities)))
+        self.assertFalse(isinstance(self.router, (status.Status, capabilities.Capabilities, registries.Registries)))
         self.assertEqual({n for n in dir(service.Router) if not n.startswith("_")}, PUBLIC_API)
 
 

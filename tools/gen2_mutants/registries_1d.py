@@ -164,7 +164,7 @@ MUTATIONS: list[Mutation] = [
            (RG + "ConfigBundleTest.test_an_altered_question_is_refused_and_a_new_version_is_not",),
            '            if row is not None and row["content_hash"] != q["content_hash"]:', "            if False:"),
           ("active-not-superseded", "activation leaves the active bundle active", (RG + "ConfigBundleTest.test_activation_records_the_bundle_its_questions_and_supersedes_the_last",),
-           '        if active is not None:\n            self._store.update("config_bundles"', '        if False:\n            self._store.update("config_bundles"'),
+           '        if active is not None:\n            self._core._store.update("config_bundles"', '        if False:\n            self._core._store.update("config_bundles"'),
           ("no-recovery-fact", "a valid bundle after a refusal records no recovery", (RG + "ConfigBundleTest.test_a_refusal_is_a_dated_fact_raised_on_the_transition_only",),
            '\n        self._fact(BUNDLE_CAPABILITY, "healthy",', '\n        (lambda *_: None)(BUNDLE_CAPABILITY, "healthy",'),
           # task 1d-repair (finding 5): the active bundle mounted again after a refusal is a recovery
@@ -190,7 +190,7 @@ MUTATIONS: list[Mutation] = [
           ("revocation-conflict-replayed", "another revocation of a revoked qualification replays", (RG + "QualificationRecordTest.test_revocation_replays_conflicts_and_needs_a_record",),
            '            if (row["revoked_by"], row["revoke_reason"]) != (req["operator_id"], req["reason"]):', "            if False:"),
           ("revocation-not-recorded", "a revocation is answered and not recorded", (RG + "QualificationRecordTest.test_revocation_takes_effect_and_reinterprets_nothing",),
-           '        self._store.update("qualifications", {"qualification_id": req["qualification_id"]},', '        (lambda *_: None)("qualifications", {"qualification_id": req["qualification_id"]},'),
+           '        self._core._store.update("qualifications", {"qualification_id": req["qualification_id"]},', '        (lambda *_: None)("qualifications", {"qualification_id": req["qualification_id"]},'),
           ("revoked-still-qualified", "a revoked record still qualifies", (RG + "QualificationRecordTest.test_revocation_takes_effect_and_reinterprets_nothing",),
            'return row is not None and row["revoked_at"] is None and (', "return row is not None and ("),
           ("qualified-any-spec", "a record qualifies another spec", (RG + "QualificationRecordTest.test_a_reference_to_another_specs_record_is_not_qualification",),

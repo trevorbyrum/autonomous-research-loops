@@ -172,6 +172,13 @@ MANUAL: dict[str, dict] = {
                                             "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the Router still composes them under the mutant"},
     "2QB2-router-drops-a-public-method": {"controls": [_COMPOSITION + "test_a_collaborator_holds_only_the_core_and_reaches_the_store_through_it"],
                                           "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the dropped public name is not what that test reads"},
+    # task 2q-b3: the same, for registries.py
+    "2QB3-registries-core-omits-a-member": {"controls": [_COMPOSITION + "test_control_every_declared_member_is_one_the_router_has"],
+                                            "why": "checks every member RegistriesCore declares is one a real Router has: the mutant removes a declaration, so what is left is still all the Router's"},
+    "2QB3-registries-opens-the-store-transaction": {"controls": [_COMPOSITION + "test_every_core_member_a_collaborator_uses_is_declared"],
+                                                    "why": "checks every member registries.py reads off self._core is declared by RegistriesCore: the mutant opens the transaction through self._core._store, a member that is declared"},
+    "2QB3-registries-takes-the-read-snapshot": {"controls": [_COMPOSITION + "test_every_core_member_a_collaborator_uses_is_declared"],
+                                                "why": "checks every member registries.py reads off self._core is declared by RegistriesCore: the mutant declares `_snapshot`, so its use is declared"},
     # task 2a: the signal command's schema is a module constant read when the Router builds its SchemaSet, not by a traced line of
     # the request's path; the accepted request validates against the changed enum
     **{mid: {"controls": ["test_router_workflow.SignalTest.test_a_signal_is_queued_pending_and_opens_its_review"],

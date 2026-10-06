@@ -33,9 +33,9 @@ lifecycle.py; task 1d's config bundles, question registry and qualification
 records in registries.py, brief and contract versions and amendment impact
 (G-1) in amendments.py, re-queues, reservations and the signal queue in
 scheduling.py; task 1e's status read and health probe in status.py; task 1f's
-capability-probe records in capabilities.py (status.py and capabilities.py are
-explicit collaborators the Router composes, task 2q-b2: BOUNDARIES.md, "Router
-composition"; the four mixins above are not yet). Task 2a's workflow write paths:
+capability-probe records in capabilities.py (status.py, capabilities.py and, task
+2q-b3, registries.py are explicit collaborators the Router composes: BOUNDARIES.md,
+"Router composition"; the three mixins above are not yet). Task 2a's workflow write paths:
 work registration here (register_works), a topic's claim-source links, a
 checkpoint's review closure, a pre-contract scoping report and source
 proposals as commit_outcome sections here, the scope decision's move and
@@ -193,7 +193,7 @@ def _short(text: str) -> str:
     return (text or "refused")[:500]
 
 
-class Router(Lifecycle, Registries, Amendments, Scheduling):
+class Router(Lifecycle, Amendments, Scheduling):
     """The ControlBackend (gen2/core/control.py) over one store. Construct
     with a Store (Router.open for a durable one); the router owns it and hands
     it to no one. Qualification is read from the store's own records
@@ -213,6 +213,7 @@ class Router(Lifecycle, Registries, Amendments, Scheduling):
             **STATUS_COMMANDS, **CAPABILITY_COMMANDS}}})
         self._status = Status(self)
         self._capabilities = Capabilities(self)
+        self._registries = Registries(self)
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
@@ -234,9 +235,45 @@ class Router(Lifecycle, Registries, Amendments, Scheduling):
     def record_gateway_facts(self, request: Mapping) -> dict:
         return self._capabilities.record_gateway_facts(request)
 
+    # -- the registries' public routes and the members the rest of the Router reads (registries.py) -----
+    def activate_config_bundle(self, document: Mapping) -> dict:
+        return self._registries.activate_config_bundle(document)
+
+    def config_bundle(self, bundle_hash: str) -> dict | None:
+        return self._registries.config_bundle(bundle_hash)
+
+    def restore_config_bundle(self) -> str | None:
+        return self._registries.restore_config_bundle()
+
+    def record_qualification(self, request: Mapping) -> dict:
+        return self._registries.record_qualification(request)
+
+    def revoke_qualification(self, request: Mapping) -> dict:
+        return self._registries.revoke_qualification(request)
+
+    def is_qualified(self, *, provider: str, decision_class: str, spec_hash: str, qualification_ref: str | None) -> bool:
+        return self._registries.is_qualified(provider=provider, decision_class=decision_class, spec_hash=spec_hash, qualification_ref=qualification_ref)
+
+    def _active_bundle(self) -> dict | None:
+        return self._registries._active_bundle()
+
+    def _bundle(self, bundle_hash: str) -> dict:
+        return self._registries._bundle(bundle_hash)
+
+    def _router_policy(self, bundle_hash: str) -> dict:
+        return self._registries._router_policy(bundle_hash)
+
+    def _templates(self) -> dict:
+        return self._registries._templates()
+
     # -- small helpers -----------------------------------------------------
     def _snapshot(self):
         """One read transaction that writes nothing: the status read and the health probe run in it (status.py)."""
+        return self._store.transaction()
+
+    def _transaction(self):
+        """One write transaction the caller's own body runs in, the clock read inside it: unlike `_guarded` a store error is not turned into a refusal.
+        Only registries.py takes it, for the two writes that always ran so (the fact a refused bundle leaves; a start's recovery fact)."""
         return self._store.transaction()
 
     def _now(self) -> str:
