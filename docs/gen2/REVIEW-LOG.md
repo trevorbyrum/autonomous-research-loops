@@ -1653,3 +1653,9 @@ The post-2q Gate D is renumbered #5.
 - **Repo fact:** production never references `builtins`.
 - **This is the third consecutive BLOCK since the operator's continue ruling, so the round cap applies.** Held for the operator.
 - **Operator ruling 2026-10-06 ("Close and move on"): task 2q-a CLOSED at the round cap.** R7-1, R7-2 and the non-blocking builtin-alias false refusal are an **operator-accepted mitigation, DEBT-018** (owner: task 2q). They are fixed in a 2q tooling slice with DEBT-016 and DEBT-017 before 2q closes and before Gate D #5. **2q-b proceeds in slices; 2q-b1 (break the gateway component cycle) is dispatched.**
+
+## 2026-10-06: 2q-b1 (break the gateway component cycle)
+- **Astra** (`7f06aa53`, pinned aa49b06; `private/reviews/gen2-2q-b1-astra-review-20261006.md`): **PASS on A, B and C. ROOT-CAUSE, including at family level. "2q-b1 is ACCEPTED."** No blocking findings.
+- **Confirmed:** contracts now live in their owning layer, with no hidden imports. An independent AST graph reproduced the metrics: the component cycle is gone, reach 49→43 and 551→547. 0 refusals under v2.
+- The landing run is green: 2,310 tests; 2,302/2,302 engine and 396/396 gateway mutants.
+- **Non-blocking:** NB-1 (the interface test hard-codes `correlation`), NB-2 (exception `__module__` pickling bound), NB-3 (ledger prose) are registered as DEBT-019, owned by task 2q.

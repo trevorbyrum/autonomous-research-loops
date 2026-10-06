@@ -188,3 +188,14 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (4) scope correspondence is validated only for CPython 3.12.3, and must be revalidated at any interpreter upgrade.
 - source: private/reviews/gen2-2q-a-repair-6-astra-review-20261005.md and private/reviews/gen2-2q-a-repair-6b-astra-review-20261005.md (non-blocking lists)
 - removal: a 2q tooling and documentation slice corrects (1) to (3), and (4) is carried into the interpreter-upgrade task's acceptance criteria; its review confirms this before 2q closes.
+
+### DEBT-019 - 2q-b1 non-blocking review findings (2q)
+- kind: obligation
+- status: open
+- owner: task 2q
+- what: Non-blocking findings from Astra's 2q-b1 review, accepted in advance under the charter's "Review throughput" rule:
+  - (NB-1) `gateway/tests/test_core_foundations.py` hard-codes `correlation` in `DECLARED`, so deleting `LaneClient.correlation()` leaves the interface tests green; derive the declared methods from the protocol and add a method-omission mutant with a control;
+  - (NB-2) the moved exceptions' `__module__` is now `research_gateway.core.payload`, so new pickles of these classes don't load on the old tree; there is no production pickle consumer, but document the compatibility bound;
+  - (NB-3) the consumed ledger prose has small inaccuracies (`MeteredClient` should be `LaneClient`; ML-0005's reach path; ML-0014's "unchanged"), and the error-path driver repeats the stale protocol name.
+- source: private/reviews/gen2-2q-b1-astra-review-20261006.md (NB-1 to NB-3)
+- removal: a 2q slice makes these corrections, and its review confirms them before 2q closes.
