@@ -2,7 +2,7 @@
 
 Astra served a three-row DOAJ dump from a loopback socket, kept the full Content-Length and cut the body after the header, or after the first record. `HTTPResponse.read(amt)` returned what had
 arrived without raising: the lane was HTTP 200 / `ok`, `index.load` returned a count of 0 or 1 and committed it. A syntactically valid CSV prefix cannot say that it is a prefix, so the
-completeness of the message is the transport's to establish (adapters/base.py `_read_body`; RFC 9112 §6.3, §7.1).
+completeness of the message is the transport's to establish (adapters/_transport.py `_read_body`; RFC 9112 §6.3, §7.1).
 
 Everything below goes over a real loopback socket, through the real Transport, Client, DOAJ loader and `index.load` (against a database that records what it is asked), with the bytes of the
 response written by hand so that its framing is exactly what the case says. What it covers, and what it cannot:
@@ -26,6 +26,7 @@ import threading
 import unittest
 from unittest import mock
 
+from research_gateway.adapters import _transport as transport
 from research_gateway.adapters import base
 from research_gateway.adapters.base import Client, Transport
 from research_gateway.core.broker import Broker, RatePolicy
@@ -244,7 +245,7 @@ class Chunked(Loaded):
         self.assert_loaded(outcome(message(CHUNKED, chunked(FULL))))   # the control: the same bytes, framed
 
     def test_a_framing_line_past_the_line_bound_is_refused(self):
-        for label, body in (("a size line", b"1;a=" + b"x" * base._MAX_LINE + b"\r\n" + b"x\r\n0\r\n\r\n"), ("a trailer line", chunked(FULL, end=b"0\r\nA: " + b"x" * base._MAX_LINE + b"\r\n\r\n"))):
+        for label, body in (("a size line", b"1;a=" + b"x" * transport._MAX_LINE + b"\r\n" + b"x\r\n0\r\n\r\n"), ("a trailer line", chunked(FULL, end=b"0\r\nA: " + b"x" * transport._MAX_LINE + b"\r\n\r\n"))):
             with self.subTest(label):
                 self.assert_refused(outcome(message(CHUNKED, body)), "FramingError")
 
@@ -268,7 +269,7 @@ class Bound(Loaded):
     BOUND = 64
 
     def request(self, raw: bytes) -> base.Response:
-        with mock.patch.object(base, "MAX_BODY_BYTES", self.BOUND):
+        with mock.patch.object(transport, "MAX_BODY_BYTES", self.BOUND):
             return raw_response(raw)
 
     def test_a_body_of_exactly_the_bound_is_read_and_one_byte_more_is_not(self):
@@ -291,14 +292,14 @@ class Bound(Loaded):
     def test_a_declared_length_past_the_bound_is_refused_before_the_stream_is_read(self):
         """The refusal is made on the header: a response whose stream fails the test when it is read is refused all the same."""
         spy = Spy({"Content-Length": str(10 ** 12)}, length=10 ** 12)
-        with self.assertRaises(base.BodyTooLarge):
-            base._read_body(spy)
+        with self.assertRaises(transport.BodyTooLarge):
+            transport._read_body(spy)
         self.assertEqual(spy.reads, 0)
 
     def test_a_chunk_that_announces_more_than_the_bound_is_refused_before_its_data_is_read(self):
         spy = Spy({"Transfer-Encoding": "chunked"}, lines=[b"%X\r\n" % 10 ** 12], chunked=True)
-        with self.assertRaises(base.BodyTooLarge):
-            base._read_body(spy)
+        with self.assertRaises(transport.BodyTooLarge):
+            transport._read_body(spy)
         self.assertEqual(spy.reads, 0)
 
     def test_chunks_that_together_pass_the_bound_and_a_trailer_section_past_it_are_refused(self):

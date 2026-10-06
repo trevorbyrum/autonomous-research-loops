@@ -96,7 +96,7 @@ def check_adapters(sources: list[dict]) -> tuple[list[str], list[str]]:
     ids = {s["id"] for s in sources if s["kind"] != "manual"}
     present: set[str] = set()
     if ADAPTERS.is_dir():
-        present = {p.stem for p in ADAPTERS.glob("*.py") if p.stem not in {"__init__", "base"}}
+        present = {p.stem for p in ADAPTERS.glob("*.py") if p.stem != "base" and not p.stem.startswith("_")}   # the loader's own rule (adapters/__init__.py): `_` names are the client's parts, not adapters
     return sorted(present - ids), sorted(ids - present)
 
 

@@ -4,7 +4,8 @@ from __future__ import annotations
 from ..core import schema as S
 from ..core.canonical import make_record, year_from
 from ..core.licenses import allow_listed
-from .base import AdapterError, Client, PayloadError, check, decode, members, next_link, own_link, quote
+from ._links import next_link, own_link
+from .base import AdapterError, Client, PayloadError, check, decode, members, quote
 
 SOURCE_ID = "huggingface"
 SMOKE = {'capability': 'resolve', 'identity': 'stanfordnlp/imdb'}   # the live smoke's one minimal call (I-2: declared here, not in smoke.py)

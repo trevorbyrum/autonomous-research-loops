@@ -77,7 +77,7 @@ AUDITED: dict[str, dict[tuple, tuple[int, str, str]]] = {
 }
 PASSIVE_ROLES = {"extra", "content", "counted", "shape", "context", "ignored"}
 PROVIDER_FILES = [p for p in sorted(ROOT.rglob("*.py")) if (p.relative_to(ROOT).as_posix().startswith(("adapters/", "harvest/")) or p.relative_to(ROOT).as_posix() in ("core/sdmx.py", "core/identity.py"))
-                  and p.name not in ("base.py", "__init__.py")]
+                  and p.name not in ("base.py", "__init__.py", "_response.py", "_transport.py", "_links.py")]
 
 
 def any_uses() -> collections.Counter:

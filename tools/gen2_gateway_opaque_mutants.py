@@ -15,7 +15,7 @@ from __future__ import annotations
 
 CANON = "research_gateway/core/canonical.py"
 PAYLOAD = "research_gateway/core/payload.py"
-BASE = "research_gateway/adapters/base.py"
+RESPONSE = "research_gateway/adapters/_response.py"
 ROUTER = "research_gateway/core/router.py"
 INDEX = "research_gateway/harvest/index.py"
 OP = "tests.test_opaque_provenance."
@@ -79,7 +79,7 @@ def build(Mutant) -> list:
         Mutant("Q-record-the-identity-accepts-an-opaque-value", "a record's identity may be a Passive, a Sealed or a decoded object (it is not held to be text)", CANON,
                '    if not isinstance(identity, str):   # the identity is text: what the decoder issued is refused (a programming error), anything else is a member that cannot be named\n        _wrong("identity", identity, "text")\n', "",
                (COPY + "test_the_variants_each_fail_where_the_value_is_read", CC + "test_the_identity_takes_text_not_what_the_decoder_issued"), (CONTROL,)),
-        Mutant("Q-download-is-readable", "`Response.download()` hands out the bytes", BASE,
+        Mutant("Q-download-is-readable", "`Response.download()` hands out the bytes", RESPONSE,
                "        return Sealed(self._body)\n", "        return self._body\n",
                (EXIT + "test_a_download_is_sealed_and_only_the_router_boundary_makes_it_bytes", PLACE + "test_a_downloads_bytes_are_sealed_until_the_router_boundary_and_bytes_after_it",
                 SP + "ResponseIsSealed.test_the_responses_public_names_are_a_closed_list_none_of_them_a_payload_accessor_and_its_one_door_is_sealed"),

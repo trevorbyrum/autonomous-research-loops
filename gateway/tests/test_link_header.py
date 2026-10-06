@@ -21,7 +21,9 @@ import unittest
 
 from research_gateway import adapters
 from research_gateway.adapters import huggingface
-from research_gateway.adapters.base import Client, FakeTransport, LinkSyntax, NextLink, Response, Transport, header_map, next_link, parse_links
+from research_gateway.adapters._links import LinkSyntax, NextLink, next_link, parse_links
+from research_gateway.adapters._transport import header_map
+from research_gateway.adapters.base import Client, FakeTransport, Response, Transport
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.registry.load import read_seed
@@ -127,6 +129,11 @@ class Reading(unittest.TestCase):
                          [(PREV, [("rel", "prev"), ("title", 'a, "b"'), ("hreflang", "en")]), (NEXT, [("rel", "next")])])
         with self.assertRaises(LinkSyntax):
             parse_links('<x>; title="open')
+
+    def test_control_a_parameter_whose_value_is_a_token_is_read_beside_one_with_no_value(self):
+        """The accepted path of the step that reads a parameter's value (`_param`): a token, and no value at all."""
+        self.assertEqual(parse_links(f"<{NEXT}>; rel=next; hreflang=en; ext"), [(NEXT, [("rel", "next"), ("hreflang", "en"), ("ext", None)])])
+        self.assertEqual(read(f"<{NEXT}>; rel=next"), NextLink(NEXT, True))
 
 
 class Uris(unittest.TestCase):

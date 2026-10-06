@@ -20,10 +20,10 @@ WHAT IT IS. Five scans of the package's own source (`gateway/research_gateway`),
   materialize  a reference to `plain`, the ONE materialization (core/payload.py), anywhere in the package but payload.py.
   dynamic      `__import__`, `importlib.import_module`, `eval`, `exec`, `compile`, anywhere: code the scans cannot read.
   network      a reference to a library's connection-making entry point (`urllib.request.Request`, `urlopen`, `build_opener` ...): every place the package reaches over a network. The one that
-               receives a PROVIDER's bytes is adapters/base.py `Transport`; the others are the gateway's own client, its secret store and its alerts, and are classified as such.
+               receives a PROVIDER's bytes is adapters/_transport.py `Transport`; the others are the gateway's own client, its secret store and its alerts, and are classified as such.
   response     a construction of a `Response`, the one carrier of a provider's bytes into adapters: the transport (bodies read by `_read_body`), the test transport, and the client's own
                refusals (empty bodies).
-  netread      a read of a connection's stream in adapters/base.py: `_read_body` and the chunked reader it hands a chunked body to (`_read_chunked`), and nowhere else.
+  netread      a read of a connection's stream in adapters/_transport.py: `_read_body` and the chunked reader it hands a chunked body to (`_read_chunked`), and nowhere else.
 
 Each site found must be listed in SITES with a ROLE and a reason, and each listed site must be found; ROLES says where each role may stand (RULES, held by tests/test_inventory.py). The guards
 that are not inventories live here too, because they are this module's scans' neighbours and share their syntax machinery: `import_findings` (what a provider-data module may import),
@@ -150,10 +150,15 @@ def modules(root: Path):
         yield path.relative_to(root).as_posix(), tree, innermost(tree)
 
 
+def client_part(name: str) -> bool:
+    """Whether a file of adapters/ is the client (base.py) or one of its parts (task 2q-b5: `_response.py`, `_transport.py`, `_links.py`; the loader skips every `_` name) and not an adapter."""
+    return name == "base.py" or (name.startswith("_") and name != "__init__.py")
+
+
 def provider_modules(root: Path = ROOT) -> list[Path]:
-    """The modules that read a provider's answer: every adapter but the client, the SDMX helper, the doi.org registration-agency lookup (core/identity.py: a lookup the
+    """The modules that read a provider's answer: every adapter but the client and its parts, the SDMX helper, the doi.org registration-agency lookup (core/identity.py: a lookup the
     router makes itself, with no adapter around it, which the first inventory missed — R12-1), and the harvest loaders."""
-    return sorted([*(p for p in (root / "adapters").glob("*.py") if p.name not in ("base.py", "__init__.py")), root / "core" / "sdmx.py", root / "core" / "identity.py",
+    return sorted([*(p for p in (root / "adapters").glob("*.py") if not client_part(p.name) and p.name != "__init__.py"), root / "core" / "sdmx.py", root / "core" / "identity.py",
                    *(p for p in (root / "harvest").glob("*.py") if p.name != "__init__.py")])
 
 
@@ -245,7 +250,7 @@ def network_sites(root: Path = ROOT) -> Counter:
 
 
 def response_sites(root: Path = ROOT) -> Counter:
-    """{(file, function, "Response"): constructions} of the client's Response, anywhere in the package (in adapters/base.py by its bare name, elsewhere through the module's imports)."""
+    """{(file, function, "Response"): constructions} of the client's Response, anywhere in the package (in adapters/_response.py by its bare name, elsewhere through the module's imports)."""
     out: Counter = Counter()
     for rel, tree, where in modules(root):
         aliases = aliases_of(tree)
@@ -257,16 +262,16 @@ def response_sites(root: Path = ROOT) -> Counter:
                 continue
             head, _, rest = name.partition(".")
             full = aliases[head] + ("." + rest if rest else "") if head in aliases else name
-            if (rel == "adapters/base.py" and full == "Response") or full.endswith("base.Response"):
+            if (rel == "adapters/_response.py" and full == "Response") or full.endswith(("base.Response", "_response.Response")):
                 out[(rel, where(node), "Response")] += 1
     return out
 
 
 def netread_sites(root: Path = ROOT) -> Counter:
-    """{(file, function, the read): references} to a stream read (`read`, `read1`, `readinto`, `readline`, `recv`) in adapters/base.py, the module that holds the transport."""
+    """{(file, function, the read): references} to a stream read (`read`, `read1`, `readinto`, `readline`, `recv`) in adapters/_transport.py, the module that holds the transport."""
     out: Counter = Counter()
     for rel, tree, where in modules(root):
-        if rel != "adapters/base.py":
+        if rel != "adapters/_transport.py":
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and node.attr in STREAM_READS:
@@ -406,14 +411,16 @@ def defined_names(path: Path) -> set[str]:
 def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
     """(file, what) for every import in a provider-data module that is not one the inventory admits. Every form is analysed, in every place it
     can stand (a function, a try block): a star import is refused (it names nothing), a stdlib module is admitted only if listed
-    (STDLIB_ALLOWED: no JSON parser, so no provider answer is read by anything but the decoder), a name from adapters.base only if it is in
-    its `__all__` (so no parser, module or helper it happens to import can be re-exported), and a name from any other module of the package only
+    (STDLIB_ALLOWED: no JSON parser, so no provider answer is read by anything but the decoder), a name from adapters.base or from one of the client's parts
+    (`_links.py`, ...) only if it is in that module's `__all__` (so no parser, module or helper it happens to import can be re-exported, and a part that declares none admits nothing:
+    task 2q-b5), and a name from any other module of the package only
     if that module defines it (not merely imports it). A package module imported AS a module (`from ..core import cache`) is analysed through what is
     done with it: only `module.name` where the module defines `name`, so `cache.json` (the parser that module imports) is refused as `from ..core.cache
     import json` is, and the module used as a value (passed on, aliased, `getattr(module, ...)`) is refused, for what it reaches cannot be bounded."""
     base = root / "adapters" / "base.py"
     api = set(literal_names(base, "__all__") or [])
     out = [] if api else [("adapters/base.py", "declares no __all__: nothing it exports is admitted")]
+    parts = {p.name: set(literal_names(p, "__all__") or []) for p in (root / "adapters").glob("_*.py") if client_part(p.name)}   # what each part of the client offers an adapter
     for path in provider_modules(root):
         rel = path.relative_to(root).as_posix()
         strict = not rel.startswith("harvest/")
@@ -453,9 +460,9 @@ def import_findings(root: Path = ROOT) -> list[tuple[str, str]]:
                         continue
                     if not module.exists():
                         out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (no such module)"))
-                    elif module.name == "base.py" and module.parent.name == "adapters":
-                        if a.name not in api:
-                            out.append((rel, f"from base import {a.name} (not in its __all__)"))
+                    elif module.parent.name == "adapters" and client_part(module.name):
+                        if a.name not in (api if module.name == "base.py" else parts.get(module.name, set())):
+                            out.append((rel, f"from {module.stem} import {a.name} (not in its __all__)"))
                     elif a.name not in defined_names(module):
                         out.append((rel, f"from {'.' * node.level}{node.module or ''} import {a.name} (not defined there: a re-export)"))
             elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in UNANALYSABLE_CALLS:
@@ -498,7 +505,7 @@ def reflection_in_adapters(root: Path = ROOT) -> list[tuple[str, str]]:
     out = []
     for path in sorted([*(root / "adapters").glob("*.py"), root / "core" / "sdmx.py", root / "core" / "identity.py"]):
         rel = path.relative_to(root).as_posix()
-        if rel == "adapters/base.py" or not path.exists():
+        if client_part(path.name) or not path.exists():
             continue
         for node in ast.walk(source_tree(path)):
             if isinstance(node, ast.Import) and any(a.name.split(".")[0] == "json" for a in node.names):
@@ -547,7 +554,7 @@ ROLES = {
     "MATERIALIZER": "the one materialization (`plain`): where the gateway serializes or stores a result",
     "DISCOVERY": "imports the gateway's own adapter modules by name from its own package directory",
     "TEST-TRANSPORT": "the test transport copies a canned answer into a new Response",
-    "PROVIDER-TRANSPORT": "receives a provider's bytes over the network: adapters/base.py `Transport`, whose every body comes from `_read_body` (the message is complete or it is an error Response)",
+    "PROVIDER-TRANSPORT": "receives a provider's bytes over the network: adapters/_transport.py `Transport`, whose every body comes from `_read_body` (the message is complete or it is an error Response)",
     "ALERT-SINK": "the gateway's own outbound alert (a webhook post): no provider data, the response is not read",
     "EMPTY-BODY": "a Response the client makes itself (a refusal, a redirect failure, an HTML challenge): it carries no provider body",
 }
@@ -562,8 +569,8 @@ RULES = {
     "DECODER": lambda file, function, what: file == "core/schema.py",
     "LOADER": lambda file, function, what: file.startswith("harvest/"),
     "BOOKKEEPING": lambda file, function, what: file == "adapters/base.py",
-    "CLIENT-READ": lambda file, function, what: file == "adapters/base.py" and what == "_body",
-    "TEST-TRANSPORT": lambda file, function, what: file == "adapters/base.py" and function.startswith("FakeTransport."),
+    "CLIENT-READ": lambda file, function, what: file in ("adapters/base.py", "adapters/_response.py") and what == "_body",
+    "TEST-TRANSPORT": lambda file, function, what: file == "adapters/_transport.py" and function.startswith("FakeTransport."),
     "SEALED-STORE": lambda file, function, what: what in ("_body", "method without", "raw"),
     "DOWNLOAD-BYTES": lambda file, function, what: what == "answer .download" and function.startswith("fetch"),
     "SANCTIONED-PREDICATE": lambda file, function, what: what == "method empty",
@@ -572,7 +579,7 @@ RULES = {
     "DISCOVERY": _in(("adapters/__init__.py", "load_all")),
     "CALLER": lambda file, function, what: file in ("api/http.py", "clients/cli.py", "clients/mcp_stdio.py"),
     "GATEWAY": lambda file, function, what: file == "clients/http_client.py",
-    "PROVIDER-TRANSPORT": lambda file, function, what: file == "adapters/base.py" and (function in ("<module>", "_read_body") or function.startswith("_read_chunked") or function.startswith("Transport.")),
+    "PROVIDER-TRANSPORT": lambda file, function, what: file == "adapters/_transport.py" and (function in ("<module>", "_read_body") or function.startswith("_read_chunked") or function.startswith("Transport.")),
     "ALERT-SINK": lambda file, function, what: file == "core/alerts.py",
     "EMPTY-BODY": lambda file, function, what: file == "adapters/base.py" and what == "Response",
     "AUTH": lambda file, function, what: file in ("core/principals.py", "core/secrets.py"),
@@ -611,12 +618,12 @@ SITES = {
     # ---------------------------------------------------------------- body: the client's reads of a response's bytes, and the decoder's
     ("body", "core/schema.py", "_open_json", "_body"): (1, "DECODER", "the decoder: a provider's JSON"),
     ("body", "core/schema.py", "_bytes_or_text", "_body"): (1, "DECODER", "the decoder: the bytes the SDMX-ML and CSV openers read"),
-    ("body", "adapters/base.py", "Response.download", "_body"): (1, "SEALED-STORE", "returns the bytes sealed, for a file the caller asked to download: content handed to the router and never read"),
-    ("body", "adapters/base.py", "Response.__repr__", "_body"): (1, "CLIENT-READ", "the length of the body, for a diagnostic"),
+    ("body", "adapters/_response.py", "Response.download", "_body"): (1, "SEALED-STORE", "returns the bytes sealed, for a file the caller asked to download: content handed to the router and never read"),
+    ("body", "adapters/_response.py", "Response.__repr__", "_body"): (1, "CLIENT-READ", "the length of the body, for a diagnostic"),
     ("body", "adapters/base.py", "_text_of", "_body"): (1, "CLIENT-READ", "the text of a 401/403 body, to classify the failure of the CALL (calllog.classify); it never leaves the client"),
     ("body", "adapters/base.py", "_count_of", "_body"): (2, "BOOKKEEPING", "the number of results, for the call log, through the decoder's own opener: a count and nothing else"),
     ("body", "adapters/base.py", "check", "_body"): (2, "CLIENT-READ", "the first bytes of a success answer, to refuse an HTML page wearing it: it can only make a lane unavailable, never produce a record or an empty answer"),
-    ("body", "adapters/base.py", "FakeTransport.request", "_body"): (1, "TEST-TRANSPORT", "the test transport copies a canned answer's body into a new Response"),
+    ("body", "adapters/_transport.py", "FakeTransport.request", "_body"): (1, "TEST-TRANSPORT", "the test transport copies a canned answer's body into a new Response"),
     # ---------------------------------------------------------------- materialize: the one materialization
     ("materialize", "core/router.py", "execute", "plain"): (1, "MATERIALIZER", "the answer and everything cached or written from it are plain where the router serializes them (after every lane has run and every selection, coverage and licence decision is made)"),
     ("materialize", "core/cache.py", "Cache.put_record", "plain"): (1, "MATERIALIZER", "the cache persists a record: its provenance becomes data where it is stored"),
@@ -624,9 +631,9 @@ SITES = {
     # ---------------------------------------------------------------- dynamic: code the scans cannot read
     ("dynamic", "adapters/__init__.py", "load_all", "importlib.import_module"): (1, "DISCOVERY", "imports each adapter module of the package by name from the package's own directory: the gateway's code, not provider data"),
     # ---------------------------------------------------------------- network: every place the package reaches over a network, and which of them receives a provider's bytes
-    ("network", "adapters/base.py", "<module>", "urllib.request.HTTPRedirectHandler"): (1, "PROVIDER-TRANSPORT", "the redirect handler that hands a 3xx back to the metered client instead of following it underneath it"),
-    ("network", "adapters/base.py", "<module>", "urllib.request.build_opener"): (1, "PROVIDER-TRANSPORT", "the one opener of provider requests, built with the no-redirect handler"),
-    ("network", "adapters/base.py", "Transport.request", "urllib.request.Request"): (1, "PROVIDER-TRANSPORT", "the request a provider's call makes: the only one in the package that receives a provider's bytes"),
+    ("network", "adapters/_transport.py", "<module>", "urllib.request.HTTPRedirectHandler"): (1, "PROVIDER-TRANSPORT", "the redirect handler that hands a 3xx back to the metered client instead of following it underneath it"),
+    ("network", "adapters/_transport.py", "<module>", "urllib.request.build_opener"): (1, "PROVIDER-TRANSPORT", "the one opener of provider requests, built with the no-redirect handler"),
+    ("network", "adapters/_transport.py", "Transport.request", "urllib.request.Request"): (1, "PROVIDER-TRANSPORT", "the request a provider's call makes: the only one in the package that receives a provider's bytes"),
     ("network", "clients/http_client.py", "GatewayClient._call", "urllib.request.Request"): (1, "GATEWAY", "the gateway's own command-line client calling the gateway's own API"),
     ("network", "clients/http_client.py", "GatewayClient._call", "urllib.request.urlopen"): (1, "GATEWAY", "the gateway's own command-line client calling the gateway's own API"),
     ("network", "core/alerts.py", "ntfy_sender.send", "urllib.request.Request"): (1, "ALERT-SINK", "the alert post to the operator's notification endpoint"),
@@ -635,15 +642,15 @@ SITES = {
     ("network", "core/secrets.py", "<module>", "urllib.request.build_opener"): (1, "AUTH", "the secret store's opener, which the operator runs: credentials, not provider data"),
     ("network", "core/secrets.py", "VaultBackend._fetch", "urllib.request.Request"): (1, "AUTH", "the request for a secret from the store the operator runs"),
     # ---------------------------------------------------------------- response: where a Response, the carrier of a provider's bytes into adapters, is made
-    ("response", "adapters/base.py", "Transport.request", "Response"): (5, "PROVIDER-TRANSPORT", "the transport's Responses: every body in them is `_read_body`'s (the message complete) or empty; checked line by line by tests/test_inventory.py"),
-    ("response", "adapters/base.py", "FakeTransport.add", "Response"): (1, "TEST-TRANSPORT", "the test transport records a canned answer"),
-    ("response", "adapters/base.py", "FakeTransport.request", "Response"): (2, "TEST-TRANSPORT", "the test transport copies a canned answer into a new Response"),
+    ("response", "adapters/_transport.py", "Transport.request", "Response"): (5, "PROVIDER-TRANSPORT", "the transport's Responses: every body in them is `_read_body`'s (the message complete) or empty; checked line by line by tests/test_inventory.py"),
+    ("response", "adapters/_transport.py", "FakeTransport.add", "Response"): (1, "TEST-TRANSPORT", "the test transport records a canned answer"),
+    ("response", "adapters/_transport.py", "FakeTransport.request", "Response"): (2, "TEST-TRANSPORT", "the test transport copies a canned answer into a new Response"),
     ("response", "adapters/base.py", "Client._call", "Response"): (4, "EMPTY-BODY", "a refusal (breaker, budget, policy) or a redirect failure: the client's own words for it, no provider body"),
     ("response", "adapters/base.py", "check", "Response"): (1, "EMPTY-BODY", "an HTML page wearing a success status becomes an unavailable answer with no body"),
     # ---------------------------------------------------------------- netread: the one read of a provider's stream
-    ("netread", "adapters/base.py", "_read_body", "read"): (1, "PROVIDER-TRANSPORT", "the bounded read of a response's body that is not chunked, followed by the framing's completeness check (RFC 9112 §6.3)"),
-    ("netread", "adapters/base.py", "_read_chunked", "read"): (2, "PROVIDER-TRANSPORT", "a chunk's data, read a megabyte at a time, and the two bytes that must follow it (RFC 9112 §7.1)"),
-    ("netread", "adapters/base.py", "_read_chunked.line", "readline"): (1, "PROVIDER-TRANSPORT", "a line of a chunked body's framing: a chunk-size line or a trailer line, bounded and CRLF-ended or refused (RFC 9112 §7.1)"),
+    ("netread", "adapters/_transport.py", "_read_body", "read"): (1, "PROVIDER-TRANSPORT", "the bounded read of a response's body that is not chunked, followed by the framing's completeness check (RFC 9112 §6.3)"),
+    ("netread", "adapters/_transport.py", "_read_chunked", "read"): (2, "PROVIDER-TRANSPORT", "a chunk's data, read a megabyte at a time, and the two bytes that must follow it (RFC 9112 §7.1)"),
+    ("netread", "adapters/_transport.py", "_read_chunked.line", "readline"): (1, "PROVIDER-TRANSPORT", "a line of a chunked body's framing: a chunk-size line or a trailer line, bounded and CRLF-ended or refused (RFC 9112 §7.1)"),
     # ---------------------------------------------------------------- door: where a decoded answer leaves the decoder in a provider-data module
     ("door", "adapters/bea.py", "data", "raw"): (1, "SEALED-STORE", "BEA's rows are the payload of ONE table record, kept whole for its `rows` and never decoded one by one (Astra, 2b-repair-7)"),
     ("door", "adapters/bea.py", "_error", "method empty"): (1, "SANCTIONED-PREDICATE", "whether the error object BEA states beside its results says anything: an empty `{}` is no error"),

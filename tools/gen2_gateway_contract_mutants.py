@@ -19,6 +19,7 @@ from __future__ import annotations
 SCHEMA = "research_gateway/core/schema.py"
 WIRE = "research_gateway/core/wire.py"
 PAYLOAD = "research_gateway/core/payload.py"
+RESPONSE = "research_gateway/adapters/_response.py"
 DT, SP, DC = "tests.test_decoder_total.", "tests.test_sealed_payload.", "tests.test_declarations."
 SC, NP, FB, CD, IO = "tests.test_schema.", "tests.test_null_policy.", "tests.test_flow_binding.", "tests.test_cache_dedup.", "tests.test_identity_only."
 CORR = "tests.test_schema_corruption."
@@ -60,7 +61,7 @@ def build(Mutant) -> list:
                (TOTAL + "test_nesting_past_the_gateways_operational_limit_is_refused_at_its_edge_and_nesting_within_it_is_read",),
                (TOTAL + "test_a_malformed_answer_is_never_any_other_error_when_the_bytes_are_opened_by_the_decoder",)),
         # ---------------------------------------------------------------- the payload is sealed and metadata is passive
-        Mutant("S-the-response-exposes-its-parsed-payload", "the client's Response has a `json` property again", "research_gateway/adapters/base.py",
+        Mutant("S-the-response-exposes-its-parsed-payload", "the client's Response has a `json` property again", RESPONSE,
                '    def download(self) -> Sealed:\n',
                '    @property\n    def json(self):\n        import json\n        return json.loads(self._body)\n\n    def download(self) -> Sealed:\n',
                (SP + "ResponseIsSealed.test_the_responses_public_names_are_a_closed_list_none_of_them_a_payload_accessor_and_its_one_door_is_sealed",

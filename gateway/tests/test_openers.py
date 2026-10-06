@@ -459,14 +459,14 @@ class AgainstTheCsvModule(unittest.TestCase):
 class HeaderOpeners(unittest.TestCase):
     """The openers that are not JSON, XML or CSV: the headers whose text the gateway decides from. Inventory, with the ruling for each:
 
-      Link (RFC 8288 on RFC 9110's list syntax)   adapters/base.py `parse_links`/`next_link`: strict since 2b-repair-12 — a header that does not read through to its last character is
+      Link (RFC 8288 on RFC 9110's list syntax)   adapters/_links.py `parse_links`/`next_link`: strict since 2b-repair-12 — a header that does not read through to its last character is
                                                   `LinkSyntax`, and the answer's next link is then neither a continuation nor an end; pinned by tests/test_link_header.py and the oracle's vectors
       Retry-After (RFC 9110 §10.2.3)              `Response.retry_after_seconds`: `delay-seconds` is ASCII digits and nothing else; a DATE is whatever `email.utils.parsedate_to_datetime` reads (its tolerance is stated in the
                                                   method's docstring and held below), with a zone-less date read as GMT. Before 2b-repair-13c it was `float()`, which reads `inf` (a breaker open for
                                                   ever), `nan`, `-5`, `1e3`, `1_0` and Arabic-Indic digits
       Location (redirects)                        `redirect_target`: urljoin, then scheme, downgrade and global-address checks; anything that does not parse is refused
       Content-Type / first bytes of a body        `check()`: a substring/prefix test that can only REFUSE (an HTML page wearing a success status); a heuristic by design, not an opener
-      Content-Length, Transfer-Encoding           the transport's, since 2b-repair-14: adapters/base.py `_read_body` (RFC 9112 §6.3) — tests/test_transport_framing.py
+      Content-Length, Transfer-Encoding           the transport's, since 2b-repair-14: adapters/_transport.py `_read_body` (RFC 9112 §6.3) — tests/test_transport_framing.py
     """
 
     def seconds(self, value):

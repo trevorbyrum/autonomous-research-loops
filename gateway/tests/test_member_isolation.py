@@ -134,6 +134,9 @@ class Imports(unittest.TestCase):
             "a class's private storage": ("from ..core.payload import _same", [("adapters/new.py", "from ..core.payload import _same (a private name)")]),
             "a module of the client, by name": ("from .base import urllib", [("adapters/new.py", "from base import urllib (not in its __all__)")]),
             "the client as a module": ("from . import base", [("adapters/new.py", "from . import base (as a module: import what it exports by name)")]),
+            "a part of the client, by a name its `__all__` does not offer": ("from ._transport import Transport", [("adapters/new.py", "from _transport import Transport (not in its __all__)")]),
+            "a part of the client that declares no `__all__` offers nothing": ("from ._response import Response", [("adapters/new.py", "from _response import Response (not in its __all__)")]),
+            "a part of the client as a module": ("from . import _links", [("adapters/new.py", "from . import _links (a private name)")]),
             "a star from another module": ("from ..core.canonical import *", [("adapters/new.py", "from ..core.canonical import *")]),
             "a name another module only re-exports": ("from ..core.canonical import PayloadError",
                                                       [("adapters/new.py", "from ..core.canonical import PayloadError (not defined there: a re-export)")]),
@@ -164,7 +167,7 @@ class Imports(unittest.TestCase):
                 self.assertEqual([f for f in import_findings(root) if f[0] == "adapters/new.py"], want)   # what is found in the new file, whatever else the tree holds
         with tempfile.TemporaryDirectory() as tmp:   # and the forms that are admitted: the names the client exports, a stdlib module that is listed
             root = self.tree(Path(tmp))
-            (root / "adapters" / "new.py").write_text("from __future__ import annotations\nimport re\nfrom .base import Client, members, quote as q\n"
+            (root / "adapters" / "new.py").write_text("from __future__ import annotations\nimport re\nfrom .base import Client, members, quote as q\nfrom ._links import next_link, own_link\n"
                                                       "from ..core.canonical import make_record\nfrom . import crossref\n"
                                                       "from ..core import canonical, identity as ids\nbuilt = canonical.make_record\nnormal = ids.normalize_doi\n",
                                                       encoding="utf-8")

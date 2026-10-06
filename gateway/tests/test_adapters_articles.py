@@ -35,10 +35,10 @@ class SeedConsistency(unittest.TestCase):
                 self.assertTrue(callable(getattr(mod, cap, None)), f"{sid} declares {cap} but has no function")
 
     def test_adapters_never_import_urllib(self):
-        """I-1: only base.py talks to the network."""
+        """I-1: only the client (base.py and its parts: the transport, the response, the Link reader) talks to the network."""
         import pathlib
         for path in pathlib.Path(adapters.__file__).parent.glob("*.py"):
-            if path.name in ("base.py", "__init__.py"):
+            if path.name in ("base.py", "__init__.py", "_response.py", "_transport.py", "_links.py"):
                 continue
             self.assertNotIn("urllib", path.read_text(), path.name)
 

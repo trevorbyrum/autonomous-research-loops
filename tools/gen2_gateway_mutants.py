@@ -59,6 +59,7 @@ PS, LO = "tests.test_payload_shapes.AdapterBoundary.", "tests.test_lane_outcomes
 CO, SP, PV = "tests.test_correlation.", "tests.test_server_policy.", "tests.test_provenance."
 SCHEMA = "research_gateway/core/schema.py"
 SECRETS, ROUTER, BASE, APP = "research_gateway/core/secrets.py", "research_gateway/core/router.py", "research_gateway/adapters/base.py", "research_gateway/app.py"
+LINKS, TRANSPORT = "research_gateway/adapters/_links.py", "research_gateway/adapters/_transport.py"
 PRINC, HTTP, MCP, STDIO = "research_gateway/core/principals.py", "research_gateway/api/http.py", "research_gateway/mcp/homelab_adapter.py", "research_gateway/clients/mcp_stdio.py"
 LIC = "research_gateway/core/licenses.py"
 CACHE, MIGRATE = "research_gateway/core/cache.py", "research_gateway/registry/migrate.py"
@@ -533,19 +534,19 @@ MUTANTS: list[Mutant] = [
            "        url, params = cursor, None\n",
            (PP + "HuggingFaceDatasets.test_a_continuation_that_leaves_this_search_is_never_asked",),
            (PP + "HuggingFaceDatasets.test_the_next_page_is_asked_at_the_providers_own_url",)),
-    Mutant("F3R2-link-user-info-kept", "a provider link carrying user info (credentials of its own) is followable", BASE,
+    Mutant("F3R2-link-user-info-kept", "a provider link carrying user info (credentials of its own) is followable", LINKS,
            "    if u.username is not None or u.password is not None or u.fragment:\n", "    if u.fragment:\n",
            (PP + "HuggingFaceDatasets.test_a_next_link_that_leaves_this_search_is_not_a_continuation",
             PP + "HuggingFaceDatasets.test_a_continuation_that_leaves_this_search_is_never_asked"),
            (PP + "HuggingFaceDatasets.test_continues",)),
     # 2b-repair-8 R7-1: a Link header that cannot be read is never an end (RFC 8288 reading, three outcomes)
-    Mutant("R8-link-unreadable-is-absence", "a Link header that cannot be read is taken for one that names no next link", BASE,
+    Mutant("R8-link-unreadable-is-absence", "a Link header that cannot be read is taken for one that names no next link", LINKS,
            "        return NextLink(None, False)\n    return NextLink(targets.pop()", "        return NextLink(None, True)\n    return NextLink(targets.pop()",
            (LH + "Reading.test_a_header_that_cannot_be_read_is_neither_a_next_link_nor_the_end",
             LH + "HuggingFace.test_a_header_that_cannot_be_read_never_ends_the_lane"),
            (LH + "Reading.test_a_header_read_whole_that_names_no_next_link_is_an_established_end",
             LH + "HuggingFace.test_control_a_header_read_whole_with_no_next_link_is_the_end")),
-    Mutant("R8-link-two-next-pages-pick-one", "two different next pages: the last one is taken, as if the header were certain", BASE,
+    Mutant("R8-link-two-next-pages-pick-one", "two different next pages: the last one is taken, as if the header were certain", LINKS,
            "    return NextLink(targets.pop() if len(targets) == 1 and not unusable else None, len(targets) <= 1 and not unusable)",
            "    return NextLink(targets.pop() if targets else None, True)",
            (LH + "Reading.test_a_header_that_cannot_be_read_is_neither_a_next_link_nor_the_end",),
@@ -555,13 +556,13 @@ MUTANTS: list[Mutant] = [
            (LH + "HuggingFace.test_a_header_that_cannot_be_read_never_ends_the_lane",),
            (LH + "HuggingFace.test_control_a_header_read_whole_with_no_next_link_is_the_end",
             LH + "HuggingFace.test_a_next_link_with_a_quoted_comma_continues_through_the_router")),
-    Mutant("R8-link-comma-ends-a-quoted-string", "a comma ends a quoted parameter (the reader that lost the reported relation)", BASE,
-           "                    while i < n and header[i] != '\"':\n", "                    while i < n and header[i] not in '\",':\n",
+    Mutant("R8-link-comma-ends-a-quoted-string", "a comma ends a quoted parameter (the reader that lost the reported relation)", LINKS,
+           "    while at < len(header) and header[at] != '\"':\n", "    while at < len(header) and header[at] not in '\",':\n",
            (LH + "Reading.test_a_next_link_is_found_however_the_header_is_written",
             LH + "HuggingFace.test_a_next_link_with_a_quoted_comma_continues_through_the_router"),
            (LH + "Reading.test_a_relative_target_is_resolved_against_the_url_asked",
             LH + "HuggingFace.test_control_a_header_read_whole_with_no_next_link_is_the_end")),
-    Mutant("R8-transport-keeps-the-last-link-line", "a repeated header line replaces the earlier ones instead of joining them", BASE,
+    Mutant("R8-transport-keeps-the-last-link-line", "a repeated header line replaces the earlier ones instead of joining them", TRANSPORT,
            '        out[name] = f"{out[name]}, {value}" if name in out else value\n', "        out[name] = value\n",
            (LH + "RepeatedFieldLines.test_repeated_lines_are_joined_in_order",
             LH + "RepeatedFieldLines.test_the_real_transport_keeps_every_link_line"),
@@ -696,22 +697,22 @@ MUTANTS: list[Mutant] = [
            ("tests.test_cache_dedup.PersistentCache.test_reload_keeps_member_stamps_links_and_attribution_verbatim",), db=True),
     # ---- 2b-repair-9: R8-1, R8-2, R8-3, and the four invariants of the harness (tests/test_invariants.py)
     # R8-1: a `rel` that is no relation-type list is unknown, not an absence
-    Mutant("R9-rel-value-unchecked", "a rel value is searched for `next` without being read as a list of relation types", BASE,
+    Mutant("R9-rel-value-unchecked", "a rel value is searched for `next` without being read as a list of relation types", LINKS,
            '            if rel is None or "next" not in relation_types(rel[0]):\n', '            if rel is None or "next" not in (rel[0] or "").lower().split():\n',
            (LH + "Reading.test_a_header_that_cannot_be_read_is_neither_a_next_link_nor_the_end",
             LH + "HuggingFace.test_a_header_that_cannot_be_read_never_ends_the_lane", HX + "LinkHeaders.test_generated_headers_are_read_alike"),
            (LH + "Reading.test_a_next_link_is_found_however_the_header_is_written",
             LH + "Reading.test_a_header_read_whole_that_names_no_next_link_is_an_established_end",
             LH + "HuggingFace.test_control_a_header_read_whole_with_no_next_link_is_the_end")),
-    Mutant("R9-quoted-string-holds-anything", "a quoted string may hold a control character", BASE,
-           "                        elif header[i] not in _QDTEXT:\n", "                        elif False:\n",
+    Mutant("R9-quoted-string-holds-anything", "a quoted string may hold a control character", LINKS,
+           "        elif header[at] not in _QDTEXT:\n", "        elif False:\n",
            (LH + "Reading.test_a_header_that_cannot_be_read_is_neither_a_next_link_nor_the_end", HX + "LinkHeaders.test_generated_headers_are_read_alike"),
            (LH + "Reading.test_a_next_link_is_found_however_the_header_is_written",)),
-    Mutant("R9-target-is-anything", "a link target may hold any character", BASE,
-           "        if not uri.is_uri_reference(target):\n", "        if False:\n",
+    Mutant("R9-target-is-anything", "a link target may hold any character", LINKS,
+           "    if not uri.is_uri_reference(target):\n", "    if False:\n",
            (LH + "Reading.test_a_header_that_cannot_be_read_is_neither_a_next_link_nor_the_end", HX + "LinkHeaders.test_generated_headers_are_read_alike"),
            (LH + "Reading.test_a_comma_inside_the_target_belongs_to_the_target",)),
-    Mutant("R9-continuation-may-drop-the-search", "a continuation that leaves the search parameter out is followed", BASE,
+    Mutant("R9-continuation-may-drop-the-search", "a continuation that leaves the search parameter out is followed", LINKS,
            "    return url if all(named.get(k) == [v] for k, v in same.items()) else None", "    return url if all(named.get(k, [v]) == [v] for k, v in same.items()) else None",
            (LH + "HuggingFace.test_a_next_link_that_names_no_search_is_not_the_continuation", HX + "LinkHeaders.test_generated_headers_are_read_alike"),
            (LH + "HuggingFace.test_a_next_link_with_a_quoted_comma_continues_through_the_router",)),
@@ -754,7 +755,7 @@ MUTANTS: list[Mutant] = [
            ('tests.test_present_means_typed.Records.test_control_the_fields_that_are_right_are_kept_and_nothing_is_nothing',)),
     # R8-3: the closed import inventory
     Mutant("R9-parser-re-exported-by-the-client", "the client binds a JSON parser at module level, which an adapter can import from it", BASE,
-           "import email.utils\nimport http.client\nimport ipaddress\nimport re\n", "import email.utils\nimport http.client\nimport ipaddress\nimport json\nimport re\n",
+           "import re\nimport threading\nimport time\n", "import json\nimport re\nimport threading\nimport time\n",
            (MI + "Imports.test_the_client_has_no_parser_to_re_export_and_exports_no_module",),
            (MI + "Imports.test_every_other_form_an_import_can_take_is_refused_or_analysed",)),
     Mutant("R9-adapter-imports-by-__import__", "an adapter imports a module by __import__, which no import check can read", "research_gateway/adapters/openaire.py",
@@ -775,33 +776,33 @@ MUTANTS: list[Mutant] = [
            (MI + "Imports.test_every_other_form_an_import_can_take_is_refused_or_analysed",),
            (MI + "Imports.test_control_the_permitted_imports_are_not_refused", MI + "Imports.test_every_provider_data_module_imports_only_what_the_inventory_admits")),
     # R9-1: a URI is what RFC 3986 says
-    Mutant("R9-target-is-a-list-of-characters", "a link target is checked against a list of allowed characters, not the URI-reference grammar", BASE,
-           "        if not uri.is_uri_reference(target):\n", "        if re.fullmatch(r\"[A-Za-z0-9\\-._~:/?#\\[\\]@!$&'()*+,;=%]*\", target) is None:\n",
+    Mutant("R9-target-is-a-list-of-characters", "a link target is checked against a list of allowed characters, not the URI-reference grammar", LINKS,
+           "    if not uri.is_uri_reference(target):\n", "    if re.fullmatch(r\"[A-Za-z0-9\\-._~:/?#\\[\\]@!$&'()*+,;=%]*\", target) is None:\n",
            (LH + "Uris.test_a_target_that_is_not_a_uri_reference_is_unreadable_wherever_it_stands",),
            (LH + "Uris.test_control_the_relation_types_and_targets_that_are_uris_are_read", LH + "Reading.test_a_comma_inside_the_target_belongs_to_the_target")),
-    Mutant("R9-relation-type-is-a-list-of-characters", "an extension relation type is checked against a forbidden-character rule, not the URI grammar", BASE,
+    Mutant("R9-relation-type-is-a-list-of-characters", "an extension relation type is checked against a forbidden-character rule, not the URI grammar", LINKS,
            "_REGISTERED_REL.fullmatch(p) or uri.is_uri(p)", "_REGISTERED_REL.fullmatch(p) or re.fullmatch(r\"[A-Za-z][A-Za-z0-9+.\\-]*:[^\\s\\\"<>\\\\^`{|}\\x00-\\x1f\\x7f]*\", p)",
            (LH + "Uris.test_a_relation_type_that_is_not_a_uri_is_unreadable_not_another_relation",),
            (LH + "Uris.test_control_the_relation_types_and_targets_that_are_uris_are_read", LH + "Reading.test_a_next_link_is_found_however_the_header_is_written")),
-    Mutant("R9-relative-target-is-not-resolved", "a relative next target is taken as written, not resolved against the URL asked (RFC 8288 §3.1)", BASE,
+    Mutant("R9-relative-target-is-not-resolved", "a relative next target is taken as written, not resolved against the URL asked (RFC 8288 §3.1)", LINKS,
            "            url = uri.resolve(resp.url, target)\n", "            url = target\n",
            (LH + "Context.test_a_relative_target_is_resolved_the_way_the_rfc_says", LH + "Reading.test_a_relative_target_is_resolved_against_the_url_asked"),
            (LH + "Reading.test_a_comma_inside_the_target_belongs_to_the_target", LH + "Uris.test_control_the_relation_types_and_targets_that_are_uris_are_read")),
-    Mutant("R9-next-link-to-itself-is-followed", "a next link that is the request itself is a continuation", BASE,
+    Mutant("R9-next-link-to-itself-is-followed", "a next link that is the request itself is a continuation", LINKS,
            "or uri.same_resource(url, resp.url):\n", ":\n",
            (LH + "Context.test_a_next_link_that_is_the_request_itself_is_neither_followed_nor_an_end", LH + "Context.test_a_next_link_to_itself_is_a_lower_bound_through_the_router"),
            (LH + "Context.test_a_relative_target_is_resolved_the_way_the_rfc_says", LH + "Reading.test_a_next_link_is_found_however_the_header_is_written")),
-    Mutant("R9-anchor-is-ignored", "a next link whose anchor puts its context at another resource is this listing's next page", BASE,
+    Mutant("R9-anchor-is-ignored", "a next link whose anchor puts its context at another resource is this listing's next page", LINKS,
            "            if (anchor is not None and not uri.same_resource(uri.resolve(resp.url, anchor[0]), resp.url, fragment=True)) or uri.same_resource(url, resp.url):\n",
            "            if uri.same_resource(url, resp.url):\n",
            (LH + "Context.test_a_next_link_whose_context_is_another_resource_is_neither_followed_nor_an_end",),
            (LH + "Context.test_an_anchor_that_is_the_request_changes_nothing_and_one_that_is_not_a_uri_makes_the_header_unreadable",
             LH + "Context.test_a_next_link_that_is_the_request_itself_is_neither_followed_nor_an_end")),
-    Mutant("R9-anchor-fragment-is-the-same-context", "an anchor that is a fragment of the request is the request's own context", BASE,
+    Mutant("R9-anchor-fragment-is-the-same-context", "an anchor that is a fragment of the request is the request's own context", LINKS,
            "uri.resolve(resp.url, anchor[0]), resp.url, fragment=True)", "uri.resolve(resp.url, anchor[0]), resp.url)",
            (LH + "Context.test_a_next_link_whose_context_is_another_resource_is_neither_followed_nor_an_end",),
            (LH + "Context.test_an_anchor_that_is_the_request_changes_nothing_and_one_that_is_not_a_uri_makes_the_header_unreadable",)),
-    Mutant("R9-anchor-syntax-unchecked", "an anchor that is no URI-reference is resolved as if it were one", BASE,
+    Mutant("R9-anchor-syntax-unchecked", "an anchor that is no URI-reference is resolved as if it were one", LINKS,
            "            if anchor is not None and (anchor[0] is None or not uri.is_uri_reference(anchor[0])):\n", "            if anchor is not None and anchor[0] is None:\n",
            (LH + "Context.test_an_anchor_that_is_the_request_changes_nothing_and_one_that_is_not_a_uri_makes_the_header_unreadable",),
            (LH + "Context.test_a_next_link_whose_context_is_another_resource_is_neither_followed_nor_an_end", LH + "Reading.test_a_next_link_is_found_however_the_header_is_written")),
@@ -937,3 +938,8 @@ MUTANTS.extend(_direction_mutants(Mutant))
 from gen2_gateway_decoder_mutants import build as _decoder_mutants  # noqa: E402
 
 MUTANTS.extend(_decoder_mutants(Mutant))
+
+# task 2q-b5: the client and its parts (tools/gen2_gateway_parts_mutants.py)
+from gen2_gateway_parts_mutants import build as _parts_mutants  # noqa: E402
+
+MUTANTS.extend(_parts_mutants(Mutant))

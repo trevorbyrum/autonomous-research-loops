@@ -14,6 +14,7 @@ from __future__ import annotations
 CANON = "research_gateway/core/canonical.py"
 OC = "research_gateway/adapters/opencitations.py"
 URI = "research_gateway/core/uri.py"
+TRANSPORT = "research_gateway/adapters/_transport.py"
 INV = "tests/inventory.py"
 TI = "tests.test_inventory."
 EVERY = TI + "Inventory.test_every_site_the_scans_find_is_listed_and_every_listed_site_is_there"
@@ -37,7 +38,7 @@ def build(Mutant) -> list:
                (SANCTIONED, EVERY), CONTROLS),
         Mutant("I-site-an-adapter-compares-two-decoded-objects", "an adapter the ruling does not name compares decoded objects with `same_as`", OC, ROW, "    row.same_as(row)\n" + ROW,
                (SANCTIONED, EVERY), CONTROLS),
-        Mutant("I-site-the-transport-reads-a-response-directly", "an error response's body is read with `e.read(...)` instead of `_read_body`: a stream read beside the one that checks the message is complete", "research_gateway/adapters/base.py",
+        Mutant("I-site-the-transport-reads-a-response-directly", "an error response's body is read with `e.read(...)` instead of `_read_body`: a stream read beside the one that checks the message is complete", TRANSPORT,
                "                payload, why = _read_body(e.fp), None\n", "                payload, why = (e.read(MAX_BODY_BYTES) or b\"\"), None\n",
                (EVERY, TI + "TheProviderTransport.test_the_only_reads_of_a_connections_stream_in_the_transport_module_are_read_body_and_its_chunked_reader", TI + "TheProviderTransport.test_every_body_the_transport_returns_comes_from_read_body"),
                (*CONTROLS[:1], "tests.test_transport_framing.Statuses.test_an_error_status_keeps_its_status_and_a_complete_body_is_read")),

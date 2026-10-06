@@ -76,6 +76,16 @@ class AdapterConsistency(unittest.TestCase):
         orphans, _missing = load.check_adapters(load.read_seed())
         self.assertEqual(orphans, [])
 
+    def test_every_seeded_source_has_an_adapter(self):
+        """The other half of the same check. The parts of the client (`_*.py` beside base.py) are neither an adapter nor an orphan: the loader skips them and so does this check."""
+        _orphans, missing = load.check_adapters(load.read_seed())
+        self.assertEqual(missing, [])
+
+    def test_the_parts_of_the_client_are_not_adapters(self):
+        from research_gateway import adapters
+        registered = {m.__name__.rsplit(".", 1)[-1] for m in adapters.load_all().values()}
+        self.assertEqual(registered & {"base", "_links", "_response", "_transport"}, set())
+
 
 class DocsMirrorRegistry(unittest.TestCase):
     def test_committed_docs_match_seed(self):

@@ -99,37 +99,38 @@ class Inventory(unittest.TestCase):
         self.assertEqual(INV.import_findings(), [])
 
     def test_the_provider_data_modules_include_five_named_ones_and_not_the_transport_module(self):
-        """A sample, not the whole set: five modules that read an answer are among them, and adapters/base.py, which carries it and does not read it, is not. The set itself is what `provider_modules`
+        """A sample, not the whole set: five modules that read an answer are among them, and the client (adapters/base.py and its parts, `_transport.py` ...), which carries it and does not read it, is not. The set itself is what `provider_modules`
         selects, and the table's equality with the source (`test_every_site_the_scans_find_is_listed_...`) is what every site in those modules answers to."""
         names = [p.relative_to(INV.ROOT).as_posix() for p in INV.provider_modules()]
         for expected in ("adapters/crossref.py", "core/sdmx.py", "core/identity.py", "harvest/registries.py", "harvest/openalex_snapshot.py"):
             self.assertIn(expected, names)
-        self.assertNotIn("adapters/base.py", names)
+        for client in ("adapters/base.py", "adapters/_response.py", "adapters/_transport.py", "adapters/_links.py", "adapters/__init__.py"):
+            self.assertNotIn(client, names)
 
 
 class TheProviderTransport(unittest.TestCase):
-    """The shared transport (adapters/base.py) is where a response becomes complete or an error. These tests make the claim that every provider byte an adapter can reach came through it a
+    """The shared transport (adapters/_transport.py) is where a response becomes complete or an error. These tests make the claim that every provider byte an adapter can reach came through it a
     claim about the source, not about intentions: they are as strong as the scans' syntax (the inventory's module docstring says what that is)."""
 
     def test_the_transport_is_the_one_network_site_that_receives_a_providers_bytes(self):
         network = {k: role for k, (_, role, _) in SITES.items() if k[0] == "network"}
-        self.assertEqual({k[1] for k, role in network.items() if role == "PROVIDER-TRANSPORT"}, {"adapters/base.py"})
-        self.assertEqual({role for k, role in network.items() if k[1] != "adapters/base.py"}, {"GATEWAY", "ALERT-SINK", "AUTH"}, "every other network site is the gateway's own, classified as not provider data")
+        self.assertEqual({k[1] for k, role in network.items() if role == "PROVIDER-TRANSPORT"}, {"adapters/_transport.py"})
+        self.assertEqual({role for k, role in network.items() if k[1] != "adapters/_transport.py"}, {"GATEWAY", "ALERT-SINK", "AUTH"}, "every other network site is the gateway's own, classified as not provider data")
         self.assertEqual({k[2] for k, role in network.items() if role == "PROVIDER-TRANSPORT" and k[2] != "<module>"}, {"Transport.request"})
 
     def test_the_only_reads_of_a_connections_stream_in_the_transport_module_are_read_body_and_its_chunked_reader(self):
-        reads = {("adapters/base.py", "_read_body", "read"), ("adapters/base.py", "_read_chunked", "read"), ("adapters/base.py", "_read_chunked.line", "readline")}
+        reads = {("adapters/_transport.py", "_read_body", "read"), ("adapters/_transport.py", "_read_chunked", "read"), ("adapters/_transport.py", "_read_chunked.line", "readline")}
         self.assertEqual(set(INV.netread_sites()), reads)
         self.assertEqual({k for k in SITES if k[0] == "netread"}, {("netread", *r) for r in reads})
 
-    def functions_of_base(self):
+    def functions_of(self, module: str):
         import ast
-        return dict(INV.functions(ast.parse((INV.ROOT / "adapters" / "base.py").read_text(encoding="utf-8"))))
+        return dict(INV.functions(ast.parse((INV.ROOT / "adapters" / module).read_text(encoding="utf-8"))))
 
     def test_every_body_the_transport_returns_comes_from_read_body(self):
         """In `Transport.request` every Response carries a body that is empty (b"") or a name assigned only `_read_body(...)` (or b""): there is no other read of the connection to take a body from."""
         import ast
-        request = self.functions_of_base()["Transport.request"]
+        request = self.functions_of("_transport.py")["Transport.request"]
         assigned = {}
         for node in ast.walk(request):
             if isinstance(node, ast.Assign):
@@ -151,7 +152,7 @@ class TheProviderTransport(unittest.TestCase):
 
     def test_every_other_response_the_client_makes_carries_no_body(self):
         import ast
-        functions = self.functions_of_base()
+        functions = self.functions_of("base.py")
         for name in ("Client._call", "check"):
             calls = [n for n in ast.walk(functions[name]) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "Response"]
             self.assertTrue(calls, name)
@@ -254,10 +255,10 @@ class Scans(unittest.TestCase):
                 self.assertEqual(list(sites(INV.dynamic_sites, {"adapters/new.py": source}).values()), [1])
 
     def test_control_the_network_response_and_netread_scans(self):
-        files = {"adapters/base.py": "import urllib.request\nfrom urllib.request import urlopen as fetch\nimport http.client\nimport socket\n"
-                                     "class Response:\n    pass\n"
-                                     "def a(u): return urllib.request.Request(u)\ndef b(u): return fetch(u)\ndef c(h): return http.client.HTTPSConnection(h)\ndef d(h): return socket.create_connection(h)\n"
-                                     "def e(h): return socket.getaddrinfo(h, 80)\ndef f(r): return r.read(10), r.readline(), r.close()\ndef g(): return Response(200, {}, b'', 'u')\n",
+        files = {"adapters/_transport.py": "import urllib.request\nfrom urllib.request import urlopen as fetch\nimport http.client\nimport socket\n"
+                                           "def a(u): return urllib.request.Request(u)\ndef b(u): return fetch(u)\ndef c(h): return http.client.HTTPSConnection(h)\ndef d(h): return socket.create_connection(h)\n"
+                                           "def e(h): return socket.getaddrinfo(h, 80)\ndef f(r): return r.read(10), r.readline(), r.close()\n",
+                 "adapters/_response.py": "class Response:\n    pass\ndef g(): return Response(200, {}, b'', 'u')\n",
                  "clients/other.py": "from ..adapters.base import Response\nfrom ..adapters import base\ndef h(): return Response(1, {}, b'', 'u')\ndef i(): return base.Response(1, {}, b'', 'u')\n"
                                      "def j(r): return r.read()\n"}
         self.assertEqual(sites(INV.network_sites, files), {("a", "urllib.request.Request"): 1, ("b", "urllib.request.urlopen"): 1, ("c", "http.client.HTTPSConnection"): 1, ("d", "socket.create_connection"): 1})
