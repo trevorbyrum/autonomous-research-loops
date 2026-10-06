@@ -11,9 +11,9 @@ recognised form with a recorded effect, and anything else is refused. These test
     as a method, `__hash__ = None` or neither, whether the class dictionary ends with no `__hash__`, a `None`, or a function is the interpreter's answer, and the index's member is
     compared with it.
 
-What this cannot show: that the recognised set is the whole of Python (it is closed on purpose; a form outside it is a refusal fixture, not an extension), or that a store through a call
-the contract does not name as a producer of a namespace (a function that returns a class, a container's element, a parameter) is caught: that is OPEN, not excluded (call-time owner effects,
-slice 2 of the F1 repair; docs/gen2/SOURCE-CONTRACT.md, "What the contract does not establish").
+What this cannot show: that the recognised set is the whole of Python (it is closed on purpose; a form outside it is a refusal fixture, not an extension), or that a store through a value
+that reaches it through a call, a container or a parameter is caught: since SOURCE-CONTRACT version 2 that is DECLARED outside the claim, not open (docs/gen2/SOURCE-CONTRACT.md, "What the
+contract does not claim"), and the mechanisms that write a namespace without naming it are refused instead (gen2/tests/test_source_mechanisms.py).
 """
 from __future__ import annotations
 
@@ -206,7 +206,7 @@ class TableTest(unittest.TestCase):
         self.assertEqual(len(self.tool["binding_roles"]), 14)
         self.assertIn("the fourteen roles", text)
         self.assertEqual(sorted(self.tool["class_forms"]), ["annotation", "assign", "augassign", "class", "def", "delete", "from", "import", "target", "walrus"])
-        self.assertEqual(sorted(self.tool["store_forms"]), ["class", "data", "instance_dict", "namespace", "ns_dict", "receiver"])
+        self.assertEqual(sorted(self.tool["store_forms"]), ["class", "data", "namespace", "receiver"])
         for name in ("Closure", "SRC-FORM-UNRECOGNISED", "FORMS", "CLASS_FORMS", "STORE_FORMS"):
             self.assertIn(name, text)
 
@@ -319,7 +319,9 @@ class ProbeTest(ProbeCase):
 
 
 class LoaderBoundaryTest(ContractCase):
-    """Astra's F3 probe: the real adapter loader with `continue` turned into `pass` under the unchanged skip condition loads 28 names, not 26, and was accepted."""
+    """Astra's F3 probe: the real adapter loader with `continue` turned into `pass` under the unchanged skip condition loads 28 names, not 26, and was accepted. The edits below are the LISTED ones, not every
+    possible change: the definition-time effects of another definition in the loader's module (a default, a class body) are outside the fingerprint and are not claimed (SOURCE-CONTRACT, "A declared bound
+    of the fingerprint"; DEBT-016 items 1 and 5)."""
 
     def tree(self, loader: str) -> dict[str, str]:
         files = {"gateway/research_gateway/__init__.py": "", "gateway/research_gateway/adapters/__init__.py": loader}

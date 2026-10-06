@@ -1,14 +1,15 @@
-"""The supported-source contract, version 1 (tasks 2q-a-repair-3 and 2q-a-repair-4; docs/gen2/SOURCE-CONTRACT.md, ratified by the operator on 2026-10-05).
+"""The supported-source contract, version 2 (tasks 2q-a-repair-3 to 2q-a-repair-7; docs/gen2/SOURCE-CONTRACT.md, version 1 ratified by the operator on 2026-10-05; version 2 approved on 2026-10-05 and its form ruled on 2026-10-06).
 
-The architecture metrics are exact over a DECLARED subset of Python (Gate D #4, option B), not over arbitrary Python. This module is the one place the subset
-is stated as code: the refusal categories, the records of the transformations and external terminals the subset allows (resolved identity, allowed argument
-shape, effect on the metrics), and the one inventoried dynamic loader. `load(root)` indexes the production inventory of BOTH services once
+The architecture metrics are exact over a DECLARED subset of Python (Gate D #4, option B), not over arbitrary Python, and the contract is SOUNDY BY DECLARATION (version 2): exact for the
+supported forms; the named dynamic mechanisms are refused wherever they appear in production code; nothing else is claimed (no value is tracked through a call, a container or a parameter).
+This module is the one place the subset is stated as code: the refusal categories, the records of the transformations and external terminals the subset allows (resolved identity, allowed
+argument shape, effect on the metrics), the dynamic mechanisms that are banned and the exact statements excepted from the ban, and the one inventoried dynamic loader. `load(root)` indexes the production inventory of BOTH services once
 (tools/gen2_source_index.py) and runs the contract over it; every diagnostic names file, line, construct and remediation. A refusal happens BEFORE any
 measurement and nothing waives it: no numeric exemption, identity transition or ledger entry exists for it, and no command writes a baseline or a ledger
 over refused source. Discovering another valid Python form outside this subset is a new refusal test, not an extension of the analyser.
 
 The contract does not interpret arbitrary Python. It constrains what decides measured identities, bindings and attribution: lexical definitions, class
-declarations and bases, imports and exports, decorators, the receiver of a method's self-calls, reflective writes to class and module namespaces, and dynamic
+declarations and bases, imports and exports, decorators, the receiver of a method's self-calls, writes to class and module namespaces through a name, and dynamic
 loading. Ordinary control flow, data processing, `getattr` on data, `type(x)` and data-field initialisation are not restricted.
 
 It is CLOSED, not a list of known-bad forms (task 2q-a-repair-4; Astra's 2q-a-repair-3 review F2): every construct that can bind or rebind a name in a module or class
@@ -16,8 +17,10 @@ namespace, or change an attribute or member of a measured module or class, is on
 is refused (SRC-FORM-UNRECOGNISED) in whichever structural position it appears. The dispatchers are
   * the walker's table of syntax forms (tools/gen2_source_index.py `FORMS`): a node class with no entry is refused;
   * `Contract.CLASS_FORMS`: each kind of binding in a class body, with its rule (a hook name, a family method's name, an alias of a method), or refused;
-  * `Contract.STORE_FORMS`: each kind of store base (the receiver, data, a class, a module or namespace, a namespace's dictionary), or refused;
-  * the call forms: class-making calls, `setattr` and its spellings, loader calls, mutators of a namespace's dictionary.
+  * `Contract.STORE_FORMS`: each kind of store base (the receiver, data, a class, a module or namespace), or refused;
+  * the call forms: class-making calls and loader calls;
+  * the banned mechanisms (`BANNED`, `EXCEPTIONS`): a REFERENCE to one of them is refused wherever it appears, except the exact statements the contract excepts. That ban is the whole of
+    the contract's answer to values that escape through a call, a container or a parameter and then change a namespace: the mechanisms are refused, no value is followed.
 A new form gets in only by a contract amendment, never by the tool's default.
 
 Standard library only.
@@ -38,7 +41,7 @@ from typing import Callable
 import gen2_source_index as source
 from gen2_source_index import Binding, ClassFact, Diagnostic, Facts, FileIndex, FunctionFact, Member, Unresolved
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
 CONTRACT_ID = f"source-contract/{CONTRACT_VERSION}"
 
 # (row of the contract's table, what is refused): the closed list of refusal categories. A diagnostic's category is always one of these.
@@ -71,6 +74,9 @@ CATEGORIES = {
     "SRC-LOADER-UNINVENTORIED": ("non-graph mechanisms", "a dynamic import or code-loading call with no inventory entry"),
     "SRC-LOADER-INVENTORY": ("non-graph mechanisms", "an inventoried loader whose implementation changed, or whose discovered files differ from the inventory"),
     "SRC-FORM-UNRECOGNISED": ("closure of every row", "a syntax form, binding or store with no recognised effect"),
+    "SRC-DYNAMIC-MECHANISM": ("dynamic mechanisms", "a reference to a banned dynamic mechanism, outside the excepted statements"),
+    "SRC-PRIVATE-NAME": ("private names", "a private (name-mangled) identifier"),
+    "SRC-QUOTED-ANNOTATION": ("class and method declarations", "a quoted annotation in a class body"),
 }
 
 # --- transformations and external terminals ------------------------------------------------------------------------
@@ -81,11 +87,49 @@ HOOKS = ("__init_subclass__", "__mro_entries__", "__getattribute__")   # a class
 LOADER_CALLS = ("importlib.import_module", "builtins.__import__", "importlib.reload", "importlib.util.spec_from_file_location", "importlib.util.module_from_spec",
                 "importlib.machinery.SourceFileLoader", "runpy.run_module", "runpy.run_path", "builtins.exec", "builtins.eval", "builtins.compile",
                 "pkgutil.iter_modules", "pkgutil.walk_packages")
-SET_CALLS = ("builtins.setattr", "builtins.delattr", "builtins.object.__setattr__", "builtins.object.__delattr__", "builtins.type.__setattr__")
 MUTATORS = ("update", "setdefault", "pop", "popitem", "clear", "append", "extend", "insert", "remove", "sort", "reverse")
-STRUCTURAL = ("__class__", "__bases__", "__dict__", "__mro__")
+STRUCTURAL = ("__class__", "__bases__", "__mro__")   # written through an attribute, they change a class (`__dict__` is banned outright)
 FORM_REMEDY = source.FORM_REMEDY
 REFLECTIVE_FIX = "declare the class or module member in source: a namespace changed at run time is not in the facts"
+
+# --- the banned dynamic mechanisms (version 2) -----------------------------------------------------------------------
+# A REFERENCE to one of these names is refused wherever it appears in production code: called, aliased, passed, stored, imported or reached as an attribute. It is a ban on the reference,
+# not a tracking of values: aliasing a banned name is itself a reference, and a value one of them produced is never followed (docs/gen2/SOURCE-CONTRACT.md, "Dynamic mechanisms").
+# A `def` of one of the names (`def __setattr__`) is a definition and no reference. Three-argument `type(...)` is refused where the call is read (`Contract.call`); `sys.modules` is the
+# attribute `modules`; the statements EXCEPTIONS lists are the only places the ban does not apply.
+BANNED = ("setattr", "delattr", "vars", "globals", "locals", "exec", "eval", "compile", "__import__", "importlib", "import_module", "__dict__", "__setattr__", "__delattr__", "__getattribute__")
+BANNED_ATTRIBUTES = ("__dict__", "__setattr__", "__delattr__", "__getattribute__", "import_module", "__import__", "modules")   # banned as an attribute of anything (`sys.modules`, `x.__dict__`)
+BUILTIN_ATTRIBUTES = ("setattr", "delattr", "vars", "globals", "locals", "exec", "eval", "compile")   # banned as an attribute of the builtins module only (`re.compile` is another name)
+PRIVATE_FIX = "rename it without the leading double underscore: the compiler holds a name that starts with two underscores and does not end with two as `_Class__name`, which no fact here would spell that way"
+BAN_FIX = ("write the effect in source (a class member, an import, an assignment): a namespace or an attribute changed through this mechanism is not in the facts; a use the contract has to "
+           "keep is an exact-statement exception in docs/gen2/SOURCE-CONTRACT.md and tools/gen2_source_contract.py (operator-reviewed)")
+
+
+@dataclass(frozen=True)
+class Excepted:
+    """One statement the ban does not apply to: it is matched by file, enclosing function (qualified, "" at the module's level) and the EXACT normalised statement (`ast.unparse`), and
+    nothing else matches it - the same statement in another function or file, or a second time in the same function, is refused. Adding one is a contract amendment. `writes` is the
+    instance attribute the statement sets on the method's receiver, which the contract checks like any other write through the receiver (it must not be a method of the class family)."""
+    file: str
+    function: str
+    statement: str
+    names: tuple[str, ...]   # the banned names the statement references (the document lists them)
+    reason: str
+    writes: str = ""
+
+
+LOADER_FILE = "gateway/research_gateway/adapters/__init__.py"
+EXCEPTIONS = (
+    Excepted(LOADER_FILE, "", "import importlib", ("importlib",), "the import of the one inventoried dynamic loader (\"Dynamic loader inventory\"; its fingerprint pins this statement)"),
+    Excepted(LOADER_FILE, "load_all", "mod = importlib.import_module(f'{__name__}.{info.name}')", ("importlib", "import_module"),
+             "the one inventoried dynamic import: adapter discovery over the package's own path, with a pinned filter, file inventory and implementation"),
+    Excepted("gen2/supervisor/jobs.py", "Job.hold", "key, held = ((stat.st_dev, stat.st_ino), _HELD.__dict__.setdefault('keys', set()))", ("__dict__",),
+             "`_HELD` is a `threading.local()`: its `__dict__` is that one thread's own data, the journal locks the thread holds, and no class's or module's namespace"),
+    Excepted("gateway/research_gateway/core/payload.py", "Sealed.__init__", "object.__setattr__(self, '_value', value)", ("__setattr__",),
+             "instance-slot initialisation behind a `__setattr__` that refuses every write (`_Unread`): a plain assignment would be refused by the class itself", writes="_value"),
+    Excepted("gateway/research_gateway/core/payload.py", "Passive.__init__", "object.__setattr__(self, '_value', value)", ("__setattr__",),
+             "instance-slot initialisation behind a `__setattr__` that refuses every write (`_Unread`): a plain assignment would be refused by the class itself", writes="_value"),
+)
 
 
 def _no_arguments(node: ast.expr) -> bool:
@@ -238,7 +282,7 @@ def inventory(facts: Facts) -> None:
         facts.diagnose("SRC-INV-UNTRACKED", path, 0, f"{path} is a production candidate that git does not track", "`git add` the file (a local check must see what CI will see)")
 
 
-KINDS = ("class", "namespace", "ns_dict", "instance_dict", "unknown", "receiver", "data")   # what an expression denotes, worst first (a name with several bindings is the worst of them)
+KINDS = ("class", "namespace", "unknown", "receiver", "data")   # what the base of a store denotes, worst first (a name with several bindings is the worst of them)
 PURE_READERS = ("builtins.len", "builtins.sorted", "builtins.list", "builtins.tuple", "builtins.set", "builtins.frozenset", "builtins.iter", "builtins.enumerate", "builtins.reversed")
 READ_METHODS = ("copy", "count", "index")   # the methods of a list that read it
 CALLABLE = ("method", "static", "class", "property")   # the roles of a member that is a `def`; any other member is data (or a slot)
@@ -271,13 +315,80 @@ def fingerprint(tree: ast.Module, function: str) -> str | None:
     return hashlib.sha256(json.dumps(parts, separators=(",", ":")).encode("utf-8")).hexdigest() if found else None
 
 
+# --- the forms version 2 excludes: one walk over a file's syntax -----------------------------------------------------------
+
+def lineage(tree: ast.Module):
+    """Every node of a tree with (the qualified name of the `def` and `class` chain that holds it, the statement it belongs to, whether the scope that holds it is a class body)."""
+    todo = [(tree, "", None, False)]
+    while todo:
+        node, qual, stmt, in_class = todo.pop()
+        stmt = node if isinstance(node, ast.stmt) else stmt
+        yield node, qual, stmt, in_class
+        if isinstance(node, (*source.FUNCTIONS, ast.ClassDef)):
+            qual = f"{qual}.{node.name}" if qual else node.name
+        in_class = isinstance(node, ast.ClassDef) or (in_class and not isinstance(node, (*source.FUNCTIONS, ast.Lambda)))
+        todo.extend(reversed([(child, qual, stmt, in_class) for child in ast.iter_child_nodes(node)]))   # a stack: reversed, so that the nodes come in source order
+
+
+def banned_references(node: ast.AST, builtin_modules: set[str]) -> list[str]:
+    """The banned names a node REFERENCES: a name (in any context), an attribute, an import of one (`import importlib`, `from importlib import x`, `from sys import modules`, an alias
+    of one) or a builtins attribute reached through an imported `builtins`. A `def` of a banned name is no reference."""
+    if isinstance(node, ast.Name):
+        return [node.id] if node.id in BANNED else []
+    if isinstance(node, ast.Attribute):
+        if node.attr in BANNED_ATTRIBUTES:
+            return [node.attr]
+        return [f"builtins.{node.attr}"] if node.attr in BUILTIN_ATTRIBUTES and isinstance(node.value, ast.Name) and node.value.id in builtin_modules else []
+    if isinstance(node, ast.Import):
+        return [a.name for a in node.names if a.asname in BANNED or any(part in BANNED for part in a.name.split("."))]
+    if isinstance(node, ast.ImportFrom):
+        found = [node.module] if node.module and not node.level and any(part in BANNED for part in node.module.split(".")) else []
+        return found + [a.name for a in node.names if a.name in BANNED or a.asname in BANNED or (node.module == "sys" and a.name == "modules")]
+    return []
+
+
+def is_private(name: str | None) -> bool:
+    """A private (name-mangled) identifier: `__name` with no trailing `__` (the language reference, "Private name mangling")."""
+    return bool(name) and name.startswith("__") and not name.endswith("__")
+
+
+def private_names(node: ast.AST) -> list[str]:
+    """The private identifiers a node writes: a name, an attribute, a definition's name, a parameter, an import alias or the module path of an import, a `global` or `nonlocal` name, an
+    `except ... as` or match capture, a keyword of a call or a class pattern. (The compiler mangles most of these and not all of them, a call's keyword among those it does not: version 2 does
+    not distinguish, it refuses an identifier that starts with two underscores and does not end with two, in any context.)"""
+    if isinstance(node, ast.Name):
+        names = [node.id]
+    elif isinstance(node, ast.Attribute):
+        names = [node.attr]
+    elif isinstance(node, (*source.FUNCTIONS, ast.ClassDef)):
+        names = [node.name]
+    elif isinstance(node, ast.arg):
+        names = [node.arg]
+    elif isinstance(node, ast.alias):
+        names = [*node.name.split("."), node.asname]
+    elif isinstance(node, (ast.Global, ast.Nonlocal)):
+        names = node.names
+    elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)):
+        names = [node.name]
+    elif isinstance(node, ast.MatchMapping):
+        names = [node.rest]
+    elif isinstance(node, ast.MatchClass):
+        names = node.kwd_attrs
+    elif isinstance(node, ast.keyword):
+        names = [node.arg]
+    elif isinstance(node, ast.ImportFrom):
+        names = (node.module or "").split(".")
+    else:
+        return []
+    return [name for name in names if is_private(name)]
+
+
 class Contract:
     """The rows of the contract over one set of facts. One method per row; each only adds diagnostics and fills the facts the metrics read."""
 
     CLASS_FORMS = {"def": "member_method", "class": "member_data", "assign": "member_data", "augassign": "member_data", "target": "member_data", "walrus": "member_data",
                    "delete": "member_data", "import": "member_data", "from": "member_data", "annotation": "member_annotation"}   # what each kind of binding in a class body is, or it is refused
-    STORE_FORMS = {"receiver": "store_receiver", "data": "store_data", "class": "store_namespace", "namespace": "store_namespace", "ns_dict": "store_namespace",
-                   "instance_dict": "store_namespace"}   # what each kind of store base is, or the store is refused ("unknown" is not recognised)
+    STORE_FORMS = {"receiver": "store_receiver", "data": "store_data", "class": "store_namespace", "namespace": "store_namespace"}   # what each kind of store base is, or the store is refused ("unknown" is not recognised)
 
     def __init__(self, facts: Facts) -> None:
         self.facts = facts
@@ -311,6 +422,7 @@ class Contract:
                 self.store(index, site)
             for site in index.calls:
                 self.call(index, site)
+            self.excluded(index)
             self.pinned(index)
 
     # -- class declarations: bases, keywords, decorators, hooks -------------------------------------------------------------
@@ -455,6 +567,9 @@ class Contract:
             self.refuse("SRC-FORM-UNRECOGNISED", cls.path, bindings[0].line, f"`__slots__` of class {cls.qual} is not one literal tuple, list or string of names",
                         "write `__slots__` once, as a literal of names: the names it lists are members of the class")
             return []
+        for e in elements:
+            if is_private(e.value):   # the compiler mangles a slot's name like any other private name
+                self.refuse("SRC-PRIVATE-NAME", cls.path, e.lineno, f"the slot `{e.value}` of class {cls.qual} is a private (name-mangled) identifier", PRIVATE_FIX)
         return [e.value for e in elements]
 
     def dataclass_members(self, cls: ClassFact, members: dict[str, Member], authored: set[str]) -> None:
@@ -638,28 +753,26 @@ class Contract:
         return ()
 
     def kind_of(self, index: FileIndex, scope: source.Scope, node: ast.expr, context: tuple, seen: frozenset = frozenset()) -> str:
-        """What `node` denotes, as far as a write through it is concerned: the method's own `receiver`; a `class`; `data` (an object the contract does not restrict); a
-        `namespace` (a module, a package, a function or an external object); `ns_dict` (the dictionary of a namespace: `globals()`, `sys.modules`, `A.__dict__`);
-        `instance_dict` (the receiver's own `__dict__`); or `unknown` (a name or an expression nothing recorded says what it is)."""
+        """What the base of a store denotes, read from the expression and from the names in it, never from a value: the method's own `receiver`; a `class`; `data` (an object the contract
+        does not restrict); a `namespace` (a module, a package, a function or an external object); or `unknown` (an expression nothing recorded says what it is). A name is what the one
+        resolver says it is; `type(x)` and `x.__class__` are the class of x; a call's result, an element of a container, a parameter and a local that is not an alias are DATA, which is
+        a declaration and no finding that they are: a module or a class that reaches a store through a call, a container or a parameter is not followed (docs/gen2/SOURCE-CONTRACT.md,
+        "What the contract does not claim")."""
         if isinstance(node, ast.Name):
             return self.name_kind(index, scope, node, context, seen)
         if isinstance(node, ast.Attribute):
-            if self.identity(index, scope, node) == "sys.modules":
-                return "ns_dict"
-            base = self.kind_of(index, scope, node.value, context, seen)
-            if node.attr in STRUCTURAL and node.attr != "__dict__":
+            if node.attr in STRUCTURAL:
                 return "class"
-            if node.attr == "__dict__":
-                return {"data": "data", "receiver": "instance_dict", "class": "ns_dict", "namespace": "ns_dict"}.get(base, "unknown")
+            base = self.kind_of(index, scope, node.value, context, seen)
             if base in ("data", "receiver"):
                 return "data"
             return self.member_kind(index, scope, node) if base in ("class", "namespace") else "unknown"
-        if isinstance(node, ast.Subscript):   # an element of a container is data, except an element of a namespace's dictionary: a module or a class (`sys.modules[name]`)
-            return "namespace" if self.kind_of(index, scope, node.value, context, seen) == "ns_dict" else "data"
-        if isinstance(node, ast.Call):
-            return self.call_kind(index, scope, node, context, seen)
-        if isinstance(node, ast.NamedExpr):
-            return self.value_kind(index, scope, node.value, context, seen)
+        if isinstance(node, ast.Subscript):   # an element of a container is data
+            return "data"
+        if isinstance(node, ast.Call):   # `type(x)` is the class of x; any other call returns data
+            return "class" if self.identity(index, scope, node.func) == "builtins.type" and len(node.args) == 1 else "data"
+        if isinstance(node, ast.NamedExpr):   # `(k := A).f = 1` writes through what `A` is
+            return self.kind_of(index, scope, node.value, context, seen)
         return "unknown"
 
     def member_kind(self, index: FileIndex, scope: source.Scope, node: ast.expr) -> str:
@@ -670,24 +783,6 @@ class Contract:
         except Unresolved as exc:
             return "data" if exc.category == "SRC-BASE-ALIAS" else "unknown"
         return "class" if ref[0] == "class" else "namespace"
-
-    def call_kind(self, index: FileIndex, scope: source.Scope, node: ast.Call, context: tuple, seen: frozenset) -> str:
-        """What a call returns. The calls that hand out a class or a namespace are the recognised producers (`type(x)`, `globals()`, `locals()`, `vars(x)`, `getattr(x, ...)` and a
-        method of a namespace's dictionary); any other call is READ as data, which is not a finding that it is: whether a call may hand out a class or a module is open (docs/gen2/
-        SOURCE-CONTRACT.md, "What the contract does not establish"; call-time owner effects, slice 2 of the F1 repair)."""
-        identity = self.identity(index, scope, node.func)
-        if identity == "builtins.type" and len(node.args) == 1:
-            return "class"
-        if identity in ("builtins.globals", "builtins.locals") or (identity == "builtins.vars" and not node.args):
-            return "ns_dict"
-        if identity in ("builtins.vars", "builtins.getattr") and node.args:
-            first = self.kind_of(index, scope, node.args[0], context, seen)
-            if identity == "builtins.getattr":
-                return first if first in ("class", "namespace") else "namespace" if first == "ns_dict" else "data"
-            return {"data": "data", "receiver": "instance_dict", "class": "ns_dict", "namespace": "ns_dict"}.get(first, "unknown")
-        if isinstance(node.func, ast.Attribute) and self.kind_of(index, scope, node.func.value, context, seen) == "ns_dict":
-            return "namespace"
-        return "data"
 
     def name_kind(self, index: FileIndex, scope: source.Scope, node: ast.Name, context: tuple, seen: frozenset) -> str:
         if context and node.id == context[1]:
@@ -712,34 +807,8 @@ class Contract:
             return "class"
         if binding.role == "star":
             return "unknown"
-        if binding.source is None:
-            return "data"
-        where = binding.origin or holder   # the source is evaluated where the statement ran, which is not the holder of a `global` or `nonlocal` write
-        if binding.role == "target":   # a loop, `with` or comprehension target is bound to an ELEMENT of what it iterates
-            return self.element_kind(index, where, binding.source, context, seen)
-        return self.value_kind(index, where, binding.source, context, seen)
-
-    def value_kind(self, index: FileIndex, scope: source.Scope, node: ast.AST, context: tuple, seen: frozenset) -> str:
-        """What a name bound to `node` denotes: a name, attribute, item or call as `kind_of` says (a call that is no recognised producer returns data); the worst of the
-        branches of a conditional; a literal collection is data (a container is not what it holds); anything else is data."""
-        if isinstance(node, (ast.Name, ast.Attribute, ast.Call, ast.Subscript)):
-            kind = self.kind_of(index, scope, node, context, seen)
-            return "data" if kind == "unknown" and isinstance(node, ast.Call) else kind
-        branches = {ast.IfExp: lambda n: [n.body, n.orelse], ast.BoolOp: lambda n: n.values, ast.NamedExpr: lambda n: [n.value]}
-        kinds = {self.value_kind(index, scope, part, context, seen) for part in branches[type(node)](node)} if type(node) in branches else set()
-        return next((kind for kind in KINDS if kind in kinds and kind != "data"), "data")
-
-    def element_kind(self, index: FileIndex, scope: source.Scope, node: ast.AST, context: tuple, seen: frozenset) -> str:
-        """What an element of `node` denotes when it is iterated: for a literal collection the worst of its elements (a loop over `(A, B)` binds its target to a class),
-        through a name bound to one; anything else yields data."""
-        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
-            kinds = {self.value_kind(index, scope, part, context, seen) for part in node.elts}
-            return next((kind for kind in KINDS if kind in kinds and kind in ("namespace", "class", "ns_dict", "instance_dict")), "data")
-        if isinstance(node, ast.Name):
-            holder = source.holder_of(scope, node.id)
-            if holder is not None and (id(holder), node.id) not in seen:
-                kinds = {self.element_kind(index, holder, b.source, context, seen | {(id(holder), node.id)}) for b in holder.bindings[node.id] if b.role == "assign" and b.source is not None}
-                return next((kind for kind in KINDS if kind in kinds and kind != "data"), "data")
+        if binding.ref[:1] == ("alias",):   # a name bound once to another name or an attribute chain is what that chain is, evaluated where the statement ran
+            return self.kind_of(index, binding.origin or holder, binding.source, context, seen)
         return "data"
 
     # -- every store and every call: the recognised forms and their effects, or a refusal ------------------------------------------------
@@ -747,7 +816,7 @@ class Contract:
     def store(self, index: FileIndex, site: source.Store) -> None:
         """An attribute or an item written or deleted. The base it is written through is classified (`kind_of`); only the kinds in STORE_FORMS are recognised, and each has an
         effect: a write through the receiver is an instance attribute (it must not be a method of the class family), through data it is nothing the metrics read, through a
-        class, a module, a namespace's dictionary or an external object it is a change to a namespace. Anything the classification cannot say is refused."""
+        class, a module or an external object it is a change to a namespace. Anything the classification cannot say is refused."""
         node, scope = site.node, site.scope
         context = self.context(scope)
         if isinstance(node, ast.Attribute) and node.attr in STRUCTURAL:
@@ -775,66 +844,50 @@ class Contract:
 
     def store_namespace(self, index: FileIndex, site: source.Store, kind: str, context: tuple) -> None:
         node = site.node
-        what = {"class": "writes the attribute {name} of a class", "namespace": "writes the attribute {name} of a module, a function or an external object",
-                "ns_dict": "writes a namespace's dictionary (the dictionary of a class or a module, globals(), locals(), vars() or sys.modules)",
-                "instance_dict": "writes the receiver's own namespace through its __dict__"}[kind].format(name=getattr(node, "attr", "an item"))
-        if kind == "ns_dict" and isinstance(node.value, ast.Call):
-            what = "writes a namespace through globals(), locals() or vars()"
-        elif kind == "ns_dict" and self.identity(index, site.scope, node.value) == "sys.modules":
-            what = "writes sys.modules"
-        elif kind == "ns_dict" and isinstance(node.value, ast.Attribute) and node.value.attr == "__dict__":
-            what = "writes the namespace of a class"
+        what = {"class": "writes the attribute {name} of a class", "namespace": "writes the attribute {name} of a module, a function or an external object"}[kind].format(
+            name=getattr(node, "attr", "an item"))
         self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{ast.unparse(node)}` {what}", REFLECTIVE_FIX)
 
     def call(self, index: FileIndex, site: source.CallSite) -> None:
+        """A call by the identity the one resolver gives its function: a class made by a call (`type` with other than one plain argument, `types.new_class`) and a loader call are
+        refused (the loader's site is the inventory's); every other call is a call."""
         node, scope = site.node, site.scope
-        context = self.context(scope)
         identity = self.identity(index, scope, node.func)
-        if identity == "builtins.type" and len(node.args) == 3 or identity in ("types.new_class", "builtins.__build_class__"):
+        one_plain_argument = len(node.args) == 1 and not node.keywords and not isinstance(node.args[0], ast.Starred)
+        if identity == "builtins.type" and not one_plain_argument or identity in ("types.new_class", "builtins.__build_class__"):
             self.refuse("SRC-CLASS-DYNAMIC", index.path, node.lineno, f"`{ast.unparse(node)[:80]}` makes a class by a call", "write a class statement")
-        elif identity in SET_CALLS:
-            self.set_call(index, scope, node, context)
         elif identity in LOADER_CALLS:
             self.loader(index, scope, node, identity)
-        elif isinstance(node.func, ast.Attribute) and node.func.attr in MUTATORS:
-            self.mutator(index, scope, node, context)
 
-    def mutator(self, index: FileIndex, scope: source.Scope, node: ast.Call, context: tuple) -> None:
-        holder, text = node.func.value, ast.unparse(node)[:80]
-        kind = self.kind_of(index, scope, holder, context)
-        if kind == "ns_dict":
-            what = ("changes the namespace of a class" if isinstance(holder, ast.Attribute) and holder.attr == "__dict__" else
-                    "changes a namespace through globals(), locals() or vars()" if isinstance(holder, ast.Call) else "changes sys.modules")
-            self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{text}` {what}", "declare the member in the class body" if "class" in what else "bind the name in source")
-        elif kind == "instance_dict":
-            self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{text}` changes the receiver's own namespace through its __dict__", REFLECTIVE_FIX)
-        elif isinstance(holder, ast.Attribute) and holder.attr == "__all__":
-            self.refuse("SRC-ALL-DYNAMIC", index.path, node.lineno, f"`{text}` mutates __all__", "write __all__ once as a literal; do not extend or edit it")
+    # -- the forms the contract excludes: banned mechanisms, private names, quoted annotations in a class body ----------------------------
 
-    def set_call(self, index: FileIndex, scope: source.Scope, node: ast.Call, context: tuple) -> None:
-        """`setattr`, `delattr` and their `object.__setattr__` spellings: not on a class or a namespace, never under a computed name, and a literal name not a family method."""
-        text = ast.unparse(node)[:80]
-        first = node.args[0] if node.args else None
-        literal = len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)
-        name = node.args[1].value if literal else ""
-        kind = self.kind_of(index, scope, first, context) if first is not None else "unknown"
-        if kind == "class":
-            self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{text}` writes an attribute of a class", "declare the member in the class body")
-        elif kind in ("namespace", "ns_dict"):
-            self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{text}` writes an attribute of a module or an external object", "declare the member in source")
-        elif not literal:
-            self.refuse("SRC-REFLECTIVE", index.path, node.lineno, f"`{text}` writes an attribute under a computed name", "write the attribute with a literal name")
-        elif kind == "unknown":
-            self.refuse("SRC-FORM-UNRECOGNISED", index.path, node.lineno, f"`{text}` writes through {ast.unparse(first)}, which nothing in the source says what it is", FORM_REMEDY)
-        elif self.hides_a_family_method(context, kind, name, self.identity(index, scope, node.func)):
-            self.override(index.path, node.lineno, f"`{text}`" + (f" in {context[0].qual}" if context else ""), name)
+    def excluded(self, index: FileIndex) -> None:
+        """One walk over the file's syntax (version 2). A REFERENCE to a banned dynamic mechanism (`BANNED`: called, aliased, passed, stored, imported or reached as an attribute) is refused
+        unless it is in one of the exact statements EXCEPTIONS names, in the function it names; a private (name-mangled) identifier is refused wherever it is written; and so is a quoted
+        annotation of a statement in a class body (a dataclass reads a string annotation by its text, not by what the name is bound to)."""
+        path = index.path
+        builtin_modules = {"__builtins__"} | {a.asname or a.name for n in ast.walk(index.tree) if isinstance(n, ast.Import) for a in n.names if a.name == "builtins"}
+        excepted, used = [e for e in EXCEPTIONS if e.file == path], {}
+        for node, qual, stmt, in_class in lineage(index.tree):
+            for name in banned_references(node, builtin_modules):
+                text = ast.unparse(stmt)
+                site = next((e for e in excepted if e.function == qual and e.statement == text and used.setdefault(e, id(stmt)) == id(stmt)), None)
+                if site is None:
+                    self.refuse("SRC-DYNAMIC-MECHANISM", path, node.lineno, f"a reference to `{name}`, a banned dynamic mechanism, in `{text[:70]}`", BAN_FIX)
+                elif site.writes:
+                    self.excepted_write(index, qual, site, node.lineno)
+            for name in private_names(node):
+                self.refuse("SRC-PRIVATE-NAME", path, node.lineno, f"`{name}` is a private (name-mangled) identifier", PRIVATE_FIX)
+            if in_class and isinstance(node, ast.AnnAssign) and isinstance(node.annotation, ast.Constant) and isinstance(node.annotation.value, str):
+                self.refuse("SRC-QUOTED-ANNOTATION", path, node.lineno, f"the annotation {node.annotation.value!r} is quoted, in the body of a class",
+                            "write the annotation unquoted (use `from __future__ import annotations` for a forward reference): the dataclass decorator reads a string by its text and the contract cannot say what it names")
 
-    def hides_a_family_method(self, context: tuple, kind: str, name: str, identity: str | None) -> bool:
-        """Whether writing the attribute `name` by setattr hides a method of a class family: through the receiver, a method of the receiver's own family; through data, a method of any
-        family of more than one class (a `delattr` removes an attribute and hides nothing)."""
-        if context and name in self.family_methods[self.component[context[0].key]]:
-            return True
-        return kind == "data" and name in self.family_names and identity != "builtins.delattr"
+    def excepted_write(self, index: FileIndex, qual: str, site: Excepted, line: int) -> None:
+        """An excepted statement sets the instance attribute `site.writes` on the receiver of its method: the contract checks that as any other write through the receiver."""
+        fn = next((f for f in index.functions if f.qual == qual), None)
+        context = self.context(fn.scope) if fn is not None else ()
+        if context and site.writes in self.family_methods[self.component[context[0].key]]:
+            self.override(index.path, line, f"`{site.statement}` in {qual}", site.writes)
 
     def pinned(self, index: FileIndex) -> None:
         """The reviewed implementation of each inventoried loader, not only the text the filter is written in: the normalised syntax of its function and of the statements of
@@ -944,6 +997,8 @@ def contract_view() -> dict:
     return {"version": CONTRACT_VERSION, "id": CONTRACT_ID, "categories": {k: list(v) for k, v in CATEGORIES.items()},
             "transforms": [{"identity": t.identity, "applies_to": list(t.applies_to), "shape": t.shape, "effect": t.effect} for t in TRANSFORMS],
             "modelled_typing": list(MODELLED_TYPING), "mixable_external": list(MIXABLE_EXTERNAL), "hooks": list(HOOKS), "loader_calls": list(LOADER_CALLS),
+            "banned": list(BANNED), "banned_attributes": list(BANNED_ATTRIBUTES), "builtin_attributes": list(BUILTIN_ATTRIBUTES),
+            "exceptions": [{"file": e.file, "function": e.function, "statement": e.statement, "names": list(e.names), "reason": e.reason, "writes": e.writes} for e in EXCEPTIONS],
             "forms": dict(sorted(source.FORMS.items())), "refused_by_design": list(source.REFUSED_BY_DESIGN), "binding_roles": list(source.BINDING_ROLES),
             "class_forms": dict(sorted(Contract.CLASS_FORMS.items())), "store_forms": dict(sorted(Contract.STORE_FORMS.items())),
             "loaders": [{"file": e.file, "function": e.function, "call": e.call, "discovery": e.discovery, "argument": e.argument, "package": e.package,

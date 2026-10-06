@@ -123,7 +123,6 @@ CLOSURE_REFUSALS: dict[str, list[Fixture]] = {
         refuse("a type parameter pack of a function", "SRC-FORM-UNRECOGNISED", {"a.py": py("def f[*Ts](*args: *Ts):", "    pass")}, ("a.py", 1), "TypeVarTuple"),
         refuse("a store through a name nothing binds", "SRC-FORM-UNRECOGNISED", {"a.py": py("def f():", "    nowhere.x = 1")}, ("a.py", 2), "nowhere.x"),
         refuse("an item written through a name nothing binds", "SRC-FORM-UNRECOGNISED", {"a.py": py("def f():", "    nowhere[0] = 1")}, ("a.py", 2), "nowhere[0]"),
-        refuse("setattr through a name nothing binds", "SRC-FORM-UNRECOGNISED", {"a.py": py("def f():", "    setattr(nowhere, 'x', 1)")}, ("a.py", 2), "nowhere"),
         refuse("a __slots__ that is a name, not a literal", "SRC-FORM-UNRECOGNISED", {"a.py": py("NAMES = ('a',)", "", "class C:", "    __slots__ = NAMES")}, ("a.py", 4), "__slots__"),
         refuse("a __slots__ written twice", "SRC-FORM-UNRECOGNISED", {"a.py": py("class C:", "    __slots__ = ('a',)", "    __slots__ = ('b',)")}, ("a.py", 2), "__slots__"),
         refuse("a __slots__ that is a dictionary", "SRC-FORM-UNRECOGNISED", {"a.py": py("class C:", "    __slots__ = {'a': 'documented'}")}, ("a.py", 2), "__slots__"),
@@ -169,8 +168,6 @@ CLOSURE_REFUSALS: dict[str, list[Fixture]] = {
                {"a.py": A, "b.py": py("from {pkg}.a import A", "", "class B(A):", "    pass"), "c.py": py("def hack(make):", "    obj = make()", "    obj.f = 1")}, ("c.py", 3), "may hold an instance of the family"),
         refuse("an attribute written by an augmented assignment through an element", "SRC-ATTR-OVERRIDE",
                {"a.py": A, "b.py": py("from {pkg}.a import A", "", "class B(A):", "    pass"), "c.py": py("def hack(objs):", "    objs[0].f += 1")}, ("c.py", 2), "may hold an instance of the family"),
-        refuse("a literal setattr through a parameter, named like a method of a family", "SRC-ATTR-OVERRIDE",
-               {"a.py": A, "b.py": py("from {pkg}.a import A", "", "class B(A):", "    pass"), "c.py": py("def hack(obj):", "    setattr(obj, 'f', 1)")}, ("c.py", 2), "overrides a method named f"),
         refuse("an attribute written through a loop target over data, named like a method of a family", "SRC-ATTR-OVERRIDE",
                {"a.py": A, "b.py": py("from {pkg}.a import A", "", "class B(A):", "    pass"), "c.py": py("def hack(rows):", "    for row in rows:", "        row.f = 1")}, ("c.py", 3), "may hold an instance of the family"),
     ],
@@ -221,41 +218,14 @@ CLOSURE_REFUSALS: dict[str, list[Fixture]] = {
         refuse("an attribute written on an external object imported by name", "SRC-REFLECTIVE", {"a.py": py("from os import path", "path.sep = '|'")}, ("a.py", 2), "writes the attribute sep of a module"),
         refuse("an item of an external module's member written", "SRC-REFLECTIVE", {"a.py": py("import os", "os.environ['X'] = 'y'")}, ("a.py", 2), "of a module, a function or an external object"),
         refuse("a function's attribute written", "SRC-REFLECTIVE", {"a.py": py("def f():", "    pass", "", "f.cache = {}")}, ("a.py", 4), "writes the attribute cache of a module, a function"),
-        refuse("setattr on an imported module", "SRC-REFLECTIVE", {"a.py": A, "b.py": py("import {pkg}.a as a", "setattr(a, 'A', object)")}, ("b.py", 2), "writes an attribute of a module"),
-        refuse("setattr on an external module", "SRC-REFLECTIVE", {"a.py": py("import os", "setattr(os, 'sep', '|')")}, ("a.py", 2), "writes an attribute of a module"),
-        refuse("object.__setattr__ on an imported module", "SRC-REFLECTIVE", {"a.py": A, "b.py": py("import {pkg}.a as a", "object.__setattr__(a, 'A', object)")}, ("b.py", 2), "writes an attribute of a module"),
-        refuse("delattr on an imported module", "SRC-REFLECTIVE", {"a.py": A, "b.py": py("import {pkg}.a as a", "delattr(a, 'A')")}, ("b.py", 2), "writes an attribute of a module"),
     ],
     "stores_on_classes_through_names": [
         refuse("a class attribute written through an alias of the class", "SRC-REFLECTIVE", {"a.py": A + py("", "k = A", "k.f = 1")}, ("a.py", 6), "writes the attribute f of a class"),
         refuse("a class attribute written through a local alias of the class", "SRC-REFLECTIVE", {"a.py": A + py("", "def change():", "    k = A", "    k.f = 1")}, ("a.py", 7), "writes the attribute f of a class"),
-        refuse("a class attribute written through a conditional alias", "SRC-REFLECTIVE", {"a.py": A + py("", "def change(flag):", "    k = A if flag else object", "    k.f = 1")}, ("a.py", 7), "writes the attribute f of a class"),
-        refuse("a class attribute written through a loop target over classes", "SRC-REFLECTIVE", {"a.py": A + py("", "def change():", "    for k in (A, object):", "        k.f = 1")}, ("a.py", 7), "writes the attribute f of a class"),
-        refuse("a class attribute written through a loop target over a name bound to classes", "SRC-REFLECTIVE",
-               {"a.py": A + py("", "KLASSES = [A, object]", "", "def change():", "    for k in KLASSES:", "        k.f = 1")}, ("a.py", 9), "writes the attribute f of a class"),
-        refuse("a class attribute written through getattr of a class", "SRC-REFLECTIVE", {"a.py": A + py("", "getattr(A, 'self_type').x = 1")}, ("a.py", 5), "writes the attribute x of a class"),
         refuse("a class attribute written through type of an instance", "SRC-REFLECTIVE", {"a.py": A + py("", "def change(a):", "    type(a).f = 1")}, ("a.py", 6), "writes the attribute f of a class"),
         refuse("a class attribute written through __class__ of data", "SRC-REFLECTIVE", {"a.py": A + py("", "def change(a):", "    a.__class__.f = 1")}, ("a.py", 6), "writes the attribute f of a class"),
         refuse("an item written on a class", "SRC-REFLECTIVE", {"a.py": A + py("", "A['k'] = 1")}, ("a.py", 5), "writes the attribute an item of a class"),
         refuse("a class attribute written through a walrus alias", "SRC-REFLECTIVE", {"a.py": A + py("", "def change():", "    (k := A).f = 1")}, ("a.py", 6), "writes the attribute f of a class"),
-    ],
-    "namespace_dictionaries_and_sys_modules": [
-        refuse("a module dictionary written", "SRC-REFLECTIVE", {"a.py": A, "b.py": py("import {pkg}.a as a", "a.__dict__['A'] = object")}, ("b.py", 2), "namespace of a class"),
-        refuse("vars of a module written", "SRC-REFLECTIVE", {"a.py": A, "b.py": py("import {pkg}.a as a", "vars(a)['A'] = object")}, ("b.py", 2), "vars()"),
-        refuse("a class dictionary updated through vars", "SRC-REFLECTIVE", {"a.py": A + py("", "vars(A).update({'f': 1})")}, ("a.py", 5), "namespace through globals(), locals() or vars()"),
-        refuse("a module dictionary updated", "SRC-REFLECTIVE", {"a.py": A, "b.py": py("import {pkg}.a as a", "a.__dict__.update({'A': object})")}, ("b.py", 2), "namespace of a class"),
-        refuse("sys.modules updated by a method", "SRC-REFLECTIVE", {"a.py": py("import sys", "sys.modules.update({})")}, ("a.py", 2), "changes sys.modules"),
-        refuse("sys.modules popped", "SRC-REFLECTIVE", {"a.py": py("import sys", "sys.modules.pop('x', None)")}, ("a.py", 2), "changes sys.modules"),
-        refuse("an item deleted from sys.modules", "SRC-REFLECTIVE", {"a.py": py("import sys", "del sys.modules['x']")}, ("a.py", 2), "writes sys.modules"),
-        refuse("an attribute of a module taken from sys.modules written", "SRC-REFLECTIVE", {"a.py": py("import sys", "sys.modules['x'].attr = 1")}, ("a.py", 2), "of a module, a function"),
-        refuse("an attribute of a module taken from sys.modules.get written", "SRC-REFLECTIVE", {"a.py": py("import sys", "sys.modules.get('x').attr = 1")}, ("a.py", 2), "of a module, a function"),
-        refuse("an attribute of an item of globals written", "SRC-REFLECTIVE", {"a.py": A + py("", "globals()['A'].f = 1")}, ("a.py", 5), "of a module, a function"),
-        refuse("globals updated through a local name", "SRC-REFLECTIVE", {"a.py": py("def change():", "    g = globals()", "    g['x'] = 1")}, ("a.py", 3), "globals()"),
-        refuse("a namespace dictionary through a local name updated by a method", "SRC-REFLECTIVE", {"a.py": py("def change():", "    g = globals()", "    g.update({'x': 1})")}, ("a.py", 3), "changes"),
-        refuse("the receiver's own dictionary written", "SRC-REFLECTIVE", {"a.py": py("class A:", "    def f(self):", "        self.__dict__['g'] = 1")}, ("a.py", 3), "receiver's own namespace"),
-        refuse("the receiver's own dictionary updated", "SRC-REFLECTIVE", {"a.py": py("class A:", "    def f(self):", "        self.__dict__.update({'g': 1})")}, ("a.py", 3), "receiver's own namespace"),
-        refuse("the receiver's vars written", "SRC-REFLECTIVE", {"a.py": py("class A:", "    def f(self):", "        vars(self)['g'] = 1")}, ("a.py", 3), "receiver's own namespace"),
-        refuse("a class dictionary updated through type of the receiver", "SRC-REFLECTIVE", {"a.py": py("class A:", "    def f(self):", "        type(self).__dict__.update({'g': 1})")}, ("a.py", 3), "namespace of a class"),
     ],
     "all_not_only_mutated_but_passed_on": [
         refuse("__all__ aliased and the alias mutated (Astra's aliased __all__)", "SRC-ALL-DYNAMIC", {"a.py": A + py("__all__ = []", "exports = __all__", "exports.append('A')")}, ("a.py", 5), "passes __all__ on"),
@@ -304,7 +274,7 @@ CLOSURE_REFUSALS: dict[str, list[Fixture]] = {
         refuse("a decorator that is an alias of itself through a swap has no identity", "SRC-DECORATOR-SHADOWED",
                {"a.py": py("first, second = second, first", "", "class A:", "    @first", "    def f(self):", "        return 1")}, ("a.py", 4), "an alias of itself"),
         refuse("a class made by an aliased three-argument type", "SRC-CLASS-DYNAMIC", {"a.py": py("make = type", "A = make('A', (), {})")}, ("a.py", 2), "makes a class by a call"),
-        refuse("setattr aliased and aimed at a class", "SRC-REFLECTIVE", {"a.py": A + py("", "put = setattr", "put(A, 'f', 1)")}, ("a.py", 6), "writes an attribute of a class"),
+        refuse("setattr aliased and aimed at a class", "SRC-DYNAMIC-MECHANISM", {"a.py": A + py("", "put = setattr", "put(A, 'f', 1)")}, ("a.py", 5), "`setattr`"),   # aliasing a banned name is itself a reference
         refuse("a decorator that is an alias of an unrecorded one", "SRC-DECORATOR-UNKNOWN",
                {"a.py": py("import functools", "", "cached = functools.cache", "", "class A:", "    @cached", "    def f(self):", "        return 1")}, ("a.py", 6), "functools.cache"),
     ],
@@ -322,16 +292,16 @@ CLOSURE_REFUSALS: dict[str, list[Fixture]] = {
 def ordinary_data_stores() -> list[Fixture]:
     """Ordinary data processing that must not be over-refused: attributes and items written on parameters, locals, call results and the elements of containers.
 
-    NOTE 2026-10-05 (task 2q-a-repair-5): these fixtures are NOT closure evidence, and the family is no longer named for one. Astra's 2q-a-repair-4 review (F1, Gate C) showed that a
-    parameter, a call result or the element of a container can hold a module or a class (`def replace(ns): ns.A = object` called with a module), and a store through it changes the
-    owner of a later direct call. Which of those values may be such an owner is decided by CALL-TIME OWNER EFFECTS, slice 2 of the F1 repair, which slice 1 (binding identity) does not do:
-    until then they say only that the stores below are accepted, not that accepting them is sound. Slice 2 replaces the expectations it cannot keep with owner-escape cases that
-    the interpreter controls (gen2/tests/source_binding_fixtures.py shows the shape)."""
+    NOTE 2026-10-06 (task 2q-a-repair-7; SOURCE-CONTRACT version 2): this is the plain-data-processing positive control, and it is NOT evidence that these stores are sound. A parameter, a call result
+    or the element of a container can hold a module or a class (`def replace(ns): ns.A = object` called with a module), and a store through it changes the owner of a later direct call. Version 2
+    does not follow such a value and does not claim to ("What the contract does not claim"); it refuses the MECHANISMS that write a namespace without naming it, and accepts a plain
+    attribute write through a value as ordinary code. These fixtures say only that ordinary code is not over-refused; the four closure probes that are exactly this form are recorded, with what
+    Python does with them, in gen2/tests/test_source_mechanisms.py."""
     return [
         accept("a name no family has as a method may be written on data, and so may a name only a single class has",
-               {"a.py": py("class Solo:", "    def only(self):", "        return 1"), "b.py": py("def change(obj):", "    obj.only = 2", "    obj.other = 3", "    delattr(obj, 'only')", "    del obj.only")}, functions=["a.py::Solo.only", "b.py::change"]),
+               {"a.py": py("class Solo:", "    def only(self):", "        return 1"), "b.py": py("def change(obj):", "    obj.only = 2", "    obj.other = 3", "    del obj.only")}, functions=["a.py::Solo.only", "b.py::change"]),
         accept("deleting an attribute named like a method of a family hides nothing",
-               {"a.py": A, "b.py": py("from {pkg}.a import A", "", "class B(A):", "    pass"), "c.py": py("def drop(obj):", "    delattr(obj, 'f')", "    del obj.f")}, functions=["a.py::A.f", "c.py::drop"]),
+               {"a.py": A, "b.py": py("from {pkg}.a import A", "", "class B(A):", "    pass"), "c.py": py("def drop(obj):", "    del obj.f")}, functions=["a.py::A.f", "c.py::drop"]),
         accept("an attribute written through an assignment expression that binds data", {"a.py": py("def change(make):", "    (obj := make()).value = 1", "    return obj")}, functions=["a.py::change"]),
         accept("an attribute written on a parameter", {"a.py": py("def change(obj):", "    obj.value = 1", "    obj.value += 1", "    del obj.value")}, functions=["a.py::change"]),
         accept("an item written on a parameter, a local and a module-level container",
@@ -347,9 +317,6 @@ def ordinary_data_stores() -> list[Fixture]:
         accept("a write through a loop target over data and a conditional of data", {"a.py": py("def change(rows, flag, other):", "    for row in rows:", "        row.seen = True", "    target = rows if flag else other",
                                                                                                  "    target.count = 1")}, functions=["a.py::change"]),
         accept("an attribute written on a class instance the function makes", {"a.py": py("class A:", "    pass", "", "def make():", "    a = A()", "    a.value = 1", "    return a")}, functions=["a.py::make"]),
-        accept("setattr on data with a literal name", {"a.py": py("def change(obj):", "    setattr(obj, 'value', 1)", "    delattr(obj, 'value')")}, functions=["a.py::change"]),
-        accept("a dictionary of data, vars of data and the __dict__ of a local object", {"a.py": py("def change(obj, rows):", "    obj.__dict__['k'] = 1", "    vars(obj)['k'] = 2", "    rows.__dict__.update({'k': 3})")},
-               functions=["a.py::change"]),
         accept("an annotation of an attribute declares and stores nothing", {"a.py": py("def change(obj):", "    obj.value: int", "    return obj")}, functions=["a.py::change"]),
         accept("an annotation of an attribute of a module stores nothing in it", {"a.py": py("import os", "", "os.extra: int")}),
     ]
@@ -364,8 +331,6 @@ CLOSURE_ACCEPTS: dict[str, list[Fixture]] = {
                members={"a.py::A": {"one": ["data", "authored"], "two": ["data", "authored"], "four": ["data", "authored"], "five": ["data", "authored"], "six": ["data", "authored"],
                                     "seven": ["data", "authored"], "eight": ["data", "authored"], "nine": ["data", "authored"], "ten": ["data", "authored"], "eleven": ["data", "authored"],
                                     "Inner": ["data", "authored"], "run": ["method", "authored"]}}),
-        accept("a private method is a member the class has, under its name as written", {"a.py": py("class A:", "    def __helper(self):", "        return 1", "    def run(self):", "        return self.__helper()")},
-               members={"a.py::A": {"__helper": ["method", "authored"], "run": ["method", "authored"]}}),
         accept("an annotation alone binds nothing in the class", {"a.py": py("class A:", "    x: int", "    def f(self):", "        return 1")}, members={"a.py::A": {"f": ["method", "authored"], "x": None}}),
     ],
     "implicit_and_generated_members": [
@@ -410,7 +375,7 @@ CLOSURE_ACCEPTS: dict[str, list[Fixture]] = {
         accept("a walrus in a function body binds there", {"a.py": py("def f(items):", "    if (n := len(items)) > 1:", "        return n", "    return [(m := i) for i in items]")}, functions=["a.py::f"]),
         accept("a walrus in a class body annotation binds in the class, not in the module", {"a.py": A + py("", "class Other:", "    marker: (A := object)")}, classes=["a.py::A", "a.py::Other"]),
         accept("a lambda and a comprehension keep their own bindings", {"a.py": py("class A:", "    pass", "", "key = lambda A: A", "rows = [A for A in range(2)]", "pairs = {A: A for A in range(2)}")}, classes=["a.py::A"]),
-        accept("a comprehension's iteration variable shadows an imported loader", {"a.py": py("from importlib import import_module as load", "", "def apply(handlers):", "    keep = load", "    return [load('x') for load in handlers]")},
+        accept("a comprehension's iteration variable shadows an imported loader call", {"a.py": py("from pkgutil import iter_modules as load", "", "def apply(handlers):", "    keep = load", "    return [load('x') for load in handlers]")},
                functions=["a.py::apply"]),
         accept("a call through an alias of data whose bindings compete is no unresolved alias", {"a.py": py("def run(handler):", "    chosen = handler", "    handler = 5", "    return chosen()")}, functions=["a.py::run"]),
         accept("a global declared for a name the module only reads is no rebinding of a definition", {"a.py": py("COUNT = 0", "", "def bump():", "    global COUNT", "    COUNT += 1")}, functions=["a.py::bump"]),

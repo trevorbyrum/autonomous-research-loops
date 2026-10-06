@@ -1,4 +1,4 @@
-"""Black-box tests of the supported-source contract (docs/gen2/SOURCE-CONTRACT.md, version 1; task 2q-a-repair-3; Gate D #4 checklist 0, 1 and 2).
+"""Black-box tests of the supported-source contract (docs/gen2/SOURCE-CONTRACT.md, version 2; tasks 2q-a-repair-3 and 2q-a-repair-7; Gate D #4 checklist 0, 1 and 2).
 
 The architecture metrics are exact over a declared subset of Python, and anything outside it is refused before anything is measured. These tests run the
 contract (`tools/gen2_source_contract.py`, the stage on its own, and through every command that reads the production source) on literal fixture packages
@@ -16,6 +16,7 @@ What this cannot show: that the subset is the whole of Python (it is a stated su
 """
 from __future__ import annotations
 
+import collections
 import json
 import subprocess
 import sys
@@ -179,7 +180,7 @@ class AcceptanceTest(ContractCase):
         self.assertEqual(sorted({ROW_OF[f.name] for f in POSITIVES}), ROWS)
         self.assertEqual(len(ROW_OF), len(POSITIVES))
         table_rows = {"source inventory", "function identity", "class and method declarations", "imports and exports", "inheritance", "decorators and descriptors",
-                      "receiver calls and attributes", "non-graph mechanisms"}
+                      "receiver calls and attributes", "dynamic mechanisms", "private names", "non-graph mechanisms"}
         self.assertEqual(set(ROWS), table_rows)
 
     def check_facts(self, view: dict, prefix: str, fixture: Fixture) -> None:
@@ -283,7 +284,7 @@ class EveryCommandTest(ContractCase):
         done = repo.run("report", str(out))
         self.assertRefused(done, partial=True)
         summary = json.loads((out / "metrics-summary.json").read_text())
-        self.assertEqual((summary["input"]["contract"], summary["input"]["complete"], summary["input"]["passing"], summary["input"]["certified"]), ("source-contract/1", False, False, False))
+        self.assertEqual((summary["input"]["contract"], summary["input"]["complete"], summary["input"]["passing"], summary["input"]["certified"]), ("source-contract/2", False, False, False))
         self.assertTrue(any("SRC-CLASS-CONDITIONAL" in r for r in summary["input"]["refusals"]))
         self.assertEqual(summary["services"]["engine"]["self_calls"], {"sites": 0, "pairs": {}, "families": {}, "measured": False})
         self.assertIn("not measured (source refused)", done.stdout)
@@ -318,7 +319,7 @@ class EveryCommandTest(ContractCase):
         repo = self.repo(self.GOOD)
         out = repo.root / "out"
         self.assertEqual(repo.run("report", str(out)).returncode, 0)
-        self.assertEqual(json.loads((out / "metrics-summary.json").read_text())["input"], {"contract": "source-contract/1", "complete": True, "passing": True, "certified": True, "refusals": []})
+        self.assertEqual(json.loads((out / "metrics-summary.json").read_text())["input"], {"contract": "source-contract/2", "complete": True, "passing": True, "certified": True, "refusals": []})
 
     def test_hotspots_refuses_too_and_its_tables_are_marked_partial_and_not_certified(self) -> None:
         repo = self.repo(self.BAD)
@@ -402,9 +403,10 @@ class DocumentAndToolTest(unittest.TestCase):
 
     def test_the_version_is_stated_once_and_agrees(self) -> None:
         text = CONTRACT_DOC.read_text(encoding="utf-8")
-        self.assertEqual((self.tool["version"], self.tool["id"]), (1, "source-contract/1"))
-        self.assertIn("**Version 1** (`source-contract/1`)", text)
-        self.assertIn("2026-10-05", text)
+        self.assertEqual((self.tool["version"], self.tool["id"]), (2, "source-contract/2"))
+        self.assertIn("**Version 2** (`source-contract/2`)", text)
+        self.assertIn("Version 1 (`source-contract/1`) was ratified by the operator on 2026-10-05", text)
+        self.assertIn("2026-10-06", text, msg="the operator's ruling of the form of version 2")
 
     def test_the_refusal_categories_and_their_rows_are_the_tools(self) -> None:
         rows = table("Refusal categories")
@@ -455,7 +457,8 @@ class DocumentAndToolTest(unittest.TestCase):
 
 
 class LoaderInventoryTest(ContractCase):
-    """The one inventoried dynamic loader, against a copy of the real adapter package: unchanged it passes, and each change to it is a refusal."""
+    """The one inventoried dynamic loader, against a copy of the real adapter package: unchanged it passes, and each LISTED change to it is a refusal (not every possible change: SOURCE-CONTRACT, "A declared bound
+    of the fingerprint")."""
 
     LOADER = fx.REPO / "gateway" / "research_gateway" / "adapters" / "__init__.py"
     NAMES = ("bea", "bis", "bls", "census", "core", "crossref", "datacite", "doaj", "doi_org", "ecb", "europepmc", "fred", "globe", "govinfo", "harvard_dataverse", "huggingface",
@@ -513,12 +516,14 @@ class LoaderInventoryTest(ContractCase):
     def test_the_same_call_in_another_function_of_the_inventoried_file_is_not_the_site(self) -> None:
         real = self.LOADER.read_text(encoding="utf-8")
         loader = real + "\n\ndef elsewhere(name):\n    return importlib.import_module(name)\n"
-        self.assertEqual([c for c, _ in self.categories(self.files(loader=loader))], ["SRC-LOADER-UNINVENTORIED"])
+        found = [c for c, _ in self.categories(self.files(loader=loader))]
+        self.assertEqual(collections.Counter(found), {"SRC-LOADER-UNINVENTORIED": 1, "SRC-DYNAMIC-MECHANISM": 2}, msg="the call is no loader site, and its two references (importlib, import_module) are banned there")
 
     def test_the_same_code_in_another_file_is_not_the_inventoried_site(self) -> None:
         real = self.LOADER.read_text(encoding="utf-8")
         files = self.files() | {"gateway/research_gateway/elsewhere.py": real}
-        self.assertEqual([c for c, _ in self.categories(files)], ["SRC-LOADER-UNINVENTORIED", "SRC-LOADER-UNINVENTORIED"])
+        found = [c for c, _ in self.categories(files)]
+        self.assertEqual(collections.Counter(found), {"SRC-LOADER-UNINVENTORIED": 2, "SRC-DYNAMIC-MECHANISM": 3}, msg="the exceptions are for the real file only: its import, and the call's two references, are banned elsewhere")
 
 
 if __name__ == "__main__":

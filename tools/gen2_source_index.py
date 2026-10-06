@@ -952,7 +952,7 @@ class Facts:
 
     def identity(self, path: str, scope: Scope, node: ast.expr) -> str:
         """The dotted identity a name or attribute chain certainly has (`importlib.import_module`, `builtins.exec`, `gen2.gateway_client.client._serial`), from the one resolver:
-        decorators, the contract's loader and `setattr` sites and the field markers are recognised by it, never by their spelling, so an alias or a re-export of a loader is the
+        decorators, the contract's loader calls and `type` calls and the field markers are recognised by it, never by their spelling, so an alias or a re-export of a loader is the
         loader. A name that has no certain identity is Unresolved with the decorator categories (SRC-DECORATOR-UNKNOWN: nothing says what it is; SRC-DECORATOR-SHADOWED: it is
         rebound, conditional, competing or no import or definition)."""
         try:

@@ -461,7 +461,7 @@ MANUAL: dict[str, dict] = {
         "controls": ["test_source_closure.ClosureAcceptanceTest.test_accepts_ordinary_data_stores"],
         "why": "a narrow control and nothing more (task 2q-a-repair-5, 2026-10-05): it exercises only tools/gen2_source_contract.py Contract.kind_of's NamedExpr branch, with an attribute written "
                "through an assignment expression whose value is an ordinary call (`(obj := make()).value = 1`), which the mutant that says data for every such expression accepts as well. It does "
-               "not show that such a value cannot hold a module or a class (call-time owner effects, slice 2), and its family is no closure evidence (ordinary_data_stores)"},
+               "not show that such a value cannot hold a module or a class (SOURCE-CONTRACT version 2 declares that outside its claim), and its family is no closure evidence (ordinary_data_stores)"},
     # task 2q-a-repair-6b: a test written for the mangling mutant after the trace. Every traced test that takes the mangling's return passes through a private name whose result the lookup then
     # depends on, so the mutant that returns the name as written fails each of them; this one asks the rule itself and looks at nothing but that its answer is an identifier
     "2Q6B-idx-mangling-skipped": {

@@ -23,7 +23,7 @@ EC, WT, MV = "test_source_contract.EveryCommandTest.", "test_tool_completion.Wit
 WALRUS, GLOBAL, HOOKS, ALIAS = (CLR + f for f in ("walrus_in_every_header_and_expression_position", "global_redirect_of_every_kind_of_binding", "hooks_bound_by_any_statement",
                                                     "method_aliases_by_any_statement"))
 FORMS, BODY = CLR + "unrecognised_forms", CLR + "class_body_bindings_of_every_kind"
-MODS, CLASSES, DICTS = CLR + "stores_on_modules_and_packages", CLR + "stores_on_classes_through_names", CLR + "namespace_dictionaries_and_sys_modules"
+MODS, CLASSES = CLR + "stores_on_modules_and_packages", CLR + "stores_on_classes_through_names"
 ALL, EXTERNAL, ALIASES, DATACLASS = (CLR + f for f in ("all_not_only_mutated_but_passed_on", "external_classes_through_ancestors", "aliases_carry_the_identity", "dataclass_forms_the_record_does_not_allow"))
 DATA, BODIES, MEMBERS, AFTER, SCOPES = (CLA + f for f in ("ordinary_data_stores", "class_bodies_that_bind_data", "implicit_and_generated_members",
                                                           "external_classes_after_every_project_class", "aliases_and_scopes"))
@@ -37,7 +37,7 @@ HEADER = "        self.each((*node.decorator_list, *args.defaults, *args.kw_defa
 NOTES = "        self.annotations((*(a.annotation for a in every), node.returns), scope, nested)"
 CLASS_HEADER = "        self.each((*node.decorator_list, *node.bases, *(k.value for k in node.keywords)), scope, nested)"
 FINGERPRINT = "d92736324e8162a92f838d37cfc5f55df496ae08374f1b1627857558522ff842"   # the recorded fingerprint of the real loader (tools/gen2_source_contract.py LOADERS)
-STORE_FORMS = '    STORE_FORMS = {"receiver": "store_receiver", "data": "store_data", "class": "store_namespace", "namespace": "store_namespace", "ns_dict": "store_namespace",\n'
+STORE_FORMS = '    STORE_FORMS = {"receiver": "store_receiver", "data": "store_data", "class": "store_namespace", "namespace": "store_namespace"}'
 
 MUTATIONS: list[Mutation] = [
     # --- the walker: one dispatcher, every position of a header visited, scopes, aliases, the order ------------------------------------------------
@@ -83,10 +83,10 @@ MUTATIONS: list[Mutation] = [
     c("idx-attribute-stores-not-recorded", "an attribute written or deleted is not a store site", (MODS, CLASSES), IDX,
       "    def form_attribute(self, node: ast.Attribute, scope: Scope, nested: bool, target) -> None:\n        if isinstance(node.ctx, (ast.Store, ast.Del)):",
       "    def form_attribute(self, node: ast.Attribute, scope: Scope, nested: bool, target) -> None:\n        if False:"),
-    c("idx-subscript-stores-not-recorded", "an item written or deleted is not a store site", (DICTS,), IDX,
+    c("idx-subscript-stores-not-recorded", "an item written or deleted is not a store site", (MODS, CLASSES), IDX,
       "    def form_subscript(self, node: ast.Subscript, scope: Scope, nested: bool, target) -> None:\n        if isinstance(node.ctx, (ast.Store, ast.Del)):",
       "    def form_subscript(self, node: ast.Subscript, scope: Scope, nested: bool, target) -> None:\n        if False:"),
-    c("idx-calls-not-recorded", "a call is not a call site", (CLR + "aliases_carry_the_identity", DICTS), IDX, "        self.index.calls.append(CallSite(node, scope))\n", "        pass\n"),
+    c("idx-calls-not-recorded", "a call is not a call site", (CLR + "aliases_carry_the_identity",), IDX, "        self.index.calls.append(CallSite(node, scope))\n", "        pass\n"),
     c("idx-annotation-only-attribute-is-a-store", "`a.b: int`, which stores nothing, is a store", (DATA,), IDX,
       "        if node.value is None and not isinstance(node.target, ast.Name):", "        if False:"),
     # --- the contract's dispatchers: a kind with no recorded effect is refused --------------------------------------------------------------
@@ -98,47 +98,18 @@ MUTATIONS: list[Mutation] = [
     c("con-binding-role-unrecognised-accepted", "a binding role the contract does not list is accepted", (WU + "test_a_binding_role_the_contract_has_no_record_of_is_refused",), CON,
       "                if binding.role not in source.BINDING_ROLES:", "                if False:"),
     c("con-store-through-a-module-accepted", "an attribute written on a module, a function or an external object is accepted", (MODS,), CON,
-      STORE_FORMS, STORE_FORMS.replace('"namespace": "store_namespace",', '"namespace": "store_data",')),
-    c("con-store-through-a-namespace-dictionary-accepted", "a write through the dictionary of a namespace is accepted", (DICTS,), CON,
-      STORE_FORMS, STORE_FORMS.replace('"ns_dict": "store_namespace",\n', '"ns_dict": "store_data",\n')),
-    c("con-store-through-the-receivers-dictionary-accepted", "a write through the receiver's own __dict__ is accepted", (DICTS,), CON,
-      '                   "instance_dict": "store_namespace"}   # what each kind', '                   "instance_dict": "store_data"}   # what each kind'),
+      STORE_FORMS, STORE_FORMS.replace('"namespace": "store_namespace"}', '"namespace": "store_data"}')),
     c("con-imported-class-is-a-namespace", "a name imported from a module is a namespace even when it is a class", (MODS,), CON,
       '                return "class" if self.facts.bound(index.path, holder, name)[0] == "class" else "namespace"', '                return "namespace"'),
     c("con-alias-of-a-class-is-data", "a name bound to a class denotes data", (CLASSES, MODS), CON,
-      '            return "data" if kind == "unknown" and isinstance(node, ast.Call) else kind', '            return "data"'),
-    c("con-loop-over-classes-is-data", "the target of a loop over a literal collection of classes denotes data", (CLASSES,), CON,
-      "        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):\n            kinds = {self.value_kind", "        if False:\n            kinds = {self.value_kind"),
-    c("con-loop-over-a-name-is-data", "the target of a loop over a name bound to classes denotes data", (CLASSES,), CON,
-      "        if isinstance(node, ast.Name):\n            holder = source.holder_of(scope, node.id)\n            if holder is not None and (id(holder), node.id) not in seen:\n                kinds = {self.element_kind",
-      "        if False:\n            holder = source.holder_of(scope, node.id)\n            if holder is not None and (id(holder), node.id) not in seen:\n                kinds = {self.element_kind"),
-    c("con-conditional-alias-is-data", "a name bound by a conditional expression denotes data", (CLASSES,), CON,
-      "        branches = {ast.IfExp: lambda n: [n.body, n.orelse], ast.BoolOp: lambda n: n.values, ast.NamedExpr: lambda n: [n.value]}",
-      "        branches = {ast.BoolOp: lambda n: n.values, ast.NamedExpr: lambda n: [n.value]}"),
+      '            return self.kind_of(index, binding.origin or holder, binding.source, context, seen)', '            return "data"'),
     c("con-walrus-base-is-data", "a write through an assignment expression is a write through data, whatever it binds", (CLASSES,), CON,
-      "        if isinstance(node, ast.NamedExpr):\n            return self.value_kind(index, scope, node.value, context, seen)\n        return \"unknown\"", "        if isinstance(node, ast.NamedExpr):\n            return \"data\"\n        return \"unknown\""),
-    c("con-getattr-of-a-class-is-data", "getattr on a class returns data", (CLASSES,), CON,
-      '                return first if first in ("class", "namespace") else "namespace" if first == "ns_dict" else "data"', '                return "data"'),
-    c("con-vars-of-a-namespace-is-data", "vars of a class or a module is data", (DICTS,), CON,
-      '"class": "ns_dict", "namespace": "ns_dict"}.get(first, "unknown")', '"class": "data", "namespace": "data"}.get(first, "unknown")'),
-    c("con-element-of-a-namespace-dictionary-is-data", "an element of sys.modules or globals() is data", (DICTS,), CON,
-      '            return "namespace" if self.kind_of(index, scope, node.value, context, seen) == "ns_dict" else "data"', '            return "data"'),
-    c("con-method-of-a-namespace-dictionary-returns-data", "what sys.modules.get returns is data", (DICTS,), CON,
-      '        if isinstance(node.func, ast.Attribute) and self.kind_of(index, scope, node.func.value, context, seen) == "ns_dict":\n            return "namespace"\n',
-      '        if False:\n            return "namespace"\n'),
-    c("con-namespace-dictionary-mutator-accepted", "a mutating method of a namespace's dictionary is accepted", (DICTS,), CON, '        if kind == "ns_dict":\n            what = (', '        if False:\n            what = ('),
-    c("con-receiver-dictionary-mutator-accepted", "a mutating method of the receiver's own __dict__ is accepted", (DICTS,), CON, '        elif kind == "instance_dict":', "        elif False:"),
-    c("con-setattr-on-a-module-accepted", "setattr on a module or an external object is accepted", (MODS,), CON, '        elif kind in ("namespace", "ns_dict"):', "        elif False:"),
-    c("con-setattr-through-an-unknown-name-accepted", "setattr through a name nothing binds is accepted", (FORMS,), CON, '        elif kind == "unknown":', "        elif False:"),
+      "        if isinstance(node, ast.NamedExpr):   # `(k := A).f = 1` writes through what `A` is\n            return self.kind_of(index, scope, node.value, context, seen)\n        return \"unknown\"", "        if isinstance(node, ast.NamedExpr):\n            return \"data\"\n        return \"unknown\""),
     c("con-write-through-data-to-a-family-name-accepted", "an attribute named like a method of a family, written through data, is accepted", (CLR + "writes_through_data_to_a_family_methods_name",), CON,
       "        if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store) and node.attr in self.family_names:", "        if False:"),
     c("con-family-names-include-single-classes", "the method names of a class that has no family count as a family's", (DATA,), CON, "            if size > 1:", "            if True:"),
     c("con-deleting-a-family-name-is-an-override", "deleting an attribute named like a method of a family is an override", (DATA,), CON,
       "        if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store) and node.attr in self.family_names:", "        if isinstance(node, ast.Attribute) and node.attr in self.family_names:"),
-    c("con-delattr-of-a-family-name-is-an-override", "delattr of a name that is a method of a family is an override", (DATA,), CON,
-      '        return kind == "data" and name in self.family_names and identity != "builtins.delattr"', '        return kind == "data" and name in self.family_names'),
-    c("con-setattr-through-data-to-a-family-name-accepted", "setattr of a literal name that is a method of a family, through data, is accepted", (CLR + "writes_through_data_to_a_family_methods_name",), CON,
-      '        return kind == "data" and name in self.family_names and identity != "builtins.delattr"', "        return False"),
     # --- exports ---------------------------------------------------------------------------------------------------------------------------
     c("con-all-passed-on-accepted", "`__all__` passed on as a value is accepted", (ALL,), CON, "            elif not self.reads_only(index, node, up):", "            elif False:"),
     c("con-all-of-another-module-not-seen", "`__all__` read or written as an attribute of another module is not looked at", (ALL,), CON,

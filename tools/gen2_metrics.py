@@ -38,11 +38,16 @@ Definitions
   tools/gen2_source_contract.py, docs/gen2/SOURCE-CONTRACT.md): a base is a name
   or an attribute chain followed through explicit imports and uniquely bound
   re-exports to one class (or to something outside the production inventory, an
-  external terminal), and anything the contract cannot make certain - a call, a
-  name bound twice or conditionally, a measured module that defines no such name,
-  a star import, a conditional class or method, an alias, an unrecorded
-  decorator, an inconsistent hierarchy - is REFUSED before anything is measured;
-  it is never read as "no collaboration" and nothing classifies it. The method
+  external terminal), and a form the contract names - a call, a name bound twice
+  or conditionally, a measured module that defines no such name, a star import, a
+  conditional class or method, an alias, an unrecorded decorator, an inconsistent
+  hierarchy, a banned dynamic mechanism, a private name, a quoted class-body
+  annotation - is REFUSED before anything is measured; it is never read as "no
+  collaboration" and nothing classifies it. Version 2 of the contract is soundy by
+  declaration: it claims exactness for the supported forms and refuses the named
+  mechanisms, and claims nothing about a value that reaches a store through a call,
+  a container or a parameter (SOURCE-CONTRACT.md, "What the contract does not
+  claim"). The method
   is resolved the way Python resolves it, through the C3 linearization of the
   family (not a depth-first walk: a diamond `D(B, C)` with `B(A)`, `C(A)` and
   `C.f` overriding `A.f` binds a call in `B` to `C.f`). A name is attributed to

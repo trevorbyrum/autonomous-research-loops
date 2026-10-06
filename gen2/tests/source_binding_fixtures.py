@@ -9,8 +9,10 @@ What this slice settles is BINDING IDENTITY: which class, function, module or ex
 files and `nonlocal` writes; since task 2q-a-repair-6 also which scope a name lives in (the compiler's symbol table: the probes of `scope-probes.json` below), the compiler-invalid `nonlocal` forms, and an
 alias the resolver cannot follow; since task 2q-a-repair-6b also the pairing of scopes with the compiler's tables (a generator over a generator) and Python's private-name mangling, her
 2q-a-repair-6 review R6-1 and R6-2 (`pairing-probes.json`, `private-name-probes.json`). It does not settle what a call or a container hands out at run time (a function that returns a module, a module in a list, a module passed to a
-parameter, a namespace dictionary's mutator): those are call-time owner effects, slice 2 of the F1 repair, and nothing here claims them. Of her 20 closure-probe cases only the four above are
-binding identity; the other 16 (and her walrus, default-parameter, `getattr` and `type(*args)` loader and class cases among them) are still accepted by the source stage.
+parameter): since SOURCE-CONTRACT version 2 those are declared outside the claim ("What the contract does not claim"), and the mechanisms the other probes of her 20 closure-probe cases
+use (namespace dictionaries, `setattr`, loaders by default argument, walrus or `getattr`, `type(*args)`, quoted field markers) are refused outright (gen2/tests/test_source_mechanisms.py).
+Since task 2q-a-repair-7 a private name is refused too (`SRC-PRIVATE-NAME`): the probes of her 2q-a-repair-6 review that were controls accepted in 6b are refusals now, and her 2q-a-repair-6b
+findings R6B-1 and R6B-2 (`regression-probes.json`) are probes below, refused in both services, with an ordinary dunder as the control.
 """
 from __future__ import annotations
 
@@ -72,19 +74,44 @@ PROBES = [
     Probe("a private method rebound by an assignment", "private-name-probes.json",
           {"a.py": py("class C:", "    def __helper(self): return 1", "    __helper = None", "    def run(self): return self.__helper")}, RUN_C, "None",
           refused=(("SRC-DEF-REBOUND", "a.py", 3),)),
-    Probe("a private method, defined once (a control: accepted)", "private-name-probes.json",
-          {"a.py": py("class C:", "    def __helper(self): return 1", "    def run(self): return self.__helper()")}, RUN_C, "1", sites=0),
-    Probe("a private local import is the base of a nested class (a control: accepted)", "private-name-probes.json",
+    Probe("a private method, defined once", "private-name-probes.json",
+          {"a.py": py("class C:", "    def __helper(self): return 1", "    def run(self): return self.__helper()")}, RUN_C, "1",
+          refused=(("SRC-PRIVATE-NAME", "a.py", 2), ("SRC-PRIVATE-NAME", "a.py", 3)), notes="accepted in 2q-a-repair-6b (control); since version 2 the private name is refused, however it is used"),
+    Probe("a private local import is the base of a nested class", "private-name-probes.json",
           {"a.py": A_OF_A, "b.py": py("class Factory:", "    def build(self):", "        from {pkg}.a import A as __A", "        class B(__A):", "            def run(self): return self.f()", "        return B")},
-          "from {pkg}.b import Factory; print(Factory().build()().run())", "A", sites=1, pairs=(("b.py", "a.py"),),
-          notes="`__A` is `_Factory__A` in build's table: the base is the project class a.py's A"),
+          "from {pkg}.b import Factory; print(Factory().build()().run())", "A", refused=(("SRC-PRIVATE-NAME", "b.py", 3), ("SRC-PRIVATE-NAME", "b.py", 4)),
+          notes="accepted in 2q-a-repair-6b (control: `__A` is `_Factory__A` in build's table); since version 2 the private alias is refused"),
+    # --- task 2q-a-repair-7: Astra's 2q-a-repair-6b findings, which refusing the private name closes at its root (private/evidence/astra-2q-a-repair-6b/regression-probes.json) ------------------
+    Probe("R6B-1: a subclass's private method does not override its base's (restored members attribute a call to the wrong file)", "regression-probes.json",
+          {"a.py": py("class A:", "    def __helper(self): return 'A'", "    def run(self): return self.__helper()"),
+           "b.py": py("from {pkg}.a import A", "", "class B(A):", "    def __helper(self): return 'B'")}, "from {pkg}.b import B; print(B().run(), B()._B__helper())", "A B",
+          refused=(("SRC-PRIVATE-NAME", "a.py", 2), ("SRC-PRIVATE-NAME", "a.py", 3), ("SRC-PRIVATE-NAME", "b.py", 4)),
+          notes="Python runs A's method for A.run and B's only through its mangled name: the pin attributed A.run's call to b.py. There is no private name left to attribute."),
+    Probe("R6B-1: the mangled spelling reached from a subclass", "regression-probes.json",
+          {"a.py": py("class A:", "    def __helper(self): return 'A'"), "b.py": py("from {pkg}.a import A", "", "class B(A):", "    def run(self): return self._A__helper()")},
+          "from {pkg}.b import B; print(B().run())", "A", refused=(("SRC-PRIVATE-NAME", "a.py", 2),),
+          notes="Python reaches A's method; the pin counted nothing: the private method that makes the spelling mean something is refused"),
+    Probe("R6B-2: mixed spellings of one private import and assignment", "regression-probes.json",
+          {"a.py": A_OF_A, "b.py": py("class Factory:", "    def build(self):", "        from {pkg}.a import A as __A", "        _Factory__A = object", "        class B(__A):", "            def run(self): return self.f()",
+                                      "        return B")},
+          "from {pkg}.b import Factory; print(Factory().build().__bases__)", RESIDUE, refused=(("SRC-PRIVATE-NAME", "b.py", 3), ("SRC-PRIVATE-NAME", "b.py", 5)),
+          notes="`__A` and `_Factory__A` are one local variable: the base is `object`, not the project's A, and the import and the assignment compete"),
+    Probe("R6B-2: a private name written as a global and as its mangled spelling", "regression-probes.json",
+          {"a.py": A_OF_A, "c.py": A_OF_C, "b.py": py("from {pkg}.a import A as __A", "from {pkg}.c import A as _Factory__A", "", "class Factory:", "    def build(self):", "        class B(__A):",
+                                                       "            def run(self): return self.f()", "        return B")},
+          "from {pkg}.b import Factory; print(Factory().build()().run())", "C", refused=(("SRC-PRIVATE-NAME", "b.py", 1), ("SRC-PRIVATE-NAME", "b.py", 6)),
+          notes="inside Factory the compiler looks `__A` up as `_Factory__A`, which is c.py's A, and the pin read the module's raw `__A` (a.py)"),
+    Probe("ordinary dunders and single-underscore names are no private names (a control: accepted)", "a control of the private-name refusal",
+          {"a.py": py("class A:", "    def f(self): return 'A'"), "b.py": py("from {pkg}.a import A", "", "class B(A):", "    def __init__(self): self._x = 1", "    def __eq__(self, other): return True", "    def _helper(self): return self.f()",
+                                                 "    def run(self): return self._helper()")},
+          "from {pkg}.b import B; print(B().run())", "A", sites=1, pairs=(("b.py", "a.py"),), notes="`__init__` and `__eq__` end in two underscores and `_helper` does not start with two: nothing is mangled, and the call is a cross-file site"),
     # --- controls, accepted or refused the same at both pins: the refusals above are not blanket ones, and a name is bound where Python binds it -------------------------
     Probe("the second name of an unpacking is the second value", "a control of the alias repair",
           {"a.py": "", "b.py": py(IMPORT_LOADER, "size, loader = (len, import_module)", 'value = loader("math")')}, RUN_LOADED, "math", refused=(("SRC-LOADER-UNINVENTORIED", "b.py", 3),),
           notes="the pairing is by position: `loader` is the loader and not the first value"),
     Probe("the first name of an unpacking is the first value (a control: accepted)", "a control of the alias repair",
-          {"a.py": "", "b.py": py(IMPORT_LOADER, "size, loader = (len, import_module)", 'value = size("math")')}, "from {pkg}.b import value; print(value)", "4",
-          notes="`size` is `len`, not the loader that follows it in the tuple"),
+          {"a.py": "", "b.py": py("from pkgutil import iter_modules", "size, loader = (len, iter_modules)", 'value = size("math")')}, "from {pkg}.b import value; print(value)", "4",
+          notes="`size` is `len`, not the loader call that follows it in the tuple (a pkgutil loader call: `importlib` itself is a banned name since version 2)"),
     Probe("a nonlocal write belongs to the nearest function that has the name (a control: accepted)", "a control of the nonlocal repair",
           {"a.py": BASE, "b.py": py("def factory():", "    from {pkg}.a import A", "    def middle():", "        A = 1", "        def replace():", "            nonlocal A", "            A = 2", "        replace()",
                                     "        return A", "    middle()", "    class B(A):", "        def run(self): return self.f()", "    return B", "B = factory()")},

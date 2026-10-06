@@ -1,4 +1,4 @@
-"""Fixtures for the supported-source contract (docs/gen2/SOURCE-CONTRACT.md; task 2q-a-repair-3).
+"""Fixtures for the supported-source contract (docs/gen2/SOURCE-CONTRACT.md, version 2; tasks 2q-a-repair-3 and 2q-a-repair-7).
 
 One REFUSAL per way a category can fire and one POSITIVE per supported form of each row of the contract's table, as literal source text (the oracle is the
 text and the contract, never the tool's output). Each fixture is a package of files relative to a service's package root, written under `gen2/` for the
@@ -79,8 +79,8 @@ REFUSALS = [
            {"a.py": py("class A:", "    def f(self):", "        return 1", "", "class B(A):", "    f = None")}, ("a.py", 6), "overrides a method named f"),
     refuse("an instance write that hides a method", "SRC-ATTR-OVERRIDE",
            {"a.py": py("class A:", "    def f(self):", "        return 1", "", "    def __init__(self):", "        self.f = lambda: 2")}, ("a.py", 6), "overrides a method named f"),
-    refuse("a setattr with the name of a method", "SRC-ATTR-OVERRIDE",
-           {"a.py": py("class A:", "    def f(self):", "        return 1", "", "    def g(self):", "        setattr(self, 'f', None)")}, ("a.py", 6), "overrides a method named f"),
+    refuse("a setattr with the name of a method", "SRC-DYNAMIC-MECHANISM",
+           {"a.py": py("class A:", "    def f(self):", "        return 1", "", "    def g(self):", "        setattr(self, 'f', None)")}, ("a.py", 6), "`setattr`"),
     # --- row 4: imports and exports --------------------------------------------------------------------------------------
     refuse("a star import", "SRC-STAR-IMPORT", {"base.py": BASE, "a.py": py("from {pkg}.base import *")}, ("a.py", 1), "a star import"),
     refuse("an explicit import beside a competing star import (Gate D #4)", "SRC-STAR-IMPORT",
@@ -171,14 +171,26 @@ REFUSALS = [
     refuse("a class attribute written through self.__class__", "SRC-REFLECTIVE", {"a.py": py("class A:", "    def f(self):", "        self.__class__.counter = 1")}, ("a.py", 3), "writes the attribute counter"),
     refuse("__class__ assigned", "SRC-REFLECTIVE", {"a.py": py("class A:", "    def f(self, other):", "        self.__class__ = other")}, ("a.py", 3), "writes __class__"),
     refuse("__bases__ assigned", "SRC-REFLECTIVE", {"a.py": py("class A:", "    pass", "", "class B:", "    pass", "", "B.__bases__ = (A,)")}, ("a.py", 7), "writes __bases__"),
-    refuse("a class namespace written through __dict__", "SRC-REFLECTIVE", {"a.py": py("class A:", "    pass", "", "A.__dict__['f'] = 1")}, ("a.py", 4), "namespace of a class"),
-    refuse("setattr on a class (the shape of _no_reading)", "SRC-REFLECTIVE",
-           {"a.py": py("def decorate(cls):", "    for name in ('__len__',):", "        setattr(cls, name, None)", "    return cls")}, ("a.py", 3), "computed name"),
-    refuse("setattr with a computed name", "SRC-REFLECTIVE", {"a.py": py("class A:", "    def f(self, name):", "        setattr(self, name, 1)")}, ("a.py", 3), "computed name"),
-    refuse("setattr on a class by its name", "SRC-REFLECTIVE", {"a.py": py("class A:", "    pass", "", "setattr(A, 'x', 1)")}, ("a.py", 4), "writes an attribute of a class"),
-    refuse("a module namespace written through globals()", "SRC-REFLECTIVE", {"a.py": py("globals()['x'] = 1")}, ("a.py", 1), "writes a namespace through globals()"),
-    refuse("a module namespace changed by globals().update", "SRC-REFLECTIVE", {"a.py": py("globals().update({'x': 1})")}, ("a.py", 1), "globals()"),
-    refuse("sys.modules written", "SRC-REFLECTIVE", {"a.py": py("import sys", "", "sys.modules['x'] = sys")}, ("a.py", 3), "writes sys.modules"),
+    # the mechanisms that write a namespace without naming it are banned outright (version 2, "Dynamic mechanisms"); the families by mechanism are gen2/tests/source_mechanism_fixtures.py
+    refuse("a class namespace written through __dict__", "SRC-DYNAMIC-MECHANISM", {"a.py": py("class A:", "    pass", "", "A.__dict__['f'] = 1")}, ("a.py", 4), "`__dict__`"),
+    refuse("setattr on a class (the shape of _no_reading)", "SRC-DYNAMIC-MECHANISM",
+           {"a.py": py("def decorate(cls):", "    for name in ('__len__',):", "        setattr(cls, name, None)", "    return cls")}, ("a.py", 3), "`setattr`"),
+    refuse("setattr with a computed name", "SRC-DYNAMIC-MECHANISM", {"a.py": py("class A:", "    def f(self, name):", "        setattr(self, name, 1)")}, ("a.py", 3), "`setattr`"),
+    refuse("setattr on a class by its name", "SRC-DYNAMIC-MECHANISM", {"a.py": py("class A:", "    pass", "", "setattr(A, 'x', 1)")}, ("a.py", 4), "`setattr`"),
+    refuse("a module namespace written through globals()", "SRC-DYNAMIC-MECHANISM", {"a.py": py("globals()['x'] = 1")}, ("a.py", 1), "`globals`"),
+    refuse("a module namespace changed by globals().update", "SRC-DYNAMIC-MECHANISM", {"a.py": py("globals().update({'x': 1})")}, ("a.py", 1), "`globals`"),
+    refuse("sys.modules written", "SRC-DYNAMIC-MECHANISM", {"a.py": py("import sys", "", "sys.modules['x'] = sys")}, ("a.py", 3), "`modules`"),
+    # --- version 2: the dynamic mechanisms, private names and quoted class-body annotations -------------------------------------------------------
+    refuse("instance data initialised through object.__setattr__ outside the excepted statements", "SRC-DYNAMIC-MECHANISM",
+           {"a.py": py("class A:", "    __slots__ = ('_value', 'other')", "", "    def __init__(self, value):", "        object.__setattr__(self, '_value', value)")}, ("a.py", 5), "`__setattr__`"),
+    refuse("a thread-local's __dict__ outside the excepted statement", "SRC-DYNAMIC-MECHANISM",
+           {"a.py": py("import threading", "", "_HELD = threading.local()", "", "def keys():", "    return _HELD.__dict__.setdefault('keys', set())")}, ("a.py", 6), "`__dict__`"),
+    refuse("a private method", "SRC-PRIVATE-NAME", {"a.py": py("class A:", "    def __helper(self):", "        return 1", "    def run(self):", "        return self.__helper()")}, ("a.py", 2), "`__helper` is a private"),
+    refuse("a private attribute read through the receiver", "SRC-PRIVATE-NAME", {"a.py": py("class A:", "    def run(self):", "        return self.__value")}, ("a.py", 3), "`__value`"),
+    refuse("a private name bound by a local import", "SRC-PRIVATE-NAME", {"a.py": py("def f():", "    from os import path as __p", "    return __p")}, ("a.py", 2), "`__p`"),
+    refuse("a quoted field marker in a dataclass body", "SRC-QUOTED-ANNOTATION",
+           {"a.py": py("from dataclasses import dataclass", "", "@dataclass", "class B:", "    f: 'ClassVar[object]'")}, ("a.py", 5), "quoted"),
+    refuse("a quoted annotation in a plain class body", "SRC-QUOTED-ANNOTATION", {"a.py": py("class B:", "    f: 'int' = 0")}, ("a.py", 2), "quoted"),
     # --- closure: a form the contract does not record (the families by position and kind are gen2/tests/source_closure_fixtures.py) ------------------
     refuse("a type alias statement", "SRC-FORM-UNRECOGNISED", {"a.py": py("type Alias = int")}, ("a.py", 1), "TypeAlias"),
     refuse("a type parameter of a function", "SRC-FORM-UNRECOGNISED", {"a.py": py("def f[T](x: T) -> T:", "    return x")}, ("a.py", 1), "TypeVar"),
@@ -268,9 +280,16 @@ POSITIVES = [
            methods={"a.py::A": {"f": "method", "g": "method", "h": "method"}}),
     accept("a staticmethod's first parameter is an ordinary name it may rebind", {"a.py": py("class A:", "    @staticmethod", "    def s(x):", "        x = x + 1", "        return x")},
            methods={"a.py::A": {"s": "static"}}),
-    accept("instance-data initialisation through object.__setattr__ and a literal setattr", {"a.py": py("class A:", "    __slots__ = ('_value', 'other')", "", "    def __init__(self, value):", "        object.__setattr__(self, '_value', value)",
-                                                                                                       "        setattr(self, 'other', 1)")}, classes=["a.py::A"]),
-    accept("a data object's __dict__ is data, not a class namespace", {"a.py": py("import threading", "", "_HELD = threading.local()", "", "def keys():", "    return _HELD.__dict__.setdefault('keys', set())")}, functions=["a.py::keys"]),
+    accept("instance-data initialisation through plain assignment, slots and data of a thread-local", {"a.py": py("import threading", "", "_HELD = threading.local()", "", "class A:", "    __slots__ = ('_value', 'other')", "",
+                                                                                                                       "    def __init__(self, value):", "        self._value = value", "        self.other = 1", "", "def keys():",
+                                                                                                                       "    _HELD.keys = set()", "    return _HELD.keys")}, classes=["a.py::A"], functions=["a.py::A.__init__", "a.py::keys"]),
+    # --- version 2: what the ban leaves alone -------------------------------------------------------------------------------
+    accept("plain data processing, getattr on data, type of an object and the compile of a regular expression stay accepted", {"a.py": py(
+        "import re", "", "PATTERN = re.compile('[a-z]+')", "", "def tally(rows, key):", "    out = {}", "    for row in rows:", "        row.seen = True", "        out.setdefault(getattr(row, key, None), []).append(type(row))",
+        "    return sorted(out, key=str), isinstance(rows, (type, list))")}, functions=["a.py::tally"]),
+    accept("ordinary dunders are no private names, and a single underscore is no mangling", {"a.py": py(
+        "class A:", "    def __init__(self):", "        self._x = 1", "", "    def __eq__(self, other):", "        return True", "", "    def __hash__(self):", "        return 1", "", "    def _helper(self):", "        return self._x")},
+           methods={"a.py::A": {"__init__": "method", "__eq__": "method", "__hash__": "method", "_helper": "method"}}),
     # --- row 8: non-graph mechanisms ----------------------------------------------------------------------------------
     accept("super(), indirect calls and attribute-method calls stay outside the metrics", {"a.py": BASE, "b.py": py("from {pkg}.a import Base", "", "class C(Base):", "    def f(self):", "        return super().f()", "",
                                                                                                                   "    def g(self, handler):", "        return handler(), self.handler.run(), getattr(self, 'f')()")},
@@ -304,8 +323,9 @@ ROW_OF = {
     "the engine's _serial wrapper leaves the method a method": "decorators and descriptors",
     "direct calls on the receiver, closures that capture it, and data that is not a method": "receiver calls and attributes",
     "a staticmethod's first parameter is an ordinary name it may rebind": "receiver calls and attributes",
-    "instance-data initialisation through object.__setattr__ and a literal setattr": "receiver calls and attributes",
-    "a data object's __dict__ is data, not a class namespace": "receiver calls and attributes",
+    "instance-data initialisation through plain assignment, slots and data of a thread-local": "receiver calls and attributes",
+    "plain data processing, getattr on data, type of an object and the compile of a regular expression stay accepted": "dynamic mechanisms",
+    "ordinary dunders are no private names, and a single underscore is no mangling": "private names",
     "super(), indirect calls and attribute-method calls stay outside the metrics": "non-graph mechanisms",
 }
 ROWS = sorted(set(ROW_OF.values()))
