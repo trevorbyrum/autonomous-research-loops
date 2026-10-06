@@ -5180,25 +5180,25 @@
   "controls": [
    "test_operator_status.TopicWaitingTest.test_an_overdue_brief_names_its_owner_and_deadline"
   ],
-  "why": "gen2/router/status.py: executes line 64"
+  "why": "gen2/router/status.py: executes line 97"
  },
  "1E-rstatus-cleared-holds": {
   "controls": [
    "test_operator_status.TopicWaitingTest.test_an_overdue_brief_names_its_owner_and_deadline"
   ],
-  "why": "gen2/router/status.py: executes line 92"
+  "why": "gen2/router/status.py: executes line 125"
  },
  "1E-rstatus-closed-reservations": {
   "controls": [
    "test_operator_status.TopicWaitingTest.test_an_overdue_brief_names_its_owner_and_deadline"
   ],
-  "why": "gen2/router/status.py: executes line 93"
+  "why": "gen2/router/status.py: executes line 126"
  },
  "1E-rstatus-deadline-never-passes": {
   "controls": [
    "test_operator_status.InvocationWaitingTest.test_each_invocation_carries_its_lease_generation_and_pinned_bundle"
   ],
-  "why": "gen2/router/status.py: executes line 129 (else 127)"
+  "why": "gen2/router/status.py: executes line 162 (else 160)"
  },
  "1E-rstatus-ended-invocations": {
   "by_hand": true,
@@ -5223,79 +5223,79 @@
   "controls": [
    "test_operator_status.EngineWideTest.test_the_station_incidents_are_listed_and_named_on_their_items"
   ],
-  "why": "gen2/router/status.py: executes line 67"
+  "why": "gen2/router/status.py: executes line 100"
  },
  "1E-rstatus-episode-hold-unfound": {
   "controls": [
    "test_operator_status.InvocationWaitingTest.test_each_invocation_carries_its_lease_generation_and_pinned_bundle"
   ],
-  "why": "gen2/router/status.py: executes line 123"
+  "why": "gen2/router/status.py: executes line 156"
  },
  "1E-rstatus-health-always": {
   "controls": [
    "test_operator_auth.HealthTest.test_health_is_a_read"
   ],
-  "why": "gen2/router/status.py: executes line 56; or leaves line 52-54 for a line outside 51-56 (or returns)"
+  "why": "gen2/router/status.py: executes line 89; or leaves line 85-87 for a line outside 84-89 (or returns)"
  },
  "1E-rstatus-lane-requeue-unread": {
   "controls": [
    "test_operator_status.TopicWaitingTest.test_an_overdue_brief_names_its_owner_and_deadline"
   ],
-  "why": "gen2/router/status.py: executes line 164"
+  "why": "gen2/router/status.py: executes line 197"
  },
  "1E-rstatus-launch-unchecked": {
   "controls": [
    "test_operator_status.TopicWaitingTest.test_an_overdue_brief_names_its_owner_and_deadline"
   ],
-  "why": "gen2/router/status.py: executes line 124"
+  "why": "gen2/router/status.py: executes line 157"
  },
  "1E-rstatus-lease-never-expires": {
   "controls": [
    "test_operator_status.InvocationWaitingTest.test_each_invocation_carries_its_lease_generation_and_pinned_bundle"
   ],
-  "why": "gen2/router/status.py: executes line 131 (else 127)"
+  "why": "gen2/router/status.py: executes line 164 (else 160)"
  },
  "1E-rstatus-pins-compatible": {
   "controls": [
    "test_operator_status.InvocationWaitingTest.test_each_invocation_carries_its_lease_generation_and_pinned_bundle"
   ],
-  "why": "gen2/router/status.py: executes line 133 (else 127)"
+  "why": "gen2/router/status.py: executes line 166 (else 160)"
  },
  "1E-rstatus-requeue-hold-unfound": {
   "controls": [
    "test_operator_status.TopicWaitingTest.test_an_overdue_brief_names_its_owner_and_deadline"
   ],
-  "why": "gen2/router/status.py: executes line 166; or executes line 164"
+  "why": "gen2/router/status.py: executes line 199; or executes line 197"
  },
  "1E-rstatus-stale-drafts": {
   "controls": [
    "test_operator_status.TopicWaitingTest.test_an_overdue_brief_names_its_owner_and_deadline"
   ],
-  "why": "gen2/router/status.py: executes line 118 (else 117)"
+  "why": "gen2/router/status.py: executes line 151 (else 150)"
  },
  "1E-rstatus-superseded-facts": {
   "controls": [
    "test_operator_status.EngineWideTest.test_the_station_incidents_are_listed_and_named_on_their_items"
   ],
-  "why": "gen2/router/status.py: executes line 80-81 (else 72)"
+  "why": "gen2/router/status.py: executes line 113-114 (else 105)"
  },
  "1E-rstatus-superseding-unnamed": {
   "controls": [
    "test_operator_status.InvocationWaitingTest.test_each_invocation_carries_its_lease_generation_and_pinned_bundle"
   ],
-  "why": "gen2/router/status.py: executes line 133 (else 127)"
+  "why": "gen2/router/status.py: executes line 166 (else 160)"
  },
  "1E-rstatus-taken-signals": {
   "controls": [
    "test_operator_status.TopicWaitingTest.test_an_overdue_brief_names_its_owner_and_deadline"
   ],
-  "why": "gen2/router/status.py: executes line 107 (else 94)"
+  "why": "gen2/router/status.py: executes line 140 (else 127)"
  },
  "1E-rstatus-unknown-topic-empty": {
   "controls": [
    "test_operator_status.ReadOnlyTest.test_status_changes_nothing"
   ],
-  "why": "gen2/router/status.py: leaves line 65 for a line outside 65-66 (or returns); or leaves line 65 for a line outside 65-66 (or returns)"
+  "why": "gen2/router/status.py: leaves line 98 for a line outside 98-99 (or returns); or leaves line 98 for a line outside 98-99 (or returns)"
  },
  "1E-status-arguments-unchecked": {
   "controls": [
@@ -5655,61 +5655,61 @@
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 165; or executes line 164"
+  "why": "gen2/router/capabilities.py: executes line 198; or executes line 197"
  },
  "1F-caps-declared-expired-healthy": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_an_older_observation_is_kept_and_moves_nothing"
   ],
-  "why": "gen2/router/capabilities.py: executes line 146"
+  "why": "gen2/router/capabilities.py: executes line 179"
  },
  "1F-caps-declared-instant-unchecked": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_a_declared_expiry_is_a_degraded_fact_and_a_hold_to_remedy"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 131-133 for a line outside 131-134 (or returns), having executed line 131"
+  "why": "gen2/router/capabilities.py: leaves line 164-166 for a line outside 164-167 (or returns), having executed line 164"
  },
  "1F-caps-declared-remedy-unknown": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_an_unusable_credential_opens_one_typed_owned_deadlined_hold_bound_to_its_fact"
   ],
-  "why": "gen2/router/capabilities.py: executes line 171 (else 169); or executes line 166"
+  "why": "gen2/router/capabilities.py: executes line 204 (else 202); or executes line 199"
  },
  "1F-caps-every-observation-a-transition": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 152"
+  "why": "gen2/router/capabilities.py: executes line 185"
  },
  "1F-caps-hold-on-transition-only": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 164"
+  "why": "gen2/router/capabilities.py: executes line 197"
  },
  "1F-caps-hold-router-authority": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_a_runner_error_is_an_unknown_fact_and_a_hold_whose_remedy_is_unknown"
   ],
-  "why": "gen2/router/capabilities.py: executes line 172 (else 169); or executes line 166"
+  "why": "gen2/router/capabilities.py: executes line 205 (else 202); or executes line 199"
  },
  "1F-caps-no-last-success": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 160 (else 158); or executes line 153"
+  "why": "gen2/router/capabilities.py: executes line 193 (else 191); or executes line 186"
  },
  "1F-caps-older-applied": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 150"
+  "why": "gen2/router/capabilities.py: executes line 183"
  },
  "1F-caps-order-unchecked": {
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 129 for a line outside 129-130 (or returns)"
+  "why": "gen2/router/capabilities.py: leaves line 162 for a line outside 162-163 (or returns)"
  },
  "1F-caps-replay-unchecked": {
   "by_hand": true,
@@ -5722,7 +5722,7 @@
   "controls": [
    "test_capability_probe.ProbeRecordTest.test_the_first_observation_is_a_transition_even_when_usable"
   ],
-  "why": "gen2/router/capabilities.py: executes line 146"
+  "why": "gen2/router/capabilities.py: executes line 179"
  },
  "1F-eng-probe-on-owner": {
   "controls": [
@@ -5892,7 +5892,7 @@
   "controls": [
    "test_capability_probe.StationProbeTest.test_the_probe_timeout_is_the_bundle_policy_and_the_record_is_the_router_own"
   ],
-  "why": "gen2/router/status.py: executes line 83 (else 72)"
+  "why": "gen2/router/status.py: executes line 116 (else 105)"
  },
  "2A-approval-references-unchecked": {
   "controls": [
@@ -6727,7 +6727,7 @@
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 196 for a line outside 196-197 (or returns)"
+  "why": "gen2/router/capabilities.py: leaves line 229 for a line outside 229-230 (or returns)"
  },
  "2B-fact-id-without-revision": {
   "controls": [
@@ -6752,25 +6752,25 @@
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: executes line 231"
+  "why": "gen2/router/capabilities.py: executes line 264"
  },
  "2B-fact-older-recorded": {
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 220 for a line outside 220-222 (or returns)"
+  "why": "gen2/router/capabilities.py: leaves line 253 for a line outside 253-255 (or returns)"
  },
  "2B-fact-order-by-arrival": {
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: executes line 230; or executes line 217"
+  "why": "gen2/router/capabilities.py: executes line 263; or executes line 250"
  },
  "2B-fact-order-by-arrival-two-processes": {
   "controls": [
    "test_gateway_client.RecordedByTheRouter.test_pages_answered_under_two_snapshots_record_each_in_page_order"
   ],
-  "why": "gen2/router/capabilities.py: executes line 230; or executes line 217"
+  "why": "gen2/router/capabilities.py: executes line 263; or executes line 250"
  },
  "2B-fact-revision-any": {
   "controls": [
@@ -6782,19 +6782,19 @@
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 227 for a line outside 227-229 (or returns)"
+  "why": "gen2/router/capabilities.py: leaves line 260 for a line outside 260-262 (or returns)"
  },
  "2B-fact-state-changes-in-episode": {
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_later_snapshot_of_the_episode_supersedes_it_and_keeps_its_onset"
   ],
-  "why": "gen2/router/capabilities.py: leaves line 223 for a line outside 223-225 (or returns)"
+  "why": "gen2/router/capabilities.py: leaves line 256 for a line outside 256-258 (or returns)"
  },
  "2B-fact-unfenced": {
   "controls": [
    "test_gateway_client.GatewayFactsCommand.test_a_fact_is_recorded_and_replays"
   ],
-  "why": "gen2/router/capabilities.py: executes line 214"
+  "why": "gen2/router/capabilities.py: executes line 247"
  },
  "2B-fact-unlinked": {
   "controls": [
@@ -9179,6 +9179,48 @@
    "test_source_binding.UnpackingTest.test_each_name_takes_the_value_at_its_position_and_a_chain_is_an_alias"
   ],
   "why": "pairs the names of an assignment with literals that have no starred element, the same count and a position each: the mutants that pair a loop's target, a starred literal or a literal of another count change none of them"
+ },
+ "2QB2-capabilities-core-declares-a-ghost": {
+  "by_hand": true,
+  "controls": [
+   "test_router_composition.CollaboratorInterfaceTest.test_every_core_member_a_collaborator_uses_is_declared"
+  ],
+  "why": "checks every member capabilities.py reads off self._core is declared by CapabilityCore: the mutant adds a declaration, so every use is still declared"
+ },
+ "2QB2-router-drops-a-public-method": {
+  "by_hand": true,
+  "controls": [
+   "test_router_composition.CollaboratorInterfaceTest.test_a_collaborator_holds_only_the_core_and_reaches_the_store_through_it"
+  ],
+  "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the dropped public name is not what that test reads"
+ },
+ "2QB2-router-inherits-a-collaborator": {
+  "by_hand": true,
+  "controls": [
+   "test_router_composition.CollaboratorInterfaceTest.test_a_collaborator_holds_only_the_core_and_reaches_the_store_through_it"
+  ],
+  "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the Router still composes them under the mutant"
+ },
+ "2QB2-status-core-omits-a-member": {
+  "by_hand": true,
+  "controls": [
+   "test_router_composition.CollaboratorInterfaceTest.test_control_every_declared_member_is_one_the_router_has"
+  ],
+  "why": "checks every member StatusCore declares is one a real Router has: the mutant removes a declaration, so what is left is still all the Router's"
+ },
+ "2QB2-status-opens-its-own-transaction": {
+  "by_hand": true,
+  "controls": [
+   "test_router_composition.CollaboratorInterfaceTest.test_every_core_member_a_collaborator_uses_is_declared"
+  ],
+  "why": "checks every member status.py reads off self._core is declared by StatusCore: the mutant opens the transaction through self._core._store, a member that is declared"
+ },
+ "2QB2-status-reaches-the-store-directly": {
+  "by_hand": true,
+  "controls": [
+   "test_router_composition.CollaboratorInterfaceTest.test_every_core_member_a_collaborator_uses_is_declared"
+  ],
+  "why": "checks every member status.py reads off self._core is declared by StatusCore: the mutant's store attribute is not read off self._core, so the uses are as declared"
  },
  "2QC-con-alias-of-a-class-is-data": {
   "controls": [

@@ -33,7 +33,9 @@ lifecycle.py; task 1d's config bundles, question registry and qualification
 records in registries.py, brief and contract versions and amendment impact
 (G-1) in amendments.py, re-queues, reservations and the signal queue in
 scheduling.py; task 1e's status read and health probe in status.py; task 1f's
-capability-probe records in capabilities.py. Task 2a's workflow write paths:
+capability-probe records in capabilities.py (status.py and capabilities.py are
+explicit collaborators the Router composes, task 2q-b2: BOUNDARIES.md, "Router
+composition"; the four mixins above are not yet). Task 2a's workflow write paths:
 work registration here (register_works), a topic's claim-source links, a
 checkpoint's review closure, a pre-contract scoping report and source
 proposals as commit_outcome sections here, the scope decision's move and
@@ -191,7 +193,7 @@ def _short(text: str) -> str:
     return (text or "refused")[:500]
 
 
-class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities):
+class Router(Lifecycle, Registries, Amendments, Scheduling):
     """The ControlBackend (gen2/core/control.py) over one store. Construct
     with a Store (Router.open for a durable one); the router owns it and hands
     it to no one. Qualification is read from the store's own records
@@ -209,6 +211,8 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
         self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {
             **COMMANDS["$defs"], **LIFECYCLE_COMMANDS, **REGISTRY_COMMANDS, **AMENDMENT_COMMANDS, **SCHEDULING_COMMANDS,
             **STATUS_COMMANDS, **CAPABILITY_COMMANDS}}})
+        self._status = Status(self)
+        self._capabilities = Capabilities(self)
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
@@ -217,7 +221,24 @@ class Router(Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities
     def close(self) -> None:
         self._store.close()
 
+    # -- the collaborators' public routes (status.py, capabilities.py) -----
+    def healthy(self) -> bool:
+        return self._status.healthy()
+
+    def status(self, request: Mapping) -> dict:
+        return self._status.status(request)
+
+    def record_capability_probe(self, request: Mapping) -> dict:
+        return self._capabilities.record_capability_probe(request)
+
+    def record_gateway_facts(self, request: Mapping) -> dict:
+        return self._capabilities.record_gateway_facts(request)
+
     # -- small helpers -----------------------------------------------------
+    def _snapshot(self):
+        """One read transaction that writes nothing: the status read and the health probe run in it (status.py)."""
+        return self._store.transaction()
+
     def _now(self) -> str:
         now = self._clock()
         if not instants.is_utc_instant(now):

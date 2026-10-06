@@ -1,6 +1,7 @@
-"""Capability probes as the router records them (task 1f). A mixin of
-service.Router, with the router's one shape: validate outside any
-transaction, then one short transaction that fences and writes.
+"""Capability probes as the router records them (task 1f). A collaborator
+of service.Router (task 2q-b2: "Router composition", BOUNDARIES.md), with the
+router's one shape: validate outside any transaction, then one short
+transaction (the core's: `_guarded`) that fences and writes.
 
 Trace: DEPLOYMENT-CONTRACT.md §4 (testing requirement (d): a revoked or
 expired credential produces a dated capability fact and a typed capability
@@ -65,7 +66,7 @@ opens no hold: what a failing gateway capability holds is 2c/2e's to decide.
 """
 from __future__ import annotations
 
-from typing import Mapping
+from typing import Callable, Mapping, Protocol
 
 from gen2.core import canonical
 from gen2.router import boundary
@@ -121,59 +122,91 @@ def _successor(fact: Mapping) -> dict:
     return {"successor_since": fact["since"], "successor_state": fact["state"], "successor_revision": fact["revision"]}
 
 
+class Rows(Protocol):
+    """The router's store as the capability record uses it (store/api.py Store): inside the core's transaction."""
+    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
+    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
+    def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object]) -> None: ...
+
+
+class Schemas(Protocol):
+    """The router's schema set as boundary.require_schema uses it (schemas.py SchemaSet)."""
+    def errors(self, instance: object, target: str) -> list[str]: ...
+
+
+class CapabilityCore(Protocol):
+    """What the capability record takes of the router core, and nothing else;
+    service.Router implements it without inheriting it. A member with no comment
+    is the core's own (service.py); a comment names the mixin of the Router that
+    defines it until that mixin is made a collaborator too."""
+    _store: Rows
+    _schemas: Schemas
+    _new_id: Callable[[str], str]
+    def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
+    def _guarded(self, reason: str, body: Callable[[str], object]) -> object: ...  # the one transaction an operation runs in
+    def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None, invocation_id=None, operation_id=None) -> str: ...
+    def _capability(self, capability_id: str, invocation_id: str) -> dict: ...
+    def _require_current_lease(self, inv: dict, now: str, lease_ref: Mapping | None = None) -> dict: ...
+    def _active_bundle(self) -> dict | None: ...  # registries.py
+    def _router_policy(self, bundle_hash: str) -> dict: ...  # registries.py
+
+
 class Capabilities:
+    def __init__(self, core: CapabilityCore) -> None:
+        self._core = core
+
     def record_capability_probe(self, request: Mapping) -> dict:
         try:
             req = boundary.normalize(request, "request_invalid")
-            boundary.require_schema(self._schemas, req, "router-commands#/$defs/capability_probe", "request_invalid")
+            boundary.require_schema(self._core._schemas, req, "router-commands#/$defs/capability_probe", "request_invalid")
             if boundary.instant(req["observed_at"]) < boundary.instant(req["started_at"]):
                 raise Refusal("request_invalid", "a probe is observed at or after it started")
             if req["outcome"] == "declared_expired" and not (
                     req["declared_expiry"] and req["declared_expiry"]["access_token"]
                     and boundary.instant(req["declared_expiry"]["access_token"]) <= boundary.instant(req["observed_at"])):
                 raise Refusal("request_invalid", "declared_expired names the access token's declared expiry, at or before the observation")
-            return self._guarded("request_invalid", lambda now: self._probe_in_transaction(req, now))
+            return self._core._guarded("request_invalid", lambda now: self._probe_in_transaction(req, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
 
     def _probe_in_transaction(self, req: dict, now: str) -> dict:
         audit_id = "aud_" + req["probe_id"]
-        recorded = self._one("audit_events", {"audit_event_id": audit_id})
+        recorded = self._core._one("audit_events", {"audit_event_id": audit_id})
         if recorded is not None:
             if recorded["kind"] != AUDIT_KIND or recorded["detail"]["observation"] != req:
                 raise Refusal("probe_conflict", f"{req['probe_id']} was recorded with another observation")
             return {**recorded["detail"]["reply"], "status": "replayed"}
         capability, state = req["capability"], OUTCOME_STATE[req["outcome"]]
-        seen = [e["detail"]["observation"] for e in self._store.select("audit_events", {"kind": AUDIT_KIND})
+        seen = [e["detail"]["observation"] for e in self._core._store.select("audit_events", {"kind": AUDIT_KIND})
                 if e["detail"]["observation"]["capability"] == capability]
         newest = max((boundary.instant(o["observed_at"]) for o in seen), default=None)
         applied = newest is None or boundary.instant(req["observed_at"]) >= newest
-        current = next((f for f in self._store.select("capability_facts", {"capability": capability}) if f["superseded_by_fact_id"] is None), None)
+        current = next((f for f in self._core._store.select("capability_facts", {"capability": capability}) if f["superseded_by_fact_id"] is None), None)
         transition = applied and (current is None or current["state"] != state)
         if transition:
             usable = [o["observed_at"] for o in seen if o["outcome"] == "usable"]
-            fact_id = self._new_id("fact_")
+            fact_id = self._core._new_id("fact_")
             if current is not None:
-                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, {"superseded_by_fact_id": fact_id})
-            self._store.insert("capability_facts", {
+                self._core._store.update("capability_facts", {"fact_id": current["fact_id"]}, {"superseded_by_fact_id": fact_id})
+            self._core._store.insert("capability_facts", {
                 "fact_id": fact_id, "capability": capability, "state": state, "detail": f"{req['outcome']}: {req['detail']}"[:500],
                 "since": req["observed_at"], "last_success_at": None if state == "healthy" else max(usable, key=boundary.instant, default=None),
                 "affected_lanes": req["affected_lanes"], "recorded_at": now})
-            current = self._one("capability_facts", {"fact_id": fact_id})
+            current = self._core._one("capability_facts", {"fact_id": fact_id})
         hold = None
         if applied and state != "healthy":
-            hold = next((h for h in self._store.select("holds", {"subject_ref": hold_subject(capability)}) if h["cleared_at"] is None), None)
+            hold = next((h for h in self._core._store.select("holds", {"subject_ref": hold_subject(capability)}) if h["cleared_at"] is None), None)
             if hold is None:
-                active = self._active_bundle()
-                policy = self._router_policy(active["bundle_hash"]) if active is not None else ROUTER_DEFAULTS
-                hold = {"hold_id": self._new_id("hold_"), "topic_id": None, "subject_ref": hold_subject(capability), "hold_class": "capability",
+                active = self._core._active_bundle()
+                policy = self._core._router_policy(active["bundle_hash"]) if active is not None else ROUTER_DEFAULTS
+                hold = {"hold_id": self._core._new_id("hold_"), "topic_id": None, "subject_ref": hold_subject(capability), "hold_class": "capability",
                         "cause": f"{capability} {req['outcome']}: {req['detail']}"[:500],
                         "recoverability": "needs_remediation" if req["outcome"] in ("unusable_credential", "declared_expired") else "unknown",
                         "required_authority": "operator", "owner": "operator", "deadline_at": _after(now, policy["hold_window_s"]),
                         "clears_when": f"an operator hold_clearance, once a probe records {capability} usable (for a credential: refreshed "
                                        "in its auth volume; for the runner: repaired by an image release)",
                         "capability_fact_id": current["fact_id"], "created_at": now, "created_by_operation_id": None}
-                self._store.insert("holds", hold)
+                self._core._store.insert("holds", hold)
                 hold = {"hold_id": hold["hold_id"], "opened": True}
             else:
                 hold = {"hold_id": hold["hold_id"], "opened": False}
@@ -182,28 +215,28 @@ class Capabilities:
                  "fact": {"fact_id": current["fact_id"], "state": current["state"], "since": current["since"],  # an older observation implies a newer one's fact
                           "last_success_at": current["last_success_at"], "transition": transition},
                  "hold": hold}
-        self._store.insert("audit_events", {"audit_event_id": audit_id, "at": now, "kind": AUDIT_KIND, "topic_id": None, "invocation_id": None,
+        self._core._store.insert("audit_events", {"audit_event_id": audit_id, "at": now, "kind": AUDIT_KIND, "topic_id": None, "invocation_id": None,
                                             "operation_id": None, "detail": {"observation": req, "reply": reply}})
         return reply
 
     def record_gateway_facts(self, request: Mapping) -> dict:
         try:
             req = boundary.normalize(request, "request_invalid")
-            boundary.require_schema(self._schemas, req, "router-commands#/$defs/gateway_facts", "request_invalid")
+            boundary.require_schema(self._core._schemas, req, "router-commands#/$defs/gateway_facts", "request_invalid")
             if len({f["capability"] for f in req["facts"]}) != len(req["facts"]):
                 raise Refusal("request_invalid", "one fact per capability: an answer reports each capability's current fact once")
             for fact in req["facts"]:
                 if fact["fact_id"] != canonical.gateway_fact_id(fact):
                     raise Refusal("request_invalid", f"{fact['fact_id']} is not the id of its content ({fact['capability']} since {fact['since']})")
-            return self._guarded("request_invalid", lambda now: self._gateway_facts_in_transaction(req, now))
+            return self._core._guarded("request_invalid", lambda now: self._gateway_facts_in_transaction(req, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
 
     def _gateway_facts_in_transaction(self, req: dict, now: str) -> dict:
-        inv = self._capability(req["capability_id"], req["invocation_id"])
+        inv = self._core._capability(req["capability_id"], req["invocation_id"])
         replies, new = [], []
         for fact in req["facts"]:
-            if self._one("capability_facts", {"fact_id": fact["fact_id"]}) is None:   # the id is its content's: recorded is identical
+            if self._core._one("capability_facts", {"fact_id": fact["fact_id"]}) is None:   # the id is its content's: recorded is identical
                 new.append(fact)
             else:
                 replies.append({"fact_id": fact["fact_id"], "status": "replayed"})
@@ -211,11 +244,11 @@ class Capabilities:
             return {"status": "replayed", "facts": replies}
         if inv["state"] != "running" or inv["cancel_requested_at"] is not None:
             raise Refusal("invocation_state_invalid", f"gateway facts are recorded while running, not {inv['state']}, and never after a cancellation request")
-        self._require_current_lease(inv, now)
-        if self._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:
+        self._core._require_current_lease(inv, now)
+        if self._core._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:
             raise Refusal("topic_paused", f"{inv['topic_id']} is paused")
         for fact in new:
-            recorded = self._store.select("capability_facts", {"capability": fact["capability"]})
+            recorded = self._core._store.select("capability_facts", {"capability": fact["capability"]})
             current = next((f for f in recorded if f["superseded_by_fact_id"] is None), None)
             if current is not None and instant(current["since"]) > instant(fact["since"]):
                 raise Refusal("fact_superseded", f"{fact['capability']}'s current fact {current['fact_id']} began at {current['since']}, "
@@ -229,9 +262,9 @@ class Capabilities:
                                                "one revision of an episode is one snapshot")
             behind = current is not None and instant(current["since"]) == instant(fact["since"]) and current["revision"] > fact["revision"]
             if current is not None and not behind:
-                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, {"superseded_by_fact_id": fact["fact_id"], **_successor(fact)})
-            self._store.insert("capability_facts", {**fact, "observed_by_invocation_id": inv["invocation_id"], "recorded_at": now,
+                self._core._store.update("capability_facts", {"fact_id": current["fact_id"]}, {"superseded_by_fact_id": fact["fact_id"], **_successor(fact)})
+            self._core._store.insert("capability_facts", {**fact, "observed_by_invocation_id": inv["invocation_id"], "recorded_at": now,
                                                     **({"superseded_by_fact_id": current["fact_id"], **_successor(current)} if behind else {})})
             replies.append({"fact_id": fact["fact_id"], "status": "recorded"})
-        self._audit(GATEWAY_FACT_AUDIT, now, {"facts": [f["fact_id"] for f in new]}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
+        self._core._audit(GATEWAY_FACT_AUDIT, now, {"facts": [f["fact_id"] for f in new]}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
         return {"status": "recorded", "facts": replies}

@@ -1,5 +1,6 @@
-"""The operator's status read and the health probe (task 1e). A mixin of
-service.Router: reads only. Neither writes a row, an audit event included.
+"""The operator's status read and the health probe (task 1e). A collaborator
+of service.Router (task 2q-b2: "Router composition", BOUNDARIES.md): reads
+only. Neither writes a row, an audit event included.
 
 Trace: BOUNDARIES.md Operator (interface guarantees: typed holds with owners
 and deadlines; status that answers why every waiting item waits; dated
@@ -27,7 +28,8 @@ into "why each item waits" is the operator surface's (gen2/operator/status.py).
 """
 from __future__ import annotations
 
-from typing import Mapping
+from contextlib import AbstractContextManager
+from typing import Mapping, Protocol
 
 from gen2.router import boundary
 from gen2.router.amendments import COMPATIBLE
@@ -44,13 +46,44 @@ def _pick(row: dict, keys) -> dict:
     return {k: row[k] for k in keys}
 
 
+class Rows(Protocol):
+    """The router's store as the status read uses it: reads only (store/api.py Store)."""
+    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
+
+
+class Schemas(Protocol):
+    """The router's schema set as boundary.require_schema uses it (schemas.py SchemaSet)."""
+    def errors(self, instance: object, target: str) -> list[str]: ...
+
+
+class StatusCore(Protocol):
+    """What the status read takes of the router core, and nothing else; service.Router
+    implements it without inheriting it. A member with no comment is the core's own
+    (service.py); a comment names the mixin of the Router that defines it until that
+    mixin is made a collaborator too."""
+    _store: Rows
+    _schemas: Schemas
+    def _snapshot(self) -> AbstractContextManager: ...  # one read transaction that writes nothing
+    def _now(self) -> str: ...
+    def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
+    def _lease_of(self, inv: dict) -> dict: ...
+    def _launch_refusal(self, inv: dict, now: str) -> Refusal | None: ...
+    def _admission_json(self, inv: dict) -> dict: ...
+    def _active_bundle(self) -> dict | None: ...  # registries.py
+    def _pin_status(self, inv: dict) -> str: ...  # amendments.py
+    def _lane_last(self, topic_id: str, scope: str) -> str | None: ...  # scheduling.py
+
+
 class Status:
+    def __init__(self, core: StatusCore) -> None:
+        self._core = core
+
     def healthy(self) -> bool:
         """The router can take its store's write lock now (DEPLOYMENT-CONTRACT.md
         §1.2: healthy means the router can commit). Nothing is written."""
         try:
-            with self._store.transaction():
-                self._now()
+            with self._core._snapshot():
+                self._core._now()
             return True
         except Exception:  # an unhealthy answer, never a crash of the health route
             return False
@@ -58,14 +91,14 @@ class Status:
     def status(self, request: Mapping) -> dict:
         try:
             req = boundary.normalize(request, "request_invalid")
-            boundary.require_schema(self._schemas, req, "router-commands#/$defs/operator_status", "request_invalid")
-            with self._store.transaction():  # one snapshot; nothing is written
-                now = self._now()
-                topics = self._store.select("queue_entries", {"topic_id": req["topic_id"]} if "topic_id" in req else None)
+            boundary.require_schema(self._core._schemas, req, "router-commands#/$defs/operator_status", "request_invalid")
+            with self._core._snapshot():  # one snapshot; nothing is written
+                now = self._core._now()
+                topics = self._core._store.select("queue_entries", {"topic_id": req["topic_id"]} if "topic_id" in req else None)
                 if "topic_id" in req and not topics:
                     raise Refusal("unknown_topic", req["topic_id"])
-                live = [i for i in self._store.select("invocations") if i["state"] in LIVE]
-                active = self._active_bundle()
+                live = [i for i in self._core._store.select("invocations") if i["state"] in LIVE]
+                active = self._core._active_bundle()
                 pinned = {}
                 for inv in live:
                     pinned.setdefault(inv["config_bundle_hash"], []).append(inv["invocation_id"])
@@ -74,62 +107,62 @@ class Status:
                     "topics": [self._topic_facts(t, now) for t in sorted(topics, key=lambda t: t["topic_id"])],
                     "config_bundles": {
                         "active": None if active is None else _pick(active, ("bundle_hash", "version", "activated_at")),
-                        "pinned": [{**_pick(self._one("config_bundles", {"bundle_hash": h}), ("bundle_hash", "version", "status")), "invocations": sorted(ids)}
+                        "pinned": [{**_pick(self._core._one("config_bundles", {"bundle_hash": h}), ("bundle_hash", "version", "status")), "invocations": sorted(ids)}
                                    for h, ids in sorted(pinned.items())]},
                     "capability_facts": [_pick(f, ("fact_id", "capability", "state", "detail", "since", "last_success_at", "affected_lanes"))
-                                         for f in sorted(self._store.select("capability_facts"), key=lambda f: f["capability"])
+                                         for f in sorted(self._core._store.select("capability_facts"), key=lambda f: f["capability"])
                                          if f["superseded_by_fact_id"] is None],
                     "holds": [{**_pick(h, HOLD), "deadline_passed": instant(now) >= instant(h["deadline_at"])}  # open holds of no topic (task 1f: a capability's)
-                              for h in sorted(self._store.select("holds"), key=lambda h: h["created_at"]) if h["topic_id"] is None and h["cleared_at"] is None]}
+                              for h in sorted(self._core._store.select("holds"), key=lambda h: h["created_at"]) if h["topic_id"] is None and h["cleared_at"] is None]}
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
 
     def _topic_facts(self, topic: dict, now: str) -> dict:
         tid = topic["topic_id"]
         where = {"topic_id": tid}
-        invocations = self._store.select("invocations", where)
-        retries = self._store.select("retries", where)
-        holds = [h for h in self._store.select("holds", where) if h["cleared_at"] is None]
-        reservations = [r for r in self._store.select("reservations", where) if r["closed_at"] is None]
+        invocations = self._core._store.select("invocations", where)
+        retries = self._core._store.select("retries", where)
+        holds = [h for h in self._core._store.select("holds", where) if h["cleared_at"] is None]
+        reservations = [r for r in self._core._store.select("reservations", where) if r["closed_at"] is None]
         return {
             **_pick(topic, ("topic_id", "status", "state_revision", "paused_at", "active_contract_revision")),
             "briefs": [{**_pick(b, ("brief_id", "version", "status", "review_deadline", "overdue_since")), "owner": b["owner_operator_id"],
                         "deadline_passed": instant(now) >= instant(b["review_deadline"])}
-                       for b in sorted(self._store.select("intake_briefs", where), key=lambda b: (b["brief_id"], b["version"]))
+                       for b in sorted(self._core._store.select("intake_briefs", where), key=lambda b: (b["brief_id"], b["version"]))
                        if b["status"] in ("awaiting_confirmation", "confirmed")],
             "drafts": self._drafts(tid),
             "holds": [{**_pick(h, HOLD), "deadline_passed": instant(now) >= instant(h["deadline_at"])} for h in sorted(holds, key=lambda h: h["created_at"])],
             "invocations": [self._invocation_facts(i, now, holds, retries) for i in sorted(invocations, key=lambda i: i["admitted_at"]) if i["state"] in LIVE],
             "lanes": self._lane_facts(tid, invocations, retries, holds),
             "reservations": [{**_pick(r, ("reservation_id", "purpose", "contract_revision", "units", "min_band", "opened_at")),
-                              "drawn": len(self._store.select("reservation_draws", {"reservation_id": r["reservation_id"]}))} for r in reservations],
+                              "drawn": len(self._core._store.select("reservation_draws", {"reservation_id": r["reservation_id"]}))} for r in reservations],
             "signals": [{**_pick(t, ("trigger_identity", "reason_code", "signal_source", "observed_at"))}
-                        for t in self._store.select("review_triggers", where) if t["episode_id"] is None and t["handled_at"] is None],
-            "reviews": [_pick(e, ("episode_id", "kind", "opened_at")) for e in self._store.select("review_episodes", where) if e["closed_at"] is None]}
+                        for t in self._core._store.select("review_triggers", where) if t["episode_id"] is None and t["handled_at"] is None],
+            "reviews": [_pick(e, ("episode_id", "kind", "opened_at")) for e in self._core._store.select("review_episodes", where) if e["closed_at"] is None]}
 
     def _drafts(self, tid: str) -> list[dict]:
         """The contract drafts an approval could still approve (service.Router
         _approve_contract): with none approved, every draft; otherwise those
         revising the approved revision. An older draft never can be: it waits
         for nothing, and is not listed."""
-        revisions = self._store.select("contract_revisions", {"topic_id": tid})
+        revisions = self._core._store.select("contract_revisions", {"topic_id": tid})
         approved = next((c["revision"] for c in revisions if c["status"] == "approved"), None)
         return [_pick(c, ("revision", "parent_revision", "created_at")) for c in sorted(revisions, key=lambda c: c["revision"])
                 if c["status"] == "draft" and (approved is None or c["parent_revision"] == approved)]
 
     def _invocation_facts(self, inv: dict, now: str, holds: list[dict], retries: list[dict]) -> dict:
-        lease = self._lease_of(inv)
-        standing = self._pin_status(inv)
+        lease = self._core._lease_of(inv)
+        standing = self._core._pin_status(inv)
         episode_hold = next((h for h in holds if h["subject_ref"] == f"invocation:{inv['invocation_id']}#unknown:{inv['unknown_episode']}"), None)
-        launch = self._launch_refusal(inv, now) if inv["state"] in ("admitted", "launching") else None
+        launch = self._core._launch_refusal(inv, now) if inv["state"] in ("admitted", "launching") else None
         retry = next((r for r in retries if r["retry_invocation_id"] == inv["invocation_id"]), None)
-        draw = self._one("reservation_draws", {"invocation_id": inv["invocation_id"]})
+        draw = self._core._one("reservation_draws", {"invocation_id": inv["invocation_id"]})
         return {
             **_pick(inv, ("invocation_id", "kind", "state", "parent_invocation_id", "deadline_at", "config_bundle_hash", "result_payload_digest")),
             "deadline_passed": instant(now) >= instant(inv["deadline_at"]),
             "lease": {**_pick(lease, ("lease_id", "scope", "generation", "station_id", "expires_at", "released_at")),
                       "expired": instant(now) >= instant(lease["expires_at"])},
-            "admission": self._admission_json(inv),
+            "admission": self._core._admission_json(inv),
             "pins": {"standing": standing, "incompatible": standing not in COMPATIBLE, "current": self._current_pins(inv) if standing != "current" else None},
             "cancel_requested": None if inv["cancel_requested_at"] is None else {"at": inv["cancel_requested_at"], "by": inv["cancel_requested_by"]},
             "launch_admission": None if launch is None else {"reason": launch.reason, "detail": launch.detail[:500]},
@@ -137,7 +170,7 @@ class Status:
                 "episode": inv["unknown_episode"], "since": inv["outcome_unknown_since"], "reconciliation": "pending",
                 "hold": None if episode_hold is None else _pick(episode_hold, ("hold_id", "owner", "deadline_at", "clears_when"))},
             "reconciliations": [_pick(r, ("unknown_episode", "resolution", "method", "resolved_at"))
-                                for r in self._store.select("invocation_reconciliations", {"invocation_id": inv["invocation_id"]})],
+                                for r in self._core._store.select("invocation_reconciliations", {"invocation_id": inv["invocation_id"]})],
             "retry": None if retry is None else {"of": retry["invocation_id"], "attempt": retry["attempt"], "requested_by": retry["requested_by"]},
             "reservation": None if draw is None else draw["reservation_id"]}
 
@@ -145,9 +178,9 @@ class Status:
         """What superseded the invocation's pin: the topic's approved contract
         revision (or confirmed brief version), with the decision approving it."""
         if inv["admission_context"] == "contract/1":
-            current = self._one("contract_revisions", {"topic_id": inv["topic_id"], "status": "approved"})
+            current = self._core._one("contract_revisions", {"topic_id": inv["topic_id"], "status": "approved"})
             return None if current is None else {"contract_revision": current["revision"], "approved_by_decision_id": current["approved_by_decision_id"]}
-        current = self._one("intake_briefs", {"topic_id": inv["topic_id"], "status": "confirmed"})
+        current = self._core._one("intake_briefs", {"topic_id": inv["topic_id"], "status": "confirmed"})
         return None if current is None else {"brief_id": current["brief_id"], "version": current["version"],
                                              "confirmed_by_decision_id": current["confirmed_by_decision_id"]}
 
@@ -157,8 +190,8 @@ class Status:
         where its re-queue stands: none yet, recorded and not yet claimed, or
         held by an exhausted budget's operator hold (L-6, RG-3)."""
         lanes = []
-        for scope in sorted({lease["scope"] for lease in self._store.select("leases", {"topic_id": tid})}):
-            last = self._lane_last(tid, scope)
+        for scope in sorted({lease["scope"] for lease in self._core._store.select("leases", {"topic_id": tid})}):
+            last = self._core._lane_last(tid, scope)
             inv = next(i for i in invocations if i["invocation_id"] == last)
             lane = {"scope": scope, "last_invocation_id": last, "state": inv["state"], "requeue": None, "requeue_hold": None}
             if inv["state"] in ("failed", "cancelled"):

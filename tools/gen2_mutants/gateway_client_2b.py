@@ -179,9 +179,9 @@ MUTATIONS: list[Mutation] = [
            '            if current is not None and instant(current["since"]) > instant(fact["since"]):', "            if False:"),
           ("fact-not-superseding", "a new fact leaves its capability's current fact current (the one-current index refuses it)",
            (GF + "test_a_later_episode_supersedes_and_an_earlier_one_is_refused",), CAPS,
-           '            if current is not None and not behind:\n                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
+           '            if current is not None and not behind:\n                self._core._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
            '{"superseded_by_fact_id": fact["fact_id"], **_successor(fact)})',
-           '            if False:\n                self._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
+           '            if False:\n                self._core._store.update("capability_facts", {"fact_id": current["fact_id"]}, '
            '{"superseded_by_fact_id": fact["fact_id"], **_successor(fact)})'),
           # 2b-repair-3 R2: an episode's snapshots ordered by their revision, whenever the router hears of them
           ("fact-id-without-revision", "a snapshot's id leaves out its revision: a return to earlier contents replays as the earlier snapshot",
@@ -198,9 +198,9 @@ MUTATIONS: list[Mutation] = [
            '            or type(fact.get("revision")) is not int or not 1 <= fact["revision"] <= canonical.INT_BOUND:',
            '            or fact.get("revision") is None:'),
           ("fact-unfenced", "a gateway fact is recorded without a current lease", (GF + "test_only_a_running_invocation_records_but_a_lost_reply_replays",), CAPS,
-           '        self._require_current_lease(inv, now)\n        if self._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:\n'
+           '        self._core._require_current_lease(inv, now)\n        if self._core._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:\n'
            '            raise Refusal("topic_paused", f"{inv[\'topic_id\']} is paused")',
-           '        if self._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:\n'
+           '        if self._core._one("queue_entries", {"topic_id": inv["topic_id"]})["paused_at"] is not None:\n'
            '            raise Refusal("topic_paused", f"{inv[\'topic_id\']} is paused")'),
       )),
     # 2b-repair-3 R2, Astra's reproduction 1: two recorder processes over one durable store (the kill rests on the children)

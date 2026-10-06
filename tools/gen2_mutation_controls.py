@@ -156,7 +156,22 @@ _IMPORTER_GRAPH = ("test_check_boundaries.BoundaryCheckerTest.test_importer_cann
 _ROUTER_GRAPH = ("test_check_boundaries.BoundaryCheckerTest.test_store_writes_are_the_routers_under_the_real_graph",
                  _REAL_GRAPH + " (the router's reach to the store's write primitives)")
 _ORDER = "the tool's own test; no other test calls compare()"
+_COMPOSITION = "test_router_composition.CollaboratorInterfaceTest."
 MANUAL: dict[str, dict] = {
+    # task 2q-b2: the composition test reads the collaborators' sources (a module target's `__file__` is the mutant's copy), so the other direction's test, which is
+    # static and passes under the mutant, is each paired control
+    "2QB2-status-core-omits-a-member": {"controls": [_COMPOSITION + "test_control_every_declared_member_is_one_the_router_has"],
+                                        "why": "checks every member StatusCore declares is one a real Router has: the mutant removes a declaration, so what is left is still all the Router's"},
+    "2QB2-capabilities-core-declares-a-ghost": {"controls": [_COMPOSITION + "test_every_core_member_a_collaborator_uses_is_declared"],
+                                                "why": "checks every member capabilities.py reads off self._core is declared by CapabilityCore: the mutant adds a declaration, so every use is still declared"},
+    "2QB2-status-reaches-the-store-directly": {"controls": [_COMPOSITION + "test_every_core_member_a_collaborator_uses_is_declared"],
+                                               "why": "checks every member status.py reads off self._core is declared by StatusCore: the mutant's store attribute is not read off self._core, so the uses are as declared"},
+    "2QB2-status-opens-its-own-transaction": {"controls": [_COMPOSITION + "test_every_core_member_a_collaborator_uses_is_declared"],
+                                              "why": "checks every member status.py reads off self._core is declared by StatusCore: the mutant opens the transaction through self._core._store, a member that is declared"},
+    "2QB2-router-inherits-a-collaborator": {"controls": [_COMPOSITION + "test_a_collaborator_holds_only_the_core_and_reaches_the_store_through_it"],
+                                            "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the Router still composes them under the mutant"},
+    "2QB2-router-drops-a-public-method": {"controls": [_COMPOSITION + "test_a_collaborator_holds_only_the_core_and_reaches_the_store_through_it"],
+                                          "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the dropped public name is not what that test reads"},
     # task 2a: the signal command's schema is a module constant read when the Router builds its SchemaSet, not by a traced line of
     # the request's path; the accepted request validates against the changed enum
     **{mid: {"controls": ["test_router_workflow.SignalTest.test_a_signal_is_queued_pending_and_opens_its_review"],

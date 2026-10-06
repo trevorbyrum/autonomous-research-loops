@@ -39,3 +39,39 @@ reason, and task. Targets use service|kind|location; file identities own fan-out
 fan-in; function IDs own both scores; edge, reach, self_calls, cycle, smell and aggregate
 IDs own their respective budgets. Cross-service imports belong to repo.
 
+### ML-0001
+- action: retire
+- identity: MI-000233
+- reason: capabilities.py no longer inherits registries.py: it is an explicit collaborator the Router composes (task 2q-b2), and reaches `_active_bundle` and `_router_policy` through `self._core`, the CapabilityCore interface it declares; the two flows are gone as self-calls (a collaborator's call through a declared interface is not an implicit mixin call)
+- task: 2q-b2
+
+### ML-0002
+- action: retire
+- identity: MI-000234
+- reason: capabilities.py no longer inherits service.py's Router: the nine calls (`_one`, `_guarded`, `_audit`, `_capability`, `_require_current_lease`) go through `self._core`, the CapabilityCore interface it declares and a test keeps true (task 2q-b2); the collaborator holds no store handle of its own and opens no transaction (`_guarded` is the core's)
+- task: 2q-b2
+
+### ML-0003
+- action: retire
+- identity: MI-000245
+- reason: status.py no longer inherits amendments.py: it is an explicit collaborator the Router composes (task 2q-b2) and reaches `_pin_status` through `self._core`, the StatusCore interface it declares
+- task: 2q-b2
+
+### ML-0004
+- action: retire
+- identity: MI-000246
+- reason: status.py no longer inherits registries.py: `_active_bundle` is reached through `self._core`, the StatusCore interface it declares (task 2q-b2)
+- task: 2q-b2
+
+### ML-0005
+- action: retire
+- identity: MI-000247
+- reason: status.py no longer inherits scheduling.py: `_lane_last` is reached through `self._core`, the StatusCore interface it declares (task 2q-b2)
+- task: 2q-b2
+
+### ML-0006
+- action: retire
+- identity: MI-000248
+- reason: status.py no longer inherits service.py's Router: the nine calls (`_now`, `_one`, `_lease_of`, `_launch_refusal`, `_admission_json`) and the read transaction (`_snapshot`, the core's) go through `self._core`, the StatusCore interface it declares and a test keeps true (task 2q-b2); the read stays one transaction that writes nothing
+- task: 2q-b2
+
