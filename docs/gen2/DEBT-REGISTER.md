@@ -26,7 +26,7 @@ This register holds two kinds of entry, and nothing else:
 
 ### DEBT-018 - 2q-a source-guard gaps open at the round cap (2q)
 - kind: mitigation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Task 2q-a closed at the round cap, by operator acceptance, with these findings from Astra's 2q-a-repair-7 review open:
   - **R7-1** (blocking class): an ordinary alias or re-export of `builtins` (for example `bi = builtins; bi.setattr(A, ...)`) bypasses the SOURCE-CONTRACT v2 mechanism ban. The planned fix is to refuse any reference to the `builtins` module, which production never uses, or to resolve ban references through the shared identity resolver.
@@ -39,6 +39,7 @@ This register holds two kinds of entry, and nothing else:
 - removal: a 2q tooling slice, together with DEBT-016 and DEBT-017, makes these fixes, with interpreter-backed regressions and controls; its review confirms them before 2q closes and before Gate D #5.
 
 Before this entry, the operator had accepted no mitigation. The record: the two mitigations Astra found in 2b-repair-3 (F1, the relaxed A9 store rule; F2, read-time reinterpretation of legacy rows) were escalated and the operator ruled "fix both properly; neither is accepted as debt" (2026-09-30), and both were repaired in 2b-repair-4 and -5; after 2b-repair-11 the operator was offered "accept them as debt and close 2b" and chose to fix the bugs ("or why don't we try to address the bugs", 2026-10-02); the language-level residuals of 13a were ruled documented boundaries, not debt (2026-10-02, above). A later mitigation enters here only on the operator's acceptance.
+- closed by: task 2q-t1 (`32489d9`), whose removal conditions Astra confirmed in private/reviews/gen2-2q-t1-astra-review-20261006.md ("2q-t1 is ACCEPTED; DEBT-016, DEBT-017 and DEBT-018 are closable"), 2026-10-06
 
 ## Owned obligations
 
@@ -164,7 +165,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 
 ### DEBT-016 - 2q-a non-blocking review findings (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Non-blocking findings from Astra's 2q-a-repair-4 review, classified under the charter's "Review throughput" rule (operator 2026-10-05). The operator accepts these entries in advance through that rule. They are:
   - (1) the loader fingerprint omits the definition-time effects of other definitions in the loader module (defaults and class bodies), so qualify the fingerprint claim and guard or document the bound;
@@ -176,10 +177,11 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (7) the completion record detects accidental incomplete execution, not deliberate same-process forgery (trust model B), so state that boundary in the docs.
 - source: private/reviews/gen2-2q-a-repair-4-astra-review-20261005.md (Gate C, F2, F3, completion validity, and "Follow-up 2026-10-05")
 - removal: a 2q tooling and documentation slice corrects the claims and guards or documents each bounded limitation, and its review confirms it before 2q closes.
+- closed by: task 2q-t1 (`32489d9`), whose removal conditions Astra confirmed in private/reviews/gen2-2q-t1-astra-review-20261006.md ("2q-t1 is ACCEPTED; DEBT-016, DEBT-017 and DEBT-018 are closable"), 2026-10-06
 
 ### DEBT-017 - 2q-a slice A non-blocking review findings (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Non-blocking findings from Astra's 2q-a-repair-6 and 6b reviews, accepted in advance under the charter's "Review throughput" rule:
   - (1) the parenthesised annotated target `(x): int` is falsely refused as `SRC-FORM-UNRECOGNISED`; it fails closed;
@@ -188,6 +190,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (4) scope correspondence is validated only for CPython 3.12.3, and must be revalidated at any interpreter upgrade.
 - source: private/reviews/gen2-2q-a-repair-6-astra-review-20261005.md and private/reviews/gen2-2q-a-repair-6b-astra-review-20261005.md (non-blocking lists)
 - removal: a 2q tooling and documentation slice corrects (1) to (3), and (4) is carried into the interpreter-upgrade task's acceptance criteria; its review confirms this before 2q closes.
+- closed by: task 2q-t1 (`32489d9`), whose removal conditions Astra confirmed in private/reviews/gen2-2q-t1-astra-review-20261006.md ("2q-t1 is ACCEPTED; DEBT-016, DEBT-017 and DEBT-018 are closable"), 2026-10-06
 
 ### DEBT-019 - 2q-b1 non-blocking review findings (2q)
 - kind: obligation
@@ -210,3 +213,11 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (3) don't widen the collaborator pattern's enforcement claims: the name-set checks don't enforce full Protocol conformance or nested `Rows`/`Schemas`, and `_snapshot` is writable. State those limits, keep the consumer-owned minimal interfaces, keep every write going through `_guarded` with `BEGIN IMMEDIATE` and the post-lock clock read, and don't widen `_snapshot` use.
 - source: private/reviews/gen2-2q-b2-astra-review-20261006.md (non-blocking findings 1 to 3)
 - removal: (2) in the next Router slice; (1) and (3) in the Router follow-on slices, with documentation reconciled; the review confirms them before 2q closes.
+
+### DEBT-021 - 2q-t1 non-blocking review finding (2q)
+- kind: obligation
+- status: open
+- owner: task 2q
+- what: SOURCE-CONTRACT's "What the ban does not see" paragraph still gives `__builtins__["eval"]` as an unseen example, but the 2q-t1 name ban now refuses it; replace the example and keep the real string-reflection boundary. Accepted in advance under the charter's "Review throughput" rule.
+- source: private/reviews/gen2-2q-t1-astra-review-20261006.md (non-blocking item 1)
+- removal: the example agrees with the demonstrated refusal, confirmed by the next 2q review.

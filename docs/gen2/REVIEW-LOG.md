@@ -1667,3 +1667,11 @@ The post-2q Gate D is renumbered #5.
   - Visibility is at the protocol-declaration level; the import graph doesn't certify a complete runtime dependency graph.
   - `_snapshot()` isn't an enforced read-only transaction. The transaction semantics (`BEGIN IMMEDIATE`, the post-lock clock read) are preserved.
 - **Non-blocking:** stale evidence summaries; the differential masks can erase semantic differences; don't widen the pattern's enforcement claims. Registered as DEBT-020.
+
+## 2026-10-06: 2q-t1 (the 2q tooling slice: DEBT-016, DEBT-017, DEBT-018)
+- **Astra** (`07183765`, pinned 32489d9; `private/reviews/gen2-2q-t1-astra-review-20261006.md`): **PASS on A, B and C. ROOT-CAUSE within the v2 subset. "2q-t1 is ACCEPTED; DEBT-016, DEBT-017 and DEBT-018 are closable."**
+  - R7-1 is closed by refusing the `builtins` module reference at its source.
+  - R7-2 is closed by whole-function pins plus a required method context.
+  - Every DEBT-016 and DEBT-017 item is confirmed.
+- The landing run is green: 2,326 tests, 2,319/2,319; gateway 1,518+1,518.
+- **The orchestrator closed DEBT-016, DEBT-017 and DEBT-018**, including the operator-accepted mitigation, which is now removed. One non-blocking stale doc example is DEBT-021.
