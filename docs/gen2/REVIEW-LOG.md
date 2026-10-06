@@ -1675,3 +1675,16 @@ The post-2q Gate D is renumbered #5.
   - Every DEBT-016 and DEBT-017 item is confirmed.
 - The landing run is green: 2,326 tests, 2,319/2,319; gateway 1,518+1,518.
 - **The orchestrator closed DEBT-016, DEBT-017 and DEBT-018**, including the operator-accepted mitigation, which is now removed. One non-blocking stale doc example is DEBT-021.
+
+## 2026-10-06: 2q-b3 (the Registries collaborator; a field-aware differential)
+- **Astra** (`432cc7c7`, pinned 8e73b42; `private/reviews/gen2-2q-b3-astra-review-20261006.md`): **PASS on A and B, BLOCK on C.**
+  - **The Registries conversion is ROOT-CAUSE**: 34 public signatures are unchanged and all 15 bodies are AST-identical modulo two rewrites. No production regression.
+  - **Both deviations are ACCEPTED:**
+    - the `_transaction()` exceptions preserve behaviour and sole-writer semantics;
+    - the per-pair budget transfers are exactly accounted. A falling total can't pay for unrelated growth.
+  - **Rulings for later Router slices:** keep the `_guarded` paths, with no new raw transactions without a concrete existing path and a semantics review; `_snapshot` stays limited; exact transfer accounting.
+- **Blocking (Gate C):**
+  - **C1:** the differential normalisation is still lossy: field names everywhere, global substring replacement, ranks erase durations, sorted ordered lists, mutable capture aliasing.
+  - **C2:** unstable baselines silently fall back to outcome-only success. Astra altered an answer and removed a store observation, and the comparator still returned 0 differences.
+- **Non-blocking:** NB1 (snapshot test wording), NB2 (no per-write store observation for the registry routes).
+- **The family recurs** (DEBT-020 (2) → C1/C2), so the research step ran: `docs/gen2/research/2q-b-differential-20261006.md` (control nondeterminism at the seams; exact comparison; fail closed; mechanical-move AST equivalence as a second oracle). Routed to **2q-b3b**, which is queued behind the running 2q-b5 coder. The remaining Router slices wait for it.
