@@ -1652,3 +1652,4 @@ The post-2q Gate D is renumbered #5.
 - **Non-blocking:** a file-wide builtin-alias set causes a false refusal (`import re as b` in another function).
 - **Repo fact:** production never references `builtins`.
 - **This is the third consecutive BLOCK since the operator's continue ruling, so the round cap applies.** Held for the operator.
+- **Operator ruling 2026-10-06 ("Close and move on"): task 2q-a CLOSED at the round cap.** R7-1, R7-2 and the non-blocking builtin-alias false refusal are an **operator-accepted mitigation, DEBT-018** (owner: task 2q). They are fixed in a 2q tooling slice with DEBT-016 and DEBT-017 before 2q closes and before Gate D #5. **2q-b proceeds in slices; 2q-b1 (break the gateway component cycle) is dispatched.**

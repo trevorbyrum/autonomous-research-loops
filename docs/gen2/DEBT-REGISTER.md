@@ -24,7 +24,21 @@ This register holds two kinds of entry, and nothing else:
 
 ## Accepted mitigations
 
-None. As of 2026-10-03 the operator has accepted no mitigation. The record: the two mitigations Astra found in 2b-repair-3 (F1, the relaxed A9 store rule; F2, read-time reinterpretation of legacy rows) were escalated and the operator ruled "fix both properly; neither is accepted as debt" (2026-09-30), and both were repaired in 2b-repair-4 and -5; after 2b-repair-11 the operator was offered "accept them as debt and close 2b" and chose to fix the bugs ("or why don't we try to address the bugs", 2026-10-02); the language-level residuals of 13a were ruled documented boundaries, not debt (2026-10-02, above). A later mitigation enters here only on the operator's acceptance.
+### DEBT-018 - 2q-a source-guard gaps open at the round cap (2q)
+- kind: mitigation
+- status: open
+- owner: task 2q
+- what: Task 2q-a closed at the round cap, by operator acceptance, with these findings from Astra's 2q-a-repair-7 review open:
+  - **R7-1** (blocking class): an ordinary alias or re-export of `builtins` (for example `bi = builtins; bi.setattr(A, ...)`) bypasses the SOURCE-CONTRACT v2 mechanism ban. The planned fix is to refuse any reference to the `builtins` module, which production never uses, or to resolve ban references through the shared identity resolver.
+  - **R7-2** (blocking class): an exact payload exception statement can write through a different parameter, or from a static method. The planned fix is to pin each exception's whole function (signature and body) the way the loader is pinned.
+  - **Non-blocking:** a file-wide builtin-alias set falsely refuses an unrelated `import re as b` in another function.
+
+  Production is unaffected: the metrics are unchanged and nothing in production is refused.
+- found by: Astra, private/reviews/gen2-2q-a-repair-7-astra-review-20261006.md (R7-1, R7-2, non-blocking item 1)
+- accepted by: the operator, 2026-10-06 ("Close and move on"), at the round cap after the orchestrator recommended closing 2q-a with these fixes owned by task 2q
+- removal: a 2q tooling slice, together with DEBT-016 and DEBT-017, makes these fixes, with interpreter-backed regressions and controls; its review confirms them before 2q closes and before Gate D #5.
+
+Before this entry, the operator had accepted no mitigation. The record: the two mitigations Astra found in 2b-repair-3 (F1, the relaxed A9 store rule; F2, read-time reinterpretation of legacy rows) were escalated and the operator ruled "fix both properly; neither is accepted as debt" (2026-09-30), and both were repaired in 2b-repair-4 and -5; after 2b-repair-11 the operator was offered "accept them as debt and close 2b" and chose to fix the bugs ("or why don't we try to address the bugs", 2026-10-02); the language-level residuals of 13a were ruled documented boundaries, not debt (2026-10-02, above). A later mitigation enters here only on the operator's acceptance.
 
 ## Owned obligations
 
