@@ -162,3 +162,15 @@ None. As of 2026-10-03 the operator has accepted no mitigation. The record: the 
   - (7) the completion record detects accidental incomplete execution, not deliberate same-process forgery (trust model B), so state that boundary in the docs.
 - source: private/reviews/gen2-2q-a-repair-4-astra-review-20261005.md (Gate C, F2, F3, completion validity, and "Follow-up 2026-10-05")
 - removal: a 2q tooling and documentation slice corrects the claims and guards or documents each bounded limitation, and its review confirms it before 2q closes.
+
+### DEBT-017 - 2q-a slice A non-blocking review findings (2q)
+- kind: obligation
+- status: open
+- owner: task 2q
+- what: Non-blocking findings from Astra's 2q-a-repair-6 and 6b reviews, accepted in advance under the charter's "Review throughput" rule:
+  - (1) the parenthesised annotated target `(x): int` is falsely refused as `SRC-FORM-UNRECOGNISED`; it fails closed;
+  - (2) the scope-pairing validation is a consistency check, not proof against every wrong pairing, so narrow the "proved both ways" wording and keep the control for equal identifiers with different flags;
+  - (3) the 6b corpus evidence wording ("about 6,700" against 5,993 logged files; filtered fuzz cases);
+  - (4) scope correspondence is validated only for CPython 3.12.3, and must be revalidated at any interpreter upgrade.
+- source: private/reviews/gen2-2q-a-repair-6-astra-review-20261005.md and private/reviews/gen2-2q-a-repair-6b-astra-review-20261005.md (non-blocking lists)
+- removal: a 2q tooling and documentation slice corrects (1) to (3), and (4) is carried into the interpreter-upgrade task's acceptance criteria; its review confirms this before 2q closes.

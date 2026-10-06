@@ -1637,3 +1637,8 @@ The post-2q Gate D is renumbered #5.
 - A safe false refusal of valid annotation syntax is non-blocking.
 - This is the second consecutive BLOCK since the operator's continue ruling.
 - **Repo fact:** production contains **no** private (mangled) names.
+- **Operator ruling 2026-10-06 ("Both recommended"):**
+  - (A) the three production uses of banned mechanisms (`jobs.py` thread-local `__dict__`; `payload.py` `object.__setattr__` in `Sealed`/`Passive.__init__`) become named exact-statement exceptions in SOURCE-CONTRACT v2, with no production change;
+  - (B) private name-mangled identifiers are refused in production code, which uses none. This closes R6B-1 and R6B-2 by removing the form.
+
+  Both are folded into **2q-a-repair-7**, the final 2q-a slice. The non-blocking items from the 6 and 6b reviews are DEBT-017.
