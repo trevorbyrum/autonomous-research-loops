@@ -1642,3 +1642,13 @@ The post-2q Gate D is renumbered #5.
   - (B) private name-mangled identifiers are refused in production code, which uses none. This closes R6B-1 and R6B-2 by removing the form.
 
   Both are folded into **2q-a-repair-7**, the final 2q-a slice. The non-blocking items from the 6 and 6b reviews are DEBT-017.
+
+## 2026-10-06: 2q-a-repair-7 (the final 2q-a slice: SOURCE-CONTRACT v2)
+- **Astra** (`2f7dce26`, pinned 5d87a8e; `private/reviews/gen2-2q-a-repair-7-astra-review-20261006.md`): **BLOCK on A and C, PASS on B, family MITIGATION.**
+- **Retained:** production measurements and the accepted work (hash/effective members, scope, completion, the plan, the historical reproduction). The landing run is green (gen2-check 2,310 tests, 2,302/2,302; gen2-gateway exit 0). The approved v2 exclusions are not reasons for the verdict.
+- **Open, blocking:**
+  - **R7-1:** an ordinary alias or re-export of `builtins` (`bi = builtins; bi.setattr(A, ...)`) bypasses the mechanism ban, because the ban doesn't use the shared identity resolver.
+  - **R7-2:** an exact payload exception statement can write through a different parameter, or from a static method, because the exception doesn't validate that the target is the method's receiver.
+- **Non-blocking:** a file-wide builtin-alias set causes a false refusal (`import re as b` in another function).
+- **Repo fact:** production never references `builtins`.
+- **This is the third consecutive BLOCK since the operator's continue ruling, so the round cap applies.** Held for the operator.
