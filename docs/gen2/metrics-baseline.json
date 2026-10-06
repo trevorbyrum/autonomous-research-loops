@@ -1,6 +1,6 @@
 {
   "cross_service_imports": [],
-  "digest": "1a66a8dcce2e94110ba6d283ac26a7e99045fe3453d1c2b1f279c41f9d04396c",
+  "digest": "004c5f96fc3b14a582a47823d92f1afb098f5633eb045d2dc25e929c94df9a26",
   "identities": {
     "MI-000001": "engine|edge|gen2/app/engine.py->gen2/app/station.py",
     "MI-000002": "engine|edge|gen2/app/engine.py->gen2/operator/auth.py",
@@ -232,17 +232,12 @@
     "MI-000228": "engine|reach|gen2/supervisor/supervisor.py->gen2/supervisor/jobs.py",
     "MI-000229": "engine|reach|gen2/supervisor/supervisor.py->gen2/supervisor/spool.py",
     "MI-000230": "engine|self_calls|gen2/router/amendments.py->gen2/router/lifecycle.py",
-    "MI-000231": "engine|self_calls|gen2/router/amendments.py->gen2/router/registries.py",
     "MI-000232": "engine|self_calls|gen2/router/amendments.py->gen2/router/service.py",
-    "MI-000235": "engine|self_calls|gen2/router/lifecycle.py->gen2/router/registries.py",
     "MI-000236": "engine|self_calls|gen2/router/lifecycle.py->gen2/router/service.py",
-    "MI-000237": "engine|self_calls|gen2/router/registries.py->gen2/router/service.py",
     "MI-000238": "engine|self_calls|gen2/router/scheduling.py->gen2/router/amendments.py",
-    "MI-000239": "engine|self_calls|gen2/router/scheduling.py->gen2/router/registries.py",
     "MI-000240": "engine|self_calls|gen2/router/scheduling.py->gen2/router/service.py",
     "MI-000241": "engine|self_calls|gen2/router/service.py->gen2/router/amendments.py",
     "MI-000242": "engine|self_calls|gen2/router/service.py->gen2/router/lifecycle.py",
-    "MI-000243": "engine|self_calls|gen2/router/service.py->gen2/router/registries.py",
     "MI-000244": "engine|self_calls|gen2/router/service.py->gen2/router/scheduling.py",
     "MI-000250": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/__init__.py",
     "MI-000251": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/broker.py",
@@ -1043,8 +1038,8 @@
   },
   "identity_serial": 1054,
   "pin": {
-    "commit": "bb0f7bc8dba81850afc7f0128a60c43318b98171",
-    "production_sha256": "82a7f9e95beef5575fc87364af00fe728a9ae7581b4c7c6eec3cd64e87c7737b"
+    "commit": "6c4302b1582d501d7d588f6ec90bce2b1bc8b86e",
+    "production_sha256": "7e68cd7bee7af16366ecf48acd0c44f5f38d37b3d5e7f16243b9f508cd7fa06c"
   },
   "services": {
     "engine": {
@@ -1503,17 +1498,12 @@
       },
       "self_calls": {
         "gen2/router/amendments.py->gen2/router/lifecycle.py": 1,
-        "gen2/router/amendments.py->gen2/router/registries.py": 1,
-        "gen2/router/amendments.py->gen2/router/service.py": 19,
-        "gen2/router/lifecycle.py->gen2/router/registries.py": 1,
-        "gen2/router/lifecycle.py->gen2/router/service.py": 23,
-        "gen2/router/registries.py->gen2/router/service.py": 17,
+        "gen2/router/amendments.py->gen2/router/service.py": 20,
+        "gen2/router/lifecycle.py->gen2/router/service.py": 24,
         "gen2/router/scheduling.py->gen2/router/amendments.py": 3,
-        "gen2/router/scheduling.py->gen2/router/registries.py": 6,
-        "gen2/router/scheduling.py->gen2/router/service.py": 20,
+        "gen2/router/scheduling.py->gen2/router/service.py": 26,
         "gen2/router/service.py->gen2/router/amendments.py": 7,
         "gen2/router/service.py->gen2/router/lifecycle.py": 6,
-        "gen2/router/service.py->gen2/router/registries.py": 3,
         "gen2/router/service.py->gen2/router/scheduling.py": 2
       },
       "smells": {
