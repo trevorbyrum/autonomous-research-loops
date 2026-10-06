@@ -23,6 +23,8 @@ prove nothing, because a child that called `os._exit(0)`, or crashed with its ex
 therefore runs under `LAUNCHER`, which runs the tool as `__main__` and writes a completion record - a JSON file naming the status - ONLY when the tool returns or
 exits normally (`sys.exit`, a return from `main`). `Repo.run` requires that record and that its status is the process's: a child with no record is incomplete
 whatever its exit status, and a tool's own refusal (exit 1, or exit 2 with its message) is a completed run because it wrote one.
+
+The witness detects ACCIDENTAL incomplete execution by trusted code (a crash, a signal, an `os._exit`, a suppressed exception hook); it does not authenticate execution. Code under test can find the record's path and write a record itself before exiting, so DELIBERATE same-process forgery is outside what it shows (trust model B: tool and test code is trusted; no confinement of the child is claimed or built; DEBT-016 item 7).
 """
 from __future__ import annotations
 

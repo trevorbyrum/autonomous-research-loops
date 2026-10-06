@@ -28,6 +28,17 @@ Every check target (`gen2-sqlite`, `gen2-boundaries`, `gen2-schemas`, `gen2-ddl`
 
 The reference pin does not establish portability. The gateway client's project-owned address serializer preserves the accepted address spelling from value and family across Python patch releases, with interpreter-independent regression tests (task 2b-repair-20; CI design D5). The planned report-only drift qualification is a **Jenkins nightly**, not GitHub Actions (operator-approved CI design D4); it remains planned until that CI work is implemented.
 
+## Upgrading the reference interpreter
+
+The reference environment is CPython 3.12.3, and an upgrade of the interpreter (a new minor version, or a patch release the source index has not been run under) is accepted only when each of these holds, because the supported-source contract is validated for 3.12.3 alone (task 2q-t1; DEBT-017 item 4; `docs/gen2/SOURCE-CONTRACT.md`, "Binding identity"):
+
+1. **The scope correspondence is revalidated.** `tools/gen2_source_index.py` pairs every scope of the tree with the table of the standard library's `symtable` by following the compiler's order of entering scopes, and spells private names as the compiler does. Under the new interpreter, the index runs without a pairing refusal over a corpus of real source (the standard library and the installed packages: the 2q-a-repair-6b run used 5,893 files) and over randomly generated programs with a uniquely named lambda or iteration variable in every slot the compiler reads in a different order (the 6b fuzz, 20,383 programs); each file or program the index refuses is explained (syntax the contract declares unsupported, such as the `type` statement and type parameters), and none is an unexplained mismatch.
+2. **The supported syntax is revalidated.** The node classes the walker records (`FORMS` in `tools/gen2_source_index.py`) and the refused-by-design ones are checked against the new `ast`; a node class the walker has no entry for is refused, so a new one is a failure of this criterion, not a silent pass.
+3. **The interpreter-backed tests pass unchanged:** the source and closure tests (`gen2/tests/test_source_*.py`), including the effective-member matrix against `dataclasses` and the data model, and the targeted tests of the metrics, without an edit to a test to make it pass. A change to what the interpreter does that a test asserts is a contract amendment, not a test edit.
+4. **The metrics are unchanged on the production tree:** `make gen2-source` reports zero refusals, and the metrics reports and facts are byte-identical to those of 3.12.3 (a difference is a measurement change and is reported as one).
+
+Until all four are shown, the new interpreter is not a reference environment for the source guard.
+
 ## SQLite version floor
 
 **Supported floor: SQLite 3.45.1.** It is the only version the complete DDL and test suite have been executed on: the `sqlite3` module of Python 3.12.3 in the reviewed test environment, and Astra's third review, which ran the same version. It is a floor because nothing older has been run, not because 3.45.1 is known to be the oldest version that works.

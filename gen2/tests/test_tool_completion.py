@@ -10,7 +10,7 @@ run: refusing is what the tools are for.
 
 A completed run needs a positive witness (task 2q-a-repair-4, Astra's 2q-a-repair-3 review F4): exit 0 or 1 and the absence of a recognised traceback prove nothing, since
 an `os._exit(0)` child, or a child that crashed with its exception hook suppressed, is indistinguishable from a tool's own refusal. Every child runs under
-`tool_repo_fixtures.LAUNCHER`, which writes a completion record only when the tool returns or exits normally; `Repo.run` requires it.
+`tool_repo_fixtures.LAUNCHER`, which writes a completion record only when the tool returns or exits normally; `Repo.run` requires it. The witness detects ACCIDENTAL incomplete execution by trusted code (a crash, a signal, an `os._exit`, a suppressed exception hook); it does not authenticate execution. Code under test can find the record's path and write a record itself before exiting, so DELIBERATE same-process forgery is outside what it shows (trust model B: tool and test code is trusted; no confinement of the child is claimed or built; DEBT-016 item 7).
 
 The children here are literal scripts, not the tools. What this cannot show: that every defect a tool can have ends in a program that completes (a mutant can
 still hang or loop; the timeout is the only guard against that, and it is an error, not a kill).

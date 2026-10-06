@@ -1,5 +1,5 @@
 """Mutants of task 2q-a-repair-6 (Astra's 2q-a-repair-5 review F1: scope is the compiler's, and an alias the resolver cannot follow is refused) and of task 2q-a-repair-6b (her
-2q-a-repair-6 review R6-1 and R6-2: the pairing follows the compiler's order and is proved both ways, and a private name is the compiler's mangled one). Each guard is removed or weakened alone.
+2q-a-repair-6 review R6-1 and R6-2: the pairing follows the compiler's order and is checked both ways, and a private name is the compiler's mangled one). Each guard is removed or weakened alone.
 
   2Q6-idx-*   the index (tools/gen2_source_index.py): `locate`, the one rule every use and every write goes through, over the compiler's symbol tables (`symtable`); the pairing of
               each scope with its table; a file the compiler refuses; an ordinary alias whose target the resolver cannot say;
@@ -60,7 +60,7 @@ MUTATIONS: list[Mutation] = [
       '                self.unpaired.append((node.lineno, f"the compiler\'s symbol table has no matching scope for {scope_kind(node)} {TABLE_NAMES.get(type(node)) or node.name} at this line", MISMATCH))', "                pass"),
     m("idx-leftover-table-accepted", "a table of the compiler that no scope of the index matches is accepted", (UNMATCHED,), IDX,
       '                self.unpaired.append((child.get_lineno(), f"the compiler\'s table for {child.get_name()} has no scope of the index to match", MISMATCH))', "                pass"),
-    # --- the pairing follows the compiler's order (R6-1) and is proved both ways ------------------------------------------------------------------
+    # --- the pairing follows the compiler's order (R6-1) and is checked both ways ------------------------------------------------------------------
     b("idx-pairing-unvalidated", "every scope is given the table the order says, and nothing checks that the names the tree writes in it are the table's", (PAIRING + "test_a_pairing_the_tree_and_the_table_disagree_about_is_refused_both_ways",), IDX,
       "            self.validate()", "            pass"),
     b("idx-validation-ignores-the-trees-names", "a name the tree writes in a scope that its table lacks is accepted", (PAIRING + "test_a_pairing_the_tree_and_the_table_disagree_about_is_refused_both_ways",), IDX,

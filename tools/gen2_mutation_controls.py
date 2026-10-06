@@ -840,8 +840,8 @@ def trace(out: Path) -> int:
     result = _Recorder(windows, outcomes, current)
     suite.run(result)
     mon.set_events(TOOL_ID, 0)
-    print(f"traced run: {len(outcomes)} tests, {time.monotonic() - started:.0f}s; not passing: "
-          f"{sorted(t for t, o in outcomes.items() if o != 'pass')}", flush=True)
+    print(f"traced run: {len(outcomes)} tests, {time.monotonic() - started:.0f}s; failed: {sorted(t for t, o in outcomes.items() if o in ('fail', 'error'))}; "
+          f"skipped: {sorted(t for t, o in outcomes.items() if o == 'skip')}", flush=True)
     # a child's lines, to the test whose window holds them
     spans = sorted((w[0], w[1], t) for t, w in windows.items() if w[1] is not None)
     starts = [span[0] for span in spans]
@@ -867,8 +867,8 @@ def trace(out: Path) -> int:
     store_outcomes: dict = {}
     g.load_suite().run(_Recorder({}, store_outcomes, current))
     fx.DDL_TEXT = ddl0
-    print(f"store run (instrumented DDL): {len(store_outcomes)} tests; not passing: "
-          f"{sorted(t for t, o in store_outcomes.items() if o != 'pass')}", flush=True)
+    print(f"store run (instrumented DDL): {len(store_outcomes)} tests; failed: {sorted(t for t, o in store_outcomes.items() if o in ('fail', 'error'))}; "
+          f"skipped: {sorted(t for t, o in store_outcomes.items() if o == 'skip')}", flush=True)
     durations = {t: (w[1] - w[0]) / 1e9 for t, w in windows.items() if w[1] is not None}
     doc = {"outcomes": outcomes, "durations": durations, "store_outcomes": store_outcomes,
            "lines": {t: sorted([r, n] for r, n in s) for t, s in lines.items()},

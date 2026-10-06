@@ -130,7 +130,8 @@ def tables_of(text: str) -> list:
 
 
 class PairingTest(unittest.TestCase):
-    """Each scope gets the table the compiler built for it, found by the order in which the compiler enters scopes and proved both ways: the names the tree writes in a scope are its table's."""
+    """Each scope gets the table the compiler built for it, found by the order in which the compiler enters scopes and checked both ways: the names the tree writes in a scope are its table's. The
+    check is a consistency check on that order, no proof that a pairing is right (it compares names, not flags: `test_equal_identifier_sets_with_different_flags_...`)."""
 
     ORDER = lines(
         "def one(p: (lambda m1: 1), /, a: (lambda m2: 1) = (lambda m3: 1), *v: (lambda m4: 1), k: (lambda m5: 1) = (lambda m6: 1), **kw: (lambda m7: 1)) -> (lambda m8: 1): pass",
@@ -169,6 +170,14 @@ class PairingTest(unittest.TestCase):
         self.assertEqual([c for c in tree_only if "no such name" in c], ["in f: the tree writes c but the compiler's table has no such name"], msg=tree_only)
         self.assertEqual([c for c in table_only if "tree does not write" in c], ["in f: the compiler's table holds c that the tree does not write here"], msg=table_only)
         self.assertEqual((len(tree_only), len(table_only)), (1, 1), msg="each direction alone is one refusal")
+
+    def test_equal_identifier_sets_with_different_flags_are_not_told_apart_so_the_check_is_a_consistency_check_and_no_proof(self) -> None:
+        """DEBT-017 item 2 (Astra's 2q-a-repair-6b review): two same-line lambdas whose identifier sets are both {q, A, object}, one reading `A` and one assigning it, swapped between the tree and the text
+        the table is built from, pass the validation: it compares names. The control keeps the limit stated (SOURCE-CONTRACT, "Binding identity"); the order of entering scopes is what pairs them."""
+        pair = "f = (lambda q: A(object), lambda q: (A := object))"
+        swapped = "f = (lambda q: (A := object), lambda q: A(object))"
+        said = in_the_tools(f"rows = [si.FileIndex('gen2/a.py', ast.parse({pair!r}), text) for text in ({pair!r}, {swapped!r})]\nprint(json.dumps([[d.construct for d in index.diagnostics] for index in rows]))")
+        self.assertEqual(said, [[], []], msg="the mispairing is not detected by the names: the claim is a consistency check")
 
     def test_the_names_the_compiler_adds_itself_are_not_disagreements(self) -> None:
         """Free names passed up through a function and a class, the `global` name of a nested function in the module's table, `super`'s `__class__`, `.0` of a generator, and an inlined comprehension."""

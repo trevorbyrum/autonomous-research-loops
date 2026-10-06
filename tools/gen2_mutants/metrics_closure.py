@@ -37,6 +37,10 @@ HEADER = "        self.each((*node.decorator_list, *args.defaults, *args.kw_defa
 NOTES = "        self.annotations((*(a.annotation for a in every), node.returns), scope, nested)"
 CLASS_HEADER = "        self.each((*node.decorator_list, *node.bases, *(k.value for k in node.keywords)), scope, nested)"
 FINGERPRINT = "d92736324e8162a92f838d37cfc5f55df496ae08374f1b1627857558522ff842"   # the recorded fingerprint of the real loader (tools/gen2_source_contract.py LOADERS)
+# `function_form` is the one form the loader's fingerprint and an excepted function's (EXCEPTIONS, task 2q-t1) both read: under the variant that keeps docstrings the two excepted functions that have one
+# (`load_all`, `Job.hold`) have the recorded fingerprints below, so the mutant changes what a docstring edit is and nothing about the real tree
+EXCEPTION_FINGERPRINTS_WITH_DOCSTRINGS = (("0c3248cd031cc6d8417aed3f9e2e1b109712cb7095a9151ba0dd96d4d7922041", "8c9c903c0cf95f90bc32d058e2e0bcc544fa3310a1855ab4eb8eeee60b5e93eb"),
+                                          ("9c337856399195bdbed662c27f5ec0655259c020be086726f832993ce206a70a", "28d08c246131368d2bf98e2ae99b0426f9b49edec1211562f2cfabe4ea72ba7b"))
 STORE_FORMS = '    STORE_FORMS = {"receiver": "store_receiver", "data": "store_data", "class": "store_namespace", "namespace": "store_namespace"}'
 
 MUTATIONS: list[Mutation] = [
@@ -88,7 +92,7 @@ MUTATIONS: list[Mutation] = [
       "    def form_subscript(self, node: ast.Subscript, scope: Scope, nested: bool, target) -> None:\n        if False:"),
     c("idx-calls-not-recorded", "a call is not a call site", (CLR + "aliases_carry_the_identity",), IDX, "        self.index.calls.append(CallSite(node, scope))\n", "        pass\n"),
     c("idx-annotation-only-attribute-is-a-store", "`a.b: int`, which stores nothing, is a store", (DATA,), IDX,
-      "        if node.value is None and not isinstance(node.target, ast.Name):", "        if False:"),
+      "        if node.value is None and not (isinstance(node.target, ast.Name) and node.simple):", "        if False:"),
     # --- the contract's dispatchers: a kind with no recorded effect is refused --------------------------------------------------------------
     c("con-store-of-an-unrecognised-kind-accepted", "a store whose base the classification cannot say is accepted as a store on data", (FORMS,), CON,
       "        form = self.STORE_FORMS.get(kind)\n", '        form = self.STORE_FORMS.get(kind, "store_data")\n'),
@@ -162,13 +166,13 @@ MUTATIONS: list[Mutation] = [
       '            elif entry[0] != "base" and external:', '            elif entry[0] != "base" and not external:'),
     # --- the loader's fingerprint ----------------------------------------------------------------------------------------------------------------------------
     c("con-loader-fingerprint-unchecked", "a changed loader implementation is accepted when its filter is the reviewed one", (LB + "test_the_continue_turned_pass_loads_names_the_inventory_does_not_list_and_is_refused",
-                                                                                                                              LB + "test_every_change_to_the_reviewed_loader_is_refused"), CON,
+                                                                                                                              LB + "test_each_listed_change_to_the_reviewed_loader_is_refused"), CON,
       "            if found is not None and found != entry.fingerprint:", "            if False:"),
     c("con-fingerprint-includes-docstrings", "a docstring edit changes the loader's fingerprint (the recorded fingerprint is that of this variant, so the real loader is accepted)",
-      (LB + "test_changes_that_are_not_the_implementation_are_not_refused",), CON, '"body": without_docstring(statement.body)})))', '"body": statement.body})))',
-      also=((FINGERPRINT, "e9983d212c5022d2f6a0742b7d81943ea23c1106fe6f4d685dd8e3192e9e8a42"),)),
+      (LB + "test_changes_that_are_not_the_implementation_are_not_refused",), CON, '"body": without_docstring(node.body)}))', '"body": node.body}))',
+      also=((FINGERPRINT, "e9983d212c5022d2f6a0742b7d81943ea23c1106fe6f4d685dd8e3192e9e8a42"), *EXCEPTION_FINGERPRINTS_WITH_DOCSTRINGS)),
     c("con-fingerprint-ignores-the-modules-statements", "the statements around the loader are not part of its fingerprint (the recorded fingerprint is that of this variant)",
-      (LB + "test_every_change_to_the_reviewed_loader_is_refused",), CON,
+      (LB + "test_each_listed_change_to_the_reviewed_loader_is_refused",), CON,
       "        elif not isinstance(statement, (*source.FUNCTIONS, ast.ClassDef)):\n            parts.append(normalised(statement))", "        elif False:\n            parts.append(normalised(statement))",
       also=((FINGERPRINT, "2efc3f5025cbfdd0120a97c628cc5d377375cadb9737f9c86ebd1c2b0a047566"),)),
     c("con-fingerprint-includes-other-definitions", "another function in the loader's module changes its fingerprint", (LB + "test_changes_that_are_not_the_implementation_are_not_refused",), CON,

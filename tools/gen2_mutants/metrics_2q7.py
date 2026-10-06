@@ -21,10 +21,10 @@ ACCEPTED_NAMES = PN + "test_the_accepted_names_are_accepted_in_both_services"
 QUOTED = QA + "test_refuses_quoted_annotations_in_a_class_body"
 QUOTED_OK = QA + "test_the_accepted_quoted_annotations_are_accepted_in_both_services"
 OTHER_FUNCTION = EX + "test_the_same_statements_in_another_function_are_refused"
-CHANGED = EX + "test_a_changed_statement_is_refused_and_so_is_a_second_copy_in_the_same_function"
+CHANGED = EX + "test_a_changed_statement_is_refused_and_so_is_a_second_copy_and_another_reference_in_the_same_function"
 
-BANNED = '("setattr", "delattr", "vars", "globals", "locals", "exec", "eval", "compile", "__import__", "importlib", "import_module", "__dict__", "__setattr__", "__delattr__", "__getattribute__")'
-ATTRIBUTES = '("__dict__", "__setattr__", "__delattr__", "__getattribute__", "import_module", "__import__", "modules")'
+BANNED = '("setattr", "delattr", "vars", "globals", "locals", "exec", "eval", "compile", "__import__", "importlib", "import_module", "__dict__", "__setattr__", "__delattr__", "__getattribute__", "builtins", "__builtins__")'
+ATTRIBUTES = '("__dict__", "__setattr__", "__delattr__", "__getattribute__", "import_module", "__import__", "modules", "builtins", "__builtins__")'
 
 
 def banned(without: str) -> tuple[str, str]:
@@ -66,10 +66,6 @@ MUTATIONS: list[Mutation] = [
     b("ban-sys-modules-attribute-unreferenced", "an attribute `modules` (sys.modules) is accepted", (BM + "sys_modules",), f"BANNED_ATTRIBUTES = {ATTRIBUTES}", f"BANNED_ATTRIBUTES = {ATTRIBUTES.replace(', \"modules\"', '')}"),
     b("ban-from-sys-import-modules-unreferenced", "`from sys import modules` is accepted", (BM + "sys_modules",),
       ' or (node.module == "sys" and a.name == "modules")', ""),
-    b("ban-builtins-attributes-unreferenced", "a built-in reached as an attribute of the imported builtins module is accepted", (BM + "setattr_and_delattr", BM + "code_execution"),
-      'BUILTIN_ATTRIBUTES = ("setattr", "delattr", "vars", "globals", "locals", "exec", "eval", "compile")', "BUILTIN_ATTRIBUTES = ()"),
-    b("ban-builtins-module-not-collected", "an imported builtins module (or an alias of it) is not known as one", (BM + "setattr_and_delattr", BM + "code_execution"),
-      '        builtin_modules = {"__builtins__"} | {a.asname or a.name for n in ast.walk(index.tree) if isinstance(n, ast.Import) for a in n.names if a.name == "builtins"}', "        builtin_modules = set()"),
     b("ban-type-starred-or-keyword-call-accepted", "type with a starred argument, a keyword or two arguments is accepted: only the three-argument call is refused", (BM + "three_argument_type",),
       "        one_plain_argument = len(node.args) == 1 and not node.keywords and not isinstance(node.args[0], ast.Starred)", "        one_plain_argument = len(node.args) != 3"),
     # --- where a reference is read: imports, and the REFERENCE rather than the call ------------------------------------------------------------
@@ -81,7 +77,7 @@ MUTATIONS: list[Mutation] = [
       "        return []"),
     b("ban-reads-only-a-bare-call-statement", "a banned name is refused only in a bare expression statement: an alias, a value passed, stored or assigned is missed (a ban on the call, not the reference)",
       (BM + "vars_globals_locals", BM + "dynamic_import", BM + "code_execution", BM + "dunder_dict"),
-      "            for name in banned_references(node, builtin_modules):", "            for name in (banned_references(node, builtin_modules) if isinstance(stmt, ast.Expr) else []):"),
+      "            for name in banned_references(node):", "            for name in (banned_references(node) if isinstance(stmt, ast.Expr) else []):"),
     # --- the exact-statement exceptions -------------------------------------------------------------------------------------------------------
     b("exception-ignores-the-function", "an excepted statement is excepted in any function of its file", (OTHER_FUNCTION,),
       "e.function == qual and e.statement == text and used.setdefault", "e.statement == text and used.setdefault"),
@@ -89,7 +85,7 @@ MUTATIONS: list[Mutation] = [
       "e.function == qual and e.statement == text and used.setdefault", "e.function == qual and used.setdefault"),
     b("exception-ignores-the-file", "an excepted statement is excepted in any file", (EX + "test_the_same_statements_in_another_file_are_refused",),
       "        excepted, used = [e for e in EXCEPTIONS if e.file == path], {}", "        excepted, used = list(EXCEPTIONS), {}"),
-    b("exception-matches-a-second-copy", "an excepted statement is excepted again where it is copied in the same function", (CHANGED,),
+    b("exception-matches-a-second-copy", "an excepted statement is excepted again where it is copied in the same function", (CHANGED, EX + "test_a_second_copy_of_an_excepted_module_statement_is_refused"),
       " and used.setdefault(e, id(stmt)) == id(stmt)), None)", "), None)"),
     b("exception-write-unchecked", "the instance attribute an excepted statement sets is not checked against the family's methods", (EX + "test_the_excepted_write_is_checked_like_any_write_through_the_receiver",),
       "                elif site.writes:", "                elif False:"),

@@ -96,11 +96,14 @@ REFLECTIVE_FIX = "declare the class or module member in source: a namespace chan
 # A REFERENCE to one of these names is refused wherever it appears in production code: called, aliased, passed, stored, imported or reached as an attribute. It is a ban on the reference,
 # not a tracking of values: aliasing a banned name is itself a reference, and a value one of them produced is never followed (docs/gen2/SOURCE-CONTRACT.md, "Dynamic mechanisms").
 # A `def` of one of the names (`def __setattr__`) is a definition and no reference. Three-argument `type(...)` is refused where the call is read (`Contract.call`); `sys.modules` is the
-# attribute `modules`; the statements EXCEPTIONS lists are the only places the ban does not apply.
-BANNED = ("setattr", "delattr", "vars", "globals", "locals", "exec", "eval", "compile", "__import__", "importlib", "import_module", "__dict__", "__setattr__", "__delattr__", "__getattribute__")
-BANNED_ATTRIBUTES = ("__dict__", "__setattr__", "__delattr__", "__getattribute__", "import_module", "__import__", "modules")   # banned as an attribute of anything (`sys.modules`, `x.__dict__`)
-BUILTIN_ATTRIBUTES = ("setattr", "delattr", "vars", "globals", "locals", "exec", "eval", "compile")   # banned as an attribute of the builtins module only (`re.compile` is another name)
+# attribute `modules`; the statements EXCEPTIONS lists are the only places the ban does not apply. The `builtins` module is itself a banned name (task 2q-t1; Astra's 2q-a-repair-7
+# review R7-1): `bi = builtins; bi.setattr(...)`, a re-export and `helpers.builtins.setattr` are all references to it, so no alias of the module is ever followed and no file-wide set of
+# its spellings exists. `re.compile` is another name and stays accepted.
+BANNED = ("setattr", "delattr", "vars", "globals", "locals", "exec", "eval", "compile", "__import__", "importlib", "import_module", "__dict__", "__setattr__", "__delattr__", "__getattribute__", "builtins", "__builtins__")
+BANNED_ATTRIBUTES = ("__dict__", "__setattr__", "__delattr__", "__getattribute__", "import_module", "__import__", "modules", "builtins", "__builtins__")   # banned as an attribute of anything (`sys.modules`, `x.__dict__`, `helpers.builtins`)
 PRIVATE_FIX = "rename it without the leading double underscore: the compiler holds a name that starts with two underscores and does not end with two as `_Class__name`, which no fact here would spell that way"
+PIN_FIX = ("restore the reviewed function, or amend the exception and its fingerprint in docs/gen2/SOURCE-CONTRACT.md and tools/gen2_source_contract.py together (operator-reviewed): the "
+           "exception covers the statement as the reviewed function runs it, with its receiver and role")
 BAN_FIX = ("write the effect in source (a class member, an import, an assignment): a namespace or an attribute changed through this mechanism is not in the facts; a use the contract has to "
            "keep is an exact-statement exception in docs/gen2/SOURCE-CONTRACT.md and tools/gen2_source_contract.py (operator-reviewed)")
 
@@ -108,27 +111,34 @@ BAN_FIX = ("write the effect in source (a class member, an import, an assignment
 @dataclass(frozen=True)
 class Excepted:
     """One statement the ban does not apply to: it is matched by file, enclosing function (qualified, "" at the module's level) and the EXACT normalised statement (`ast.unparse`), and
-    nothing else matches it - the same statement in another function or file, or a second time in the same function, is refused. Adding one is a contract amendment. `writes` is the
-    instance attribute the statement sets on the method's receiver, which the contract checks like any other write through the receiver (it must not be a method of the class family)."""
+    nothing else matches it - the same statement in another function or file, or a second time in the same function, is refused - and the enclosing function must be the reviewed one
+    in its WHOLE (`fingerprint`: a changed receiver parameter, a `@staticmethod` or `@classmethod`, or any edit to the function is a refusal; task 2q-t1, Astra's R7-2). Adding one is a
+    contract amendment. `writes` is the instance attribute the statement sets on the method's receiver, which the contract checks like any other write through the receiver (it must not
+    be a method of the class family)."""
     file: str
     function: str
     statement: str
     names: tuple[str, ...]   # the banned names the statement references (the document lists them)
     reason: str
     writes: str = ""
+    fingerprint: str = ""   # SHA-256 of the whole enclosing function (`function_fingerprint`): signature, decorators and body, as the loader's is pinned; empty for the module-level statement the loader's own pin covers
 
 
 LOADER_FILE = "gateway/research_gateway/adapters/__init__.py"
 EXCEPTIONS = (
     Excepted(LOADER_FILE, "", "import importlib", ("importlib",), "the import of the one inventoried dynamic loader (\"Dynamic loader inventory\"; its fingerprint pins this statement)"),
     Excepted(LOADER_FILE, "load_all", "mod = importlib.import_module(f'{__name__}.{info.name}')", ("importlib", "import_module"),
-             "the one inventoried dynamic import: adapter discovery over the package's own path, with a pinned filter, file inventory and implementation"),
+             "the one inventoried dynamic import: adapter discovery over the package's own path, with a pinned filter, file inventory and implementation",
+             fingerprint="0c3248cd031cc6d8417aed3f9e2e1b109712cb7095a9151ba0dd96d4d7922041"),
     Excepted("gen2/supervisor/jobs.py", "Job.hold", "key, held = ((stat.st_dev, stat.st_ino), _HELD.__dict__.setdefault('keys', set()))", ("__dict__",),
-             "`_HELD` is a `threading.local()`: its `__dict__` is that one thread's own data, the journal locks the thread holds, and no class's or module's namespace"),
+             "`_HELD` is a `threading.local()`: its `__dict__` is that one thread's own data, the journal locks the thread holds, and no class's or module's namespace",
+             fingerprint="9c337856399195bdbed662c27f5ec0655259c020be086726f832993ce206a70a"),
     Excepted("gateway/research_gateway/core/payload.py", "Sealed.__init__", "object.__setattr__(self, '_value', value)", ("__setattr__",),
-             "instance-slot initialisation behind a `__setattr__` that refuses every write (`_Unread`): a plain assignment would be refused by the class itself", writes="_value"),
+             "instance-slot initialisation behind a `__setattr__` that refuses every write (`_Unread`): a plain assignment would be refused by the class itself", writes="_value",
+             fingerprint="aeb7cdbb25ebb07ad825cb3231a53b6b8b74ce69fac1b7ea98855875883ba906"),
     Excepted("gateway/research_gateway/core/payload.py", "Passive.__init__", "object.__setattr__(self, '_value', value)", ("__setattr__",),
-             "instance-slot initialisation behind a `__setattr__` that refuses every write (`_Unread`): a plain assignment would be refused by the class itself", writes="_value"),
+             "instance-slot initialisation behind a `__setattr__` that refuses every write (`_Unread`): a plain assignment would be refused by the class itself", writes="_value",
+             fingerprint="0ac2a3258a5a1117be0c43598427255f4297f6c6b846b77fe07f97a8da6d7443"),
 )
 
 
@@ -302,6 +312,15 @@ def without_docstring(body: list[ast.stmt]) -> list[ast.stmt]:
     return body[1:] if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str) else body
 
 
+def function_form(node: ast.FunctionDef | ast.AsyncFunctionDef):
+    """The normalised syntax of one `def` - its name, signature, decorators and body, docstring aside - the form the loader's fingerprint and an excepted function's both read."""
+    return normalised(type(node)(**{**{name: getattr(node, name) for name in node._fields}, "body": without_docstring(node.body)}))
+
+
+def function_fingerprint(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    return hashlib.sha256(json.dumps(function_form(node), separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
 def fingerprint(tree: ast.Module, function: str) -> str | None:
     """The reviewed implementation of a loader, as a SHA-256: the normalised syntax of the function and of every statement of its module that is not another definition
     (its imports, its constants, any rebinding of a name it reads), docstrings aside. None when the module has no such function."""
@@ -309,7 +328,7 @@ def fingerprint(tree: ast.Module, function: str) -> str | None:
     for statement in without_docstring(tree.body):
         if isinstance(statement, source.FUNCTIONS) and statement.name == function:
             found = True
-            parts.append(normalised(ast.FunctionDef(**{**{name: getattr(statement, name) for name in statement._fields}, "body": without_docstring(statement.body)})))
+            parts.append(function_form(statement))
         elif not isinstance(statement, (*source.FUNCTIONS, ast.ClassDef)):
             parts.append(normalised(statement))
     return hashlib.sha256(json.dumps(parts, separators=(",", ":")).encode("utf-8")).hexdigest() if found else None
@@ -330,15 +349,13 @@ def lineage(tree: ast.Module):
         todo.extend(reversed([(child, qual, stmt, in_class) for child in ast.iter_child_nodes(node)]))   # a stack: reversed, so that the nodes come in source order
 
 
-def banned_references(node: ast.AST, builtin_modules: set[str]) -> list[str]:
-    """The banned names a node REFERENCES: a name (in any context), an attribute, an import of one (`import importlib`, `from importlib import x`, `from sys import modules`, an alias
-    of one) or a builtins attribute reached through an imported `builtins`. A `def` of a banned name is no reference."""
+def banned_references(node: ast.AST) -> list[str]:
+    """The banned names a node REFERENCES: a name (in any context), an attribute, or an import of one (`import importlib`, `import builtins as bi`, `from importlib import x`,
+    `from sys import modules`, an alias of one). A `def` of a banned name is no reference."""
     if isinstance(node, ast.Name):
         return [node.id] if node.id in BANNED else []
     if isinstance(node, ast.Attribute):
-        if node.attr in BANNED_ATTRIBUTES:
-            return [node.attr]
-        return [f"builtins.{node.attr}"] if node.attr in BUILTIN_ATTRIBUTES and isinstance(node.value, ast.Name) and node.value.id in builtin_modules else []
+        return [node.attr] if node.attr in BANNED_ATTRIBUTES else []
     if isinstance(node, ast.Import):
         return [a.name for a in node.names if a.asname in BANNED or any(part in BANNED for part in a.name.split("."))]
     if isinstance(node, ast.ImportFrom):
@@ -500,6 +517,9 @@ class Contract:
                 continue
             fn.transforms.append(record.identity)
             fn.role = record.role or fn.role
+        if len(fn.transforms) > 1:   # the effect of each record is stated alone: `property` over `classmethod` is a property whose getter is not callable, not a class method
+            self.refuse("SRC-DECORATOR-UNKNOWN", index.path, fn.node.decorator_list[1].lineno, f"{fn.qual} stacks {' and '.join(fn.transforms)}: the contract records each transformation alone, "
+                        "not their composition", REMEDY["SRC-DECORATOR-UNKNOWN"])
         if in_class:
             fn.role = fn.role if fn.role != "function" else "method"
             args = fn.node.args
@@ -866,14 +886,19 @@ class Contract:
         unless it is in one of the exact statements EXCEPTIONS names, in the function it names; a private (name-mangled) identifier is refused wherever it is written; and so is a quoted
         annotation of a statement in a class body (a dataclass reads a string annotation by its text, not by what the name is bound to)."""
         path = index.path
-        builtin_modules = {"__builtins__"} | {a.asname or a.name for n in ast.walk(index.tree) if isinstance(n, ast.Import) for a in n.names if a.name == "builtins"}
         excepted, used = [e for e in EXCEPTIONS if e.file == path], {}
+        pins = collections.defaultdict(set)   # the fingerprints of the functions of each qualified name, for the excepted functions to be the reviewed ones
+        for fn in index.functions:
+            pins[fn.qual].add(function_fingerprint(fn.node))
         for node, qual, stmt, in_class in lineage(index.tree):
-            for name in banned_references(node, builtin_modules):
+            for name in banned_references(node):
                 text = ast.unparse(stmt)
                 site = next((e for e in excepted if e.function == qual and e.statement == text and used.setdefault(e, id(stmt)) == id(stmt)), None)
                 if site is None:
                     self.refuse("SRC-DYNAMIC-MECHANISM", path, node.lineno, f"a reference to `{name}`, a banned dynamic mechanism, in `{text[:70]}`", BAN_FIX)
+                elif site.function and pins[qual] != {site.fingerprint}:
+                    self.refuse("SRC-DYNAMIC-MECHANISM", path, node.lineno, f"a reference to `{name}` in `{text[:70]}`: the excepted function {qual} is not the reviewed implementation "
+                                f"(fingerprint {', '.join(sorted(p[:16] for p in pins[qual]))} against {site.fingerprint[:16]})", PIN_FIX)
                 elif site.writes:
                     self.excepted_write(index, qual, site, node.lineno)
             for name in private_names(node):
@@ -883,10 +908,13 @@ class Contract:
                             "write the annotation unquoted (use `from __future__ import annotations` for a forward reference): the dataclass decorator reads a string by its text and the contract cannot say what it names")
 
     def excepted_write(self, index: FileIndex, qual: str, site: Excepted, line: int) -> None:
-        """An excepted statement sets the instance attribute `site.writes` on the receiver of its method: the contract checks that as any other write through the receiver."""
+        """An excepted statement sets the instance attribute `site.writes` on the receiver of its method (the function's signature and decorators are pinned, so the receiver is the first
+        parameter and the role a method's): the contract checks that as any other write through the receiver. A function that is no method of a class has no receiver to write."""
         fn = next((f for f in index.functions if f.qual == qual), None)
         context = self.context(fn.scope) if fn is not None else ()
-        if context and site.writes in self.family_methods[self.component[context[0].key]]:
+        if not context:
+            self.refuse("SRC-DYNAMIC-MECHANISM", index.path, line, f"`{site.statement}` in {qual} writes the attribute `{site.writes}` of the receiver of a method, and {qual} is not a method of a class", PIN_FIX)
+        elif site.writes in self.family_methods[self.component[context[0].key]]:
             self.override(index.path, line, f"`{site.statement}` in {qual}", site.writes)
 
     def pinned(self, index: FileIndex) -> None:
@@ -997,8 +1025,8 @@ def contract_view() -> dict:
     return {"version": CONTRACT_VERSION, "id": CONTRACT_ID, "categories": {k: list(v) for k, v in CATEGORIES.items()},
             "transforms": [{"identity": t.identity, "applies_to": list(t.applies_to), "shape": t.shape, "effect": t.effect} for t in TRANSFORMS],
             "modelled_typing": list(MODELLED_TYPING), "mixable_external": list(MIXABLE_EXTERNAL), "hooks": list(HOOKS), "loader_calls": list(LOADER_CALLS),
-            "banned": list(BANNED), "banned_attributes": list(BANNED_ATTRIBUTES), "builtin_attributes": list(BUILTIN_ATTRIBUTES),
-            "exceptions": [{"file": e.file, "function": e.function, "statement": e.statement, "names": list(e.names), "reason": e.reason, "writes": e.writes} for e in EXCEPTIONS],
+            "banned": list(BANNED), "banned_attributes": list(BANNED_ATTRIBUTES),
+            "exceptions": [{"file": e.file, "function": e.function, "statement": e.statement, "names": list(e.names), "reason": e.reason, "writes": e.writes, "fingerprint": e.fingerprint} for e in EXCEPTIONS],
             "forms": dict(sorted(source.FORMS.items())), "refused_by_design": list(source.REFUSED_BY_DESIGN), "binding_roles": list(source.BINDING_ROLES),
             "class_forms": dict(sorted(Contract.CLASS_FORMS.items())), "store_forms": dict(sorted(Contract.STORE_FORMS.items())),
             "loaders": [{"file": e.file, "function": e.function, "call": e.call, "discovery": e.discovery, "argument": e.argument, "package": e.package,

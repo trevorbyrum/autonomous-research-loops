@@ -450,7 +450,7 @@ class _Builder:
         (scope.hidden if self.hidden else scope.mentioned).add(mangle(scope.private, name))
 
     def validate(self) -> None:
-        """Every pairing is proved both ways. The names the tree writes in a scope (a comprehension the compiler inlines belongs to the scope that holds it) must all be in its table; and
+        """Every pairing is checked both ways (a consistency check on the order scopes are entered in, no proof that a pairing is right: it compares names, not flags). The names the tree writes in a scope (a comprehension the compiler inlines belongs to the scope that holds it) must all be in its table; and
         the table may hold only those, the compiler's own names (`.0`, `__class__`) and the free names of the scopes below that it passes up. Anything else means this scope is not the one the
         table was built for."""
         scopes = [s for s in self.index.scopes if s.table is not None or s.parent is None]
@@ -628,8 +628,8 @@ class _Builder:
         self.visit(node.value, scope, nested)
 
     def form_annassign(self, node: ast.AnnAssign, scope: Scope, nested: bool, target) -> None:
-        if node.value is None and not isinstance(node.target, ast.Name):
-            self.each(ast.iter_child_nodes(node.target), scope, nested)   # `a.b: int` declares and stores nothing
+        if node.value is None and not (isinstance(node.target, ast.Name) and node.simple):
+            self.each(ast.iter_child_nodes(node.target), scope, nested)   # `a.b: int` and the parenthesised `(x): int` declare and store nothing: the compiler adds no symbol for either
         else:
             self.visit(node.target, scope, nested, Target("assign" if node.value is not None else "annotation", node.value, annotated=node.annotation))
         self.annotations([node.annotation], scope, nested)

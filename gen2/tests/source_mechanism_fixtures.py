@@ -33,8 +33,8 @@ BAN: dict[str, list[Fixture]] = {
         ban("setattr through a name nothing binds", ("def put():", "    setattr(nowhere, 'x', 1)"), 2, "`setattr`"),
         ban("delattr on an imported module", ("import os", "delattr(os, 'sep')"), 2, "`delattr`"),
         ban("delattr through a parameter", ("def drop(obj):", "    delattr(obj, 'value')"), 2, "`delattr`"),
-        ban("builtins.setattr through an imported builtins", ("import builtins", "", "def put(obj):", "    builtins.setattr(obj, 'x', 1)"), 4, "builtins.setattr"),
-        ban("builtins.delattr through an alias of the builtins module", ("import builtins as b", "", "def drop(obj):", "    b.delattr(obj, 'x')"), 4, "builtins.delattr"),
+        ban("builtins.setattr through an imported builtins", ("import builtins", "", "def put(obj):", "    builtins.setattr(obj, 'x', 1)"), 4, "`builtins`"),
+        ban("builtins.delattr through an alias of the builtins module", ("import builtins as b", "", "def drop(obj):", "    b.delattr(obj, 'x')"), 1, "`builtins`"),
         ban("setattr imported from builtins", ("from builtins import setattr as put",), 1, "`setattr`"),
     ],
     "vars_globals_locals": [
@@ -89,9 +89,9 @@ BAN: dict[str, list[Fixture]] = {
         ban("compile", ("def run(text):", "    return compile(text, 'x', 'exec')"), 2, "`compile`"),
         ban("exec aliased", ("run = exec", "run('x = 1')"), 1, "`exec`"),
         ban("eval passed as a value", ("def apply(fn, text):", "    return fn(text)", "", "apply(eval, '1')"), 4, "`eval`"),
-        ban("exec through an imported builtins", ("import builtins", "", "def run(text):", "    builtins.exec(text)"), 4, "builtins.exec"),
-        ban("eval through an alias of the builtins module", ("import builtins as b", "", "def run(text):", "    return b.eval(text)"), 4, "builtins.eval"),
-        ban("exec through __builtins__", ("def run(text):", "    __builtins__.exec(text)"), 2, "builtins.exec"),
+        ban("exec through an imported builtins", ("import builtins", "", "def run(text):", "    builtins.exec(text)"), 4, "`builtins`"),
+        ban("eval through an alias of the builtins module", ("import builtins as b", "", "def run(text):", "    return b.eval(text)"), 1, "`builtins`"),
+        ban("exec through __builtins__", ("def run(text):", "    __builtins__.exec(text)"), 2, "`__builtins__`"),
         ban("compile imported from builtins", ("from builtins import compile",), 1, "`compile`"),
         ban("a name bound to compile by a loop target", ("for fn in (compile, len):", "    pass"), 1, "`compile`"),
     ],
@@ -118,6 +118,22 @@ BAN: dict[str, list[Fixture]] = {
         ban("sys.modules through an alias of sys", ("import sys as system", "", "def drop(name):", "    system.modules.pop(name)"), 4, "`modules`"),
         ban("sys.modules through a name bound to sys", ("import sys", "s = sys", "s.modules.clear()"), 3, "`modules`"),
         ban("sys.modules through a call that returns sys", ("import sys", "", "def system():", "    return sys", "", "system().modules.clear()"), 6, "`modules`"),
+    ],
+    "builtins_module": [   # the module itself is the banned name (R7-1): no alias of it is followed, so every spelling of a reference to it is refused where it stands
+        ban("import builtins", ("import builtins",), 1, "`builtins`"),
+        ban("builtins imported under another name", ("import builtins as bi",), 1, "`builtins`"),
+        ban("the module aliased by an assignment (Astra's assignment-builtins-setattr)", ("import builtins", "bi = builtins", "", "def put(obj):", "    bi.setattr(obj, 'x', 1)"), 2, "`builtins`"),
+        ban("the module aliased by an assignment, which writes a namespace through vars (Astra's assignment-builtins-vars)",
+            ("import builtins", "import os", "bi = builtins", "bi.vars(os)['sep'] = '|'"), 3, "`builtins`"),
+        ban("a function from the module imported by name", ("from builtins import open",), 1, "`builtins`"),
+        ban("the module imported by name from another module", ("from os import builtins",), 1, "`builtins`"),
+        ban("the name bound to nothing", ("def run():", "    return builtins"), 2, "`builtins`"),
+        ban("the module as an attribute of something else", ("import os", "", "def put(obj):", "    os.builtins.setattr(obj, 'x', 1)"), 4, "`builtins`"),
+        ban("__builtins__ as an attribute", ("import os", "", "def table():", "    return os.__builtins__"), 4, "`__builtins__`"),
+        ban("the module re-exported by another file (Astra's reexport-builtins-setattr)", files={"helpers.py": "import builtins as bi\n", "b.py": "from {pkg}.helpers import bi\nbi.setattr(object, 'x', 1)\n"},
+            file="helpers.py", lines=(), line=1, token="`builtins`"),
+        ban("the module reached through the re-exporting file (Astra's qualified-reexport-builtins-setattr)",
+            files={"helpers.py": "import builtins\n", "b.py": "from {pkg} import helpers\nhelpers.builtins.setattr(object, 'x', 1)\n"}, file="b.py", lines=(), line=2, token="`builtins`"),
     ],
     "three_argument_type": [
         ban("a class made by three-argument type", ("A = type('A', (), {})",), 1, "makes a class by a call", category=DYNAMIC),
@@ -304,3 +320,30 @@ ESCAPED_PROBES = [
     module_probe("parameter-module", "def replace(ns): ns.A = object\nreplace(a)\n"),
     module_probe("returned-class-delete", "def owner(): return a.A\ndel owner().f\n"),
 ]
+
+# --- Astra's R7-1 sources (2q-a-repair-7 review, private/evidence/astra-2q-a-repair-7/probes.json): the `builtins` module aliased or re-exported ------------------------------------------------
+# Each is a class or a module changed at run time by an ordinary alias of the module (the interpreter says so), accepted by 2q-a-repair-7 and refused now, in both services.
+R7_A = {"a.py": "class A:\n    def f(self): return 'A'\n"}
+R7_B = "from {pkg}.a import A\nclass B(A):\n    def run(self): return self.f()\n"
+R7_ERROR = "TypeError: 'int' object is not callable"
+BUILTINS_PROBES = [
+    Probe("assignment-builtins-setattr", "probes.json", R7_A | {"b.py": R7_B + "import builtins\nbi = builtins\nbi.setattr(A, 'f', 7)\n"}, RUN_B, R7_ERROR,
+          refused=((MECH, "b.py", 4), (MECH, "b.py", 5))),
+    Probe("assignment-builtins-delattr", "probes.json", R7_A | {"b.py": R7_B + "import builtins\nbi = builtins\nbi.delattr(A, 'f')\n"}, RUN_B, "AttributeError: 'B' object has no attribute 'f'",
+          refused=((MECH, "b.py", 4), (MECH, "b.py", 5))),
+    Probe("reexport-builtins-setattr", "probes.json", R7_A | {"helpers.py": "import builtins as bi\n", "b.py": R7_B + "from {pkg}.helpers import bi\nbi.setattr(A, 'f', 7)\n"}, RUN_B, R7_ERROR,
+          refused=((MECH, "helpers.py", 1),), notes="the file that re-exports the module is the one refused: the module is named there"),
+    Probe("qualified-reexport-builtins-setattr", "probes.json", R7_A | {"helpers.py": "import builtins\n", "b.py": R7_B + "from {pkg} import helpers\nhelpers.builtins.setattr(A, 'f', 7)\n"}, RUN_B, R7_ERROR,
+          refused=((MECH, "b.py", 5), (MECH, "helpers.py", 1))),
+    Probe("assignment-builtins-vars", "probes.json", R7_A | {"b.py": R7_B + "import builtins\nfrom {pkg} import a\nbi = builtins\nbi.vars(a)['A'] = object\n"},
+          "from {pkg}.b import B; from {pkg} import a; print(a.A is object)", "True", refused=((MECH, "b.py", 4), (MECH, "b.py", 6))),
+]
+# `re` is not `builtins`: an ordinary `compile` of the regular-expression module stays accepted, and so does a function that imports it where another function imports the built-ins under the same alias
+REGEX = "def regex():\n    import re as b\n    return b.compile('x').pattern\n"
+REGEX_CONTROL = ("from {pkg}.a import regex; print(regex())", "x")
+BUILTINS_SHADOW = "def helper():\n    import builtins as b\n    return b.len([])\n\n" + REGEX   # `b` is the built-ins in `helper` and the regular-expression module in `regex`
+
+# --- the composition of recorded transformations (2q-a-repair-4 review F2, DEBT-016 item 2): `property` over `classmethod` is a property whose getter is not callable ---------------------------------
+COMPOSITION = [Probe("property-over-classmethod", "2q-a-repair-4 review, F2 (effective-member probes)",
+                     R7_A | {"b.py": "from {pkg}.a import A\nclass B(A):\n    @property\n    @classmethod\n    def f(cls): return 'B'\n    def run(self): return self.f()\n"}, RUN_B,
+                     "TypeError: 'classmethod' object is not callable", refused=(("SRC-DECORATOR-UNKNOWN", "b.py", 4),))]

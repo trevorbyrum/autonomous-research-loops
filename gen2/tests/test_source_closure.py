@@ -24,7 +24,7 @@ from pathlib import Path
 
 from gen2.tests import children
 from gen2.tests import tool_repo_fixtures as fx
-from gen2.tests.source_closure_fixtures import CLOSURE_ACCEPTS, CLOSURE_REFUSALS
+from gen2.tests.source_closure_fixtures import CLOSURE_ACCEPTS, CLOSURE_REFUSALS, PARENTHESISED_CONTROL, PARENTHESISED_SAYS, PARENTHESISED_SOURCE
 from gen2.tests.source_contract_fixtures import Fixture
 from gen2.tests.source_probe_fixtures import LOADER_CONTROL, LOADER_NAMES, LOCATOR_CONTROL, LOCATOR_DOC, LOCATOR_FILES, LOCATOR_SAYS, PROBES, Probe
 from gen2.tests.test_source_contract import SERVICES, ContractCase, package
@@ -129,6 +129,15 @@ class ClosureAcceptanceTest(ClosureCase):
             self.assertEqual({name: classes[full(key)]["members"].get(name) for name in members}, members, msg=f"the effective members of {key}")
         for key, names in expect.get("fields", {}).items():
             self.assertEqual(classes[full(key)]["fields"], names)
+
+    def test_a_parenthesised_annotated_name_binds_nothing_and_python_agrees(self) -> None:
+        """DEBT-017 item 1: the interpreter binds `z` and `f` and neither `x` nor `y`; the contract used to refuse the form (the compiler's table holds no symbol for it) and now accepts it,
+        in the module, in a class body and in a function, in both services."""
+        for service in SERVICES:
+            with self.subTest(service=service):
+                repo = self.repo(package(service, {"a.py": PARENTHESISED_SOURCE}))
+                self.assertEqual(interpreter(repo, service, PARENTHESISED_CONTROL), PARENTHESISED_SAYS)
+                self.assertEqual(self.diagnostics(self.view(repo)[1]), [])
 
 
 def _acceptance_test(family: str):
@@ -297,7 +306,8 @@ class ProbeTest(ProbeCase):
     def test_each_probe(self) -> None:
         self.check_each_probe(PROBES)
 
-    def test_the_probe_files_are_astras(self) -> None:
+    def test_the_probe_inventory_is_the_names_and_counts_of_the_review_and_no_comparison_of_sources(self) -> None:
+        """An INVENTORY check (DEBT-016 item 3): the probes are the review's by name and count. That the sources are hers is not shown here: she replayed them against her originals (2q-a-repair-4 review)."""
         names = [p.name for p in PROBES]
         self.assertEqual(len(names), len(set(names)))
         for needed in ("dataclass-field", "transitive-external", "module-overwrite", "annotation-rebind", "global-import-rebind", "loader-alias", "all-alias", "class-hook-alias", "class-loop-target",
@@ -357,7 +367,8 @@ class LoaderBoundaryTest(ContractCase):
                 "an exception swallowed": real.replace("        mod = importlib.import_module(f\"{__name__}.{info.name}\")",
                                                        "        try:\n            mod = importlib.import_module(f\"{__name__}.{info.name}\")\n        except Exception:\n            continue")}
 
-    def test_every_change_to_the_reviewed_loader_is_refused(self) -> None:
+    def test_each_listed_change_to_the_reviewed_loader_is_refused(self) -> None:
+        """The edits of `edits()` only (DEBT-016 item 5): not every possible change to the loader, and no claim about the definition-time effects of another definition in its module."""
         real = LOADER.read_text(encoding="utf-8")
         for what, text in self.edits().items():
             with self.subTest(change=what):
@@ -365,6 +376,17 @@ class LoaderBoundaryTest(ContractCase):
                 status, view = self.view(self.repo(self.tree(text)))
                 self.assertEqual(status, 1)
                 self.assertTrue({"SRC-LOADER-INVENTORY", "SRC-DEF-REBOUND", "SRC-BINDING-COMPETING"} & {d["category"] for d in view["diagnostics"]}, msg=[d["category"] for d in view["diagnostics"]])
+
+    def test_the_definition_time_effects_of_other_definitions_are_outside_the_fingerprint_as_the_contract_declares(self) -> None:
+        """DEBT-016 item 1, DOCUMENTED (SOURCE-CONTRACT, "A declared bound of the fingerprint"): a default or a class body of ANOTHER definition in the loader's module runs at import and can change what
+        the loader finds (Astra's three F3 sources: the interpreter says 0, 25 and 25 names, not 26), and the fingerprint does not cover it. The contract states the bound; nothing here says accepting is right."""
+        real = LOADER.read_text(encoding="utf-8")
+        for what, (extra, count) in {"a default clearing the path": ("def helper(x=__path__.clear()):\n    return x\n", 0), "a default dropping a name": ("def helper(x=_SKIP.add('bea')):\n    return x\n", 25),
+                                     "a class body dropping a name": ("class Helper:\n    _SKIP.add('bea')\n", 25)}.items():
+            with self.subTest(source=what):
+                repo = self.repo(self.tree(real + "\n\n" + extra))
+                self.assertEqual(len(self.loaded(repo)), count, msg="what Python does: the loader finds other names")
+                self.assertEqual(self.view(repo)[0], 0, msg="outside the fingerprint, and the contract says so")
 
     def test_changes_that_are_not_the_implementation_are_not_refused(self) -> None:
         real = LOADER.read_text(encoding="utf-8")
@@ -441,7 +463,8 @@ class EffectiveMemberTest(ContractCase):
                     self.assertEqual(measured_sites(repo, service), 0)
 
     def test_a_masking_member_is_data_for_every_name_and_not_only_hash(self) -> None:
-        """The rule is general: a slot, a property and a data member each stop the lookup at their class, so an ancestor's method of that name is not what `self.name()` reaches. Python is the control."""
+        """The rule is not `__hash__`'s alone (DEBT-016 item 4): a PROPERTY stops the lookup at its class, so an ancestor's method of that name is not what `self.name()` reaches, while an ordinary method of
+        another name is. A slot or a data member named like a method of the family is refused outright (`SRC-ATTR-OVERRIDE`, the family tests above), so neither reaches this measurement. Python is the control."""
         for service, (prefix, name) in SERVICES.items():
             with self.subTest(service=service):
                 a = py("class A:", "    def p(self):", "        return 'A.p'", "", "    def run(self):", "        return self.p(), self.q()")

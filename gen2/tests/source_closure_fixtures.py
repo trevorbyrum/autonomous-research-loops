@@ -322,6 +322,13 @@ def ordinary_data_stores() -> list[Fixture]:
     ]
 
 
+# DEBT-017 item 1: `(x): int` is an annotation with a non-simple target: the compiler adds no symbol for it, so it declares nothing (the index refused it as a binding the table did not hold)
+PARENTHESISED = "a parenthesised annotated name with no value binds nothing, in a module, a class body and a function; with a value it binds"
+PARENTHESISED_SOURCE = py("(x): int", "", "class A:", "    (y): int", "    (z): int = 1", "", "    def f(self):", "        (w): int", "        return 1")
+PARENTHESISED_CONTROL = "from {pkg} import a\nprint(hasattr(a, 'x'), sorted(n for n in vars(a.A) if n in 'yzf'))"
+PARENTHESISED_SAYS = "False ['f', 'z']"   # what Python prints: `x` and `y` are never bound, `z` and `f` are
+
+
 CLOSURE_ACCEPTS: dict[str, list[Fixture]] = {
     "ordinary_data_stores": ordinary_data_stores(),   # not closure evidence: see the note on ordinary_data_stores
     "class_bodies_that_bind_data": [
@@ -332,6 +339,7 @@ CLOSURE_ACCEPTS: dict[str, list[Fixture]] = {
                                     "seven": ["data", "authored"], "eight": ["data", "authored"], "nine": ["data", "authored"], "ten": ["data", "authored"], "eleven": ["data", "authored"],
                                     "Inner": ["data", "authored"], "run": ["method", "authored"]}}),
         accept("an annotation alone binds nothing in the class", {"a.py": py("class A:", "    x: int", "    def f(self):", "        return 1")}, members={"a.py::A": {"f": ["method", "authored"], "x": None}}),
+        accept(PARENTHESISED, {"a.py": PARENTHESISED_SOURCE}, members={"a.py::A": {"f": ["method", "authored"], "y": None, "z": ["data", "authored"]}}),
     ],
     "implicit_and_generated_members": [
         accept("__eq__ without __hash__ sets __hash__ to None",
