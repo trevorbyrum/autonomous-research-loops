@@ -872,7 +872,7 @@ MUTANTS.extend(_schema_mutants(Mutant))
 # restore the defect they name by ALSO making `any_()` readable again: the same three edits to the decoder (each `any_()` field a bare value, as before), then the loosened declaration
 # and its read as the mutant always had them. A mutant carrying them has a target per edit.
 SCHEMA_FILE = "research_gateway/core/schema.py"
-LEGACY_ANY = ((SCHEMA_FILE, '    if k == "any":\n        return Passive(v)\n', '    if k == "any":\n        return v\n'),
+LEGACY_ANY = ((SCHEMA_FILE, 'def _passive(s: Spec, v, at: tuple):\n    return Passive(v)\n', 'def _passive(s: Spec, v, at: tuple):\n    return v\n'),
               (SCHEMA_FILE, '        return Passive(fs.default if missing else None)\n', '        return fs.default if missing else None\n'),
               (SCHEMA_FILE, '    if k == "any":\n        return Passive(None)\n', '    if k == "any":\n        return None\n'))
 
@@ -932,3 +932,8 @@ MUTANTS.extend(_payload_mutants(Mutant))
 from gen2_gateway_direction_mutants import build as _direction_mutants  # noqa: E402
 
 MUTANTS.extend(_direction_mutants(Mutant))
+
+# task 2q-b4: the decoder's dispatch and its kind tables (tools/gen2_gateway_decoder_mutants.py)
+from gen2_gateway_decoder_mutants import build as _decoder_mutants  # noqa: E402
+
+MUTANTS.extend(_decoder_mutants(Mutant))

@@ -336,104 +336,157 @@ def _ruled(rule: Callable, arg, at: tuple) -> None:
 
 
 def _decode(s: Spec, v, at: tuple):
+    """`v` as the spec `s` says it must be. A kind belongs to one of three families, each with its own concern, and each kind has one decoder that takes (spec, value, at) and returns the
+    decoded value or raises PayloadError (the tables are at the end of the decoder, below `_empty`):
+
+      scalars     what a leaf value may be and what it becomes: the kind's own rule, and nothing here reads anything inside the value. A kind that has a normalizer (`_NORMALIZERS`) is one:
+                  it is read through `_normalized`, whatever it is added as.
+      policies    what a failure inside a field costs (maybe, soft, isolated, oneof): each wraps another spec and decides what its failure is worth.
+      containers  how a list, a keyed container or an object is walked, and what a failure of one of its parts costs the container."""
     k = s.kind
-    if k == "any":
-        return Passive(v)
-    if k == "text":
-        if v is None or isinstance(v, str):
-            return v
-        raise _bad(at, v, "text")
-    if k == "key":
-        if (isinstance(v, str) and v.strip()) or (isinstance(v, int) and not isinstance(v, bool)):
-            return v   # as sent: a whole number stays one (a record's `file_id` is the provider's own); text() it where text is wanted
-        raise PayloadError(f"{_where(at)} is {'nothing' if v is None else _kind(v)} where a member's identifier belongs")
-    if k == "maybe_key":   # a name or nothing; what is sent stays as sent (a blank name names nothing, and identity_from knows it)
-        if v is None or (isinstance(v, int) and not isinstance(v, bool)):
-            return v
-        if isinstance(v, str) and not (s.default and v != "" and not v.strip()):   # only_empty: a name of spaces is not "nothing", it is unreadable
-            return v
-        raise PayloadError(f"{_where(at)} is {_kind(v)} where a member's identifier belongs")
-    if k == "flag":
-        if v is None or isinstance(v, bool):
-            return bool(v)
-        raise _bad(at, v, "a flag")
-    if k == "whole":
-        if v is None or (isinstance(v, int) and not isinstance(v, bool)):
-            return v
-        raise _bad(at, v, "a whole number")
+    if k in _SCALARS:
+        return _SCALARS[k](s, v, at)
     if k in _NORMALIZERS:
         return _normalized(at, k, v)
-    if k == "token":
-        if isinstance(v, str) and v.strip():
-            return v
-        raise _bad(at, v, "a cursor")
-    if k == "maybe":
-        return None if v is None else _decode(s.of, v, at)
-    if k == "lookup":
-        if not isinstance(v, list):
-            raise _bad(at, v, "a list")
-        return _decode(s.of, v[0], at + (0,)) if v else None
-    if k == "soft":
-        try:
-            return _decode(s.of, v, at)
-        except PayloadError:
-            return None
-    if k == "isolated":
-        try:
-            return _decode(s.of, v, at)
-        except PayloadError as e:
-            return Unreadable(str(e), v)
-    if k == "oneof":
-        problems = []
-        for alternative in s.of:
-            try:
-                return _decode(alternative, v, at)
-            except PayloadError as e:
-                problems.append(str(e))
-        raise PayloadError(" / ".join(problems))
-    if k == "obj":
-        return _decode_obj(s, v, at)
-    if k in ("own", "members"):
-        items = _items(s, v, at)
-        if k == "own":
-            out = [_decode(s.of, m, at + (i,)) for i, m in enumerate(items)]
-            if s.rule is not None:
-                _ruled(s.rule, out, at)
-            return out
-        out = []
-        for i, m in enumerate(items):
-            try:
-                out.append(_decode(s.of, m, at + (i,)))
-            except PayloadError as e:
-                out.append(Unreadable(str(e), m))
-        return MemberList(out)
-    if k == "grid":
-        header, cell = s.of
-        if not isinstance(v, list):
-            raise _bad(at, v, "a list")
-        if not v:
-            raise PayloadError(f"{_where(at)} is not a table (no header row)")
-        rows = []
-        for i, row in enumerate(v):
-            if not isinstance(row, list):
-                raise _bad(at + (i,), row, "a list")
-            rows.append([_decode(header if i == 0 else cell, c, at + (i, j)) for j, c in enumerate(row)])
-        if any(c is None for c in rows[0]):
-            raise PayloadError(f"{_where(at + (0,))} names a column that is not text: the table is unreadable, not shorter")
-        return rows
-    if k in ("entries", "table"):
-        if not isinstance(v, dict):
-            raise _bad(at, v, "an object")
-        if k == "table":
-            return {name: _decode(s.of, val, at + (name,)) for name, val in v.items()}
-        out = []
-        for name, val in v.items():
-            try:
-                out.append(Rec({"key": name, "value": _decode(s.of, val, at + (name,))}, val))
-            except PayloadError as e:
-                out.append(Unreadable(str(e), val))
-        return MemberList(out)
+    if k in _POLICIES:
+        return _POLICIES[k](s, v, at)
+    if k in _CONTAINERS:
+        return _CONTAINERS[k](s, v, at)
     raise ValueError(f"unknown schema kind {k!r}")
+
+
+# ------------------------------------------------------------------ scalars
+def _passive(s: Spec, v, at: tuple):
+    return Passive(v)
+
+
+def _text(s: Spec, v, at: tuple):
+    if v is None or isinstance(v, str):
+        return v
+    raise _bad(at, v, "text")
+
+
+def _key(s: Spec, v, at: tuple):
+    if (isinstance(v, str) and v.strip()) or (isinstance(v, int) and not isinstance(v, bool)):
+        return v   # as sent: a whole number stays one (a record's `file_id` is the provider's own); text() it where text is wanted
+    raise PayloadError(f"{_where(at)} is {'nothing' if v is None else _kind(v)} where a member's identifier belongs")
+
+
+def _maybe_key(s: Spec, v, at: tuple):   # a name or nothing; what is sent stays as sent (a blank name names nothing, and identity_from knows it)
+    if v is None or (isinstance(v, int) and not isinstance(v, bool)):
+        return v
+    if isinstance(v, str) and not (s.default and v != "" and not v.strip()):   # only_empty: a name of spaces is not "nothing", it is unreadable
+        return v
+    raise PayloadError(f"{_where(at)} is {_kind(v)} where a member's identifier belongs")
+
+
+def _flag(s: Spec, v, at: tuple):
+    if v is None or isinstance(v, bool):
+        return bool(v)
+    raise _bad(at, v, "a flag")
+
+
+def _whole(s: Spec, v, at: tuple):
+    if v is None or (isinstance(v, int) and not isinstance(v, bool)):
+        return v
+    raise _bad(at, v, "a whole number")
+
+
+def _token(s: Spec, v, at: tuple):
+    if isinstance(v, str) and v.strip():
+        return v
+    raise _bad(at, v, "a cursor")
+
+
+# ------------------------------------------------------------------ policies: what a failure costs
+def _maybe(s: Spec, v, at: tuple):
+    return None if v is None else _decode(s.of, v, at)
+
+
+def _soft(s: Spec, v, at: tuple):
+    try:
+        return _decode(s.of, v, at)
+    except PayloadError:
+        return None
+
+
+def _isolated(s: Spec, v, at: tuple):
+    try:
+        return _decode(s.of, v, at)
+    except PayloadError as e:
+        return Unreadable(str(e), v)
+
+
+def _oneof(s: Spec, v, at: tuple):
+    problems = []
+    for alternative in s.of:
+        try:
+            return _decode(alternative, v, at)
+        except PayloadError as e:
+            problems.append(str(e))
+    raise PayloadError(" / ".join(problems))
+
+
+# ------------------------------------------------------------------ containers
+def _lookup(s: Spec, v, at: tuple):
+    if not isinstance(v, list):
+        raise _bad(at, v, "a list")
+    return _decode(s.of, v[0], at + (0,)) if v else None
+
+
+def _own(s: Spec, v, at: tuple):
+    items = _items(s, v, at)
+    out = [_decode(s.of, m, at + (i,)) for i, m in enumerate(items)]
+    if s.rule is not None:
+        _ruled(s.rule, out, at)
+    return out
+
+
+def _members(s: Spec, v, at: tuple):
+    items = _items(s, v, at)
+    out = []
+    for i, m in enumerate(items):
+        try:
+            out.append(_decode(s.of, m, at + (i,)))
+        except PayloadError as e:
+            out.append(Unreadable(str(e), m))
+    return MemberList(out)
+
+
+def _grid(s: Spec, v, at: tuple):
+    header, cell = s.of
+    if not isinstance(v, list):
+        raise _bad(at, v, "a list")
+    if not v:
+        raise PayloadError(f"{_where(at)} is not a table (no header row)")
+    rows = []
+    for i, row in enumerate(v):
+        if not isinstance(row, list):
+            raise _bad(at + (i,), row, "a list")
+        rows.append([_decode(header if i == 0 else cell, c, at + (i, j)) for j, c in enumerate(row)])
+    if any(c is None for c in rows[0]):
+        raise PayloadError(f"{_where(at + (0,))} names a column that is not text: the table is unreadable, not shorter")
+    return rows
+
+
+def _table(s: Spec, v, at: tuple):
+    return {name: _decode(s.of, val, at + (name,)) for name, val in _keyed(v, at).items()}
+
+
+def _entries(s: Spec, v, at: tuple):
+    out = []
+    for name, val in _keyed(v, at).items():
+        try:
+            out.append(Rec({"key": name, "value": _decode(s.of, val, at + (name,))}, val))
+        except PayloadError as e:
+            out.append(Unreadable(str(e), val))
+    return MemberList(out)
+
+
+def _keyed(v, at: tuple) -> dict:
+    if not isinstance(v, dict):
+        raise _bad(at, v, "an object")
+    return v
 
 
 def _items(s: Spec, v, at: tuple) -> list:
@@ -587,6 +640,12 @@ def _empty(fs: Spec):
     if k == "grid":
         return []
     return None
+
+
+# ------------------------------------------------------------------ the kinds: one decoder each, by family (see `_decode`)
+_SCALARS = {"any": _passive, "text": _text, "key": _key, "maybe_key": _maybe_key, "flag": _flag, "whole": _whole, "token": _token}
+_POLICIES = {"maybe": _maybe, "soft": _soft, "isolated": _isolated, "oneof": _oneof}
+_CONTAINERS = {"obj": _decode_obj, "own": _own, "members": _members, "lookup": _lookup, "grid": _grid, "entries": _entries, "table": _table}
 
 
 # ------------------------------------------------------------------ SDMX-ML

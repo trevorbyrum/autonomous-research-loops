@@ -71,7 +71,7 @@ def build(Mutant) -> list:
                (TOTAL + "test_the_adapter_facing_decode_takes_the_clients_response_and_nothing_else",),
                (SP + "ResponseIsSealed.test_decode_reads_the_payload_through_its_declared_schema_and_the_responses_other_names_do_not_show_it",)),
         Mutant("S-a-declared-any-is-readable", "an `any_()` field is handed over as the bare value, so anything may read it", SCHEMA,
-               '    if k == "any":\n        return Passive(v)\n', '    if k == "any":\n        return v\n',
+               'def _passive(s: Spec, v, at: tuple):\n    return Passive(v)\n', 'def _passive(s: Spec, v, at: tuple):\n    return v\n',
                (DC + "EnforcedByTheDecoder.test_bea_dataset_names_declared_untyped", DC + "EnforcedByTheDecoder.test_bls_survey_abbreviations_declared_untyped",
                 DC + "EnforcedByTheDecoder.test_fred_series_ids_declared_untyped", SP + "PassiveIsOnlyStored.test_the_listed_ways_of_reading_a_declared_any_field_raise"),
                (DC + "EnforcedByTheDecoder.test_control_the_typed_declarations_read_and_the_same_operations_are_complete",)),
