@@ -199,3 +199,14 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (NB-3) the consumed ledger prose has small inaccuracies (`MeteredClient` should be `LaneClient`; ML-0005's reach path; ML-0014's "unchanged"), and the error-path driver repeats the stale protocol name.
 - source: private/reviews/gen2-2q-b1-astra-review-20261006.md (NB-1 to NB-3)
 - removal: a 2q slice makes these corrections, and its review confirms them before 2q closes.
+
+### DEBT-020 - 2q-b2 non-blocking review findings (2q)
+- kind: obligation
+- status: open
+- owner: task 2q
+- what: Non-blocking findings from Astra's 2q-b2 review, accepted in advance under the charter's "Review throughput" rule:
+  - (1) the 2q-b2 evidence summaries are stale (the comparison summary's counts; `healthy` missing from the coverage; `StatusCore` has 11 members, not 10), so regenerate them from the archived data with input hashes;
+  - (2) the Router differential's masks can erase semantic differences (all long numerals and broad hash and id patterns; `invocation_status` omitted), so use field-aware normalisation that preserves identity relationships, add a negative control showing a semantic change is detected, and describe results as equality under the stated normalisation; this is owned by the next Router slice;
+  - (3) don't widen the collaborator pattern's enforcement claims: the name-set checks don't enforce full Protocol conformance or nested `Rows`/`Schemas`, and `_snapshot` is writable. State those limits, keep the consumer-owned minimal interfaces, keep every write going through `_guarded` with `BEGIN IMMEDIATE` and the post-lock clock read, and don't widen `_snapshot` use.
+- source: private/reviews/gen2-2q-b2-astra-review-20261006.md (non-blocking findings 1 to 3)
+- removal: (2) in the next Router slice; (1) and (3) in the Router follow-on slices, with documentation reconciled; the review confirms them before 2q closes.

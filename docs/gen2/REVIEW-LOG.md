@@ -1659,3 +1659,11 @@ The post-2q Gate D is renumbered #5.
 - **Confirmed:** contracts now live in their owning layer, with no hidden imports. An independent AST graph reproduced the metrics: the component cycle is gone, reach 49→43 and 551→547. 0 refusals under v2.
 - The landing run is green: 2,310 tests; 2,302/2,302 engine and 396/396 gateway mutants.
 - **Non-blocking:** NB-1 (the interface test hard-codes `correlation`), NB-2 (exception `__module__` pickling bound), NB-3 (ledger prose) are registered as DEBT-019, owned by task 2q.
+
+## 2026-10-06: 2q-b2 (the Router explicit-collaborator pattern on Status and Capabilities)
+- **Astra** (`22aaf34e`, pinned 193ee7b; `private/reviews/gen2-2q-b2-astra-review-20261006.md`): **PASS on A, B and C. ROOT-CAUSE. "2q-b2 is ACCEPTED."** No blocking findings.
+- **On the pattern:**
+  - It's sound to replicate, and the consumer-owned protocols are legitimate dependency inversion. The local `Rows` and `Schemas` protocols are legitimate interface segregation, not measurement-dodging.
+  - Visibility is at the protocol-declaration level; the import graph doesn't certify a complete runtime dependency graph.
+  - `_snapshot()` isn't an enforced read-only transaction. The transaction semantics (`BEGIN IMMEDIATE`, the post-lock clock read) are preserved.
+- **Non-blocking:** stale evidence summaries; the differential masks can erase semantic differences; don't widen the pattern's enforcement claims. Registered as DEBT-020.
