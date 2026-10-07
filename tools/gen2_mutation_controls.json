@@ -9274,6 +9274,55 @@
   ],
   "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the Router still composes them under the mutant"
  },
+ "2QB7-router-delegate-calls-another-route": {
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"
+  ],
+  "why": "re-queues work and never creates a topic through the Router (the fixture seeds topics in SQL): the changed `create_topic` delegate is not reached"
+ },
+ "2QB7-router-delegate-drops-an-argument": {
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_every_kinds_lane_waits_for_a_requeue_within_its_budget"
+  ],
+  "why": "claims and re-queues work naming no reservation, so `_draw` is never called: dropping its `now` changes nothing the test can see"
+ },
+ "2QB7-router-inherits-the-scheduling": {
+  "by_hand": true,
+  "controls": [
+   "test_router_composition.CollaboratorInterfaceTest.test_a_collaborator_holds_only_the_core_and_reaches_the_store_through_it"
+  ],
+  "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the Router still composes them under the mutant"
+ },
+ "2QB7-scheduling-core-omits-a-member": {
+  "by_hand": true,
+  "controls": [
+   "test_router_composition.CollaboratorInterfaceTest.test_control_every_declared_member_is_one_the_router_has"
+  ],
+  "why": "checks every member SchedulingCore declares is one a real Router has: the mutant removes a declaration, so what is left is still all the Router's"
+ },
+ "2QB7-scheduling-opens-the-store-transaction": {
+  "by_hand": true,
+  "controls": [
+   "test_router_composition.CollaboratorInterfaceTest.test_every_core_member_a_collaborator_uses_is_declared"
+  ],
+  "why": "checks every member scheduling.py reads off self._core is declared by SchedulingCore: the mutant opens the transaction through self._core._store, a member that is declared"
+ },
+ "2QB7-scheduling-reads-the-clock-first": {
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"
+  ],
+  "why": "re-queues the same work twice and reads back the same answers and rows: a clock read before or after the lock changes no answer, only the instants a write is dated by"
+ },
+ "2QB7-scheduling-refusal-escapes": {
+  "by_hand": true,
+  "controls": [
+   "test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"
+  ],
+  "why": "re-queues under the real store, which refuses nothing: running in the core's `_transaction` instead of `_guarded` changes only what a refused write becomes"
+ },
  "2QC-con-alias-of-a-class-is-data": {
   "controls": [
    "test_source_closure.ClosureRefusalTest.test_refuses_writes_through_data_to_a_family_methods_name"

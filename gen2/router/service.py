@@ -34,9 +34,9 @@ records in registries.py, brief and contract versions and amendment impact
 (G-1) in amendments.py, re-queues, reservations and the signal queue in
 scheduling.py; task 1e's status read and health probe in status.py; task 1f's
 capability-probe records in capabilities.py (status.py, capabilities.py, task
-2q-b3's registries.py and task 2q-b6's lifecycle.py are explicit collaborators the
-Router composes: BOUNDARIES.md, "Router composition"; amendments.py and scheduling.py
-are mixins still). Task 2a's workflow write paths:
+2q-b3's registries.py, task 2q-b6's lifecycle.py and task 2q-b7's scheduling.py are
+explicit collaborators the Router composes: BOUNDARIES.md, "Router composition";
+amendments.py is a mixin still). Task 2a's workflow write paths:
 work registration here (register_works), a topic's claim-source links, a
 checkpoint's review closure, a pre-contract scoping report and source
 proposals as commit_outcome sections here, the scope decision's move and
@@ -194,7 +194,7 @@ def _short(text: str) -> str:
     return (text or "refused")[:500]
 
 
-class Router(Amendments, Scheduling):
+class Router(Amendments):
     """The ControlBackend (gen2/core/control.py) over one store. Construct
     with a Store (Router.open for a durable one); the router owns it and hands
     it to no one. Qualification is read from the store's own records
@@ -216,6 +216,7 @@ class Router(Amendments, Scheduling):
         self._capabilities = Capabilities(self)
         self._registries = Registries(self)
         self._lifecycle = Lifecycle(self)
+        self._scheduling = Scheduling(self)
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
@@ -298,6 +299,31 @@ class Router(Amendments, Scheduling):
 
     def _cancel_in_transaction(self, req: dict, now: str) -> dict:
         return self._lifecycle._cancel_in_transaction(req, now)
+
+    # -- scheduling's public routes and the members the rest of the Router reads (scheduling.py) -----
+    def requeue(self, request: Mapping) -> dict:
+        return self._scheduling.requeue(request)
+
+    def open_reservation(self, request: Mapping) -> dict:
+        return self._scheduling.open_reservation(request)
+
+    def open_review(self, request: Mapping) -> dict:
+        return self._scheduling.open_review(request)
+
+    def create_topic(self, request: Mapping) -> dict:
+        return self._scheduling.create_topic(request)
+
+    def raise_signal(self, request: Mapping) -> dict:
+        return self._scheduling.raise_signal(request)
+
+    def _lane_last(self, topic_id: str, scope: str) -> str | None:
+        return self._scheduling._lane_last(topic_id, scope)
+
+    def _admit_lane(self, req: dict, topic_id: str, scope: str) -> dict | None:
+        return self._scheduling._admit_lane(req, topic_id, scope)
+
+    def _draw(self, draw: dict, inv_id: str, topic_id: str, now: str) -> None:
+        return self._scheduling._draw(draw, inv_id, topic_id, now)
 
     # -- small helpers -----------------------------------------------------
     def _snapshot(self):

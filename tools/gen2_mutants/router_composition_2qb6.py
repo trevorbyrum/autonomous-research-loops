@@ -26,7 +26,7 @@ MUTATIONS: list[Mutation] = [
     Mutation("2QB6-lifecycle-opens-the-store-transaction", "2q-b6", "the cancellation opens a transaction on the store, not the core's `_guarded`", (HOLDS_ONLY_CORE,), target=LIFECYCLE,
              old=CANCEL, new="            with self._core._store.transaction():\n                return self._cancel_in_transaction(req, self._core._now())"),
     Mutation("2QB6-router-inherits-the-lifecycle", "2q-b6", "the Router inherits Lifecycle: a mixin again, not a composed collaborator", (COMPOSES,), target=SERVICE,
-             old="class Router(Amendments, Scheduling):", new="class Router(Lifecycle, Amendments, Scheduling):"),
+             old="class Router(Amendments):", new="class Router(Lifecycle, Amendments):"),
     Mutation("2QB6-lifecycle-cancel-reads-the-clock-first", "2q-b6", "a cancellation is dated by a clock read before the write lock is won", (WIRING + "LockWaitTest.test_a_cancellation_is_dated_by_the_clock_read_after_the_lock_is_won",),
              target=LIFECYCLE, old=CANCEL,
              new="            first = self._core._now()\n            return self._core._guarded(\"transition_not_allowed\", lambda now: self._cancel_in_transaction(req, first))"),

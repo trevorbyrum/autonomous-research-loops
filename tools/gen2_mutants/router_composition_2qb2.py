@@ -21,7 +21,7 @@ STATUS, CAPS, SVC = "gen2/router/status.py", "gen2/router/capabilities.py", "gen
 
 MUTATIONS: list[Mutation] = [
     Mutation("2QB2-status-core-omits-a-member", "2q-b2", "StatusCore no longer declares `_lane_last`, which the status read uses", (USED_DECLARED,), target=STATUS,
-             old="    def _lane_last(self, topic_id: str, scope: str) -> str | None: ...  # scheduling.py\n", new=""),
+             old="    def _lane_last(self, topic_id: str, scope: str) -> str | None: ...\n", new=""),
     Mutation("2QB2-capabilities-core-declares-a-ghost", "2q-b2", "CapabilityCore declares a member no Router has", (ROUTER_HAS, DECLARED_USED), target=CAPS,
              old="    def _router_policy(self, bundle_hash: str) -> dict: ...\n",
              new="    def _router_policy(self, bundle_hash: str) -> dict: ...\n    def _ghost(self) -> None: ...\n"),
@@ -30,7 +30,7 @@ MUTATIONS: list[Mutation] = [
     Mutation("2QB2-status-opens-its-own-transaction", "2q-b2", "the status read opens its own transaction instead of the core's snapshot", (HOLDS_ONLY_CORE,), target=STATUS,
              old="            with self._core._snapshot():  # one snapshot", new="            with self._core._store.transaction():  # one snapshot"),
     Mutation("2QB2-router-inherits-a-collaborator", "2q-b2", "the Router inherits Status: a mixin again, not a composed collaborator", (COMPOSES,), target=SVC,
-             old="class Router(Amendments, Scheduling):", new="class Router(Amendments, Scheduling, Status):"),
+             old="class Router(Amendments):", new="class Router(Amendments, Status):"),
     Mutation("2QB2-router-drops-a-public-method", "2q-b2", "the Router's `healthy` is no longer a public method", (COMPOSES,), target=SVC,
              old="    def healthy(self) -> bool:\n        return self._status.healthy()", new="    def _healthy(self) -> bool:\n        return self._status.healthy()"),
 ]

@@ -193,6 +193,22 @@ MANUAL: dict[str, dict] = {
                                                  "why": "reconciles under the real store, which refuses nothing: running in the core's `_transaction` instead of `_guarded` changes only what a refused write becomes"},
     "2QB6-router-delegate-drops-an-argument": {"controls": ["test_router_lifecycle.FailureTest.test_a_failure_records_its_class_and_evidence_and_releases_capacity"],
                                                "why": "records a failure through the Router's `_bind_evidence`, which always means the default `terminal=True` there: dropping the argument changes nothing it can see"},
+    # task 2q-b7: the same, for scheduling.py; the clock, refusal and delegate mutants are killed by test_router_scheduling_wiring, and the real scheduling tests, which do not
+    # touch the changed line's one property, are their controls
+    "2QB7-scheduling-core-omits-a-member": {"controls": ["test_router_composition.CollaboratorInterfaceTest.test_control_every_declared_member_is_one_the_router_has"],
+        "why": "checks every member SchedulingCore declares is one a real Router has: the mutant removes a declaration, so what is left is still all the Router's"},
+    "2QB7-scheduling-opens-the-store-transaction": {"controls": ["test_router_composition.CollaboratorInterfaceTest.test_every_core_member_a_collaborator_uses_is_declared"],
+        "why": "checks every member scheduling.py reads off self._core is declared by SchedulingCore: the mutant opens the transaction through self._core._store, a member that is declared"},
+    "2QB7-router-inherits-the-scheduling": {"controls": ["test_router_composition.CollaboratorInterfaceTest.test_a_collaborator_holds_only_the_core_and_reaches_the_store_through_it"],
+        "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the Router still composes them under the mutant"},
+    "2QB7-scheduling-reads-the-clock-first": {"controls": ["test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"],
+        "why": "re-queues the same work twice and reads back the same answers and rows: a clock read before or after the lock changes no answer, only the instants a write is dated by"},
+    "2QB7-scheduling-refusal-escapes": {"controls": ["test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"],
+        "why": "re-queues under the real store, which refuses nothing: running in the core's `_transaction` instead of `_guarded` changes only what a refused write becomes"},
+    "2QB7-router-delegate-drops-an-argument": {"controls": ["test_router_scheduling.RequeueTest.test_every_kinds_lane_waits_for_a_requeue_within_its_budget"],
+        "why": "claims and re-queues work naming no reservation, so `_draw` is never called: dropping its `now` changes nothing the test can see"},
+    "2QB7-router-delegate-calls-another-route": {"controls": ["test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"],
+        "why": "re-queues work and never creates a topic through the Router (the fixture seeds topics in SQL): the changed `create_topic` delegate is not reached"},
     # task 2a: the signal command's schema is a module constant read when the Router builds its SchemaSet, not by a traced line of
     # the request's path; the accepted request validates against the changed enum
     **{mid: {"controls": ["test_router_workflow.SignalTest.test_a_signal_is_queued_pending_and_opens_its_review"],

@@ -38,8 +38,10 @@ from gen2.router import service  # noqa: E402  (the tree's own)
 assert os.path.realpath(service.__file__).startswith(TREE), service.__file__
 TRACKED = {"record_capability_probe", "record_gateway_facts", "status", "healthy", "activate_config_bundle", "config_bundle", "restore_config_bundle", "record_qualification",
            "revoke_qualification", "is_qualified",
-           "request_cancel", "reconcile", "record_transition", "commit_outcome", "apply_operator_decision"}  # the store is read back right after each of these: the collaborators' routes
-# and the registry routes (Astra 2q-b3 NB2), then Lifecycle's two write routes and the three write routes that reach its members through the core's delegates (2q-b6, ruling 2)
+           "request_cancel", "reconcile", "record_transition", "commit_outcome", "apply_operator_decision",
+           "requeue", "open_reservation", "open_review", "create_topic", "raise_signal", "claim"}  # the store is read back right after each of these: the collaborators' routes
+# and the registry routes (Astra 2q-b3 NB2), then Lifecycle's two write routes and the three write routes that reach its members through the core's delegates (2q-b6, ruling 2),
+# then Scheduling's five write routes and `claim`, which reaches its lane and reservation members through the core's delegates (2q-b7, ruling 2)
 SEEN = threading.local()
 
 
