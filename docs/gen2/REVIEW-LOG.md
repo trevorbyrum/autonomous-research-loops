@@ -1721,3 +1721,14 @@ The post-2q Gate D is renumbered #5.
 - The documented extension policy for DEBT-022 NB-1 is accepted: the precedence before the split was mixed, so a swap would have changed six kinds.
 - The landing run is green: 2,343 tests, 2,322/2,322; gateway 1,538+1,538, 413/413.
 - **The orchestrator closed DEBT-019, DEBT-021 and DEBT-022.**
+
+## 2026-10-07: 2q-e1 (the shared gateway differential core)
+- **Astra** (`720d74ce`, pinned f1868f3; `private/reviews/gen2-2q-e1-astra-review-20261007.md`): **Gate C BLOCK; 2q-b5 still not accepted.** The production split stays ROOT-CAUSE, and no production regression was found.
+- **Resolved:** C3. The timestamp, container and download cases from C1 are fixed at their cause.
+- **Open:**
+  - **C1:** `loopback()` still substitutes by spelling through whole strings, so loopback-looking data in a path, query or fragment, or literal `<port>` text, collapses. Astra showed a real-driver reproduction where an invalid next link came out EQUIVALENT.
+  - **C2:**
+    - zero drivers or missing directories certify EQUIVALENT;
+    - a failed shared generator's partial output becomes the frozen inventory;
+    - erased observation envelopes pass schema checks.
+- This is the second consecutive BLOCK on the evidence family (2q-b5, 2q-e1). Research addendum (2) was added: parse, don't substitute; the inventory comes from validated inputs. Routed to **2q-e2**. A third BLOCK goes to the operator.
