@@ -1,6 +1,6 @@
 {
   "cross_service_imports": [],
-  "digest": "640cc3d840f41bf5ebef3daf237c2ded37fa27e2dc231a36cdc77ed5c52b8553",
+  "digest": "c59a25d903e8137eff94dc6f6a7da69e7ad072e37c318ac9b0c874a5c158a22c",
   "identities": {
     "MI-000001": "engine|edge|gen2/app/engine.py->gen2/app/station.py",
     "MI-000002": "engine|edge|gen2/app/engine.py->gen2/operator/auth.py",
@@ -231,8 +231,6 @@
     "MI-000227": "engine|reach|gen2/supervisor/supervisor.py->gen2/core/instants.py",
     "MI-000228": "engine|reach|gen2/supervisor/supervisor.py->gen2/supervisor/jobs.py",
     "MI-000229": "engine|reach|gen2/supervisor/supervisor.py->gen2/supervisor/spool.py",
-    "MI-000232": "engine|self_calls|gen2/router/amendments.py->gen2/router/service.py",
-    "MI-000241": "engine|self_calls|gen2/router/service.py->gen2/router/amendments.py",
     "MI-000250": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/__init__.py",
     "MI-000251": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/broker.py",
     "MI-000252": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/calllog.py",
@@ -1084,8 +1082,8 @@
   },
   "identity_serial": 1138,
   "pin": {
-    "commit": "02d9fdccea732ba47e0bce348b79976ce748fc51",
-    "production_sha256": "f8309cf96bc7adc08f93a476a4ee3e40bfa99a801422d5b8fb8be23ac7bd69b2"
+    "commit": "718b78dbf48f17065819736b7bdcc3893b0ffda3",
+    "production_sha256": "5c6151b4a0ecf86cdf1846a97eb2ebd1dd5d07b0765738fc5a4df3fe5339e143"
   },
   "services": {
     "engine": {
@@ -1542,10 +1540,7 @@
           "gen2/supervisor/spool.py"
         ]
       },
-      "self_calls": {
-        "gen2/router/amendments.py->gen2/router/service.py": 21,
-        "gen2/router/service.py->gen2/router/amendments.py": 7
-      },
+      "self_calls": {},
       "smells": {
         "god_component": [],
         "hub_like": [],

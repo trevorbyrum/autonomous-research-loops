@@ -39,14 +39,3 @@ reason, and task. Targets use service|kind|location; file identities own fan-out
 fan-in; function IDs own both scores; edge, reach, self_calls, cycle, smell and aggregate
 IDs own their respective budgets. Cross-service imports belong to repo.
 
-### ML-0001
-- action: retire
-- identity: MI-000232
-- reason: amendments.py is a collaborator the Router composes, no longer a mixin (task 2q-b8): its 21 calls of the core (`_one` 14, `_audit` 4, `_guarded` 1, `_templates` 1, `_cancel_in_transaction` 1) are `self._core.<member>` calls through AmendmentsCore, which the metric does not count; the store and schema attributes were never counted as calls
-- task: 2q-b8
-
-### ML-0002
-- action: retire
-- identity: MI-000241
-- reason: amendments.py is a collaborator, no longer a mixin (task 2q-b8): service.py's 7 calls of `_brief_standing`, `_pin_status`, `_record_impact` (2), `_record_replacements`, `_recorded_references` and `_require_current_pins` are now calls of members service.py itself defines (delegating to the composed Amendments), so they are not cross-file; no site moved to another pair (the Router inherits no class, so no pair remains)
-- task: 2q-b8
