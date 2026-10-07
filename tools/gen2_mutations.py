@@ -438,8 +438,8 @@ def _loading_control(tree: Path, m: Mutation, text: str) -> None:
 
 def _run_file_mutation(m: Mutation) -> _Collector:
     """Mutate a Python/config file into a temp copy, point the killers' test
-    modules at it, run just those modules. Runs in a forked worker (or at the
-    end of a serial run), so module state it changes is not reused."""
+    modules at it, run just those modules. The module state it changes is put
+    back when it ends (`_restored_modules`), so a serial run may reuse this process."""
     import importlib
     import tempfile
     import types
@@ -448,7 +448,7 @@ def _run_file_mutation(m: Mutation) -> _Collector:
     how = FILE_TARGETS[m.target]
     names = (*m.killers, *controls_of(m))
     modules = sorted({k.split(".")[0] for k in names})
-    with tempfile.TemporaryDirectory() as tmp, _child_root(tmp, m, text) as tree:
+    with _restored_modules(), tempfile.TemporaryDirectory() as tmp, _child_root(tmp, m, text) as tree:
         if how[0] == "disk":
             loaded = [importlib.import_module(name) for name in modules]
         elif how[0] == "attr":
@@ -584,6 +584,43 @@ def verdict(m: Mutation, res: _Collector, controls: tuple[str, ...], own_pid: in
     if missing:
         return f"INVALID   {m.mid}: listed killer(s) did not fail: {missing}"
     return f"KILLED    {m.mid} by {len(res.failed)} test(s), {len(controls)} paired control(s) passing"
+
+
+class _restored_modules:
+    """What a file case rebinds in this process, put back when it ends (task 2q-t3, Astra's 2q-b6 NB1). A forked worker ends after one case; a serial run
+    (`--jobs 1`) reuses the process, and the mutant module a case left in `sys.modules`, loaded from a temporary tree deleted since, was what the next case's
+    control read (`--only 2QB6 --jobs 1`: 5 of 6 killed). On exit: a `sys.modules` entry the case replaced is the original again, a repository module (or one
+    loaded from a temporary tree) it imported is dropped, and the repository's modules hold only the names they held before: a module reloaded over a mutant,
+    a package's attribute for a mutant submodule, a path a test module's attribute was pointed at. Modules of the standard library and of site-packages are left."""
+
+    def __enter__(self) -> None:
+        self.saved = dict(sys.modules)
+        self.held = {name: dict(mod.__dict__) for name, mod in self.saved.items() if self.ours(mod)}
+
+    @staticmethod
+    def ours(mod) -> bool:
+        import tempfile
+
+        file = getattr(mod, "__file__", None) or next(iter(getattr(mod, "__path__", ())), None)   # a namespace package (gen2, gen2.router) has no file, only a path
+        if not isinstance(file, str) or "-packages" in file:
+            return False
+        where = Path(file).resolve()
+        return where.is_relative_to(ROOT) or where.is_relative_to(Path(tempfile.gettempdir()).resolve())
+
+    def __exit__(self, *exc) -> None:
+        for name in [name for name, mod in sys.modules.items() if name not in self.saved and self.ours(mod)]:
+            del sys.modules[name]
+        for name, mod in self.saved.items():
+            if sys.modules.get(name) is not mod:
+                sys.modules[name] = mod
+        gone = object()
+        for name, held in self.held.items():
+            live = self.saved[name].__dict__
+            for key in [key for key in live if key not in held]:
+                del live[key]
+            for key, value in held.items():
+                if live.get(key, gone) is not value:
+                    live[key] = value
 
 
 def _evaluate(m: Mutation) -> str:

@@ -11,16 +11,25 @@ The collector runs real `unittest` cases here (a subtest that fails an assertion
 
 What this cannot show: that every mutant in the inventory is judged by these cases (the whole inventory is rerun by `make gen2-mutation`), or that a killer which never
 starts a child cannot hide a crash in its own process (an in-process error is an error just the same, and is covered by the same rule).
+
+Serial runs (task 2q-t3; DEBT-025 NB1, Astra's 2q-b6 review): `--jobs 1` reuses one process for every case, and a case that replaced a module left the replacement in
+`sys.modules`, loaded from a temporary tree deleted since. RestoredModulesTest shows what `_restored_modules` puts back (a module put in place of another, a namespace package's
+attribute for it, a module the case imported, the names a reload rebinds) on a stand-in package in a temporary directory; SerialRunTest runs the real harness serially over the
+two families Astra reproduced it on, in a process of its own, and requires every mutant KILLED. What these cannot show: that no other state outlives a case (environment variables
+are `_child_root`'s, a cwd or a sys.path edit nobody restores is not covered, nor is a module of the standard library or of site-packages).
 """
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import sys
 import tempfile
 import textwrap
+import types
 import unittest
 from pathlib import Path
 
+from gen2.tests import children
 from gen2.tests.tool_repo_fixtures import Repo
 
 REPO = Path(__file__).resolve().parents[2]
@@ -127,6 +136,96 @@ class MixedSubtestTest(VerdictCase):
                 raise KeyError("control")
         said, _ = self.judge(BrokenControl)
         self.assertTrue(said.startswith("INVALID") and "paired control" in said, msg=said)
+
+
+class RestoredModulesTest(unittest.TestCase):
+    """`_restored_modules` (the harness's own), on a stand-in package in a temporary directory: `<pkg>.mod`, loaded before the case, and `<pkg>.other`, not. The package has no
+    `__init__.py`, as gen2 and gen2.router have none: a namespace package has no file, only a path."""
+
+    def setUp(self) -> None:
+        self.h = harness()
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.pkg = f"t3pkg{id(self):x}"
+        (Path(self.dir.name) / self.pkg).mkdir()
+        for name, value in (("mod", "original"), ("other", "other")):
+            (Path(self.dir.name) / self.pkg / f"{name}.py").write_text(f'VALUE = "{value}"\n', encoding="utf-8")
+        sys.path.insert(0, self.dir.name)
+        self.addCleanup(sys.path.remove, self.dir.name)
+        self.addCleanup(lambda: [sys.modules.pop(name) for name in [n for n in sys.modules if n == self.pkg or n.startswith(self.pkg + ".")]])
+        importlib.invalidate_caches()
+        self.mod = importlib.import_module(f"{self.pkg}.mod")
+        self.name = f"{self.pkg}.mod"
+
+    def test_a_module_put_in_place_of_another_in_sys_modules_is_the_original_again(self) -> None:
+        with self.h._restored_modules():
+            sys.modules[self.name] = types.ModuleType(self.name)
+        self.assertIs(sys.modules[self.name], self.mod)
+
+    def test_a_namespace_packages_attribute_for_a_replaced_submodule_is_the_original_again(self) -> None:
+        """The attribute `from <pkg> import mod` reads: the half of the contamination a restored `sys.modules` alone leaves (the first draft of the fix made 2QB6 worse)."""
+        package = sys.modules[self.pkg]
+        self.assertIsNone(getattr(package, "__file__", None), msg="the stand-in is a namespace package, as gen2.router is")
+        with self.h._restored_modules():
+            setattr(package, "mod", types.ModuleType(self.name))
+        self.assertIs(package.mod, self.mod)
+
+    def test_a_module_first_imported_by_the_case_is_dropped(self) -> None:
+        other = f"{self.pkg}.other"
+        self.assertNotIn(other, sys.modules)
+        with self.h._restored_modules():
+            importlib.import_module(other)
+            self.assertIn(other, sys.modules)
+        self.assertNotIn(other, sys.modules)
+        self.assertFalse(hasattr(sys.modules[self.pkg], "other"), msg="nor is it left as an attribute of its package")
+
+    def test_a_module_reloaded_over_a_mutant_holds_what_it_held(self) -> None:
+        (Path(self.dir.name) / self.pkg / "mod.py").write_text('VALUE = "reloaded by the case"\nEXTRA = 1\n', encoding="utf-8")
+        with self.h._restored_modules():
+            importlib.reload(self.mod)
+            self.assertEqual((self.mod.VALUE, self.mod.EXTRA), ("reloaded by the case", 1), msg="the case's own state: what the restore undoes")
+            self.mod.POINTED = "a temporary path"   # a name a case adds, as it points a test module's attribute at a mutant's copy
+        self.assertEqual(self.mod.VALUE, "original")
+        self.assertFalse(hasattr(self.mod, "EXTRA") or hasattr(self.mod, "POINTED"))
+
+    def test_the_modules_are_restored_when_the_case_raises(self) -> None:
+        with self.assertRaises(RuntimeError):
+            with self.h._restored_modules():
+                sys.modules[self.name] = types.ModuleType(self.name)
+                raise RuntimeError("a case that died")
+        self.assertIs(sys.modules[self.name], self.mod)
+
+    def test_modules_of_the_standard_library_are_left_alone(self) -> None:
+        sys.modules.pop("sched", None)
+        with self.h._restored_modules():
+            import sched  # noqa: F401 (a standard-library module first imported by the case)
+        self.assertIn("sched", sys.modules, msg="a C extension or a stdlib module is not unloaded: only the repository's own, and temporary copies of it")
+
+
+class SerialRunTest(unittest.TestCase):
+    """Astra's two reproductions of the contamination (DEBT-025 NB1), through the real harness run as `--jobs 1` in a process of its own: before the fix `--only 2QB6` reported 5
+    of 6 killed and the Status pair 1 of 2 (the control of the mutant after a transaction mutant read the deleted temporary file of the one before)."""
+
+    def serial(self, only: str) -> tuple[int, list[str]]:
+        done = children.python([str(REPO / "tools" / "gen2_mutations.py"), "--only", only, "--jobs", "1"], capture_output=True, text=True, timeout=900)
+        return done.returncode, done.stdout.splitlines()
+
+    def verdicts(self, only: str, expected: list[str]) -> None:
+        code, lines = self.serial(only)
+        said = [line for line in lines if line.startswith(("KILLED", "INVALID", "SURVIVED"))]
+        self.assertEqual([line.split()[0] for line in said], ["KILLED"] * len(expected), msg="\n".join(lines))
+        self.assertEqual(sorted(line.split()[1] for line in said), sorted(expected))
+        self.assertIn(f"mutation run: {len(expected)}/{len(expected)} killed", lines[-1])
+        self.assertEqual(code, 0)
+
+    def test_the_six_lifecycle_composition_mutants_are_all_killed_serially(self) -> None:
+        expected = [m.mid for m in harness().MUTATIONS if m.mid.startswith("2QB6")]
+        self.assertEqual(len(expected), 6, msg="Astra's reproduction is the six of 2QB6")
+        self.verdicts("2QB6", expected)
+
+    def test_the_status_pair_is_killed_serially_too(self) -> None:
+        pair = ["2QB2-status-opens-its-own-transaction", "2QB2-router-inherits-a-collaborator"]
+        self.verdicts(",".join(pair), pair)
 
 
 if __name__ == "__main__":
