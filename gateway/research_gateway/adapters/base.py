@@ -5,7 +5,7 @@
   2. perform the request through a Transport (real urllib, or a fake in tests);
   3. record the call (log row when a connection is available, else in memory);
   4. feed the outcome back to the broker (429/5xx open breakers, Retry-After honoured);
-  5. return a Response with parsed JSON when the body is JSON.
+  5. return the Response, sealed: it carries the answer's bytes and no parsed JSON; an adapter reads them only through `decode`, against the schema it declares.
 
 Adapters never import urllib; that is the invariant the tests check.
 

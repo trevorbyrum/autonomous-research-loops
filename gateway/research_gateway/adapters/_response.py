@@ -1,8 +1,8 @@
 """The client's response: what it received of one call (task 2q-b5; moved out of base.py, unchanged).
 
 `Response` is the one carrier of a provider's bytes into the adapters, so the transport builds it, the client reads and logs it and the Link reader takes it. It is in a module of its own so
-that those three depend on it and not on one another: `_transport.py` and `_links.py` import nothing of the client, and base.py imports both. The module name starts with `_` because it is
-a part of the client, not an adapter (the loader in `adapters/__init__.py` skips such names).
+that those three depend on it and not on one another: `_transport.py` and `_links.py` import this module and nothing else of the client, and base.py imports this module and the transport only (the
+Link reader is imported by the adapters that page by link, not by base.py). The module name starts with `_` because it is a part of the client, not an adapter (the loader in `adapters/__init__.py` skips such names).
 """
 from __future__ import annotations
 
