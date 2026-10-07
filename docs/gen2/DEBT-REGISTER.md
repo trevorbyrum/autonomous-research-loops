@@ -254,3 +254,15 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: Astra's 2q-b5 NB2, still open after 2q-e1: the `_response.py` module introduction says `base.py` imports both `_transport.py` and `_links.py` when it imports only the transport, and `base.py`'s retained step 5 still describes returning parsed JSON although `Response` is sealed and decoding is explicit. These are prose corrections only, accepted in advance under the charter's "Review throughput" rule.
 - source: private/reviews/gen2-2q-b5-astra-review-20261006.md (NB2); private/reviews/gen2-2q-e1-astra-review-20261007.md (non-blocking list)
 - removal: the descriptions match the imports and the sealed-response API, confirmed by the next 2q review.
+
+### DEBT-025 - 2q-b6 non-blocking review findings (2q)
+- kind: obligation
+- status: open
+- owner: task 2q
+- what: Non-blocking findings from Astra's 2q-b6 review, accepted in advance under the charter's "Review throughput" rule:
+  - (NB1) serial mutation-harness contamination: `tools/gen2_mutations.py --only 2QB6 --jobs 1` reports 5 of 6 killed, because `_run_file_mutation` leaves replaced modules loaded between serial cases, so a later control reads a deleted temporary file. It reproduces on the earlier base, and the parallel runs used for landing are unaffected;
+  - (NB2) the `Rows` protocol docstring in `gen2/router/lifecycle.py` says its use is inside the core's transaction, but `invocation_status` selects outside one, as it did before.
+
+  The carried 352-scenario replay coverage and the ordering fixtures are already DEBT-023.
+- source: private/reviews/gen2-2q-b6-astra-review-20261007.md (non-blocking list)
+- removal: the harness unloads replaced modules between serial cases, with a regression test, and the docstring distinguishes reads from writes; the next 2q review confirms both.

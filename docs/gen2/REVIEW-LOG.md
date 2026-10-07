@@ -1732,3 +1732,8 @@ The post-2q Gate D is renumbered #5.
     - a failed shared generator's partial output becomes the frozen inventory;
     - erased observation envelopes pass schema checks.
 - This is the second consecutive BLOCK on the evidence family (2q-b5, 2q-e1). Research addendum (2) was added: parse, don't substitute; the inventory comes from validated inputs. Routed to **2q-e2**. A third BLOCK goes to the operator.
+
+## 2026-10-07: 2q-b6 (the Router Lifecycle collaborator)
+- **Astra** (`b8b0bc6a`, pinned 8bc87cc; `private/reviews/gen2-2q-b6-astra-review-20261007.md`): **PASS on A, B and C. ROOT-CAUSE. "2q-b6 is ACCEPTED."**
+  - All five 2q-b3b rulings conform: 13 of 13 bodies identical; 29 dispositions reviewed; replay reproduced at 658/0/352; `_guarded` preserved.
+- **Non-blocking:** serial mutation-harness module contamination; the `Rows` docstring overstates transaction scope. Registered as DEBT-025. The carried replay coverage and ordering items are already DEBT-023.
