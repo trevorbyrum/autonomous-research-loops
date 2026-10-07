@@ -9,7 +9,8 @@ breaks ONE of those in a temporary copy:
                                                       a table row names the wrong decoder (what a failure inside a list, a keyed container or a field costs);
   K-a-number-is-read-as-a-year, K-a-year-is-read-as-a-number
                                                       the normalizing branch is given the wrong kind;
-  K-a-keyed-container-of-any-kind-is-one              a value that is not an object reads as an empty keyed container.
+  K-a-keyed-container-of-any-kind-is-one              a value that is not an object reads as an empty keyed container;
+  K-the-normalizers-are-read-before-the-scalars       the normalizer lookup precedes the scalar table (task 2q-t2; DEBT-022 NB-1): a normalizer would replace a scalar kind.
 
 A killer fails in its assertion and the controls take the accepted path through the same code (tests/test_decoder_families.py).
 """
@@ -19,7 +20,7 @@ SCHEMA = "research_gateway/core/schema.py"
 DF = "tests.test_decoder_families."
 DI, CT, PO = DF + "Dispatch.", DF + "ContainersReachTheirOwnDecoder.", DF + "PoliciesAndScalarsReachTheirOwnDecoder."
 KINDS_READ = DI + "test_control_every_kind_a_constructor_builds_for_a_value_decodes_one"
-READABLE_CONTAINERS = CT + "test_control_a_list_of_members_and_a_keyed_container_that_are_readable_hold_what_was_sent"
+READABLE_CONTAINERS = CT + "test_control_a_list_of_members_and_a_keyed_container_that_are_readable_keep_the_count_of_what_was_sent"
 READABLE_POLICIES = PO + "test_control_a_soft_and_an_isolated_kind_that_can_be_read_are_the_value"
 READABLE_NUMBERS = PO + "test_control_a_whole_number_is_a_number_and_a_year_alike"
 
@@ -54,4 +55,8 @@ def build(Mutant) -> list:
         Mutant("K-a-keyed-container-of-any-kind-is-one", "a value that is not an object reads as an empty keyed container", SCHEMA,
                '    if not isinstance(v, dict):\n        raise _bad(at, v, "an object")\n    return v\n', "    if not isinstance(v, dict):\n        v = {}\n    return v\n",
                (CT + "test_a_keyed_container_is_an_object_whatever_else_it_is_sent_as",), (READABLE_CONTAINERS,)),
+        Mutant("K-the-normalizers-are-read-before-the-scalars", "a normalizer added under a scalar kind replaces the scalar's own decoder", SCHEMA,
+               "    if k in _SCALARS:\n        return _SCALARS[k](s, v, at)\n    if k in _NORMALIZERS:\n        return _normalized(at, k, v)\n",
+               "    if k in _NORMALIZERS:\n        return _normalized(at, k, v)\n    if k in _SCALARS:\n        return _SCALARS[k](s, v, at)\n",
+               (DI + "test_a_normalizer_never_replaces_a_scalar_kind",), (DI + "test_control_a_normalizer_added_under_a_new_kind_reads_it",)),
     ]

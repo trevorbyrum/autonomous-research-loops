@@ -46,6 +46,31 @@ class Dispatch(Decoders):
             with self.subTest(kind=spec.kind):
                 self.decoded(spec, value)
 
+    def test_a_normalizer_never_replaces_a_scalar_kind(self):
+        """The extension policy (core/schema.py `_decode`; DEBT-022 NB-1): the scalar table is read first, so a normalizer added under one of its seven kinds changes nothing: `token` still reads a
+        cursor, `key` an identifier. The chain `_decode` replaced read `token` after the normalizers; no normalizer is registered under it, and the policy now says so."""
+        marker = object()
+        cases = {"any": (S.any_(), {"a": 1}), "text": (S.text(), "x"), "key": (S.key(), "k"), "maybe_key": (S.maybe_key(), "k"), "flag": (S.flag(), True), "whole": (S.whole(), 1),
+                 "token": (S.token(), "cursor")}
+        self.assertEqual(sorted(cases), sorted(S._SCALARS), "a scalar kind was added or removed: this test names each one")
+        for kind, (spec, value) in cases.items():
+            S._NORMALIZERS[kind] = lambda v: marker
+            try:
+                got = S.decode("t", spec, value)
+            finally:
+                del S._NORMALIZERS[kind]
+            with self.subTest(kind=kind):
+                self.assertIsNot(got, marker, "a normalizer took over a scalar kind")
+
+    def test_control_a_normalizer_added_under_a_new_kind_reads_it(self):
+        marker = object()
+        S._NORMALIZERS["marked"] = lambda v: marker
+        try:
+            got = S.decode("t", S.Spec("marked"), 1)
+        finally:
+            del S._NORMALIZERS["marked"]
+        self.assertIs(got, marker)
+
 
 class ContainersReachTheirOwnDecoder(Decoders):
     def test_a_list_of_members_loses_only_the_member_that_cannot_be_read(self):
@@ -58,7 +83,8 @@ class ContainersReachTheirOwnDecoder(Decoders):
         self.assertIsInstance(got, MemberList)
         self.assertEqual(got.each(lambda e: (e["key"], e["value"])), [("a", 1), None, ("c", 3)])
 
-    def test_control_a_list_of_members_and_a_keyed_container_that_are_readable_hold_what_was_sent(self):
+    def test_control_a_list_of_members_and_a_keyed_container_that_are_readable_keep_the_count_of_what_was_sent(self):
+        """Cardinality only (renamed from "...hold_what_was_sent", which claimed more; DEBT-022 NB-3): the killers beside it assert the contents, this is the paired path that must still be readable."""
         self.assertEqual(len(self.decoded(S.members(S.whole()), [1, 2])), 2)
         self.assertEqual(len(self.decoded(S.entries(S.whole()), {"a": 1})), 1)
 

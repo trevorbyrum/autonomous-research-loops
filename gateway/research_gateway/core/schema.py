@@ -340,7 +340,9 @@ def _decode(s: Spec, v, at: tuple):
     decoded value or raises PayloadError (the tables are at the end of the decoder, below `_empty`):
 
       scalars     what a leaf value may be and what it becomes: the kind's own rule, and nothing here reads anything inside the value. A kind that has a normalizer (`_NORMALIZERS`) is one:
-                  it is read through `_normalized`, whatever it is added as.
+                  it is read through `_normalized`. The extension policy (task 2q-t2; DEBT-022 NB-1): `_SCALARS` is read FIRST, so a normalizer adds a kind (`year` and `number` are
+                  the two there are) and never replaces one of the seven in `_SCALARS`, `token` included. The chain this replaced read six of them before the normalizers and `token`
+                  after, and nothing registers a normalizer under any of the seven.
       policies    what a failure inside a field costs (maybe, soft, isolated, oneof): each wraps another spec and decides what its failure is worth.
       containers  how a list, a keyed container or an object is walked, and what a failure of one of its parts costs the container."""
     k = s.kind
