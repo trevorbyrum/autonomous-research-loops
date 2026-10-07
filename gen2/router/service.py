@@ -1098,18 +1098,7 @@ class Router:
         recorder and signal source are the committing invocation and
         operation — never a document field (V-10, RG-5, G-12)."""
         payload, op_id, topic_id = checked["payload"], env["operation_id"], inv["topic_id"]
-        claims = []
-        for claim in payload["claims"]:
-            prior = self._store.select("claims", {"claim_id": claim["claim_id"]})
-            if any(row["topic_id"] != topic_id for row in prior):
-                raise Refusal("cross_topic", f"{claim['claim_id']} is another topic's claim")
-            if claim["revision"] != max((row["revision"] for row in prior), default=0) + 1:
-                raise Refusal("payload_invalid", f"{claim['claim_id']}: the next revision is {len(prior) + 1}")
-            self._store.insert("claims", {"claim_id": claim["claim_id"], "revision": claim["revision"], "topic_id": topic_id,
-                                          "text_ref": claim["text_ref"]["content_hash"], "producer_invocation_id": inv["invocation_id"],
-                                          "load_bearing": claim["load_bearing"], "required_access_tier": claim["required_access_tier"],
-                                          "status": "provisional", "created_at": now})
-            claims.append([claim["claim_id"], claim["revision"]])
+        claims = self._write_claims(payload, topic_id, inv, now)
         for hold in payload["holds"]:
             self._store.insert("holds", {**hold, "topic_id": topic_id, "created_at": now, "created_by_operation_id": op_id})
         for doc in payload["verification_receipts"]:
@@ -1141,6 +1130,47 @@ class Router:
                 "topic_id": topic_id, "contract_revision": inv["contract_revision"], "framing_version": contract["framing_version"],
                 "eligibility_protocol_version": checked["protocol"]["protocol_version"], "invocation_id": inv["invocation_id"],
                 "operator_decision_id": None, "recorded_by_operation_id": op_id, "created_at": now})
+        promotions, links = self._promote_and_link_claims(payload, topic_id, inv, now)
+        self._write_scoping_reports(payload, topic_id, inv, op_id, now)
+        self._write_source_proposals(payload, topic_id, inv, op_id, now)
+        for identity, trigger in new_triggers:
+            self._store.insert("review_triggers", {"trigger_identity": identity, "topic_id": topic_id, "reason_code": trigger["reason_code"],
+                                                   "signal_source": "primary_observation", "cause_ref": trigger["cause_ref"],
+                                                   "observed_at": trigger["observed_at"], "recorded_by_operation_id": op_id})
+        self._close_review_episodes(payload, topic_id, inv, op_id, now)
+        for outbox_id, manifest, manifest_hash in outbox:
+            supersedes = manifest["supersedes"] or {}
+            self._store.insert("outbox_events", {
+                "outbox_event_id": outbox_id, "topic_id": topic_id, "manifest_id": manifest["manifest_id"], "manifest_hash": manifest_hash,
+                "artifact_kind": manifest["artifact_kind"], "generation": manifest["generation"], "options_revision": manifest["options_revision"],
+                "supersedes_generation": supersedes.get("generation"), "supersedes_options_revision": supersedes.get("options_revision"),
+                "source_revision": manifest["source"]["revision"], "source_content_hash": manifest["source"]["content_hash"],
+                "approval_decision_id": manifest["approval"]["operator_decision_id"], "bundle_content_hash": manifest["bundle"]["content_hash"],
+                "expected_connectors": manifest["expected_connectors"], "manifest": manifest, "committed_by_operation_id": op_id, "created_at": now})
+        return {"claims": claims, "claim_promotions": promotions, "claim_source_links": links,
+                "scoping_reports": [[r["report_id"], r["version"]] for r in payload["scoping_reports"]],
+                "source_proposals": [p["proposal_id"] for p in payload["source_proposals"]],
+                "review_closures": [c["episode_id"] for c in payload["review_closures"]],
+                "verification_receipts": [d["verification_receipt_id"] for d in payload["verification_receipts"]],
+                "screening_assessments": [a["assessment_id"] for a in payload["screening_assessments"]],
+                "artifacts": sorted(checked["artifacts"])}
+
+    def _write_claims(self, payload: dict, topic_id: str, inv: dict, now: str) -> list:
+        claims = []
+        for claim in payload["claims"]:
+            prior = self._store.select("claims", {"claim_id": claim["claim_id"]})
+            if any(row["topic_id"] != topic_id for row in prior):
+                raise Refusal("cross_topic", f"{claim['claim_id']} is another topic's claim")
+            if claim["revision"] != max((row["revision"] for row in prior), default=0) + 1:
+                raise Refusal("payload_invalid", f"{claim['claim_id']}: the next revision is {len(prior) + 1}")
+            self._store.insert("claims", {"claim_id": claim["claim_id"], "revision": claim["revision"], "topic_id": topic_id,
+                                          "text_ref": claim["text_ref"]["content_hash"], "producer_invocation_id": inv["invocation_id"],
+                                          "load_bearing": claim["load_bearing"], "required_access_tier": claim["required_access_tier"],
+                                          "status": "provisional", "created_at": now})
+            claims.append([claim["claim_id"], claim["revision"]])
+        return claims
+
+    def _promote_and_link_claims(self, payload: dict, topic_id: str, inv: dict, now: str) -> tuple[list, list]:
         promotions = []
         for promotion in payload["claim_promotions"]:
             row = self._one("claims", {"claim_id": promotion["claim_id"], "revision": promotion["revision"]})
@@ -1173,6 +1203,9 @@ class Router:
                               f"no record {topic_id} retrieved is linked to {link['work_id']}: a work's row is not the topic's authorization to cite it")
             self._store.insert("claim_source_links", {**link, "topic_id": topic_id, "contract_revision": inv["contract_revision"], "created_at": now})
             links.append([link["claim_id"], link["claim_revision"], link["work_id"], link["obligation_id"]])
+        return promotions, links
+
+    def _write_scoping_reports(self, payload: dict, topic_id: str, inv: dict, op_id: str, now: str) -> None:
         for report in payload["scoping_reports"]:  # task 2a: the next version of its report, each coverage fact the cited observations' own (RG-4)
             key = {"topic_id": topic_id, "report_id": report["report_id"]}
             latest = max((r["version"] for r in self._store.select("scoping_reports", key)), default=None)
@@ -1186,6 +1219,8 @@ class Router:
                                                    "document": report, "brief_id": report["brief"]["brief_id"], "brief_version": report["brief"]["version"],
                                                    "brief_hash": report["brief"]["content_hash"], "invocation_id": inv["invocation_id"],
                                                    "committed_by_operation_id": op_id, "created_at": now})
+
+    def _write_source_proposals(self, payload: dict, topic_id: str, inv: dict, op_id: str, now: str) -> None:
         for proposal in payload["source_proposals"]:  # task 2a: retained, authorizing nothing (SOURCE-GOVERNANCE.md step 1)
             blocked = proposal["motivation"]["blocked_obligation_ids"]
             if inv["admission_context"] == "contract/1" and any(self._one("obligations", {"topic_id": topic_id, "contract_revision": inv["contract_revision"],
@@ -1197,10 +1232,8 @@ class Router:
             self._store.insert("source_proposals", {"proposal_id": proposal["proposal_id"], "topic_id": topic_id, "content_hash": canonical.logical_hash(proposal),
                                                     "document": proposal, "proposed_by_invocation_id": inv["invocation_id"], "committed_by_operation_id": op_id,
                                                     "supersedes_proposal_id": superseded, "created_at": now})
-        for identity, trigger in new_triggers:
-            self._store.insert("review_triggers", {"trigger_identity": identity, "topic_id": topic_id, "reason_code": trigger["reason_code"],
-                                                   "signal_source": "primary_observation", "cause_ref": trigger["cause_ref"],
-                                                   "observed_at": trigger["observed_at"], "recorded_by_operation_id": op_id})
+
+    def _close_review_episodes(self, payload: dict, topic_id: str, inv: dict, op_id: str, now: str) -> None:
         for closure in payload["review_closures"]:  # task 2a: the checkpoint closes an episode opened for it to review, its triggers handled (S5, RG-1b(e))
             episode = self._one("review_episodes", {"episode_id": closure["episode_id"]})
             if episode is None or episode["topic_id"] != topic_id:
@@ -1213,22 +1246,6 @@ class Router:
             self._store.update("review_episodes", {"episode_id": closure["episode_id"]}, {"closed_at": now, "closed_by_operation_id": op_id})
             for trigger in self._store.select("review_triggers", {"episode_id": closure["episode_id"]}):
                 self._store.update("review_triggers", {"trigger_identity": trigger["trigger_identity"]}, {"handled_at": now})
-        for outbox_id, manifest, manifest_hash in outbox:
-            supersedes = manifest["supersedes"] or {}
-            self._store.insert("outbox_events", {
-                "outbox_event_id": outbox_id, "topic_id": topic_id, "manifest_id": manifest["manifest_id"], "manifest_hash": manifest_hash,
-                "artifact_kind": manifest["artifact_kind"], "generation": manifest["generation"], "options_revision": manifest["options_revision"],
-                "supersedes_generation": supersedes.get("generation"), "supersedes_options_revision": supersedes.get("options_revision"),
-                "source_revision": manifest["source"]["revision"], "source_content_hash": manifest["source"]["content_hash"],
-                "approval_decision_id": manifest["approval"]["operator_decision_id"], "bundle_content_hash": manifest["bundle"]["content_hash"],
-                "expected_connectors": manifest["expected_connectors"], "manifest": manifest, "committed_by_operation_id": op_id, "created_at": now})
-        return {"claims": claims, "claim_promotions": promotions, "claim_source_links": links,
-                "scoping_reports": [[r["report_id"], r["version"]] for r in payload["scoping_reports"]],
-                "source_proposals": [p["proposal_id"] for p in payload["source_proposals"]],
-                "review_closures": [c["episode_id"] for c in payload["review_closures"]],
-                "verification_receipts": [d["verification_receipt_id"] for d in payload["verification_receipts"]],
-                "screening_assessments": [a["assessment_id"] for a in payload["screening_assessments"]],
-                "artifacts": sorted(checked["artifacts"])}
 
     # -- operator decisions ------------------------------------------------------
     def apply_operator_decision(self, request: Mapping) -> dict:

@@ -11,12 +11,21 @@ compared are every non-test .py under gen2/ that differs between the trees. Exit
 
 It shows the moved bodies are the same code. It does not show the code behaves the same where it now runs (a rewrite can change what a name resolves to): that is the replay's
 work (tools/gen2_replay.py).
+
+Extract-method (task 2q-b9): `--inline FILE:Class.method=HELPER,HELPER...` names the private helpers a method was split into. The AFTER method gets each helper's call statement
+(`self.h(a, b)` or `x = self.h(a, b)`) replaced by the helper's body, and must then dump to the same AST as the BEFORE method, signature included. The only plumbing declared: the
+helper's signature, its docstring, and its last statement `return x` (or `return x, y`) when the call assigns exactly those names; the arguments must be the helper's parameters,
+name for name and in order, so no renaming is needed. A helper that already existed, one not called exactly once, a call outside statement position, a `return` anywhere but last,
+and a name a function reads that nothing binds and the module and builtins lack (a local of the caller used by the helper) are each reported. Mapping: helper -> original lines.
 """
 from __future__ import annotations
 
 import argparse
 import ast
+import builtins
+import collections
 import copy
+import symtable
 import sys
 from pathlib import Path
 
@@ -70,12 +79,83 @@ def functions(path: Path, cls: str | None) -> dict[str, ast.AST]:
     return out
 
 
+def without_docstring(body: list) -> list:
+    return body[1:] or [ast.Pass()] if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str) else body
+
+
 def dump(fn, rules=None) -> str:
     """The function as a tree with its docstring dropped; the declared rewrites applied first when given."""
     fn = copy.deepcopy(fn)
-    if fn.body and isinstance(fn.body[0], ast.Expr) and isinstance(fn.body[0].value, ast.Constant) and isinstance(fn.body[0].value.value, str):
-        fn.body = fn.body[1:] or [ast.Pass()]
+    fn.body = without_docstring(fn.body)
     return ast.dump(Rewrite(rules).visit(fn) if rules else fn)
+
+
+def names_of(node) -> list[str] | None:
+    """The names a target or a returned value is made of (`x`, `a, b`); None for anything else."""
+    items = node.elts if isinstance(node, ast.Tuple) else [node]
+    return [i.id for i in items] if all(isinstance(i, ast.Name) for i in items) else None
+
+
+def helper_call(statement, helpers):
+    """(call, target) when the statement is `self.<helper>(...)` or `<target> = self.<helper>(...)` for a declared helper, else None."""
+    assigned = isinstance(statement, ast.Assign) and len(statement.targets) == 1
+    value = statement.value if assigned or isinstance(statement, ast.Expr) else None
+    if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) and isinstance(value.func.value, ast.Name) and value.func.value.id == "self" and value.func.attr in helpers:
+        return value, statement.targets[0] if assigned else None
+    return None
+
+
+def plumbing(call, target, helper) -> list[str]:
+    """Why the call is not a plain stand-in for the helper's body: empty when the parameters are the names passed (in order) and the last statement returns the target."""
+    args, body, problems = helper.args, without_docstring(helper.body), []
+    if [a.arg for a in args.args[:1]] != ["self"] or args.defaults or args.kwonlyargs or args.vararg or args.kwarg or args.posonlyargs:
+        problems.append("its parameters are more than `self` and plain names")
+    if call.keywords or [getattr(a, "id", None) for a in call.args] != [a.arg for a in args.args[1:]]:
+        problems.append(f"{helper.name}: the arguments ({', '.join(map(ast.unparse, call.args))}) are not its parameters, name for name and in order")
+    last = body[-1]
+    if isinstance(last, ast.Return) and last.value and target is not None and names_of(last.value) and names_of(last.value) == names_of(target):
+        body = body[:-1]
+    elif target is not None or isinstance(last, ast.Return):
+        problems.append(f"{helper.name}: its last statement does not return exactly what the call assigns")
+    if any(isinstance(n, ast.Return) for statement in body for n in ast.walk(statement)):
+        problems.append(f"{helper.name}: a return other than the last statement")
+    return problems
+
+
+def unbound(source: str, cls: str | None, names: list[str]) -> dict[str, list[str]]:
+    """Per named function of the class, the names it (or a scope inside it) reads that nothing in it binds and the module and the builtins lack: a caller's local a helper uses."""
+    top = symtable.symtable(source, "<module>", "exec")
+    known = {s.get_name() for s in top.get_symbols() if s.is_assigned() or s.is_imported() or s.is_namespace()}
+    reads = lambda table: [s.get_name() for s in table.get_symbols() if s.is_global() and s.get_name() not in known and not hasattr(builtins, s.get_name())] + [
+        n for child in table.get_children() for n in reads(child)]
+    scope = next((c for c in top.get_children() if c.get_name() == cls), top) if cls else top
+    return {t.get_name(): sorted(set(reads(t))) for t in scope.get_children() if t.get_name() in names}
+
+
+def inline_back(before, after, helpers: dict) -> dict:
+    """{'identical', 'mapping': [(helper, first, last original line)], 'problems'}: AFTER with each helper called once, as a statement, replaced by its body must dump like BEFORE."""
+    problems, spans, calls, flat = [], [], collections.Counter(), []
+    for statement in without_docstring(after.body):
+        found = helper_call(statement, helpers)
+        if found is None:
+            flat.append(statement)
+            continue
+        call, target = found
+        helper = helpers[call.func.attr]
+        calls[helper.name] += 1
+        problems += plumbing(call, target, helper)
+        body = without_docstring(helper.body)
+        body = body[:-1] if isinstance(body[-1], ast.Return) else body
+        spans.append((helper.name, len(flat), len(body)))
+        flat += body
+    problems += [f"{name}: called {calls[name]} times, not once" for name in helpers if calls[name] != 1]
+    inlined = copy.copy(after)
+    inlined.body = flat
+    problems += [f"{n.func.attr}: a call that is not a whole statement, or inside a helper" for s in flat for n in ast.walk(s) if helper_call(ast.Expr(value=n), helpers)]
+    original = without_docstring(before.body)
+    same = dump(before) == dump(inlined)
+    mapping = [(name, original[first].lineno, original[first + count - 1].end_lineno) for name, first, count in spans] if same else []
+    return {"identical": same and not problems, "mapping": mapping, "problems": problems or ([] if same else ["the inlined method is not the original's AST"])}
 
 
 def compare(before: Path, after: Path, moved: list[tuple[str, str]], rewrites: list[str], files: list[str] | None = None) -> dict:
@@ -112,6 +192,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("before"), parser.add_argument("after")
     parser.add_argument("--moved", action="append", default=[]), parser.add_argument("--rewrite", action="append", default=[]), parser.add_argument("--files", nargs="*")
+    parser.add_argument("--inline", action="append", default=[], help="FILE:Class.method=helper,helper: the method was split into these private helpers")
     args = parser.parse_args(argv)
     moved = [tuple(m.split("=")) if "=" in m else (m, m) for m in args.moved]
     result = compare(Path(args.before), Path(args.after), moved, args.rewrite, args.files)
@@ -120,7 +201,23 @@ def main(argv: list[str]) -> int:
     print(f"for review ({len(result['review'])}):")
     for kind, file, name in result["review"]:
         print(f"  {kind:8s} {file} {name}")
-    return 1 if result["different"] else 0
+    return 1 if result["different"] or not all([inline_report(Path(args.before), Path(args.after), spec) for spec in args.inline]) else 0
+
+
+def inline_report(before: Path, after: Path, spec: str) -> bool:
+    """Print the inline-back verdict of one `FILE:Class.method=helper,...` and say whether it is clean."""
+    where, helper_names = spec.split("=")
+    file, qualified = where.split(":")
+    cls, method = qualified.split(".")
+    old, new = functions(before / file, cls), functions(after / file, cls)
+    helpers = {n: new[n] for n in helper_names.split(",") if n in new}
+    result = inline_back(old[method], new[method], helpers)
+    result["problems"] += [f"{n}: not defined in AFTER" for n in helper_names.split(",") if n not in new] + [f"{n}: already a method of BEFORE" for n in helpers if n in old]
+    scopes = unbound((after / file).read_text(encoding="utf-8"), cls, [method, *helpers])
+    result["problems"] += [f"{f} reads {names}, which nothing binds and neither the module nor the builtins define" for f, names in scopes.items() if names]
+    print(f"inline-back {file}:{qualified} ({len(helpers)} helpers): " + ("IDENTICAL to the original after the declared plumbing" if not result["problems"] else "DIFFERENT"))
+    print("".join(f"  {name} <- original lines {first}-{last}\n" for name, first, last in result["mapping"]) + "".join(f"  PROBLEM {p}\n" for p in result["problems"]), end="")
+    return not result["problems"]
 
 
 if __name__ == "__main__":
