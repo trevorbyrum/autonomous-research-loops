@@ -11168,6 +11168,62 @@
   ],
   "why": "tools/gen2_source_index.py: executes line 631"
  },
+ "2QT3-harness-a-case-keeps-the-modules-it-imported": {
+  "by_hand": true,
+  "controls": [
+   "test_mutation_verdict.RestoredModulesTest.test_modules_of_the_standard_library_are_left_alone"
+  ],
+  "why": "runs the whole restoration around a standard-library import, which is left in place on purpose: not dropping the repository's new modules changes nothing it sees"
+ },
+ "2QT3-harness-a-case-keeps-the-names-it-rebound": {
+  "by_hand": true,
+  "controls": [
+   "test_mutation_verdict.RestoredModulesTest.test_modules_of_the_standard_library_are_left_alone"
+  ],
+  "why": "runs the whole restoration around a standard-library import, which rebinds no name of a repository module: not resetting names changes nothing it sees"
+ },
+ "2QT3-harness-a-case-keeps-the-package-attribute": {
+  "by_hand": true,
+  "controls": [
+   "test_mutation_verdict.RestoredModulesTest.test_modules_of_the_standard_library_are_left_alone"
+  ],
+  "why": "runs the whole restoration around a standard-library import, which it never touches: leaving out the namespace packages changes nothing it sees"
+ },
+ "2QT3-harness-a-case-keeps-the-replaced-module": {
+  "by_hand": true,
+  "controls": [
+   "test_mutation_verdict.RestoredModulesTest.test_modules_of_the_standard_library_are_left_alone"
+  ],
+  "why": "runs the whole restoration around a standard-library import, which it never touches: not putting a replaced module back changes nothing it sees"
+ },
+ "2QT3-status-capability-facts-by-onset": {
+  "by_hand": true,
+  "controls": [
+   "test_router_status_order.StatusOrderTest.test_control_status_lists_the_same_two_rows_of_each_whatever_their_order"
+  ],
+  "why": "reads the same status answer and compares the two capabilities' names sorted: whichever key status orders the facts by, the set is the same"
+ },
+ "2QT3-status-capability-facts-reversed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_status_order.StatusOrderTest.test_control_status_lists_the_same_two_rows_of_each_whatever_their_order"
+  ],
+  "why": "reads the same status answer and compares the two capabilities' names sorted: whichever order status lists the facts in, the set is the same"
+ },
+ "2QT3-status-global-holds-by-subject": {
+  "by_hand": true,
+  "controls": [
+   "test_router_status_order.StatusOrderTest.test_control_status_lists_the_same_two_rows_of_each_whatever_their_order"
+  ],
+  "why": "reads the same status answer and compares the two holds' subjects sorted: whichever key status orders the holds by, the set is the same"
+ },
+ "2QT3-status-global-holds-reversed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_status_order.StatusOrderTest.test_control_status_lists_the_same_two_rows_of_each_whatever_their_order"
+  ],
+  "why": "reads the same status answer and compares the two holds' subjects sorted: whichever order status lists the holds in, the set is the same"
+ },
  "2R-growth-counts-the-gateway": {
   "controls": [
    "test_size_rules.SizeRuleTest.test_an_allowlisted_generated_file_passes"

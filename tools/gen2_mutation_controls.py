@@ -251,6 +251,24 @@ MANUAL: dict[str, dict] = {
         "why": "commits a claim and promotes nothing: the order of the claims helper against the promotions helper changes nothing it sees"},
     "2QB9-reports-refusal-swallowed": {"controls": ["test_router_workflow.ScopingReportTest.test_the_report_hands_the_topic_to_the_operator"],
         "why": "commits one accepted scoping report: the helper raises no refusal, so catching it changes nothing"},
+    # task 2q-t3: the order status lists capability facts and engine-wide holds in, and the harness's restoration of a serial case's modules; each control reads or runs the same
+    # rows or the same restoration without asserting the order or the state the mutant changes
+    "2QT3-status-capability-facts-reversed": {"controls": ["test_router_status_order.StatusOrderTest.test_control_status_lists_the_same_two_rows_of_each_whatever_their_order"],
+        "why": "reads the same status answer and compares the two capabilities' names sorted: whichever order status lists the facts in, the set is the same"},
+    "2QT3-status-capability-facts-by-onset": {"controls": ["test_router_status_order.StatusOrderTest.test_control_status_lists_the_same_two_rows_of_each_whatever_their_order"],
+        "why": "reads the same status answer and compares the two capabilities' names sorted: whichever key status orders the facts by, the set is the same"},
+    "2QT3-status-global-holds-reversed": {"controls": ["test_router_status_order.StatusOrderTest.test_control_status_lists_the_same_two_rows_of_each_whatever_their_order"],
+        "why": "reads the same status answer and compares the two holds' subjects sorted: whichever order status lists the holds in, the set is the same"},
+    "2QT3-status-global-holds-by-subject": {"controls": ["test_router_status_order.StatusOrderTest.test_control_status_lists_the_same_two_rows_of_each_whatever_their_order"],
+        "why": "reads the same status answer and compares the two holds' subjects sorted: whichever key status orders the holds by, the set is the same"},
+    "2QT3-harness-a-case-keeps-the-replaced-module": {"controls": ["test_mutation_verdict.RestoredModulesTest.test_modules_of_the_standard_library_are_left_alone"],
+        "why": "runs the whole restoration around a standard-library import, which it never touches: not putting a replaced module back changes nothing it sees"},
+    "2QT3-harness-a-case-keeps-the-package-attribute": {"controls": ["test_mutation_verdict.RestoredModulesTest.test_modules_of_the_standard_library_are_left_alone"],
+        "why": "runs the whole restoration around a standard-library import, which it never touches: leaving out the namespace packages changes nothing it sees"},
+    "2QT3-harness-a-case-keeps-the-modules-it-imported": {"controls": ["test_mutation_verdict.RestoredModulesTest.test_modules_of_the_standard_library_are_left_alone"],
+        "why": "runs the whole restoration around a standard-library import, which is left in place on purpose: not dropping the repository's new modules changes nothing it sees"},
+    "2QT3-harness-a-case-keeps-the-names-it-rebound": {"controls": ["test_mutation_verdict.RestoredModulesTest.test_modules_of_the_standard_library_are_left_alone"],
+        "why": "runs the whole restoration around a standard-library import, which rebinds no name of a repository module: not resetting names changes nothing it sees"},
     # task 2a: the signal command's schema is a module constant read when the Router builds its SchemaSet, not by a traced line of
     # the request's path; the accepted request validates against the changed enum
     **{mid: {"controls": ["test_router_workflow.SignalTest.test_a_signal_is_queued_pending_and_opens_its_review"],
