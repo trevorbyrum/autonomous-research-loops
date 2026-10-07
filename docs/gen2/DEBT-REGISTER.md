@@ -246,3 +246,11 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (3) replay summaries should count readable row snapshots separately from closed-store markers.
 - source: private/reviews/gen2-2q-b3b-astra-review-20261007.md (non-blocking list)
 - removal: the remaining 2q Router and replay slices meet each item, and the review confirms them before 2q closes.
+
+### DEBT-024 - 2q-b5 non-blocking documentation finding (2q)
+- kind: obligation
+- status: open
+- owner: task 2q
+- what: Astra's 2q-b5 NB2, still open after 2q-e1: the `_response.py` module introduction says `base.py` imports both `_transport.py` and `_links.py` when it imports only the transport, and `base.py`'s retained step 5 still describes returning parsed JSON although `Response` is sealed and decoding is explicit. These are prose corrections only, accepted in advance under the charter's "Review throughput" rule.
+- source: private/reviews/gen2-2q-b5-astra-review-20261006.md (NB2); private/reviews/gen2-2q-e1-astra-review-20261007.md (non-blocking list)
+- removal: the descriptions match the imports and the sealed-response API, confirmed by the next 2q review.
