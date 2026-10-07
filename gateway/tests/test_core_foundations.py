@@ -1,12 +1,15 @@
 """Phase 3 foundations: identity, secrets, canonical records, the metered client."""
 import ast
 import os
+import pickle
 import unittest
 from pathlib import Path
 
+from research_gateway.adapters import base
 from research_gateway.adapters.base import Client, FakeTransport, SourceUnavailable, check, decode
 from research_gateway.core import schema as S
 from research_gateway.core import canonical, identity, secrets
+from research_gateway.core import payload
 from research_gateway.core import router as R
 from research_gateway.core.broker import Broker, RatePolicy
 from research_gateway.core.payload import plain
@@ -216,17 +219,64 @@ class MeteredClient(unittest.TestCase):
 
 class ExecutorClientInterface(unittest.TestCase):
     """core/router.py owns the interface it needs of the metered client (`LaneClient`), so core never imports the adapters (task 2q-b1). A protocol is not enforced at run time, so these
-    keep it true: every member the executor reads or sets on `client` is declared, and every declared member is one a real Client has."""
-    DECLARED = set(R.LaneClient.__annotations__) | {"correlation"}
+    keep it true: every member the executor reads or sets on `client` is declared, and every declared member is one a real Client has. The declared members are read from the protocol's
+    own class body, its annotated fields and its methods alike, so nothing is listed here (task 2q-t2; DEBT-019 NB-1).
+
+    The bound: this compares member NAMES. It does not check a method's signature, a field's type, that a declared method is callable, access through an alias (`c = client; c.topic`),
+    or what a member does when called. It is a declaration-drift check, not a proof that the router and the client agree."""
+
+    @staticmethod
+    def declared() -> set[str]:
+        tree = ast.parse(Path(R.__file__).read_text(encoding="utf-8"))
+        protocol = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "LaneClient")
+        fields = {n.target.id for n in protocol.body if isinstance(n, ast.AnnAssign)}
+        return fields | {n.name for n in protocol.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
     def test_every_client_member_the_executor_uses_is_declared(self):
         tree = ast.parse(Path(R.__file__).read_text(encoding="utf-8"))
         used = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "client"}
-        self.assertEqual(sorted(used - self.DECLARED), [], "the executor uses a member of the client that LaneClient does not declare")
+        self.assertEqual(sorted(used - self.declared()), [], "the executor uses a member of the client that LaneClient does not declare")
 
     def test_control_every_declared_member_is_one_a_real_client_has(self):
         client = Client(broker=Broker({}))
-        self.assertEqual(sorted(m for m in self.DECLARED if not hasattr(client, m)), [], "LaneClient declares a member the client does not have")
+        self.assertEqual(sorted(m for m in self.declared() if not hasattr(client, m)), [], "LaneClient declares a member the client does not have")
+
+
+class MovedExceptions(unittest.TestCase):
+    """AdapterError, ContinuationInvalid and SourceUnavailable moved from adapters/base.py to core/payload.py (task 2q-b1). The compatibility bound, stated and held here (task 2q-t2; DEBT-019 NB-2):
+
+    HOLDS: adapters.base and core.router still name the same class objects, so every import, `except` clause and `isinstance` check written against any path is unchanged, and a pickle the old
+    tree wrote (it names `research_gateway.adapters.base`) loads on this tree, through the re-export.
+    DOES NOT HOLD: `__module__` is now `research_gateway.core.payload`, not `research_gateway.adapters.base`, so a pickle written NOW (of one of the three classes, or of an AdapterError or a
+    ContinuationInvalid instance) names the new module and the old tree cannot load it. Pickling is one-way compatible, old to new; module metadata is not unchanged. A SourceUnavailable instance
+    never unpickled (its constructor needs `response`) and still does not.
+    WHY IT MATTERS LITTLE: nothing in gateway/research_gateway pickles, unpickles or reads `__module__` or `__qualname__`, and the HTTP and RPC error paths render a class's name and message."""
+    NAMES = ("AdapterError", "ContinuationInvalid", "SourceUnavailable")
+    NEW, OLD = b"research_gateway.core.payload", b"research_gateway.adapters.base"
+
+    def test_every_path_names_one_class_and_its_module_is_core_payload(self):
+        for name in self.NAMES:
+            with self.subTest(name=name):
+                self.assertIs(getattr(base, name), getattr(payload, name))
+                self.assertIs(getattr(R, name), getattr(payload, name))
+                self.assertEqual(getattr(payload, name).__module__, self.NEW.decode())
+
+    def test_a_pickle_the_old_tree_wrote_loads_here_and_one_written_here_names_the_new_module(self):
+        for name in self.NAMES:
+            cls = getattr(payload, name)
+            instances = [] if name == "SourceUnavailable" else [cls("x")]
+            for what, value in [("class", cls)] + [("instance", i) for i in instances]:
+                with self.subTest(name=name, what=what):
+                    written = pickle.dumps(value, protocol=2)   # protocol 2: a global's module and name are plain text in the stream
+                    self.assertIn(self.NEW, written)
+                    self.assertNotIn(self.OLD, written, "a pickle written now names the new module, which the old tree cannot load")
+                    loaded = pickle.loads(written.replace(self.NEW, self.OLD))   # the stream the old tree wrote
+                    self.assertIs(loaded if what == "class" else type(loaded), cls)
+
+    def test_a_source_unavailable_instance_does_not_unpickle_before_or_after_the_move(self):
+        error = SourceUnavailable("src", base.Response(503, {}, b"", "https://api.example/x", error="down"))
+        with self.assertRaises(TypeError):
+            pickle.loads(pickle.dumps(error))
 
 
 if __name__ == "__main__":

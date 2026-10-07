@@ -81,3 +81,12 @@ Routing itself is derived from data, not written into the router: base and
 domain lanes from the seed's `base_for` and `domains`, enrichment lanes from
 each adapter's `ENRICHES`, resolve/fetch targets from `SCHEMES`/`HOSTS`, DOI
 primaries from `AGENCIES`. A new source is a seed row plus an adapter file.
+
+## The exceptions the router classifies
+
+`AdapterError`, `ContinuationInvalid` and `SourceUnavailable` are defined in `core/payload.py`, beside `PayloadError`, so the router (in `core`) classifies them without importing the
+adapters; `adapters/base.py` re-exports them and adapters raise them as before (task 2q-b1). The compatibility bound: every import path names the same class, so imports, `except`
+clauses and `isinstance` checks are unchanged, and a pickle written before the move (it names `research_gateway.adapters.base`) still loads. `__module__` is **not** unchanged: it is now
+`research_gateway.core.payload`, so a pickle written now (of a class, or of an `AdapterError` or `ContinuationInvalid` instance) cannot be loaded by a tree from before the move.
+A `SourceUnavailable` instance never unpickled (its constructor needs `response`) and still does not. Nothing in the gateway pickles or reads `__module__`, and the HTTP and RPC error
+paths render a class's name and message, so the bound has no consumer today; `tests/test_core_foundations.py` (`MovedExceptions`) holds it.
