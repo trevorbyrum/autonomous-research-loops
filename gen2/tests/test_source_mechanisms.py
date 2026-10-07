@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import textwrap
 import unittest
 
@@ -72,6 +73,35 @@ class BannedMechanismTest(ClosureCase):
 for _family, _fixtures in BAN.items():
     _test = _family_test("the banned mechanisms:", _family, _fixtures)
     setattr(BannedMechanismTest, _test.__name__, _test)
+
+
+class StringReflectionBoundaryTest(ClosureCase):
+    """"What the ban does not see": a string that names a mechanism. The examples the contract gives are read out of its paragraph and run, so it cannot name a spelling the ban refuses again
+    (task 2q-t2; DEBT-021: it gave `__builtins__["eval"]`, which the name ban of task 2q-t1 refuses). What this shows: those strings are accepted and the same mechanisms spelled as names are
+    refused. It does not say that accepting a string is right: it is the declared boundary of the ban."""
+
+    def examples(self) -> list[str]:
+        paragraph = re.search(r"\*\*What the ban does not see \(declared\)\.\*\* A string that names a mechanism \((.*?)\), and a banned callable", CONTRACT_DOC.read_text(encoding="utf-8"), re.S)
+        self.assertTrue(paragraph, "the paragraph moved: this test reads its examples")
+        examples = re.findall(r"`([^`]+)`", paragraph.group(1))
+        self.assertGreaterEqual(len(examples), 2)
+        return examples
+
+    def test_each_string_the_contract_names_as_unseen_is_accepted_in_both_services(self) -> None:
+        for example in self.examples():
+            for service in SERVICES:
+                with self.subTest(example=example, service=service):
+                    status, view = self.view(self.repo(package(service, {"a.py": f"def read(obj):\n    return {example}\n"})))
+                    self.assertEqual((status, self.diagnostics(view)), (0, []), msg=f"{example} is refused, so it is not what the ban does not see")
+
+    def test_control_the_same_mechanisms_spelled_as_names_are_refused_in_both_services(self) -> None:
+        for what, spelled in (("a dictionary", "obj.__dict__"), ("an attribute-protocol write", 'obj.__setattr__("x", 1)'),
+                              ("the example the paragraph used to give", '__builtins__["eval"]')):
+            for service in SERVICES:
+                with self.subTest(what=what, service=service):
+                    status, view = self.view(self.repo(package(service, {"a.py": f"def read(obj):\n    return {spelled}\n"})))
+                    self.assertEqual(status, 1, msg=f"{spelled} was accepted")
+                    self.assertIn(MECH, [c for c, _, _ in self.diagnostics(view)])
 
 
 class PrivateNameTest(ClosureCase):
