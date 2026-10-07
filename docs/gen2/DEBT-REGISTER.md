@@ -232,3 +232,14 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (NB-3) the name of control `test_control_a_list_of_members_and_a_keyed_container_that_are_readable_hold_what_was_sent` overstates its assertion, which checks cardinality only.
 - source: private/reviews/gen2-2q-b4-astra-review-20261006.md (NB-1 to NB-3)
 - removal: a 2q slice makes these corrections, and its review confirms them before 2q closes.
+
+### DEBT-023 - 2q-b3b non-blocking review findings (2q)
+- kind: obligation
+- status: open
+- owner: task 2q
+- what: Non-blocking findings from Astra's 2q-b3b review, accepted in advance under the charter's "Review throughput" rule:
+  - (1) 352 replay scenarios per change remain UNRESOLVED (real job-process identity in `start_fingerprint`, plus 3 concurrency or replacement-process races), so they are outside the replay verdict; the remaining Router work, especially Lifecycle and Scheduling, must supply deterministic process and concurrency fixtures at the seams or separately accepted contract-level evidence;
+  - (2) the reversed capability-fact order and global-hold order are undetected for lack of stable multi-row fixtures, so add fixtures with at least two distinguishable rows and show that each reversal is detected;
+  - (3) replay summaries should count readable row snapshots separately from closed-store markers.
+- source: private/reviews/gen2-2q-b3b-astra-review-20261007.md (non-blocking list)
+- removal: the remaining 2q Router and replay slices meet each item, and the review confirms them before 2q closes.

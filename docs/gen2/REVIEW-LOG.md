@@ -1703,3 +1703,15 @@ The post-2q Gate D is renumbered #5.
   - **C2:** the comparator accepts empty corpora as 0 differences.
   - **C3:** two scanner-mutant controls never call their scanners.
 - **The differential family recurs** (2q-b2, 2q-b3, now 2q-b5, in drivers inherited since 13c), so the research addendum was written: one shared exact core with manifest completeness and fail-closed verdicts. Routed to **2q-e1**, which re-certifies 2q-b5 and, as confirmation, 2q-b4 and 2q-b1.
+
+## 2026-10-07: 2q-b3b (the Router behaviour-preservation oracle, rebuilt)
+- **Astra** (`c0bd81d1`, pinned 504372f; `private/reviews/gen2-2q-b3b-astra-review-20261007.md`): **Gate C PASS, with A and B standing. ROOT-CAUSE. "2q-b3b is ACCEPTED and 2q-b3 is ACCEPTED."**
+  - C1 (no scrubbing; deep capture), C2 (fail closed), NB1 and NB2 are all RESOLVED.
+  - The combined evidence (move AST identity plus exact replay plus an honest unresolved list) is sufficient for pure-move Router slices.
+- **Rulings for Lifecycle, Scheduling and Amendments:**
+  - an exhaustive move mapping and AST identity, with constructors, delegates, imports and bases inspected by hand;
+  - exact replay with immediate store observations for write routes;
+  - `_guarded` semantics preserved, with no new raw transactions;
+  - independent targeted evidence outside stable replay coverage;
+  - multi-row fixtures before relying on ordering.
+- **Non-blocking:** 352 unresolved scenarios (process identity, concurrency), two ordering negative controls undetected, observation accounting. Registered as DEBT-023.
