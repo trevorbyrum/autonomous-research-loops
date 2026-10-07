@@ -1688,3 +1688,8 @@ The post-2q Gate D is renumbered #5.
   - **C2:** unstable baselines silently fall back to outcome-only success. Astra altered an answer and removed a store observation, and the comparator still returned 0 differences.
 - **Non-blocking:** NB1 (snapshot test wording), NB2 (no per-write store observation for the registry routes).
 - **The family recurs** (DEBT-020 (2) → C1/C2), so the research step ran: `docs/gen2/research/2q-b-differential-20261006.md` (control nondeterminism at the seams; exact comparison; fail closed; mechanical-move AST equivalence as a second oracle). Routed to **2q-b3b**, which is queued behind the running 2q-b5 coder. The remaining Router slices wait for it.
+
+## 2026-10-07: 2q-b4 (decompose the gateway's `_decode`)
+- **Astra** (`ea8e980f`, pinned 8a59308; `private/reviews/gen2-2q-b4-astra-review-20261006.md`): **PASS on A, B and C. ROOT-CAUSE within the supported-input contract. "2q-b4 is ACCEPTED."** No blocking findings.
+- **Confirmed:** the extracted bodies match the old branches, the modifier semantics are preserved, and normalizer liveness is kept.
+- **Non-blocking:** NB-1 (a hypothetical `token` normalizer's precedence; not used in production), NB-2 (re-anchor count 50, not 51), NB-3 (a control name overstates its assertion). Registered as DEBT-022.
