@@ -1737,3 +1737,8 @@ The post-2q Gate D is renumbered #5.
 - **Astra** (`b8b0bc6a`, pinned 8bc87cc; `private/reviews/gen2-2q-b6-astra-review-20261007.md`): **PASS on A, B and C. ROOT-CAUSE. "2q-b6 is ACCEPTED."**
   - All five 2q-b3b rulings conform: 13 of 13 bodies identical; 29 dispositions reviewed; replay reproduced at 658/0/352; `_guarded` preserved.
 - **Non-blocking:** serial mutation-harness module contamination; the `Rows` docstring overstates transaction scope. Registered as DEBT-025. The carried replay coverage and ordering items are already DEBT-023.
+
+## 2026-10-07: 2q-b7 (the Router Scheduling collaborator)
+- **Astra** (`d85ec3e7`, pinned 528c58e; `private/reviews/gen2-2q-b7-astra-review-20261007.md`): **PASS on A, B and C. ROOT-CAUSE. "2q-b7 is ACCEPTED."**
+  - The five rulings are satisfied: 14 of 14 bodies identical; 20 dispositions; replay 658/0/352 recomputed; 7,428 readable immediate rows.
+- **Non-blocking:** serial mutation-harness contamination, the same as DEBT-025 NB1 and addressed in 2q-t3 (in review); the carried replay and ordering coverage is DEBT-023.
