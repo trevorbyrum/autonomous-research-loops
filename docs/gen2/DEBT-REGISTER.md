@@ -194,7 +194,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 
 ### DEBT-019 - 2q-b1 non-blocking review findings (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Non-blocking findings from Astra's 2q-b1 review, accepted in advance under the charter's "Review throughput" rule:
   - (NB-1) `gateway/tests/test_core_foundations.py` hard-codes `correlation` in `DECLARED`, so deleting `code: LaneClient.correlation()` leaves the interface tests green; derive the declared methods from the protocol and add a method-omission mutant with a control;
@@ -202,6 +202,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (NB-3) the consumed ledger prose has small inaccuracies (`MeteredClient` should be `LaneClient`; ML-0005's reach path; ML-0014's "unchanged"), and the error-path driver repeats the stale protocol name.
 - source: private/reviews/gen2-2q-b1-astra-review-20261006.md (NB-1 to NB-3)
 - removal: a 2q slice makes these corrections, and its review confirms them before 2q closes.
+- closed by: task 2q-t2 (`642a0ef`), whose removal conditions Astra confirmed in private/reviews/gen2-2q-t2-astra-review-20261007.md ("2q-t2 is ACCEPTED; DEBT-019, DEBT-021 and DEBT-022 are closable"), 2026-10-07
 
 ### DEBT-020 - 2q-b2 non-blocking review findings (2q)
 - kind: obligation
@@ -216,15 +217,16 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 
 ### DEBT-021 - 2q-t1 non-blocking review finding (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: SOURCE-CONTRACT's "What the ban does not see" paragraph still gives `__builtins__["eval"]` as an unseen example, but the 2q-t1 name ban now refuses it; replace the example and keep the real string-reflection boundary. Accepted in advance under the charter's "Review throughput" rule.
 - source: private/reviews/gen2-2q-t1-astra-review-20261006.md (non-blocking item 1)
 - removal: the example agrees with the demonstrated refusal, confirmed by the next 2q review.
+- closed by: task 2q-t2 (`642a0ef`), whose removal conditions Astra confirmed in private/reviews/gen2-2q-t2-astra-review-20261007.md ("2q-t2 is ACCEPTED; DEBT-019, DEBT-021 and DEBT-022 are closable"), 2026-10-07
 
 ### DEBT-022 - 2q-b4 non-blocking review findings (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Non-blocking findings from Astra's 2q-b4 review, accepted in advance under the charter's "Review throughput" rule:
   - (NB-1) the decoder dispatch now checks `_SCALARS` before `_NORMALIZERS`, so a hypothetical `token` normalizer would no longer take precedence; production registers only `year` and `number`. Restore the original precedence with a regression case, or document the supported extension policy;
@@ -232,6 +234,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (NB-3) the name of control `test_control_a_list_of_members_and_a_keyed_container_that_are_readable_hold_what_was_sent` overstates its assertion, which checks cardinality only.
 - source: private/reviews/gen2-2q-b4-astra-review-20261006.md (NB-1 to NB-3)
 - removal: a 2q slice makes these corrections, and its review confirms them before 2q closes.
+- closed by: task 2q-t2 (`642a0ef`), whose removal conditions Astra confirmed in private/reviews/gen2-2q-t2-astra-review-20261007.md ("2q-t2 is ACCEPTED; DEBT-019, DEBT-021 and DEBT-022 are closable"), 2026-10-07
 
 ### DEBT-023 - 2q-b3b non-blocking review findings (2q)
 - kind: obligation

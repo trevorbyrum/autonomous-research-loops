@@ -1715,3 +1715,9 @@ The post-2q Gate D is renumbered #5.
   - independent targeted evidence outside stable replay coverage;
   - multi-row fixtures before relying on ordering.
 - **Non-blocking:** 352 unresolved scenarios (process identity, concurrency), two ordering negative controls undetected, observation accounting. Registered as DEBT-023.
+
+## 2026-10-07: 2q-t2 (DEBT-019, DEBT-021, DEBT-022)
+- **Astra** (`f4d7e932`, pinned 642a0ef; `private/reviews/gen2-2q-t2-astra-review-20261007.md`): **PASS. "2q-t2 is ACCEPTED; DEBT-019, DEBT-021 and DEBT-022 are closable."**
+- The documented extension policy for DEBT-022 NB-1 is accepted: the precedence before the split was mixed, so a swap would have changed six kinds.
+- The landing run is green: 2,343 tests, 2,322/2,322; gateway 1,538+1,538, 413/413.
+- **The orchestrator closed DEBT-019, DEBT-021 and DEBT-022.**
