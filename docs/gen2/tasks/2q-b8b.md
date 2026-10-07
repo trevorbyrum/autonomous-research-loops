@@ -17,3 +17,9 @@ Both tests protect analyser properties (refusing a conditional real-world class;
 - Don't edit BUILD-STATE.md, REVIEW-LOG.md or DEBT-REGISTER.md.
 - Evidence goes to `~/work/research-loops-public/private/evidence/2q-b8b/`.
 - Commit messages end with `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Use `git commit <paths>`.
+
+## Amendment after Astra's 2q-b8 review (`gen2-2q-b8-astra-review-20261007.md`, C1)
+Astra blocked 2q-b8 on exactly these two tests: blocking class (d), MEDIUM. **Follow its per-test "required repair" table (lines 100–104 of that report) and its family root cause.** In short:
+- the fixtures must stop depending on an incidental production inheritance shape;
+- skipping, an empty rewrite loop, loosening refusals or restoring a mixin would each be a MITIGATION;
+- the existing `RouterInMiniatureTest` cases are a suitable independent inheritance fixture, so keep and verify that coverage.

@@ -1742,3 +1742,9 @@ The post-2q Gate D is renumbered #5.
 - **Astra** (`d85ec3e7`, pinned 528c58e; `private/reviews/gen2-2q-b7-astra-review-20261007.md`): **PASS on A, B and C. ROOT-CAUSE. "2q-b7 is ACCEPTED."**
   - The five rulings are satisfied: 14 of 14 bodies identical; 20 dispositions; replay 658/0/352 recomputed; 7,428 readable immediate rows.
 - **Non-blocking:** serial mutation-harness contamination, the same as DEBT-025 NB1 and addressed in 2q-t3 (in review); the carried replay and ordering coverage is DEBT-023.
+
+## 2026-10-07: 2q-b8 (the Router Amendments collaborator, the last mixin)
+- **Astra** (`bbf7d409`, pinned 8f59e6f; `private/reviews/gen2-2q-b8-astra-review-20261007.md`): **PASS on A and B, BLOCK on C.**
+  - The production conversion is ROOT-CAUSE: 20 of 20 bodies identical; 24 dispositions accepted; replay 658/0/352.
+  - **C1 (MEDIUM, class d):** two metrics regression tests depend on a mixin-composed production Router and break at `class Router:`. The orchestrator's landing run caught this, as designed.
+- Routed to **2q-b8b**, which retargets the tests to a frozen fixture, keeping `RouterInMiniatureTest`. Skipping or weakening the tests would be a MITIGATION.
