@@ -63,7 +63,8 @@ class CollaboratorInterfaceTest(RouterTestCase):
                 self.assertEqual(stray, [], f"{module.__name__} reaches the store, or a transaction, other than as self._core._store (lines {stray})")
 
     def test_only_the_status_read_takes_the_core_snapshot(self):
-        """`_snapshot` is the core's read transaction for status and health; it is the Store's own writable transaction, so what keeps a write out of it is this, not a type."""
+        """A direct-member/module-use check and no more: among the collaborator modules only `status` names the core's `_snapshot` (the Store's own writable transaction, so nothing at run
+        time keeps a write out of it). It does not show which status methods use it, that their bodies write nothing, or how the rest of the Router uses it: those bodies are reviewed by hand."""
         for module, _, _, _ in COLLABORATORS:
             with self.subTest(module=module.__name__):
                 self.assertEqual("_snapshot" in used(module), module is status)
