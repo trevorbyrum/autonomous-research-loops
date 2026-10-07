@@ -13,3 +13,17 @@
   2. **An exact deterministic replay.** Inject a fixed clock and deterministic id and randomness sources at the Router's seams in the replay harness (`_now`, `_new_id`, and any others found), snapshot arguments before each call and results when returned (deep copies), and compare **exactly**, with no output normalisation.
 - If two baseline runs still disagree, the comparison **fails closed** as unresolved and names the remaining nondeterminism source, which then has to be determinised at its seam.
 - Comparator self-tests: a changed answer, a removed store observation, a changed status answer, a reordered ordered list, a changed duration and a changed id namespace must each produce failure.
+
+## Addendum, 2026-10-07: the gateway drivers (Astra's 2q-b5 review, C1–C3)
+The same family recurred in the gateway's whole-answer drivers, inherited from 13c through 2q-b1, 2q-b4 and 2q-b5:
+- whole-URL masks;
+- timestamp spelling substituted inside provider `raw` content;
+- dict-to-pairs canonicalisation that erases the object/list distinction;
+- downloads observed only by type;
+- a comparator that accepts empty corpora (`{}` → "0 differences").
+
+The findings above apply unchanged: determinise at the source, compare exactly with an unambiguous encoding, normalise only explicitly identified harness-owned values (here, only the loopback's allocated port), and fail closed.
+
+One addition from the review: **completeness is part of the oracle.** Each driver declares a fixed input manifest (its case and group identities and counts). The comparator refuses empty, partial or unexplained missing coverage, and refuses incomplete or failed drivers, so a shared generator failure can't become equivalence. This mirrors the "expected inventory" practice in deterministic replay and the build's own completion-witness rule (2q-a-repair-4 F4).
+
+**Implication:** one shared, reviewed differential core used by both services' drivers (exact encoding, manifest completeness, fail-closed verdicts, comparator self-tests), not per-slice harnesses. The earlier accepted slices that relied on the old drivers (2q-b1, 2q-b4) are re-run under it as confirmation.

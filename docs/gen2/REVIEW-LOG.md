@@ -1693,3 +1693,13 @@ The post-2q Gate D is renumbered #5.
 - **Astra** (`ea8e980f`, pinned 8a59308; `private/reviews/gen2-2q-b4-astra-review-20261006.md`): **PASS on A, B and C. ROOT-CAUSE within the supported-input contract. "2q-b4 is ACCEPTED."** No blocking findings.
 - **Confirmed:** the extracted bodies match the old branches, the modifier semantics are preserved, and normalizer liveness is kept.
 - **Non-blocking:** NB-1 (a hypothetical `token` normalizer's precedence; not used in production), NB-2 (re-anchor count 50, not 51), NB-3 (a control name overstates its assertion). Registered as DEBT-022.
+
+## 2026-10-07: 2q-b5 (split `adapters/base.py`)
+- **Astra** (`f7609fc9`, pinned f33c18f; `private/reviews/gen2-2q-b5-astra-review-20261006.md`): **PASS on A and B, BLOCK on C.**
+  - **The production split is ROOT-CAUSE.** 49 of 50 old definitions are AST-unchanged, `parse_links` is decomposed faithfully, and there is no behaviour regression.
+  - **Costs accepted:** the `base.py → _transport.py` smell is a coherent composition edge, and the graph growth is justified by parser simplification plus 31 files losing their reach to `core/uri.py`.
+- **Blocking (evidence only):**
+  - **C1:** the drivers' normalisation erases semantics: whole-URL masks, timestamp substitution inside provider `raw`, object/list loss, downloads unobserved.
+  - **C2:** the comparator accepts empty corpora as 0 differences.
+  - **C3:** two scanner-mutant controls never call their scanners.
+- **The differential family recurs** (2q-b2, 2q-b3, now 2q-b5, in drivers inherited since 13c), so the research addendum was written: one shared exact core with manifest completeness and fail-closed verdicts. Routed to **2q-e1**, which re-certifies 2q-b5 and, as confirmation, 2q-b4 and 2q-b1.
