@@ -77,9 +77,20 @@ def sources(x: dict | None, y: dict | None) -> collections.Counter:
     return (named(x, y) or collections.Counter({"calls differ": 1})) if out else out
 
 
+ROWS, MARKERS = "readable row snapshots", "closed-store or in-transaction markers (not rows)"
+
+
+def kind_of(observation) -> str:
+    """What a store observation is: `store_rows`' readable tables (a dict), or the marker it writes instead (a string: a store that was closed or in a transaction)."""
+    return ROWS if isinstance(observation, dict) else MARKERS
+
+
 def compare(before: list[dict], after: list[dict]) -> dict:
-    """before, after: the {test: record} of each run of the tree before and of the changed tree. Returns {'result', 'tests': {name: {'verdict', 'sources'}}, 'counts', 'observed'}."""
-    verdicts, observed = {}, collections.Counter()
+    """before, after: the {test: record} of each run of the tree before and of the changed tree. Returns {'result', 'tests': {name: {'verdict', 'sources'}}, 'counts', 'observed'}.
+    `observed` counts what the tests that are the same compared: calls (in all and by method), and the store observations after a call and at each end of a test, each split into
+    readable row snapshots and markers, so a marker is never counted as a durable row (task 2q-t3, DEBT-023 item 3; Astra's 2q-b3b review)."""
+    verdicts = {}
+    observed = collections.Counter({f"{when} store {kind}": 0 for when in ("immediate", "end-of-test") for kind in (ROWS, MARKERS)})
     for name in sorted(set().union(*before, *after)):
         first, new = before[0].get(name), after[0].get(name)
         noise = collections.Counter()
@@ -96,8 +107,12 @@ def compare(before: list[dict], after: list[dict]) -> dict:
             for call in first.get("calls", []):
                 observed["calls"] += 1
                 observed[call["method"]] += 1
-                observed["store observations after a call"] += "store" in call
-            observed["end-of-test observations"] += len(first.get("end", []))
+                if "store" in call:
+                    observed[f"immediate store {kind_of(call['store'])}"] += 1
+            for end in first.get("end", []):
+                observed["end-of-test records"] += 1
+                if "store" in end:
+                    observed[f"end-of-test store {kind_of(end['store'])}"] += 1
     counts = collections.Counter(v["verdict"] for v in verdicts.values())
     result = "DIFFERENT" if counts["different"] else "UNRESOLVED" if counts["unresolved"] else "EQUIVALENT"
     return {"result": result, "tests": verdicts, "counts": dict(counts), "observed": dict(observed)}

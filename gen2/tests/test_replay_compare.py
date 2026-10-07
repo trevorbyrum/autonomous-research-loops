@@ -90,8 +90,28 @@ class CounterfactualTest(unittest.TestCase):
     def test_an_identical_run_is_equivalent_and_the_observations_compared_are_counted(self) -> None:
         got = COMPARE["compare"]([run(), run(), run()], [run(), run()])
         self.assertEqual((got["result"], got["counts"]), ("EQUIVALENT", {"same": 2}))
-        self.assertEqual((got["observed"]["calls"], got["observed"]["invocation_status"], got["observed"]["store observations after a call"], got["observed"]["end-of-test observations"]),
-                         (4, 2, 1, 1))
+        self.assertEqual((got["observed"]["calls"], got["observed"]["invocation_status"], got["observed"]["immediate store readable row snapshots"],
+                          got["observed"]["end-of-test records"], got["observed"]["end-of-test store readable row snapshots"]), (4, 2, 1, 1, 1))
+
+    def test_readable_row_snapshots_are_counted_apart_from_closed_store_markers(self) -> None:
+        """DEBT-023 item 3: a run with one readable immediate snapshot, two markers after a call (a closed store, a store in a transaction), and two end records, one readable and
+        one a marker. The counts are written by hand; a marker is not a row, so no total may merge them."""
+        mixed = run()
+        mixed["scenario"]["calls"] += [call("record_gateway_facts", {"status": "recorded"}, store="unreadable: ProgrammingError"),
+                                       call("record_capability_probe", {"status": "recorded"}, store="in-transaction"),
+                                       call("healthy", True)]  # a call of a route that is not tracked has no observation at all
+        mixed["scenario"]["end"].append({"router": 1, "store": "unreadable: ProgrammingError", "shadow_answers": [], "store_after_shadow": "unreadable: ProgrammingError"})
+        got = COMPARE["compare"]([mixed, copy.deepcopy(mixed)], [copy.deepcopy(mixed)])
+        self.assertEqual(got["result"], "EQUIVALENT")
+        seen = got["observed"]
+        self.assertEqual((seen["calls"], seen["immediate store readable row snapshots"], seen["immediate store closed-store or in-transaction markers (not rows)"]), (7, 1, 2))
+        self.assertEqual((seen["end-of-test records"], seen["end-of-test store readable row snapshots"], seen["end-of-test store closed-store or in-transaction markers (not rows)"]),
+                         (2, 1, 1))
+        self.assertNotIn("store observations after a call", seen)  # the old total counted both kinds as one
+
+    def test_a_summary_that_has_no_markers_says_zero_not_nothing(self) -> None:
+        seen = COMPARE["compare"]([run(), run()], [run()])["observed"]
+        self.assertEqual((seen["immediate store closed-store or in-transaction markers (not rows)"], seen["end-of-test store closed-store or in-transaction markers (not rows)"]), (0, 0))
 
 
 class FailClosedTest(unittest.TestCase):
