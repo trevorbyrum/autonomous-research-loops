@@ -627,25 +627,25 @@
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1427 for a line outside 1427-1428 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1444 for a line outside 1444-1445 (or returns)"
  },
  "1B-ack-hold-any-topic": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1424 for a line outside 1424-1425 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1441 for a line outside 1441-1442 (or returns)"
  },
  "1B-ack-hold-unchecked": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1424 for a line outside 1424-1425 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1441 for a line outside 1441-1442 (or returns)"
  },
  "1B-ack-manifest-description": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1421 for a line outside 1421-1422 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1438 for a line outside 1438-1439 (or returns)"
  },
  "1B-ack-replay-any-content": {
   "controls": [
@@ -654,13 +654,13 @@
   "rejected": [
    "test_router_restart.RestartTest.test_delivery_receipts_read_back_whole_after_a_restart"
   ],
-  "why": "gen2/router/service.py: leaves line 1415 for a line outside 1415-1416 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1432 for a line outside 1432-1433 (or returns)"
  },
  "1B-ack-replay-projection-only": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_same_receipt_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 1415 for a line outside 1415-1416 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1432 for a line outside 1432-1433 (or returns)"
  },
  "1B-admission-any-kind": {
   "controls": [
@@ -769,7 +769,7 @@
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_bytes_recorded_for_this_topic_are_referenced_by_hash"
   ],
-  "why": "gen2/router/service.py: leaves line 1104 for a line outside 1104-1105 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1162 for a line outside 1162-1163 (or returns)"
  },
  "1B-claim-replay-after-time-checks": {
   "controls": [
@@ -787,7 +787,7 @@
   "controls": [
    "test_router_commit.TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own"
   ],
-  "why": "gen2/router/service.py: leaves line 1106 for a line outside 1106-1107 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1164 for a line outside 1164-1165 (or returns)"
  },
  "1B-claim-status-gate": {
   "controls": [
@@ -835,7 +835,7 @@
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_contract_approval_queues_the_topic_and_an_amendment_supersedes"
   ],
-  "why": "gen2/router/service.py: leaves line 1384 for a line outside 1384-1385 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1401 for a line outside 1401-1402 (or returns)"
  },
  "1B-decision-other-invocation": {
   "controls": [
@@ -847,7 +847,7 @@
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_the_same_decision_again_replays"
   ],
-  "why": "gen2/router/service.py: leaves line 1250 for a line outside 1250-1251 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1267 for a line outside 1267-1268 (or returns)"
  },
  "1B-delegate-config": {
   "controls": [
@@ -959,13 +959,13 @@
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: leaves line 1473 for a line outside 1473-1474 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1490 for a line outside 1490-1491 (or returns)"
  },
  "1B-fact-recovery-dropped": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_the_whole_receipt_is_recorded"
   ],
-  "why": "gen2/router/service.py: executes line 1466"
+  "why": "gen2/router/service.py: executes line 1483"
  },
  "1B-failure-keeps-lease": {
   "controls": [
@@ -1184,13 +1184,13 @@
   "controls": [
    "test_router_commit.AtomicityTest.test_the_commit_binds_the_bytes_it_validated"
   ],
-  "why": "gen2/router/service.py: leaves line 1151 for a line outside 1151-1152 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1181 for a line outside 1181-1182 (or returns)"
  },
  "1B-promotion-cross-topic": {
   "controls": [
    "test_router_commit.AtomicityTest.test_the_commit_binds_the_bytes_it_validated"
   ],
-  "why": "gen2/router/service.py: leaves line 1149 for a line outside 1149-1150 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1179 for a line outside 1179-1180 (or returns)"
  },
  "1B-qualification-unchecked": {
   "controls": [
@@ -1536,7 +1536,7 @@
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_contract_approval_queues_the_topic_and_an_amendment_supersedes"
   ],
-  "why": "gen2/router/service.py: leaves line 1278 for a line outside 1278-1279 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1295 for a line outside 1295-1296 (or returns)"
  },
  "1B-text-ref-not-bound": {
   "controls": [
@@ -1590,13 +1590,13 @@
   "controls": [
    "test_router_ops.AckDeliveryTest.test_a_delivery_of_the_pair_the_watermark_holds_leaves_it"
   ],
-  "why": "gen2/router/service.py: executes line 1452"
+  "why": "gen2/router/service.py: executes line 1469"
  },
  "1B-watermark-regression": {
   "controls": [
    "test_router_ops.AckDeliveryTest.test_a_delivery_of_the_pair_the_watermark_holds_leaves_it"
   ],
-  "why": "gen2/router/service.py: leaves line 1454 for a line outside 1454-1456 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1471 for a line outside 1471-1473 (or returns)"
  },
  "1BR-receipt-binds-acked-at": {
   "controls": [
@@ -2176,7 +2176,7 @@
   "controls": [
    "test_router_ops.OperatorDecisionTest.test_hold_clearance"
   ],
-  "why": "gen2/router/service.py: leaves line 1319 for a line outside 1319-1320 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1336 for a line outside 1336-1337 (or returns)"
  },
  "1C-router-episode-replay-current-only": {
   "controls": [
@@ -4218,7 +4218,7 @@
   "controls": [
    "test_router_amendments.AmendmentApprovalTest.test_an_approved_amendment_requeues_a_completed_topic"
   ],
-  "why": "gen2/router/service.py: leaves line 1361 for a line outside 1361-1362 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1378 for a line outside 1378-1379 (or returns)"
  },
  "1D-router-brief-impact-unrecorded": {
   "controls": [
@@ -4227,7 +4227,7 @@
   "rejected": [
    "test_router_amendments.BriefImpactTest.test_a_lineage_only_version_lets_scoping_work_complete"
   ],
-  "why": "gen2/router/service.py: executes line 1298; or executes line 1286"
+  "why": "gen2/router/service.py: executes line 1315; or executes line 1303"
  },
  "1D-router-claim-any-bundle": {
   "controls": [
@@ -4245,7 +4245,7 @@
   "controls": [
    "test_router_amendments.AmendmentProposalTest.test_an_amendment_is_recorded_as_a_draft_with_its_rows"
   ],
-  "why": "gen2/router/service.py: executes line 1369"
+  "why": "gen2/router/service.py: executes line 1386"
  },
  "1D-router-contract-impact-unrecorded": {
   "controls": [
@@ -4257,7 +4257,7 @@
    "test_router_amendments.ImpactTest.test_a_reframe_marks_coverage_and_labels_stale_and_reopens_exclusions",
    "test_router_amendments.ImpactTest.test_the_record_lists_what_stood_until_now"
   ],
-  "why": "gen2/router/service.py: executes line 1373"
+  "why": "gen2/router/service.py: executes line 1390"
  },
  "1D-router-hold-fraction-dropped": {
   "controls": [
@@ -4314,7 +4314,7 @@
   "controls": [
    "test_router_amendments.AmendmentApprovalTest.test_an_approved_amendment_requeues_a_completed_topic"
   ],
-  "why": "gen2/router/service.py: leaves line 1364 for a line outside 1364-1365 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1381 for a line outside 1381-1382 (or returns)"
  },
  "1D-router-replay-ignores-draw": {
   "controls": [
@@ -4347,7 +4347,7 @@
   "controls": [
    "test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"
   ],
-  "why": "gen2/router/service.py: leaves line 1154 for a line outside 1154-1156 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1184 for a line outside 1184-1186 (or returns)"
  },
  "1D-sched-budget-unbounded": {
   "controls": [
@@ -5898,7 +5898,7 @@
   "controls": [
    "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
   ],
-  "why": "gen2/router/service.py: executes line 1358"
+  "why": "gen2/router/service.py: executes line 1375"
  },
  "2A-brief-replacement-lineage-recorded": {
   "controls": [
@@ -5958,13 +5958,13 @@
   "controls": [
    "test_router_workflow.ReviewClosureTest.test_the_checkpoint_closes_its_episode_and_handles_its_triggers"
   ],
-  "why": "gen2/router/service.py: leaves line 1206 for a line outside 1206-1207 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1239 for a line outside 1239-1240 (or returns)"
  },
  "2A-closure-handles-pending": {
   "controls": [
    "test_router_workflow.ClaimSourceLinkTest.test_a_link_is_written_for_a_claim_of_the_pinned_revision"
   ],
-  "why": "gen2/router/service.py: executes line 1214; or executes line 1204"
+  "why": "gen2/router/service.py: executes line 1247; or executes line 1237"
  },
  "2A-closure-kinds": {
   "controls": [
@@ -5976,31 +5976,31 @@
   "controls": [
    "test_router_workflow.ReviewClosureTest.test_the_checkpoint_closes_its_episode_and_handles_its_triggers"
   ],
-  "why": "gen2/router/service.py: leaves line 1210 for a line outside 1210-1212 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1243 for a line outside 1243-1245 (or returns)"
  },
  "2A-closure-not-closed": {
   "controls": [
    "test_router_workflow.ClaimSourceLinkTest.test_a_link_is_written_for_a_claim_of_the_pinned_revision"
   ],
-  "why": "gen2/router/service.py: executes line 1213; or executes line 1204"
+  "why": "gen2/router/service.py: executes line 1246; or executes line 1237"
  },
  "2A-closure-reclosed": {
   "controls": [
    "test_router_workflow.ReviewClosureTest.test_the_checkpoint_closes_its_episode_and_handles_its_triggers"
   ],
-  "why": "gen2/router/service.py: leaves line 1208 for a line outside 1208-1209 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1241 for a line outside 1241-1242 (or returns)"
  },
  "2A-closure-then-new-brief-no-rescope": {
   "controls": [
    "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
   ],
-  "why": "gen2/router/service.py: executes line 1291; or executes line 1286"
+  "why": "gen2/router/service.py: executes line 1308; or executes line 1303"
  },
  "2A-closure-triggers-unhandled": {
   "controls": [
    "test_router_workflow.ClaimSourceLinkTest.test_a_link_is_written_for_a_claim_of_the_pinned_revision"
   ],
-  "why": "gen2/router/service.py: executes line 1214; or executes line 1204"
+  "why": "gen2/router/service.py: executes line 1247; or executes line 1237"
  },
  "2A-ddl-proposal-by-its-proposer": {
   "controls": [
@@ -6156,25 +6156,25 @@
   "controls": [
    "test_router_workflow.ContractDraftTest.test_the_rated_draft_is_approved_and_the_topic_queued"
   ],
-  "why": "gen2/router/service.py: executes line 1370 (else 1369)"
+  "why": "gen2/router/service.py: executes line 1387 (else 1386)"
  },
  "2A-lineage-only-rescopes": {
   "controls": [
    "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
   ],
-  "why": "gen2/router/service.py: executes line 1292 (else 1291); or executes line 1286"
+  "why": "gen2/router/service.py: executes line 1309 (else 1308); or executes line 1303"
  },
  "2A-link-admission": {
   "controls": [
    "test_router_workflow.ClaimSourceLinkTest.test_a_link_is_written_for_a_claim_of_the_pinned_revision"
   ],
-  "why": "gen2/router/service.py: leaves line 1166 for a line outside 1166-1168 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1196 for a line outside 1196-1198 (or returns)"
  },
  "2A-link-claim-cross-topic": {
   "controls": [
    "test_router_workflow.ClaimSourceLinkTest.test_a_link_is_written_for_a_claim_of_the_pinned_revision"
   ],
-  "why": "gen2/router/service.py: leaves line 1164 for a line outside 1164-1165 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1194 for a line outside 1194-1195 (or returns)"
  },
  "2A-link-kinds": {
   "controls": [
@@ -6186,13 +6186,13 @@
   "controls": [
    "test_router_workflow.ReviewClosureTest.test_the_checkpoint_closes_its_episode_and_handles_its_triggers"
   ],
-  "why": "gen2/router/service.py: executes line 1174; or executes line 1160"
+  "why": "gen2/router/service.py: executes line 1204; or executes line 1190"
  },
  "2A-link-obligation": {
   "controls": [
    "test_router_workflow.ClaimSourceLinkTest.test_a_link_is_written_for_a_claim_of_the_pinned_revision"
   ],
-  "why": "gen2/router/service.py: leaves line 1169 for a line outside 1169-1170 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1199 for a line outside 1199-1200 (or returns)"
  },
  "2A-link-pre-contract": {
   "controls": [
@@ -6204,7 +6204,7 @@
   "controls": [
    "test_router_workflow.ClaimSourceLinkTest.test_a_link_is_written_for_a_claim_of_the_pinned_revision"
   ],
-  "why": "gen2/router/service.py: leaves line 1171 for a line outside 1171-1173 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1201 for a line outside 1201-1203 (or returns)"
  },
  "2A-open-first-lineage": {
   "controls": [
@@ -6222,7 +6222,7 @@
   "controls": [
    "test_router_workflow.SourceProposalTest.test_a_re_proposal_supersedes_a_recorded_one"
   ],
-  "why": "gen2/router/service.py: leaves line 1191-1192 for a line outside 1191-1193 (or returns), having executed line 1191"
+  "why": "gen2/router/service.py: leaves line 1226-1227 for a line outside 1226-1228 (or returns), having executed line 1226"
  },
  "2A-proposal-cross-topic": {
   "controls": [
@@ -6234,13 +6234,13 @@
   "controls": [
    "test_router_workflow.SourceProposalTest.test_a_re_proposal_supersedes_a_recorded_one"
   ],
-  "why": "gen2/router/service.py: executes line 1197; or executes line 1189"
+  "why": "gen2/router/service.py: executes line 1232; or executes line 1224"
  },
  "2A-proposal-hash-truth-skipped": {
   "controls": [
    "test_router_workflow.SourceProposalTest.test_a_proposal_is_retained_and_authorizes_nothing"
   ],
-  "why": "gen2/router/service.py: leaves line 1273 for a line outside 1273-1274 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1290 for a line outside 1290-1291 (or returns)"
  },
  "2A-proposal-kinds": {
   "controls": [
@@ -6255,7 +6255,7 @@
   "rejected": [
    "test_router_workflow.SourceProposalTest.test_a_re_proposal_supersedes_a_recorded_one"
   ],
-  "why": "gen2/router/service.py: executes line 1197; or executes line 1189"
+  "why": "gen2/router/service.py: executes line 1232; or executes line 1224"
  },
  "2A-proposal-proposer": {
   "controls": [
@@ -6273,7 +6273,7 @@
   "controls": [
    "test_router_workflow.SourceProposalTest.test_a_re_proposal_supersedes_a_recorded_one"
   ],
-  "why": "gen2/router/service.py: leaves line 1195 for a line outside 1195-1196 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1230 for a line outside 1230-1231 (or returns)"
  },
  "2A-refs-applicability": {
   "controls": [
@@ -6411,7 +6411,7 @@
   "controls": [
    "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
   ],
-  "why": "gen2/router/service.py: executes line 1291; or executes line 1286"
+  "why": "gen2/router/service.py: executes line 1308; or executes line 1303"
  },
  "2A-report-brief-unpinned": {
   "controls": [
@@ -6429,7 +6429,7 @@
   "controls": [
    "test_router_workflow.ScopingReportTest.test_the_report_hands_the_topic_to_the_operator"
   ],
-  "why": "gen2/router/service.py: leaves line 1183 for a line outside 1183-1184 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1216 for a line outside 1216-1217 (or returns)"
  },
  "2A-report-cross-topic": {
   "controls": [
@@ -6447,7 +6447,7 @@
   "controls": [
    "test_router_workflow.ScopeDecisionTest.test_approval_of_the_report_awaits_the_contract"
   ],
-  "why": "gen2/router/service.py: executes line 1269"
+  "why": "gen2/router/service.py: executes line 1286"
  },
  "2A-report-hash-untrue": {
   "controls": [
@@ -6465,7 +6465,7 @@
   "controls": [
    "test_router_workflow.ScopingReportTest.test_the_report_hands_the_topic_to_the_operator"
   ],
-  "why": "gen2/router/service.py: leaves line 1179 for a line outside 1179-1180 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1212 for a line outside 1212-1213 (or returns)"
  },
  "2A-report-no-move": {
   "controls": [
@@ -6485,7 +6485,7 @@
    "test_router_workflow.ScopeDecisionTest.test_a_deferral_is_a_record_only",
    "test_router_workflow.ScopeDecisionTest.test_approval_of_the_report_awaits_the_contract"
   ],
-  "why": "gen2/router/service.py: executes line 1185; or executes line 1176"
+  "why": "gen2/router/service.py: executes line 1218; or executes line 1209"
  },
  "2A-report-pre-contract-refused": {
   "controls": [
@@ -6510,13 +6510,13 @@
   "controls": [
    "test_router_workflow.ScopeDecisionTest.test_approval_of_the_report_awaits_the_contract"
   ],
-  "why": "gen2/router/service.py: executes line 1341"
+  "why": "gen2/router/service.py: executes line 1358"
  },
  "2A-rework-any-disposition": {
   "controls": [
    "test_router_workflow.SourceProposalTest.test_a_proposal_is_retained_and_authorizes_nothing"
   ],
-  "why": "gen2/router/service.py: executes line 1330"
+  "why": "gen2/router/service.py: executes line 1347"
  },
  "2A-rework-none": {
   "by_hand": true,
@@ -6534,13 +6534,13 @@
   "controls": [
    "test_router_workflow.BriefStandingTest.test_after_the_first_approval_an_amendment_keeps_its_brief"
   ],
-  "why": "gen2/router/service.py: leaves line 1305 for a line outside 1305-1307 (or returns)"
+  "why": "gen2/router/service.py: leaves line 1322 for a line outside 1322-1324 (or returns)"
  },
  "2A-scope-stale-approved": {
   "controls": [
    "test_router_workflow.ScopeDecisionTest.test_approval_of_the_report_awaits_the_contract"
   ],
-  "why": "gen2/router/service.py: executes line 1303; or executes line 1302"
+  "why": "gen2/router/service.py: executes line 1320; or executes line 1319"
  },
  "2A-signal-collision-inserts": {
   "controls": [
@@ -9378,6 +9378,83 @@
    "test_router_composition.CollaboratorInterfaceTest.test_a_collaborator_holds_only_the_core_and_reaches_the_store_through_it"
   ],
   "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the Router still composes them under the mutant"
+ },
+ "2QB9-claims-helper-not-called": {
+  "by_hand": true,
+  "controls": [
+   "test_router_workflow.ReviewClosureTest.test_the_checkpoint_closes_its_episode_and_handles_its_triggers"
+  ],
+  "why": "every commit it makes (the trigger, the closure) carries no claim, so the claims helper has nothing to write whether or not it is called"
+ },
+ "2QB9-claims-result-dropped": {
+  "by_hand": true,
+  "controls": [
+   "test_router_commit.TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own"
+  ],
+  "why": "commits a claim and reads back its rows and its answer, never the audit event that lists what the helper returned: dropping the returned list changes nothing the test sees"
+ },
+ "2QB9-claims-written-after-the-promotions": {
+  "by_hand": true,
+  "controls": [
+   "test_router_commit.TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own"
+  ],
+  "why": "commits a claim and promotes nothing: the order of the claims helper against the promotions helper changes nothing it sees"
+ },
+ "2QB9-closures-helper-not-called": {
+  "by_hand": true,
+  "controls": [
+   "test_router_workflow.SourceProposalTest.test_a_proposal_is_retained_and_authorizes_nothing"
+  ],
+  "why": "commits a source proposal and no review closure: the closure helper has nothing to close whether or not it is called"
+ },
+ "2QB9-closures-operation-and-instant-swapped": {
+  "by_hand": true,
+  "controls": [
+   "test_router_workflow.SourceProposalTest.test_a_proposal_is_retained_and_authorizes_nothing"
+  ],
+  "why": "commits a source proposal and no review closure: the swapped arguments of the closure helper's call are never used"
+ },
+ "2QB9-links-result-dropped": {
+  "by_hand": true,
+  "controls": [
+   "test_router_workflow.ClaimSourceLinkTest.test_a_link_is_written_for_a_claim_of_the_pinned_revision"
+  ],
+  "why": "writes a link and reads back the link rows, never the audit event that names them: the dropped return is not seen"
+ },
+ "2QB9-promotions-and-links-swapped": {
+  "by_hand": true,
+  "controls": [
+   "test_router_evidence.ProductionAndAdoptionTest.test_only_a_provisional_or_contested_revision_is_promoted"
+  ],
+  "why": "promotes a claim in the commit that records it and then refuses a second promotion, asserting answers only: which of the two returned lists a name takes shows only in the audit event"
+ },
+ "2QB9-proposals-helper-not-called": {
+  "by_hand": true,
+  "controls": [
+   "test_router_workflow.ScopingReportTest.test_the_report_hands_the_topic_to_the_operator"
+  ],
+  "why": "commits a scoping report and no source proposal: the proposal helper has nothing to write whether or not it is called"
+ },
+ "2QB9-reports-helper-not-called": {
+  "by_hand": true,
+  "controls": [
+   "test_router_workflow.SourceProposalTest.test_a_proposal_is_retained_and_authorizes_nothing"
+  ],
+  "why": "commits a source proposal and no scoping report: the report helper has nothing to write whether or not it is called"
+ },
+ "2QB9-reports-operation-and-instant-swapped": {
+  "by_hand": true,
+  "controls": [
+   "test_router_workflow.SourceProposalTest.test_a_proposal_is_retained_and_authorizes_nothing"
+  ],
+  "why": "commits a source proposal and no scoping report: the swapped arguments of the report helper's call are never used"
+ },
+ "2QB9-reports-refusal-swallowed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_workflow.ScopingReportTest.test_the_report_hands_the_topic_to_the_operator"
+  ],
+  "why": "commits one accepted scoping report: the helper raises no refusal, so catching it changes nothing"
  },
  "2QC-con-alias-of-a-class-is-data": {
   "controls": [

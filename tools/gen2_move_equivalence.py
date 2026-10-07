@@ -109,15 +109,14 @@ def plumbing(call, target, helper) -> list[str]:
     """Why the call is not a plain stand-in for the helper's body: empty when the parameters are the names passed (in order) and the last statement returns the target."""
     args, body, problems = helper.args, without_docstring(helper.body), []
     if [a.arg for a in args.args[:1]] != ["self"] or args.defaults or args.kwonlyargs or args.vararg or args.kwarg or args.posonlyargs:
-        problems.append("its parameters are more than `self` and plain names")
+        problems.append(f"{helper.name}: its parameters are more than `self` and plain names")
     if call.keywords or [getattr(a, "id", None) for a in call.args] != [a.arg for a in args.args[1:]]:
         problems.append(f"{helper.name}: the arguments ({', '.join(map(ast.unparse, call.args))}) are not its parameters, name for name and in order")
     last = body[-1]
-    if isinstance(last, ast.Return) and last.value and target is not None and names_of(last.value) and names_of(last.value) == names_of(target):
-        body = body[:-1]
-    elif target is not None or isinstance(last, ast.Return):
+    matched = isinstance(last, ast.Return) and target is not None and names_of(last.value) is not None and names_of(last.value) == names_of(target)
+    if not matched and (target is not None or isinstance(last, ast.Return)):
         problems.append(f"{helper.name}: its last statement does not return exactly what the call assigns")
-    if any(isinstance(n, ast.Return) for statement in body for n in ast.walk(statement)):
+    if any(isinstance(n, ast.Return) for statement in (body[:-1] if isinstance(last, ast.Return) else body) for n in ast.walk(statement)):
         problems.append(f"{helper.name}: a return other than the last statement")
     return problems
 

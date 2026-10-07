@@ -83,6 +83,9 @@ class InlineBackTest(unittest.TestCase):
         self.assertEqual(got["mapping"], [("_ids", 7, 11), ("_dump", 12, 15), ("_logged", 16, 17)])  # counted by hand in BEFORE
         self.assertEqual(TOOL["unbound"](AFTER, "R", ["work", *HELPERS]), {"work": [], "_ids": [], "_dump": [], "_logged": []})  # `json` is the module's, `ValueError` and `set` the builtins'
 
+    def test_a_helper_docstring_is_plumbing_too(self) -> None:
+        self.assertTrue(self.check(AFTER.replace("    def _dump(self, items: list) -> tuple:\n", '    def _dump(self, items: list) -> tuple:\n        """the rows"""\n'))["identical"])  # not the first helper: a docstring first in the body would be dropped by dump itself
+
     def test_a_change_inside_a_helper_or_beside_the_calls_is_different(self) -> None:
         for name, edit in (("a comparison", ('item["topic"] != top', 'item["topic"] == top')), ("a dropped statement", ('            out.append(item["id"])\n', "")),
                            ("a changed argument", ("json.dumps(item)", "json.dumps(items)")), ("another error type", ("ValueError(item)", "KeyError(item)")),
@@ -101,6 +104,7 @@ class InlineBackTest(unittest.TestCase):
                                  ("a helper called twice", ("        self._logged(items, now)\n", "        self._logged(items, now)\n        self._logged(items, now)\n"), "_logged: called 2 times, not once"),
                                  ("a helper never called", ("        self._logged(items, now)\n", ""), "_logged: called 0 times, not once"),
                                  ("a call inside an expression", ("out = self._ids(items, top)", "out = self._ids(items, top) or []"), "not a whole statement"),
+                                 ("a call on another object", ("self._ids(items, top)", "other._ids(items, top)"), "_ids: called 0 times, not once"),
                                  ("a default parameter", ("top: str) -> list", 'top: str = "") -> list'), "more than `self` and plain names")):
             with self.subTest(name):
                 got = self.check(AFTER.replace(*edit))
