@@ -265,6 +265,21 @@ class Scans(unittest.TestCase):
         self.assertEqual(sites(INV.response_sites, files), {("g", "Response"): 1, ("h", "Response"): 1, ("i", "Response"): 1})
         self.assertEqual(sites(INV.netread_sites, files), {("f", "read"): 1, ("f", "readline"): 1})
 
+    def test_control_the_provider_module_list_names_the_adapters_and_data_modules(self):
+        """The accepted path of `provider_modules` (task 2q-e1, Astra 2q-b5 C3): a fixture that CALLS it and asserts what it lists, with no client part in it (a part is what the 2q-b5 mutant
+        takes for an adapter, and what the killer adds). An empty or broken list fails here."""
+        files = {"adapters/base.py": "", "adapters/crossref.py": "", "adapters/doaj.py": "", "harvest/__init__.py": "", "harvest/index.py": "", "harvest/registries.py": ""}
+        with tree(files) as tmp:
+            self.assertEqual([p.relative_to(tmp).as_posix() for p in INV.provider_modules(Path(tmp))],
+                             ["adapters/crossref.py", "adapters/doaj.py", "core/identity.py", "core/sdmx.py", "harvest/index.py", "harvest/registries.py"])
+
+    def test_control_the_netread_scan_names_each_stream_read_of_the_module_it_is_given(self):
+        """The accepted path of `netread_sites` (task 2q-e1, Astra 2q-b5 C3): the same reads in the module the scan names and in `adapters/base.py` (the module the 2q-b5 mutant looks in;
+        `sites` drops the file), a read in another module that no scan counts. An empty or broken scan fails here; the killer, which names the file, is what tells the modules apart."""
+        reads = "def a(r): return r.read(10), r.readline(), r.recv(1)\ndef b(c):\n    def line(): return c.readinto(bytearray(1))\n    return line\ndef d(r): return r.close()\n"
+        files = {"adapters/_transport.py": reads, "adapters/base.py": reads, "clients/other.py": "def j(r): return r.read()\n"}
+        self.assertEqual(sites(INV.netread_sites, files), {("a", "read"): 1, ("a", "readline"): 1, ("a", "recv"): 1, ("b.line", "readinto"): 1})
+
     def test_control_the_opener_scan_finds_a_reference_to_wire_however_it_is_imported(self):
         files = {"adapters/new.py": "from ..core import wire\nfrom ..core.wire import open_csv as csv_opener\nfrom ..core import wire as w\n"
                                     "def a(x): return wire.open_json(x)\ndef b(x): return csv_opener(x)\ndef c(): return w.open_xml\ndef d(x): return wire.Malformed\n"}
