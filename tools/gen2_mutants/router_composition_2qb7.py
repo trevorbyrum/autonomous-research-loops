@@ -28,7 +28,7 @@ MUTATIONS: list[Mutation] = [
              old=GUARDED, new="            with self._core._store.transaction():\n                return body(req, self._core._now())",
              also=(("    def _active_bundle(self) -> dict | None: ...\n", "    def _active_bundle(self) -> dict | None: ...\n    def _now(self) -> str: ...\n"),)),
     Mutation("2QB7-router-inherits-the-scheduling", "2q-b7", "the Router inherits Scheduling: a mixin again, not a composed collaborator", (COMPOSES,), target=SERVICE,
-             old="class Router(Amendments):", new="class Router(Scheduling, Amendments):"),
+             old="class Router:", new="class Router(Scheduling):"),
     Mutation("2QB7-scheduling-reads-the-clock-first", "2q-b7", "a scheduling route's clock is read before the write lock is won",
              (WIRING + "ClockTest.test_every_route_reads_the_clock_only_while_it_holds_the_write_lock",), target=SCHEDULING, old=GUARDED,
              new="            first = self._core._now()\n            return self._core._guarded(\"request_invalid\", lambda now: body(req, first))"),

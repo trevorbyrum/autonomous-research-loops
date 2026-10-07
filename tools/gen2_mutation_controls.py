@@ -209,6 +209,24 @@ MANUAL: dict[str, dict] = {
         "why": "claims and re-queues work naming no reservation, so `_draw` is never called: dropping its `now` changes nothing the test can see"},
     "2QB7-router-delegate-calls-another-route": {"controls": ["test_router_scheduling.RequeueTest.test_the_same_requeue_again_replays"],
         "why": "re-queues work and never creates a topic through the Router (the fixture seeds topics in SQL): the changed `create_topic` delegate is not reached"},
+    # task 2q-b8: the same, for amendments.py; the clock, refusal, fence and delegate mutants are killed by test_router_amendments_wiring, and the real amendment tests, which do not
+    # touch the changed line's one property, are their controls
+    "2QB8-amendments-core-omits-a-member": {"controls": ["test_router_composition.CollaboratorInterfaceTest.test_control_every_declared_member_is_one_the_router_has"],
+        "why": "checks every member AmendmentsCore declares is one a real Router has: the mutant removes a declaration, so what is left is still all the Router's"},
+    "2QB8-amendments-opens-the-store-transaction": {"controls": ["test_router_composition.CollaboratorInterfaceTest.test_every_core_member_a_collaborator_uses_is_declared"],
+        "why": "checks every member amendments.py reads off self._core is declared by AmendmentsCore: the mutant opens the transaction through self._core._store, a member that is declared"},
+    "2QB8-router-inherits-the-amendments": {"controls": ["test_router_composition.CollaboratorInterfaceTest.test_a_collaborator_holds_only_the_core_and_reaches_the_store_through_it"],
+        "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the Router still composes them under the mutant"},
+    "2QB8-amendments-reads-the-clock-first": {"controls": ["test_router_amendments.BriefVersionTest.test_a_closed_or_unknown_brief_takes_no_version"],
+        "why": "refuses a version of an unknown and of a closed brief and reads back the same rows: a clock read before or after the lock changes no refusal, only the instants a write is dated by"},
+    "2QB8-amendments-refusal-escapes": {"controls": ["test_router_amendments.BriefVersionTest.test_the_same_version_again_replays"],
+        "why": "versions a brief twice under the real store, which refuses nothing: running in the core's `_transaction` instead of `_guarded` changes only what a refused write becomes"},
+    "2QB8-fence-opens-its-own-transaction": {"controls": ["test_router_amendments.ImpactTest.test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins"],
+        "why": "approves a compatible amendment: no work is fenced, so the fence never requests a cancellation and the changed line is not reached"},
+    "2QB8-router-delegate-drops-an-argument": {"controls": ["test_router_amendments.BriefVersionTest.test_the_same_version_again_replays"],
+        "why": "writes a brief version over a raw-SQL first version and confirms nothing, so `_record_replacements` is never called: dropping its `now` changes nothing the test can see"},
+    "2QB8-router-delegate-calls-another-route": {"controls": ["test_router_amendments.BriefVersionTest.test_the_same_version_again_replays"],
+        "why": "versions a brief and never closes one through the Router: the changed `close_brief` delegate is not reached"},
     # task 2a: the signal command's schema is a module constant read when the Router builds its SchemaSet, not by a traced line of
     # the request's path; the accepted request validates against the changed enum
     **{mid: {"controls": ["test_router_workflow.SignalTest.test_a_signal_is_queued_pending_and_opens_its_review"],
