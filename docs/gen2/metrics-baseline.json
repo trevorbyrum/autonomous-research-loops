@@ -1,6 +1,6 @@
 {
   "cross_service_imports": [],
-  "digest": "c59a25d903e8137eff94dc6f6a7da69e7ad072e37c318ac9b0c874a5c158a22c",
+  "digest": "b83ff0d290d90e791edc4aee6b07e43ac109592990efdebed19cfbc0cada2b62",
   "identities": {
     "MI-000001": "engine|edge|gen2/app/engine.py->gen2/app/station.py",
     "MI-000002": "engine|edge|gen2/app/engine.py->gen2/operator/auth.py",
@@ -1082,8 +1082,8 @@
   },
   "identity_serial": 1138,
   "pin": {
-    "commit": "718b78dbf48f17065819736b7bdcc3893b0ffda3",
-    "production_sha256": "5c6151b4a0ecf86cdf1846a97eb2ebd1dd5d07b0765738fc5a4df3fe5339e143"
+    "commit": "fa4e2b2b02dbd9e483caca763b92a8e1921985f2",
+    "production_sha256": "64e48aa772281a2d878f4a70eb9cae6fed126d0e68058775416a1bd26ba35032"
   },
   "services": {
     "engine": {
@@ -1235,8 +1235,8 @@
           "cyclomatic": 45
         },
         "gen2/router/service.py::Router._write_evidence": {
-          "cognitive": 96,
-          "cyclomatic": 55
+          "cognitive": 14,
+          "cyclomatic": 14
         },
         "gen2/supervisor/fake_executor.py::run": {
           "cognitive": 40,
