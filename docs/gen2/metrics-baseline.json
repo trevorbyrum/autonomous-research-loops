@@ -1,6 +1,6 @@
 {
   "cross_service_imports": [],
-  "digest": "f3a070c6988a45a8557df67a741af48df0146e6c5be6aa8ae9991c1eb619d907",
+  "digest": "640cc3d840f41bf5ebef3daf237c2ded37fa27e2dc231a36cdc77ed5c52b8553",
   "identities": {
     "MI-000001": "engine|edge|gen2/app/engine.py->gen2/app/station.py",
     "MI-000002": "engine|edge|gen2/app/engine.py->gen2/operator/auth.py",
@@ -232,10 +232,7 @@
     "MI-000228": "engine|reach|gen2/supervisor/supervisor.py->gen2/supervisor/jobs.py",
     "MI-000229": "engine|reach|gen2/supervisor/supervisor.py->gen2/supervisor/spool.py",
     "MI-000232": "engine|self_calls|gen2/router/amendments.py->gen2/router/service.py",
-    "MI-000238": "engine|self_calls|gen2/router/scheduling.py->gen2/router/amendments.py",
-    "MI-000240": "engine|self_calls|gen2/router/scheduling.py->gen2/router/service.py",
     "MI-000241": "engine|self_calls|gen2/router/service.py->gen2/router/amendments.py",
-    "MI-000244": "engine|self_calls|gen2/router/service.py->gen2/router/scheduling.py",
     "MI-000250": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/__init__.py",
     "MI-000251": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/broker.py",
     "MI-000252": "gateway|edge|gateway/research_gateway/adapters/base.py->gateway/research_gateway/core/calllog.py",
@@ -1087,8 +1084,8 @@
   },
   "identity_serial": 1138,
   "pin": {
-    "commit": "09a221c2e592ec6003d100a0cb909ccdeb87717b",
-    "production_sha256": "3cdfd9a4f3c7dfbca57d0c02f2f6dd611e8f45779f231e1756ebab502e4f64f7"
+    "commit": "02d9fdccea732ba47e0bce348b79976ce748fc51",
+    "production_sha256": "f8309cf96bc7adc08f93a476a4ee3e40bfa99a801422d5b8fb8be23ac7bd69b2"
   },
   "services": {
     "engine": {
@@ -1547,10 +1544,7 @@
       },
       "self_calls": {
         "gen2/router/amendments.py->gen2/router/service.py": 21,
-        "gen2/router/scheduling.py->gen2/router/amendments.py": 3,
-        "gen2/router/scheduling.py->gen2/router/service.py": 26,
-        "gen2/router/service.py->gen2/router/amendments.py": 7,
-        "gen2/router/service.py->gen2/router/scheduling.py": 2
+        "gen2/router/service.py->gen2/router/amendments.py": 7
       },
       "smells": {
         "god_component": [],

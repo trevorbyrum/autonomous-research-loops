@@ -39,21 +39,3 @@ reason, and task. Targets use service|kind|location; file identities own fan-out
 fan-in; function IDs own both scores; edge, reach, self_calls, cycle, smell and aggregate
 IDs own their respective budgets. Cross-service imports belong to repo.
 
-### ML-0001
-- action: retire
-- identity: MI-000238
-- reason: scheduling.py is a collaborator the Router composes, no longer a mixin (task 2q-b7): its 3 calls of `_open_topic` (the reservation, review and signal bodies; the member amendments.py still defines) are `self._core._open_topic` calls through SchedulingCore, which the metric does not count; no site moved to another pair (nothing else calls `_open_topic` across files)
-- task: 2q-b7
-
-### ML-0002
-- action: retire
-- identity: MI-000240
-- reason: scheduling.py is a collaborator, no longer a mixin (task 2q-b7): its 26 calls of the core (`_one` 13, `_audit` 6, `_router_policy` 4, `_active_bundle` 2, `_guarded` 1) are `self._core.<member>` calls through SchedulingCore, which the metric does not count; the store, schema and id attributes were never counted as calls
-- task: 2q-b7
-
-### ML-0003
-- action: retire
-- identity: MI-000244
-- reason: scheduling.py is a collaborator, no longer a mixin (task 2q-b7): service.py's two calls of `_admit_lane` and `_draw` (inside `claim`) are now calls of members service.py itself defines (delegating to the composed Scheduling), so they are not cross-file; `_lane_last`, the status read's, was already a `self._core` call
-- task: 2q-b7
-
