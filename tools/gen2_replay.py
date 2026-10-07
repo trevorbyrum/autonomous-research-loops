@@ -11,9 +11,12 @@ Nondeterminism is fixed at its source, not scrubbed from the output:
   * the clock: every `datetime.now` of a production module, one reading per millisecond from one fixed instant, counting afresh in each test;
   * ids and tokens: every `secrets.token_hex` of a production module (the router's `random_id`, probe ids, spool temp names), a counter counting afresh in each test;
   * PYTHONHASHSEED=0 (set iteration order): the recorder re-executes itself with it.
-A Router a test gives its own clock or ids keeps them. NOT seams here, so a test they show in is reported unresolved with the field named: the identity of a real job process
-(pid, start time, session: a test asserts the real values, so replacing them fails the test itself, tried first) and real timing (how often a supervisor polls decides how many
-router calls, clock readings and ids a test makes).
+A Router a test gives its own clock or ids keeps them.
+Real processes (task 2q-t4; tools/gen2_replay_seams.py, which says how): the identity a supervisor embeds in its records for a real job process (the pid, start time and session of
+the launcher it started) is the ordinal of the real one among those the test saw, the same in every process of the test; a child process reads a fixed clock and draws counted ids
+of its own range; and the first poll of a started job waits for the job's end, so how many polls a test makes no longer depends on how fast a real process ran. Each of these acts
+only in a replay run, and a test in REAL_IDENTITY (it asserts the real identity file) runs with none of it. NOT seams, so a test they show in is reported unresolved with the field
+named: that real identity, and the order in which threads the operating system schedules take their clock readings (two probes whose runners wait for each other).
 """
 from __future__ import annotations
 
@@ -21,19 +24,26 @@ import datetime
 import gzip
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
+import time
 import unittest
 
 SEED = "PYTHONHASHSEED"
 if os.environ.get(SEED) != "0":
     os.execve(sys.executable, [sys.executable, *sys.argv], {**os.environ, SEED: "0"})
 TREE, OUT, MODULES = os.path.realpath(sys.argv[1]), sys.argv[2], sys.argv[3:]
+HERE = os.path.dirname(os.path.realpath(__file__))
 os.chdir(TREE)
 sys.path[:0] = [TREE, os.path.join(TREE, "gen2", "tests")]
+sys.path.append(HERE)
 
+import gen2_replay_seams as seams  # noqa: E402  (this recorder's own, never the tree's)
 from gen2.router import service  # noqa: E402  (the tree's own)
+from gen2.supervisor import supervisor as supervised  # noqa: E402
 
 assert os.path.realpath(service.__file__).startswith(TREE), service.__file__
 TRACKED = {"record_capability_probe", "record_gateway_facts", "status", "healthy", "activate_config_bundle", "config_bundle", "restore_config_bundle", "record_qualification",
@@ -63,6 +73,15 @@ class FixedSecrets:
     def token_hex(nbytes: int = 32) -> str:
         Counters.tokens += 1
         return f"{Counters.tokens:0{2 * nbytes}x}"
+
+
+def seam_processes() -> str:
+    """The seams of real processes (tools/gen2_replay_seams.py) for this run and its children; returns the overlay a child imports the code from (removed at the end of the run)."""
+    path = seams.overlay(TREE)
+    os.environ.update(GEN2_CHILD_ROOT=path, PYTHONPATH=path)
+    seams.install(child=False)
+    supervised.Supervisor._observe = seams.Settle.first_look(supervised.Supervisor._observe)
+    return path
 
 
 def fix_seams() -> None:
@@ -179,6 +198,12 @@ class Result(unittest.TextTestResult):
         Recorder.calls, Recorder.routers = [], []
         Counters.clock = Counters.tokens = 0
         fix_seams()
+        real = test.id() in seams.REAL_IDENTITY
+        if real:
+            os.environ.pop(seams.ENV, None)
+        else:
+            os.environ[seams.ENV] = tempfile.mkdtemp(dir=OVERLAY)
+        Result.log.setdefault(test.id(), {})["processes"] = "real" if real else "fixed"
         original = test.tearDown
 
         def tear_down():
@@ -198,8 +223,12 @@ class Result(unittest.TextTestResult):
 
 
 if __name__ == "__main__":
+    OVERLAY = seam_processes()
     install()
     result = unittest.TextTestRunner(resultclass=Result, verbosity=0, stream=sys.stderr).run(unittest.defaultTestLoader.loadTestsFromNames(MODULES))
+    shutil.rmtree(OVERLAY, ignore_errors=True)
+    stale = sorted(t for t in seams.REAL_IDENTITY if t.rsplit(".", 2)[0] in MODULES and Result.log.get(t, {}).get("processes") != "real")
+    assert not stale, f"seams.REAL_IDENTITY names tests that did not run: {stale}"
     head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     with gzip.open(OUT, "wt", encoding="utf-8") as handle:
         json.dump({"tree": head, "python": sys.version.split()[0], "tests": Result.log}, handle, default=repr)

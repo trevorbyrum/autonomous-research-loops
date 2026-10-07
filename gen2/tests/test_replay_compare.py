@@ -21,14 +21,15 @@ TOOLS = Path(__file__).resolve().parents[2] / "tools"
 COMPARE = runpy.run_path(str(TOOLS / "gen2_replay_compare.py"))
 H1, H2 = "sha256:" + "a" * 64, "sha256:" + "b" * 64
 INV = "inv_" + "0" * 31 + "1"
+FP, FP2 = "pid=1001;starttime=2001;session=1001", "pid=1002;starttime=2002;session=1002"  # a job process's identity as the replay's identity seam writes it (tools/gen2_replay_seams.py)
 
 
 def call(method, result, **more):
-    return {"method": method, "router": 0, "args": [{"invocation_id": INV, "expected": float("nan")}], "kwargs": {}, "result": result, **more}
+    return {"method": method, "router": 0, "args": [{"invocation_id": INV, "start_fingerprint": FP, "expected": float("nan")}], "kwargs": {}, "result": result, **more}
 
 
 def record():
-    rows = {"leases": [{"lease_id": "lease_1", "expires_at": "2026-09-27T10:00:01.002Z"}], "invocations": [{"invocation_id": INV, "state": "running"}]}
+    rows = {"leases": [{"lease_id": "lease_1", "expires_at": "2026-09-27T10:00:01.002Z"}], "invocations": [{"invocation_id": INV, "state": "running", "start_fingerprint": FP}]}
     return {"outcome": "pass", "calls": [
         call("request_launch", {"status": "recorded", "invocation_id": INV, "lease_expires_at": "2026-09-27T10:00:01.002Z", "content_hash": H1, "evidence": [H1, H2], "units": 1}),
         call("invocation_status", {"state": "running"}),
@@ -60,6 +61,8 @@ class CounterfactualTest(unittest.TestCase):
             "a changed answer": lambda r: launch(r).update(status="refused"),
             "a removed store observation": lambda r: r["calls"][3].pop("store"),
             "a changed store observation": lambda r: r["calls"][3]["store"]["invocations"][0].update(state="failed"),
+            "a changed job process identity in a call's arguments": lambda r: r["calls"][0]["args"][0].update(start_fingerprint=FP2),
+            "a changed job process identity in a stored row": lambda r: r["calls"][3]["store"]["invocations"][0].update(start_fingerprint=FP2),
             "a changed status answer (the second of two identical polls)": lambda r: r["calls"][2]["result"].update(state="failed"),
             "a dropped poll": lambda r: r["calls"].pop(2),
             "a reordered ordered list": lambda r: launch(r)["evidence"].reverse(),
@@ -139,6 +142,17 @@ class FailClosedTest(unittest.TestCase):
         got = COMPARE["compare"]([run(), other], [after])
         self.assertEqual((got["result"], got["tests"]["scenario"]["verdict"]), ("UNRESOLVED", "unresolved"))
         self.assertEqual(got["tests"]["scenario"]["outside_noise"], ["request_launch result.status"])
+
+    def test_a_real_job_process_identity_that_differs_between_runs_is_unresolved_and_named(self) -> None:
+        """A test that runs with the real identity (REAL_IDENTITY of tools/gen2_replay_seams.py) has a different pid, start time and session in each run: nothing is concluded."""
+        varied = run()
+        varied["scenario"]["calls"][0]["args"][0]["start_fingerprint"] = FP2
+        varied["scenario"]["calls"][3]["store"]["invocations"][0]["start_fingerprint"] = FP2
+        result, found = verdict([run(), varied], run())
+        self.assertEqual((result, found["verdict"]), ("UNRESOLVED", "unresolved"))
+        self.assertEqual({k for k in found["sources"] if "start_fingerprint" not in k}, set())
+        self.assertIn("request_launch args.start_fingerprint", found["sources"])
+        self.assertIn("activate_config_bundle store.invocations.start_fingerprint", found["sources"])
 
     def test_the_command_refuses_a_single_baseline_run(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
