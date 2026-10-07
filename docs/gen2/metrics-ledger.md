@@ -39,3 +39,29 @@ reason, and task. Targets use service|kind|location; file identities own fan-out
 fan-in; function IDs own both scores; edge, reach, self_calls, cycle, smell and aggregate
 IDs own their respective budgets. Cross-service imports belong to repo.
 
+### ML-0001
+- action: retire
+- identity: MI-000230
+- reason: lifecycle.py is a collaborator the Router composes, no longer a mixin (task 2q-b6): amendments.py's one call of `_cancel_in_transaction` (the fence of admitted work, `_fence`) is now a call of the Router's own delegating member (counted under amendments.py->service.py, below)
+- task: 2q-b6
+
+### ML-0002
+- action: retire
+- identity: MI-000236
+- reason: lifecycle.py is a collaborator, no longer a mixin (task 2q-b6): its 24 calls of the core (`_one` 6, `_capability` 5, `_transition_row` 2, `_lease_of` 2, `_guarded` 2, `_audit` 2, `_set_topic`, `_router_policy`, `_now`, `_launch_refusal`, `_authorize_artifact`) are `self._core.<member>` calls through LifecycleCore, which the metric does not count; the dependencies are declared in that protocol, not removed
+- task: 2q-b6
+
+### ML-0003
+- action: retire
+- identity: MI-000242
+- reason: lifecycle.py is a collaborator, no longer a mixin (task 2q-b6): service.py's six calls of `_evidence`, `_bind_evidence`, `_record_artifact`, `_release_capacity`, `_open_unknown_hold` and `_require_delegates_ended` are now calls of members service.py itself defines (delegating to the composed Lifecycle)
+- task: 2q-b6
+
+### ML-0004
+- action: budget
+- metric: self_calls
+- location: engine:gen2/router/amendments.py->gen2/router/service.py
+- limit: 21
+- reason: 1 site of amendments.py's calls of lifecycle members moved here when lifecycle.py stopped being a mixin (task 2q-b6): the Router keeps the member the rest of the Router reads (`_cancel_in_transaction`) as its own, delegating to the composed Lifecycle. A flow moved from a mixin pair to the core pair, not new coupling: the engine's cross-file self-call sites fall 89 -> 59 and its file pairs 8 -> 5 in the same change
+- task: 2q-b6
+

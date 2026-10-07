@@ -236,7 +236,7 @@ MUTATIONS: list[Mutation] = [
           ("question-unpinned", "a spec's question need not be in the pinned bundle's registry", (RG + "QuestionPinTest.test_a_spec_whose_question_the_pinned_bundle_lacks_is_refused",), BND,
            '    if (question["question_id"], question["version"], question["content_hash"]) not in questions:', "    if False:"),
           ("hold-window-unpinned", "an episode hold's window is the shipped hour whatever the pinned bundle", (RG + "ConfigBundleTest.test_an_episode_holds_window_is_its_pinned_bundles",), LIF,
-           '        window = self._router_policy(inv["config_bundle_hash"])["hold_window_s"]', "        window = 3600"),
+           '        window = self._core._router_policy(inv["config_bundle_hash"])["hold_window_s"]', "        window = 3600"),
           # task 1d-repair (finding 4): a duration's fraction is kept, to the nanosecond, a finer one rounding up
           ("hold-fraction-dropped", "a hold window's fraction of a second is dropped",
            (RG + "ConfigBundleTest.test_a_fractional_hold_window_is_kept_exactly", SQ + "RequeueTest.test_a_fractional_exhaustion_hold_window_is_kept_exactly"), LIF,

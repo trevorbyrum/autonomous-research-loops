@@ -30,7 +30,7 @@ MUTATIONS: list[Mutation] = [
     Mutation("2QB2-status-opens-its-own-transaction", "2q-b2", "the status read opens its own transaction instead of the core's snapshot", (HOLDS_ONLY_CORE,), target=STATUS,
              old="            with self._core._snapshot():  # one snapshot", new="            with self._core._store.transaction():  # one snapshot"),
     Mutation("2QB2-router-inherits-a-collaborator", "2q-b2", "the Router inherits Status: a mixin again, not a composed collaborator", (COMPOSES,), target=SVC,
-             old="class Router(Lifecycle, Amendments, Scheduling):", new="class Router(Lifecycle, Amendments, Scheduling, Status):"),
+             old="class Router(Amendments, Scheduling):", new="class Router(Amendments, Scheduling, Status):"),
     Mutation("2QB2-router-drops-a-public-method", "2q-b2", "the Router's `healthy` is no longer a public method", (COMPOSES,), target=SVC,
              old="    def healthy(self) -> bool:\n        return self._status.healthy()", new="    def _healthy(self) -> bool:\n        return self._status.healthy()"),
 ]

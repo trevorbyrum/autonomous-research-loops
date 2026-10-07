@@ -33,9 +33,10 @@ lifecycle.py; task 1d's config bundles, question registry and qualification
 records in registries.py, brief and contract versions and amendment impact
 (G-1) in amendments.py, re-queues, reservations and the signal queue in
 scheduling.py; task 1e's status read and health probe in status.py; task 1f's
-capability-probe records in capabilities.py (status.py, capabilities.py and, task
-2q-b3, registries.py are explicit collaborators the Router composes: BOUNDARIES.md,
-"Router composition"; the three mixins above are not yet). Task 2a's workflow write paths:
+capability-probe records in capabilities.py (status.py, capabilities.py, task
+2q-b3's registries.py and task 2q-b6's lifecycle.py are explicit collaborators the
+Router composes: BOUNDARIES.md, "Router composition"; amendments.py and scheduling.py
+are mixins still). Task 2a's workflow write paths:
 work registration here (register_works), a topic's claim-source links, a
 checkpoint's review closure, a pre-contract scoping report and source
 proposals as commit_outcome sections here, the scope decision's move and
@@ -193,7 +194,7 @@ def _short(text: str) -> str:
     return (text or "refused")[:500]
 
 
-class Router(Lifecycle, Amendments, Scheduling):
+class Router(Amendments, Scheduling):
     """The ControlBackend (gen2/core/control.py) over one store. Construct
     with a Store (Router.open for a durable one); the router owns it and hands
     it to no one. Qualification is read from the store's own records
@@ -214,6 +215,7 @@ class Router(Lifecycle, Amendments, Scheduling):
         self._status = Status(self)
         self._capabilities = Capabilities(self)
         self._registries = Registries(self)
+        self._lifecycle = Lifecycle(self)
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
@@ -265,6 +267,37 @@ class Router(Lifecycle, Amendments, Scheduling):
 
     def _templates(self) -> dict:
         return self._registries._templates()
+
+    # -- the lifecycle's public routes and the members the rest of the Router reads (lifecycle.py) -----
+    def request_cancel(self, request: Mapping) -> dict:
+        return self._lifecycle.request_cancel(request)
+
+    def reconcile(self, request: Mapping) -> dict:
+        return self._lifecycle.reconcile(request)
+
+    def invocation_status(self, request: Mapping) -> dict:
+        return self._lifecycle.invocation_status(request)
+
+    def _evidence(self, inv: dict, content_hash: str) -> dict:
+        return self._lifecycle._evidence(inv, content_hash)
+
+    def _bind_evidence(self, inv: dict, evidence: dict | None, *, failure_class: str | None = None, terminal: bool = True) -> None:
+        return self._lifecycle._bind_evidence(inv, evidence, failure_class=failure_class, terminal=terminal)
+
+    def _record_artifact(self, inv: dict, evidence: dict, now: str) -> None:
+        return self._lifecycle._record_artifact(inv, evidence, now)
+
+    def _require_delegates_ended(self, inv: dict) -> None:
+        return self._lifecycle._require_delegates_ended(inv)
+
+    def _release_capacity(self, inv: dict, now: str, reason: str) -> None:
+        return self._lifecycle._release_capacity(inv, now, reason)
+
+    def _open_unknown_hold(self, inv: dict, episode: int, cause: str, now: str) -> None:
+        return self._lifecycle._open_unknown_hold(inv, episode, cause, now)
+
+    def _cancel_in_transaction(self, req: dict, now: str) -> dict:
+        return self._lifecycle._cancel_in_transaction(req, now)
 
     # -- small helpers -----------------------------------------------------
     def _snapshot(self):
