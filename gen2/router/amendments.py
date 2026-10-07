@@ -1,7 +1,8 @@
 """Brief and contract versions, and what a new version does to work pinned to
-the one it supersedes (task 1d). A mixin of service.Router, with the router's
-one shape: validate outside any transaction, then one short transaction that
-fences and writes.
+the one it supersedes (task 1d). A collaborator of service.Router (task 2q-b8:
+"Router composition", BOUNDARIES.md), with the router's one shape: validate
+outside any transaction, then one short transaction (the core's: `_guarded`)
+that fences and writes.
 
 Trace: flow S1 (an unconfirmed brief cannot advance; expiry marks it overdue,
 never advances it), S3 (Contract v2, hash-locked with its protocol
@@ -128,7 +129,7 @@ incompatible (`unrecorded`).
 """
 from __future__ import annotations
 
-from typing import Mapping
+from typing import Callable, Mapping, Protocol
 
 from gen2.core import canonical
 from gen2.router import boundary
@@ -304,7 +305,39 @@ def _importance(entry: dict) -> dict:
             "operator_importance_score": rating.get("score"), "operator_rating_decision_id": rating.get("operator_decision_id")}
 
 
+class Rows(Protocol):
+    """The router's store as amendments uses it (store/api.py Store): inside the core's transaction."""
+    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
+    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
+    def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object]) -> None: ...
+
+
+class Schemas(Protocol):
+    """The router's schema set as boundary.require_schema uses it (schemas.py SchemaSet)."""
+    def errors(self, instance: object, target: str) -> list[str]: ...
+
+
+class AmendmentsCore(Protocol):
+    """What amendments takes of the router core, and nothing else; service.Router
+    implements it without inheriting it. Every member is the core's own (service.py:
+    `_templates` and `_cancel_in_transaction` delegate to the registries and the
+    lifecycle). Amendments' own members the rest of the Router reads
+    (`_open_topic`, `_pin_status`, `_brief_standing`, `_record_impact`,
+    `_record_replacements`, `_recorded_references`, `_require_current_pins`) are the
+    core's delegating members, so no other collaborator reaches amendments but through the core."""
+    _store: Rows
+    _schemas: Schemas
+    def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
+    def _guarded(self, reason: str, body: Callable[[str], object]) -> object: ...  # the one transaction an operation runs in
+    def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None, invocation_id=None, operation_id=None) -> str: ...
+    def _templates(self) -> dict: ...
+    def _cancel_in_transaction(self, req: dict, now: str) -> dict: ...
+
+
 class Amendments:
+    def __init__(self, core: AmendmentsCore) -> None:
+        self._core = core
+
     # -- commands ----------------------------------------------------------------
     def version_brief(self, request: Mapping) -> dict:
         return self._amendment_command(request, "brief_version", "intake-brief.schema.json", self._version_brief_in_transaction)
@@ -329,17 +362,17 @@ class Amendments:
     def _amendment_command(self, request: Mapping, shape: str, document_schema: str | None, body) -> dict:
         try:
             req = boundary.normalize(request, "request_invalid")
-            boundary.require_schema(self._schemas, req, f"router-commands#/$defs/{shape}", "request_invalid")
+            boundary.require_schema(self._core._schemas, req, f"router-commands#/$defs/{shape}", "request_invalid")
             if document_schema is not None:
-                boundary.require_schema(self._schemas, req["document"], document_schema, "request_invalid")
+                boundary.require_schema(self._core._schemas, req["document"], document_schema, "request_invalid")
                 if canonical.content_hash(req["document"]) != req["document"]["content_hash"]:
                     raise Refusal("request_invalid", "the document does not hash to its content hash (C-13, RA6)")
-            return self._guarded("request_invalid", lambda now: body(req, now))
+            return self._core._guarded("request_invalid", lambda now: body(req, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
 
     def _open_topic(self, topic_id: str) -> dict:
-        topic = self._one("queue_entries", {"topic_id": topic_id})
+        topic = self._core._one("queue_entries", {"topic_id": topic_id})
         if topic is None:
             raise Refusal("unknown_topic", topic_id)
         if topic["status"] == "retired":
@@ -349,13 +382,13 @@ class Amendments:
     def _version_brief_in_transaction(self, req: dict, now: str, first: bool = False) -> dict:
         doc = req["document"]
         key = {"topic_id": doc["topic_id"], "brief_id": doc["brief_id"]}
-        stored = self._one("intake_briefs", {**key, "version": doc["version"]})
+        stored = self._core._one("intake_briefs", {**key, "version": doc["version"]})
         if stored is not None:  # the key is (topic, brief, version); only the identical version replays
             if not _same(stored["document"], doc) or (stored["owner_operator_id"], stored["review_deadline"]) != (req["owner_operator_id"], req["review_deadline"]):
                 raise Refusal("brief_version_conflict", f"{doc['brief_id']} v{doc['version']} was written otherwise")
             return {"status": "replayed", **key, "version": doc["version"]}
         self._open_topic(doc["topic_id"])
-        latest = max(self._store.select("intake_briefs", key), key=lambda b: b["version"], default=None)
+        latest = max(self._core._store.select("intake_briefs", key), key=lambda b: b["version"], default=None)
         if first and latest is not None:  # task 2a: open_brief writes a brief not yet recorded, version_brief every later version
             raise Refusal("brief_exists", f"{doc['brief_id']} is recorded (v{latest['version']}); its next version is version_brief's")
         if latest is None and not first:
@@ -367,18 +400,18 @@ class Amendments:
             raise Refusal("brief_closed", f"{doc['brief_id']} v{latest['version']} is {latest['status']}")
         if instant(doc["created_at"]) > instant(now) or instant(req["review_deadline"]) <= instant(now):
             raise Refusal("request_invalid", f"a version is created by now and reviewed after now ({now})")
-        self._store.insert("intake_briefs", {**key, "version": doc["version"], "parent_version": doc["parent_version"], "content_hash": doc["content_hash"],
+        self._core._store.insert("intake_briefs", {**key, "version": doc["version"], "parent_version": doc["parent_version"], "content_hash": doc["content_hash"],
                                              "document": doc, "owner_operator_id": req["owner_operator_id"], "status": "awaiting_confirmation",
                                              "created_at": doc["created_at"], "review_deadline": req["review_deadline"]})
         superseded = None
         if latest is not None and latest["status"] == "awaiting_confirmation":  # it can no longer be confirmed; a confirmed one waits for its successor's confirmation
-            self._store.update("intake_briefs", {**key, "version": latest["version"]}, {"status": "superseded"})
+            self._core._store.update("intake_briefs", {**key, "version": latest["version"]}, {"status": "superseded"})
             superseded = latest["version"]
-        self._audit("brief_versioned", now, {**key, "version": doc["version"], "superseded": superseded}, topic_id=doc["topic_id"])
+        self._core._audit("brief_versioned", now, {**key, "version": doc["version"], "superseded": superseded}, topic_id=doc["topic_id"])
         return {"status": "recorded", **key, "version": doc["version"], "superseded": superseded}
 
     def _overdue_in_transaction(self, req: dict, now: str) -> dict:
-        row = self._one("intake_briefs", {"topic_id": req["topic_id"], "brief_id": req["brief_id"], "version": req["version"]})
+        row = self._core._one("intake_briefs", {"topic_id": req["topic_id"], "brief_id": req["brief_id"], "version": req["version"]})
         if row is None:
             raise Refusal("unknown_brief", f"{req['brief_id']} v{req['version']}")
         if row["overdue_since"] is not None:
@@ -387,8 +420,8 @@ class Amendments:
             raise Refusal("brief_not_awaiting", f"{req['brief_id']} v{req['version']} is {row['status']}")
         if instant(now) < instant(row["review_deadline"]):
             raise Refusal("not_overdue", f"its review deadline {row['review_deadline']} has not passed ({now})")
-        self._store.update("intake_briefs", {k: req[k] for k in ("topic_id", "brief_id", "version")}, {"overdue_since": now})
-        self._audit("brief_overdue", now, {"brief_id": req["brief_id"], "version": req["version"]}, topic_id=req["topic_id"])
+        self._core._store.update("intake_briefs", {k: req[k] for k in ("topic_id", "brief_id", "version")}, {"overdue_since": now})
+        self._core._audit("brief_overdue", now, {"brief_id": req["brief_id"], "version": req["version"]}, topic_id=req["topic_id"])
         return {"status": "marked", "overdue_since": now}
 
     def _close_in_transaction(self, req: dict, now: str) -> dict:
@@ -399,7 +432,7 @@ class Amendments:
         pinned to a closed version is fenced at its commit (_pin_status: a
         closed brief carries no work)."""
         key = {k: req[k] for k in ("topic_id", "brief_id", "version")}
-        row = self._one("intake_briefs", key)
+        row = self._core._one("intake_briefs", key)
         if row is None:
             raise Refusal("unknown_brief", f"{req['brief_id']} v{req['version']}")
         if row["closed_at"] is not None:
@@ -409,20 +442,20 @@ class Amendments:
         if {"awaiting_confirmation": "cancelled", "confirmed": "archived"}.get(row["status"]) != req["closure"]:
             raise Refusal("brief_not_closable", f"{req['brief_id']} v{req['version']} is {row['status']}: a version awaiting confirmation is "
                                                 "cancelled, a confirmed one archived (G-4)")
-        self._store.update("intake_briefs", key, {"status": req["closure"], "closed_by": req["closed_by"], "closed_at": now, "close_reason": req["reason"]})
-        self._audit("brief_closed", now, {**key, "closure": req["closure"], "by": req["closed_by"]}, topic_id=req["topic_id"])
+        self._core._store.update("intake_briefs", key, {"status": req["closure"], "closed_by": req["closed_by"], "closed_at": now, "close_reason": req["reason"]})
+        self._core._audit("brief_closed", now, {**key, "closure": req["closure"], "by": req["closed_by"]}, topic_id=req["topic_id"])
         return {"status": "closed", **key, "closure": req["closure"], "closed_at": now}
 
     def _amendment_in_transaction(self, req: dict, now: str, draft: bool = False) -> dict:
         doc = req["document"]
         tid = doc["topic_id"]
-        stored = self._one("contract_revisions", {"topic_id": tid, "revision": doc["revision"]})
+        stored = self._core._one("contract_revisions", {"topic_id": tid, "revision": doc["revision"]})
         if stored is not None:
             if not _same(stored["document"], doc):
                 raise Refusal("amendment_conflict", f"revision {doc['revision']} of {tid} was written otherwise")
             return {"status": "replayed", "topic_id": tid, "revision": doc["revision"]}
         topic = self._open_topic(tid)
-        revisions = self._store.select("contract_revisions", {"topic_id": tid})
+        revisions = self._core._store.select("contract_revisions", {"topic_id": tid})
         approved = next((c for c in revisions if c["status"] == "approved"), None)
         if draft:  # task 2a: before any approval, each draft revises the newest (the first none), so a rated draft descends from the draft rated (G-2)
             if any(c["status"] != "draft" for c in revisions):
@@ -445,21 +478,21 @@ class Amendments:
                     raise Refusal("request_invalid", f"the {what} is the {'revised' if draft else 'approved'} revision's, so it keeps {name} {kept} (G-6)")
             elif label(doc) <= recorded:
                 raise Refusal("request_invalid", f"a changed {what} takes a new {name}, above every recorded one ({recorded}): a label never names two (G-6)")
-        defect = references(doc, self._templates()) or self._recorded_references(doc)
+        defect = references(doc, self._core._templates()) or self._recorded_references(doc)
         if defect is not None:  # task 2a: every draft the router writes, a first one or an amendment
             raise Refusal("contract_inconsistent", defect)
-        self._store.insert("contract_revisions", {"topic_id": tid, "revision": doc["revision"], "parent_revision": doc["parent_revision"],
+        self._core._store.insert("contract_revisions", {"topic_id": tid, "revision": doc["revision"], "parent_revision": doc["parent_revision"],
                                                   "protocol_revision": doc["protocol_revision"], "framing_version": doc["facet_map"]["framing_version"],
                                                   "content_hash": doc["content_hash"], "document": doc, "status": "draft", "created_at": doc["created_at"]})
         for facet in doc["facet_map"]["facets"]:
-            self._store.insert("facets", {"topic_id": tid, "contract_revision": doc["revision"], "facet_id": facet["facet_id"], **_importance(facet)})
+            self._core._store.insert("facets", {"topic_id": tid, "contract_revision": doc["revision"], "facet_id": facet["facet_id"], **_importance(facet)})
         for o in doc["obligations"]:
-            self._store.insert("obligations", {
+            self._core._store.insert("obligations", {
                 "topic_id": tid, "contract_revision": doc["revision"], "obligation_id": o["obligation_id"], "template_id": o["template"]["template_id"],
                 "template_version": o["template"]["template_version"], "claim_type": o["template"]["claim_type"], "facet_ids": o["facet_ids"],
                 "stopping_profile_id": o["stopping_profile_id"], "exploratory": o["exploratory"], **_importance(o)})
         against = None if approved is None else contract_compatibility(approved["document"], doc)
-        self._audit("contract_drafted" if draft else "amendment_proposed", now, {"revision": doc["revision"], "against_approved": against}, topic_id=tid)
+        self._core._audit("contract_drafted" if draft else "amendment_proposed", now, {"revision": doc["revision"], "against_approved": against}, topic_id=tid)
         return {"status": "recorded", "topic_id": tid, "revision": doc["revision"], "against_approved": against}
 
     def _recorded_references(self, doc: dict) -> str | None:
@@ -476,24 +509,24 @@ class Amendments:
         invocation of the topic, committed — its bytes among what one of its
         own commit receipts validated (F3)."""
         brief, tid = doc["decision_record"]["objective"]["confirmed_brief"], doc["topic_id"]
-        row = self._one("intake_briefs", {"topic_id": tid, "brief_id": brief["brief_id"], "version": brief["version"]})
+        row = self._core._one("intake_briefs", {"topic_id": tid, "brief_id": brief["brief_id"], "version": brief["version"]})
         if row is None or row["confirmed_by_decision_id"] != brief["confirmed_by"]:
             return f"the decision record names brief {brief['brief_id']} v{brief['version']} as confirmed by {brief['confirmed_by']}, which the topic's record does not"
-        if self._one("contract_revisions", {"topic_id": tid, "status": "approved"}) is None:
+        if self._core._one("contract_revisions", {"topic_id": tid, "status": "approved"}) is None:
             lapsed = self._brief_standing(tid, brief["brief_id"], brief["version"])
             lapsed = None if lapsed in COMPATIBLE else lapsed
         else:
-            replaced = self._one("brief_replacements", {"topic_id": tid, "brief_id": brief["brief_id"], "version": brief["version"]})
+            replaced = self._core._one("brief_replacements", {"topic_id": tid, "brief_id": brief["brief_id"], "version": brief["version"]})
             lapsed = replaced and f"replaced by the confirmation {replaced['replaced_by_decision_id']}"
         if lapsed:
             return f"the decision record names brief {brief['brief_id']} v{brief['version']}, which no longer stands ({lapsed})"
         proposal = doc["method_design"].get("proposal")
         if proposal is not None:
-            ref, inv = proposal["document"], self._one("invocations", {"invocation_id": proposal["proposed_by"]})
+            ref, inv = proposal["document"], self._core._one("invocations", {"invocation_id": proposal["proposed_by"]})
             if inv is None or inv["topic_id"] != tid or inv["kind"] not in boundary.PRIMARY or not any(
-                    ref["content_hash"] in r["receipt"]["validation"]["validated_hashes"] for r in self._store.select("operation_receipts", {"invocation_id": inv["invocation_id"]})):
+                    ref["content_hash"] in r["receipt"]["validation"]["validated_hashes"] for r in self._core._store.select("operation_receipts", {"invocation_id": inv["invocation_id"]})):
                 return f"the method-design proposal is not a document {proposal['proposed_by']}, a primary invocation of this topic, committed"
-            stored = self._one("artifacts", {"content_hash": ref["content_hash"]})  # recorded by that commit
+            stored = self._core._one("artifacts", {"content_hash": ref["content_hash"]})  # recorded by that commit
             if (stored["size_bytes"], stored["media_type"]) != (ref["size_bytes"], ref["media_type"]):
                 return "the method-design proposal is not the document recorded: another size or media type"
         return None
@@ -505,7 +538,7 @@ class Amendments:
         impacts say (_standing); a closed brief carries no work, nor does a
         brief whose lineage is no longer the topic's confirmed one."""
         if inv["admission_context"] == "contract/1":
-            pinned = self._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
+            pinned = self._core._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
             if pinned["status"] == "approved":
                 return "current"
             return self._standing("contract", inv["topic_id"], inv["contract_revision"]) or "compatible"
@@ -514,8 +547,8 @@ class Amendments:
     def _brief_standing(self, topic_id: str, brief_id: str, version: int) -> str:
         """How a brief version stands now, for work pinned to it and for what
         names it (a draft, a scoping report; task 2a-repair F1)."""
-        pinned = self._one("intake_briefs", {"topic_id": topic_id, "brief_id": brief_id, "version": version})
-        current = self._one("intake_briefs", {"topic_id": topic_id, "status": "confirmed"})
+        pinned = self._core._one("intake_briefs", {"topic_id": topic_id, "brief_id": brief_id, "version": version})
+        current = self._core._one("intake_briefs", {"topic_id": topic_id, "status": "confirmed"})
         if pinned["status"] == "confirmed":
             return "current"
         if pinned["status"] == "superseded" and current is not None and current["brief_id"] == brief_id:  # its own lineage is current
@@ -527,10 +560,10 @@ class Amendments:
         confirmed before it, of any brief, that it does not succeed in
         lineage alone is replaced, once and for good (DDL brief_replacements;
         task 2a-repair-3) — no archival or later confirmation undoes it."""
-        for row in self._store.select("intake_briefs", {"topic_id": d["topic_id"]}):
+        for row in self._core._store.select("intake_briefs", {"topic_id": d["topic_id"]}):
             if row["confirmed_by_decision_id"] not in (None, d["decision_id"]) and brief_compatibility(row["document"], current["document"]) not in COMPATIBLE \
-                    and self._one("brief_replacements", {"topic_id": d["topic_id"], "brief_id": row["brief_id"], "version": row["version"]}) is None:
-                self._store.insert("brief_replacements", {"topic_id": d["topic_id"], "brief_id": row["brief_id"], "version": row["version"],
+                    and self._core._one("brief_replacements", {"topic_id": d["topic_id"], "brief_id": row["brief_id"], "version": row["version"]}) is None:
+                self._core._store.insert("brief_replacements", {"topic_id": d["topic_id"], "brief_id": row["brief_id"], "version": row["version"],
                                                           "replaced_by_decision_id": d["decision_id"], "recorded_at": now})
 
     def _standing(self, kind: str, topic_id: str, version: int, brief_id: str | None = None) -> str | None:
@@ -540,7 +573,7 @@ class Amendments:
         incompatible class one gave it, which no later approval undoes; or
         `unrecorded` if none lists it."""
         key = "revision" if kind == "contract" else "version"
-        listed = [entry["classification"] for impact in self._store.select("amendment_impacts", {"topic_id": topic_id, "kind": kind})
+        listed = [entry["classification"] for impact in self._core._store.select("amendment_impacts", {"topic_id": topic_id, "kind": kind})
                   if impact["document"].get("brief_id") == brief_id for entry in impact["document"].get("standing", ()) if entry[key] == version]
         if not listed:
             return "unrecorded"
@@ -563,17 +596,17 @@ class Amendments:
         after the approval itself (module docstring)."""
         tid = d["topic_id"]
         if kind == "contract":
-            key, compat, brief_id, rows = "revision", contract_compatibility, None, [c for c in self._store.select("contract_revisions", {"topic_id": tid}) if c["approved_by_decision_id"]]
+            key, compat, brief_id, rows = "revision", contract_compatibility, None, [c for c in self._core._store.select("contract_revisions", {"topic_id": tid}) if c["approved_by_decision_id"]]
             pin = lambda inv: inv["contract_revision"] if inv["admission_context"] == "contract/1" else None  # noqa: E731
         else:
             key, compat, brief_id = "version", brief_compatibility, superseded["brief_id"]
-            rows = [b for b in self._store.select("intake_briefs", {"topic_id": tid, "brief_id": brief_id}) if b["confirmed_by_decision_id"]]
+            rows = [b for b in self._core._store.select("intake_briefs", {"topic_id": tid, "brief_id": brief_id}) if b["confirmed_by_decision_id"]]
             pin = lambda inv: inv["brief_version"] if inv["brief_ref"] == brief_id else None  # noqa: E731
         # how each earlier version stood until now: the superseded one stood; any other as the recorded impacts say — what one made stale stays stale
         prior = {r[key]: None if r[key] == superseded[key] else self._standing(kind, tid, r[key], brief_id) for r in rows if r[key] != current[key]}
         status = {r[key]: prior[r[key]] or compat(r["document"], current["document"]) for r in rows if r[key] in prior}
         stood = {v for v, was in prior.items() if was is None}
-        invocations = self._store.select("invocations", {"topic_id": tid})
+        invocations = self._core._store.select("invocations", {"topic_id": tid})
         pinned = {i["invocation_id"]: pin(i) for i in invocations}
         doc = {"impact_version": "amendment-impact/1", "decision_id": d["decision_id"], "topic_id": tid, "kind": kind, "classification": status[superseded[key]],
                "superseded": {key: superseded[key], "content_hash": superseded["content_hash"]}, "current": {key: current[key], "content_hash": current["content_hash"]},
@@ -581,29 +614,29 @@ class Amendments:
                "work": [self._fence(i, status[pinned[i["invocation_id"]]], d, now) for i in invocations
                         if i["state"] not in ENDED and pinned[i["invocation_id"]] in status],
                "coverage": [{"observation_id": o["observation_id"], "disposition": DISPOSITION[status[pinned[o["invocation_id"]]]]}
-                            for o in self._store.select("search_observations", {"topic_id": tid}) if pinned[o["invocation_id"]] in stood]}
+                            for o in self._core._store.select("search_observations", {"topic_id": tid}) if pinned[o["invocation_id"]] in stood]}
         if kind == "brief":
             doc["brief_id"] = brief_id  # the brief its standing is of
         if kind == "contract":
             listed = lambda rev: rev in stood  # noqa: E731
             doc["screening_labels"] = [{"assessment_id": a["assessment_id"], "contract_revision": a["contract_revision"], "decision": a["decision"],
                                         "disposition": DISPOSITION[status[a["contract_revision"]]]}
-                                       for a in self._store.select("screening_assessments", {"topic_id": tid}) if listed(a["contract_revision"])]
+                                       for a in self._core._store.select("screening_assessments", {"topic_id": tid}) if listed(a["contract_revision"])]
             doc["reopened_exclusions"] = [a["assessment_id"] for a in doc["screening_labels"] if a["decision"] == "exclude" and a["disposition"] != "valid"]
             doc["claims"] = [{"claim_id": c["claim_id"], "revision": c["revision"], "status": c["status"], "disposition": DISPOSITION[status[pinned[c["producer_invocation_id"]]]]}
-                             for c in self._store.select("claims", {"topic_id": tid}) if listed(pinned[c["producer_invocation_id"]]) and c["status"] != "superseded"]
+                             for c in self._core._store.select("claims", {"topic_id": tid}) if listed(pinned[c["producer_invocation_id"]]) and c["status"] != "superseded"]
             doc["verifications"] = [{"verification_receipt_id": v["verification_receipt_id"], "disposition": DISPOSITION[status[pinned[v["verifier_invocation_id"]]]]}
-                                    for v in self._store.select("verification_receipts", {"topic_id": tid}) if listed(pinned[v["verifier_invocation_id"]])]
+                                    for v in self._core._store.select("verification_receipts", {"topic_id": tid}) if listed(pinned[v["verifier_invocation_id"]])]
             doc["dossiers"] = [{"dossier_revision": x["dossier_revision"], "contract_revision": x["contract_revision"], "disposition": "not_current"}
-                               for x in self._store.select("dossiers", {"topic_id": tid}) if listed(x["contract_revision"])]
+                               for x in self._core._store.select("dossiers", {"topic_id": tid}) if listed(x["contract_revision"])]
             doc["reservations_closed"] = []
-            for r in self._store.select("reservations", {"topic_id": tid}):
+            for r in self._core._store.select("reservations", {"topic_id": tid}):
                 if r["closed_at"] is None and r["contract_revision"] != current["revision"]:
-                    self._store.update("reservations", {"reservation_id": r["reservation_id"]}, {"closed_at": now, "close_reason": f"revision superseded by {d['decision_id']}"})
+                    self._core._store.update("reservations", {"reservation_id": r["reservation_id"]}, {"closed_at": now, "close_reason": f"revision superseded by {d['decision_id']}"})
                     doc["reservations_closed"].append(r["reservation_id"])
             doc["export_generations"] = [{"manifest_id": e["manifest_id"], "generation": e["generation"], "options_revision": e["options_revision"]}
-                                         for e in self._store.select("outbox_events", {"topic_id": tid})]
-        self._store.insert("amendment_impacts", {"decision_id": d["decision_id"], "topic_id": tid, "kind": kind, "classification": doc["classification"],
+                                         for e in self._core._store.select("outbox_events", {"topic_id": tid})]
+        self._core._store.insert("amendment_impacts", {"decision_id": d["decision_id"], "topic_id": tid, "kind": kind, "classification": doc["classification"],
                                                  "document": doc, "recorded_at": now})
         return {"impact": {"classification": doc["classification"], "work": doc["work"]}}
 
@@ -614,6 +647,6 @@ class Amendments:
         entry = {"invocation_id": inv["invocation_id"], "state": inv["state"], "disposition": "completes_under_pins" if status in COMPATIBLE else "fenced",
                  "cancel_requested": False}
         if entry["disposition"] == "fenced" and inv["cancel_requested_at"] is None and inv["state"] in ("admitted", "launching", "running", "outcome_unknown"):
-            self._cancel_in_transaction({"invocation_id": inv["invocation_id"], "requested_by": "router", "reason": f"pins superseded by {d['decision_id']}"}, now)
+            self._core._cancel_in_transaction({"invocation_id": inv["invocation_id"], "requested_by": "router", "reason": f"pins superseded by {d['decision_id']}"}, now)
             entry["cancel_requested"] = True
         return entry

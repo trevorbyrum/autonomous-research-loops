@@ -34,9 +34,9 @@ records in registries.py, brief and contract versions and amendment impact
 (G-1) in amendments.py, re-queues, reservations and the signal queue in
 scheduling.py; task 1e's status read and health probe in status.py; task 1f's
 capability-probe records in capabilities.py (status.py, capabilities.py, task
-2q-b3's registries.py, task 2q-b6's lifecycle.py and task 2q-b7's scheduling.py are
-explicit collaborators the Router composes: BOUNDARIES.md, "Router composition";
-amendments.py is a mixin still). Task 2a's workflow write paths:
+2q-b3's registries.py, task 2q-b6's lifecycle.py, task 2q-b7's scheduling.py and
+task 2q-b8's amendments.py are explicit collaborators the Router composes:
+BOUNDARIES.md, "Router composition"; the Router inherits no mixin). Task 2a's workflow write paths:
 work registration here (register_works), a topic's claim-source links, a
 checkpoint's review closure, a pre-contract scoping report and source
 proposals as commit_outcome sections here, the scope decision's move and
@@ -194,7 +194,7 @@ def _short(text: str) -> str:
     return (text or "refused")[:500]
 
 
-class Router(Amendments):
+class Router:
     """The ControlBackend (gen2/core/control.py) over one store. Construct
     with a Store (Router.open for a durable one); the router owns it and hands
     it to no one. Qualification is read from the store's own records
@@ -217,6 +217,7 @@ class Router(Amendments):
         self._registries = Registries(self)
         self._lifecycle = Lifecycle(self)
         self._scheduling = Scheduling(self)
+        self._amendments = Amendments(self)
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
@@ -324,6 +325,46 @@ class Router(Amendments):
 
     def _draw(self, draw: dict, inv_id: str, topic_id: str, now: str) -> None:
         return self._scheduling._draw(draw, inv_id, topic_id, now)
+
+    # -- amendments' public routes and the members the rest of the Router reads (amendments.py) -----
+    def version_brief(self, request: Mapping) -> dict:
+        return self._amendments.version_brief(request)
+
+    def open_brief(self, request: Mapping) -> dict:
+        return self._amendments.open_brief(request)
+
+    def mark_brief_overdue(self, request: Mapping) -> dict:
+        return self._amendments.mark_brief_overdue(request)
+
+    def propose_amendment(self, request: Mapping) -> dict:
+        return self._amendments.propose_amendment(request)
+
+    def draft_contract(self, request: Mapping) -> dict:
+        return self._amendments.draft_contract(request)
+
+    def close_brief(self, request: Mapping) -> dict:
+        return self._amendments.close_brief(request)
+
+    def _open_topic(self, topic_id: str) -> dict:
+        return self._amendments._open_topic(topic_id)
+
+    def _pin_status(self, inv: dict) -> str:
+        return self._amendments._pin_status(inv)
+
+    def _brief_standing(self, topic_id: str, brief_id: str, version: int) -> str:
+        return self._amendments._brief_standing(topic_id, brief_id, version)
+
+    def _record_impact(self, d: dict, kind: str, superseded: dict, current: dict, now: str) -> dict:
+        return self._amendments._record_impact(d, kind, superseded, current, now)
+
+    def _record_replacements(self, d: dict, current: dict, now: str) -> None:
+        return self._amendments._record_replacements(d, current, now)
+
+    def _recorded_references(self, doc: dict) -> str | None:
+        return self._amendments._recorded_references(doc)
+
+    def _require_current_pins(self, inv: dict) -> None:
+        return self._amendments._require_current_pins(inv)
 
     # -- small helpers -----------------------------------------------------
     def _snapshot(self):
