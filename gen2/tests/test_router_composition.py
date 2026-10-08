@@ -1,4 +1,4 @@
-"""Router composition (task 2q-b2; registries.py, 2q-b3; lifecycle.py, 2q-b6; scheduling.py, 2q-b7; amendments.py, 2q-b8): status.py, capabilities.py, registries.py, lifecycle.py, scheduling.py and amendments.py are explicit collaborators the Router composes (it inherits no mixin), each declaring in its own
+"""Router composition (task 2q-b2; registries.py, 2q-b3; lifecycle.py, 2q-b6; scheduling.py, 2q-b7; amendments.py, 2q-b8; evidence_writer.py, 2q-b10): status.py, capabilities.py, registries.py, lifecycle.py, scheduling.py, amendments.py and evidence_writer.py are explicit collaborators the Router composes (it inherits no mixin), each declaring in its own
 module the interface it takes of the core (a `typing.Protocol` the Router implements without inheriting it; BOUNDARIES.md, "Router
 composition"). A protocol is not enforced at run time, so these keep it true: every member a collaborator reads off `self._core` is
 declared, every declared member is one the collaborator uses and the Router has, the collaborator reaches the store only through the
@@ -8,12 +8,13 @@ import inspect
 import unittest
 from pathlib import Path
 
-from gen2.router import amendments, capabilities, lifecycle, registries, scheduling, service, status
+from gen2.router import amendments, capabilities, evidence_writer, lifecycle, registries, scheduling, service, status
 from gen2.tests.router_fixtures import RouterTestCase
 
 COLLABORATORS = ((status, status.Status, status.StatusCore, "_status"), (capabilities, capabilities.Capabilities, capabilities.CapabilityCore, "_capabilities"),
                  (registries, registries.Registries, registries.RegistriesCore, "_registries"), (lifecycle, lifecycle.Lifecycle, lifecycle.LifecycleCore, "_lifecycle"),
-                 (scheduling, scheduling.Scheduling, scheduling.SchedulingCore, "_scheduling"), (amendments, amendments.Amendments, amendments.AmendmentsCore, "_amendments"))
+                 (scheduling, scheduling.Scheduling, scheduling.SchedulingCore, "_scheduling"), (amendments, amendments.Amendments, amendments.AmendmentsCore, "_amendments"),
+                 (evidence_writer, evidence_writer.EvidenceWriter, evidence_writer.EvidenceCore, "_evidence_writer"))
 PUBLIC_API = {  # Router's public methods at be5b2f1, before status.py, capabilities.py, registries.py, lifecycle.py, scheduling.py and amendments.py stopped being mixins
     "ack_delivery", "activate_config_bundle", "apply_operator_decision", "claim", "close", "close_brief", "commit_outcome", "config_bundle", "create_topic", "draft_contract",
     "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",
@@ -71,7 +72,7 @@ class CollaboratorInterfaceTest(RouterTestCase):
                 self.assertEqual("_snapshot" in used(module), module is status)
 
     def test_the_router_composes_its_collaborators_and_keeps_its_public_methods(self):
-        self.assertFalse(isinstance(self.router, (status.Status, capabilities.Capabilities, registries.Registries, lifecycle.Lifecycle, scheduling.Scheduling, amendments.Amendments)))
+        self.assertFalse(isinstance(self.router, (status.Status, capabilities.Capabilities, registries.Registries, lifecycle.Lifecycle, scheduling.Scheduling, amendments.Amendments, evidence_writer.EvidenceWriter)))
         self.assertEqual(service.Router.__bases__, (object,))  # the last mixin is gone
         self.assertEqual({n for n in dir(service.Router) if not n.startswith("_")}, PUBLIC_API)
 
