@@ -990,6 +990,31 @@ class Router:
         inv = self._one("invocations", {"invocation_id": env["invocation_id"]})
         topic = self._one("queue_entries", {"topic_id": inv["topic_id"]})
         payload, final = checked["payload"], env["operation_kind"] == "final_outcome"
+        lease, admission = self._fence_against_current_state(inv, now, env, topic)
+        self._fence_outcome_kind(final, inv, env)
+        self._fence_changes_since_validation(checked, payload)
+        self._fault("in_transaction:fenced")
+
+        # effects, decided before the receipt so the receipt records them all
+        ordinal, queue_transition, lease_release = self._decide_effects(final, inv, topic, payload, lease)
+        new_triggers, outbox, triggers = self._decide_triggers_and_outbox(inv, payload, checked)
+        receipt_id, after, receipt, audit_id = self._build_receipt(topic, env, inv, fingerprint, admission, now, checked, ordinal, queue_transition, lease_release, payload, new_triggers, outbox)
+
+        self._write_topic_and_artifacts(topic, now, queue_transition, checked, inv)
+        lease_id = lease["lease_id"]
+        self._write_operation_receipt(env, receipt_id, inv, fingerprint, lease_id, lease, topic, after, checked, receipt, now)
+        self._fault("in_transaction:receipt")
+        self._write_final_effects(ordinal, inv, env, lease_release, lease_id, now, final)
+        written = self._write_evidence(env, inv, checked, now, new_triggers, outbox)
+        self._fault("in_transaction:evidence")
+        self._store.insert("audit_events", {"audit_event_id": audit_id, "at": now, "kind": "commit_outcome", "topic_id": inv["topic_id"],
+                                            "invocation_id": inv["invocation_id"], "operation_id": env["operation_id"],
+                                            "detail": {**written, "receipt_id": receipt_id,
+                                                       "triggers_already_recorded": sorted({i for i, _ in triggers} - {i for i, _ in new_triggers})}})
+        self._fault("in_transaction:end")
+        return "committed", receipt
+
+    def _fence_against_current_state(self, inv: dict, now: str, env: dict, topic: dict) -> tuple[dict, dict]:
         lease = self._require_current_lease(inv, now, env["lease"])
         if topic["state_revision"] != env["expected_state_revision"]:
             raise Refusal("state_revision_stale", f"the topic is at state revision {topic['state_revision']}")
@@ -1003,6 +1028,9 @@ class Router:
         self._require_current_pins(inv)
         if inv["cancel_requested_at"] is not None:  # a cancellation, once requested, admits no further effect (L-7; task 1c)
             raise Refusal("invocation_state_invalid", f"cancellation of {inv['invocation_id']} was requested at {inv['cancel_requested_at']}")
+        return lease, admission
+
+    def _fence_outcome_kind(self, final: bool, inv: dict, env: dict) -> None:
         if final:
             finals = [r for r in self._store.select("operation_receipts", {"invocation_id": inv["invocation_id"]}) if r["operation_kind"] == "final_outcome"]
             if finals:
@@ -1016,6 +1044,8 @@ class Router:
                     raise Refusal("invocation_state_invalid", refusal.detail) from None
         elif inv["state"] != "running":
             raise Refusal("invocation_state_invalid", f"an interim transition is committed while running, not {inv['state']}")
+
+    def _fence_changes_since_validation(self, checked: dict, payload: dict) -> None:
         for content_hash, ref in checked["artifacts"].items():  # recorded since validation, by another commit? then as validated (A10; Astra 1b review A4)
             stored = self._one("artifacts", {"content_hash": content_hash})
             if stored is not None and (stored["size_bytes"], stored["media_type"]) != (ref["size_bytes"], ref["media_type"]):
@@ -1026,9 +1056,8 @@ class Router:
                     provider=doc["provider"], decision_class=doc["decision_class"], spec_hash=doc["spec"]["spec_hash"],
                     qualification_ref=authorization["qualification_ref"]):
                 raise Refusal("payload_invalid", f"{doc['decision_receipt_id']}: its qualification was revoked meanwhile (D-4, D-11)")
-        self._fault("in_transaction:fenced")
 
-        # effects, decided before the receipt so the receipt records them all
+    def _decide_effects(self, final: bool, inv: dict, topic: dict, payload: dict, lease: dict) -> tuple[int | None, dict | None, dict | None]:
         ordinal = None
         if final and inv["kind"] == "research_pass" and inv["admission_context"] == "contract/1":
             ordinal = self._store.next_in_sequence("research_ordinals", "ordinal", {"topic_id": inv["topic_id"]})
@@ -1044,10 +1073,17 @@ class Router:
             queue_transition = {"from": "scoping", "to": "awaiting_scope_approval"}
         if final and inv["kind"] != "delegate":
             lease_release = {"lease_id": lease["lease_id"], "generation": lease["generation"], "rest_state": rest_state}
+        return ordinal, queue_transition, lease_release
+
+    def _decide_triggers_and_outbox(self, inv: dict, payload: dict, checked: dict) -> tuple[list, list, list]:
         known = {row["trigger_identity"] for row in self._store.select("review_triggers", {"topic_id": inv["topic_id"]})}
         triggers = [(boundary.trigger_identity(inv["topic_id"], t), t) for t in payload["review_triggers"]]
         new_triggers = list({identity: t for identity, t in triggers if identity not in known}.items())
         outbox = [(self._new_id("obx_"), manifest, manifest_hash) for manifest, manifest_hash in checked["manifests"]]
+        return new_triggers, outbox, triggers
+
+    def _build_receipt(self, topic: dict, env: dict, inv: dict, fingerprint: str, admission: dict, now: str, checked: dict, ordinal: int | None, queue_transition: dict | None,
+                       lease_release: dict | None, payload: dict, new_triggers: list, outbox: list) -> tuple[str, int, dict, str]:
         receipt_id, audit_id = self._new_id("rcpt_"), self._new_id("aud_")
         after = topic["state_revision"] + 1
         receipt = boundary.normalize({
@@ -1063,21 +1099,25 @@ class Router:
                         "decision_receipt_ids": [d["decision_receipt_id"] for d in payload["decision_receipts"]], "audit_event_id": audit_id}},
             "payload_invalid")
         boundary.require_schema(self._schemas, receipt, "commit-outcome.schema.json#/$defs/receipt", "payload_invalid")
+        return receipt_id, after, receipt, audit_id
 
+    def _write_topic_and_artifacts(self, topic: dict, now: str, queue_transition: dict | None, checked: dict, inv: dict) -> None:
         self._set_topic(topic, now, queue_transition["to"] if queue_transition else None)
         for content_hash, ref in checked["artifacts"].items():
             if self._one("artifacts", {"content_hash": content_hash}) is None:
                 self._store.insert("artifacts", {"content_hash": content_hash, "size_bytes": ref["size_bytes"], "media_type": ref["media_type"],
                                                  "topic_id": inv["topic_id"], "staged_by_invocation_id": inv["invocation_id"], "staged_at": now})
             self._authorize_artifact(content_hash, inv, now)  # staged in this topic's spool with this commit: this topic's, whoever recorded the bytes first
-        lease_id = lease["lease_id"]
+
+    def _write_operation_receipt(self, env: dict, receipt_id: str, inv: dict, fingerprint: str, lease_id: str, lease: dict, topic: dict, after: int, checked: dict, receipt: dict, now: str) -> None:
         self._store.insert("operation_receipts", {
             "operation_id": env["operation_id"], "receipt_id": receipt_id, "operation_kind": env["operation_kind"], "invocation_id": inv["invocation_id"],
             "topic_id": inv["topic_id"], "request_fingerprint": fingerprint, "payload_digest": env["payload_digest"], "lease_id": lease_id,
             "lease_generation": lease["generation"], "admission_context": inv["admission_context"], "contract_revision": inv["contract_revision"],
             "brief_hash": inv["brief_hash"], "config_bundle_hash": inv["config_bundle_hash"], "state_revision_before": topic["state_revision"],
             "state_revision_after": after, "validator_version": VALIDATOR_VERSION, "policy_version": checked["validation"]["policy_version"], "receipt": receipt, "committed_at": now})
-        self._fault("in_transaction:receipt")
+
+    def _write_final_effects(self, ordinal: int | None, inv: dict, env: dict, lease_release: dict | None, lease_id: str, now: str, final: bool) -> None:
         if ordinal is not None:
             self._store.insert("research_ordinals", {"topic_id": inv["topic_id"], "ordinal": ordinal, "invocation_id": inv["invocation_id"],
                                                      "operation_id": env["operation_id"]})
@@ -1086,14 +1126,6 @@ class Router:
         if final:
             self._store.update("invocations", {"invocation_id": inv["invocation_id"]}, {"state": "committed", "state_changed_at": now})
             self._transition_row(inv["invocation_id"], "result_ready", "committed", now, "commit_outcome")
-        written = self._write_evidence(env, inv, checked, now, new_triggers, outbox)
-        self._fault("in_transaction:evidence")
-        self._store.insert("audit_events", {"audit_event_id": audit_id, "at": now, "kind": "commit_outcome", "topic_id": inv["topic_id"],
-                                            "invocation_id": inv["invocation_id"], "operation_id": env["operation_id"],
-                                            "detail": {**written, "receipt_id": receipt_id,
-                                                       "triggers_already_recorded": sorted({i for i, _ in triggers} - {i for i, _ in new_triggers})}})
-        self._fault("in_transaction:end")
-        return "committed", receipt
 
     def _write_evidence(self, env: dict, inv: dict, checked: dict, now: str, new_triggers: list, outbox: list) -> dict:
         return self._evidence_writer._write_evidence(env, inv, checked, now, new_triggers, outbox)
