@@ -1813,3 +1813,8 @@ The post-2q Gate D is renumbered #5.
   - negative controls for identity, fencing and result binding;
   - the five real-identity assertions kept intact.
 - **Non-blocking:** NB2 (flaky mutation-verdict diagnostics), NB3 (ENVIRONMENT and BOUNDARIES wording), NB4 (the detector's exit code). Registered as DEBT-027.
+
+## 2026-10-08: 2q-b11 (decompose `_commit_in_transaction`)
+- **Astra** (`91e077f9`, pinned 7e59054; `private/reviews/gen2-2q-b11-astra-review-20261008.md`): **PASS on A and B, BLOCK on C on L1 only.** The landing run failed on one test, `test_children` readiness: a flake under load that passes 10 of 10 alone, with no related change, and is registered as DEBT-028. **The production extraction is supported** and all three new tests are accepted.
+- The orchestrator is repeating the landing run on an idle machine (`private/evidence/2q-b11/orchestrator/`; attempt 1 is in `orchestrator-attempt1/`).
+- **Session recovery:** the orchestrator session ended again around 16:46 UTC. The 2q-t4b coder (`157195fc`, commits `e9d090e` and `5de8d7f`) was interrupted before its replays ran; it has been resumed.
