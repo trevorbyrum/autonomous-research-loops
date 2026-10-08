@@ -1784,3 +1784,7 @@ The post-2q Gate D is renumbered #5.
   - **time-machine and seeded ids: partly worked.** They cover the test process only, not child processes or the real job-process identity; a 9-line fingerprint mock fixed one scenario.
   - **Dependencies:** `rope`, `hypothesis` and `time-machine` are hash-locked as dev-only; the RefactoringMiner image is pinned by digest.
 - **Adopted under the operator's 2026-10-08 authorisation:** the charter's new "Refactor evidence standard" rule. **2q-b9b is dropped.** 2q-b9's evidence is re-judged under the new standard. 2q-t4's process-identity seam stays needed, in reduced form.
+
+## 2026-10-08: 2q-t3, landing confirmation
+- **Astra** (`f1339f58`): the combined run at `623576e` covers the reviewed pin. **"2q-t3 is ACCEPTED."**
+- **DEBT-020, DEBT-024 and DEBT-025 are CLOSED.** DEBT-023 items 2–3 are done; item 1 (352 unresolved scenarios) stays open. The partial 2q-t4 work is not accepted.

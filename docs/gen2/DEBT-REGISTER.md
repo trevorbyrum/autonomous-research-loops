@@ -206,7 +206,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 
 ### DEBT-020 - 2q-b2 non-blocking review findings (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Non-blocking findings from Astra's 2q-b2 review, accepted in advance under the charter's "Review throughput" rule:
   - (1) the 2q-b2 evidence summaries are stale (the comparison summary's counts; `healthy` missing from the coverage; `StatusCore` has 11 members, not 10), so regenerate them from the archived data with input hashes;
@@ -214,6 +214,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (3) don't widen the collaborator pattern's enforcement claims: the name-set checks don't enforce full Protocol conformance or nested `Rows`/`Schemas`, and `_snapshot` is writable. State those limits, keep the consumer-owned minimal interfaces, keep every write going through `_guarded` with `BEGIN IMMEDIATE` and the post-lock clock read, and don't widen `_snapshot` use.
 - source: private/reviews/gen2-2q-b2-astra-review-20261006.md (non-blocking findings 1 to 3)
 - removal: (2) in the next Router slice; (1) and (3) in the Router follow-on slices, with documentation reconciled; the review confirms them before 2q closes.
+- closed by: task 2q-t3 (`a3d1b34`..`8f8e8d2`), confirmed by Astra in private/reviews/gen2-2q-t3-astra-review-20261007.md ("2q-t3 is ACCEPTED", landing confirmation 2026-10-08 on the combined run at `623576e`), 2026-10-08
 
 ### DEBT-021 - 2q-t1 non-blocking review finding (2q)
 - kind: obligation
@@ -244,20 +245,22 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - (1) 352 replay scenarios per change remain UNRESOLVED (real job-process identity in `start_fingerprint`, plus 3 concurrency or replacement-process races), so they are outside the replay verdict; the remaining Router work, especially Lifecycle and Scheduling, must supply deterministic process and concurrency fixtures at the seams or separately accepted contract-level evidence;
   - (2) the reversed capability-fact order and global-hold order are undetected for lack of stable multi-row fixtures, so add fixtures with at least two distinguishable rows and show that each reversal is detected;
   - (3) replay summaries should count readable row snapshots separately from closed-store markers.
+  - Progress 2026-10-08: items (2) and (3) are done by task 2q-t3 and accepted by Astra. Item (1), the 352 unresolved scenarios, stays open.
 - source: private/reviews/gen2-2q-b3b-astra-review-20261007.md (non-blocking list)
 - removal: the remaining 2q Router and replay slices meet each item, and the review confirms them before 2q closes.
 
 ### DEBT-024 - 2q-b5 non-blocking documentation finding (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Astra's 2q-b5 NB2, still open after 2q-e1: the `_response.py` module introduction says `base.py` imports both `_transport.py` and `_links.py` when it imports only the transport, and `base.py`'s retained step 5 still describes returning parsed JSON although `Response` is sealed and decoding is explicit. These are prose corrections only, accepted in advance under the charter's "Review throughput" rule.
 - source: private/reviews/gen2-2q-b5-astra-review-20261006.md (NB2); private/reviews/gen2-2q-e1-astra-review-20261007.md (non-blocking list)
 - removal: the descriptions match the imports and the sealed-response API, confirmed by the next 2q review.
+- closed by: task 2q-t3 (`a3d1b34`..`8f8e8d2`), confirmed by Astra in private/reviews/gen2-2q-t3-astra-review-20261007.md ("2q-t3 is ACCEPTED", landing confirmation 2026-10-08 on the combined run at `623576e`), 2026-10-08
 
 ### DEBT-025 - 2q-b6 non-blocking review findings (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Non-blocking findings from Astra's 2q-b6 review, accepted in advance under the charter's "Review throughput" rule:
   - (NB1) serial mutation-harness contamination: `tools/gen2_mutations.py --only 2QB6 --jobs 1` reports 5 of 6 killed, because `_run_file_mutation` leaves replaced modules loaded between serial cases, so a later control reads a deleted temporary file. It reproduces on the earlier base, and the parallel runs used for landing are unaffected;
@@ -266,3 +269,4 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   The carried 352-scenario replay coverage and the ordering fixtures are already DEBT-023.
 - source: private/reviews/gen2-2q-b6-astra-review-20261007.md (non-blocking list)
 - removal: the harness unloads replaced modules between serial cases, with a regression test, and the docstring distinguishes reads from writes; the next 2q review confirms both.
+- closed by: task 2q-t3 (`a3d1b34`..`8f8e8d2`), confirmed by Astra in private/reviews/gen2-2q-t3-astra-review-20261007.md ("2q-t3 is ACCEPTED", landing confirmation 2026-10-08 on the combined run at `623576e`), 2026-10-08
