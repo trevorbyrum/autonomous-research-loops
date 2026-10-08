@@ -1,6 +1,6 @@
 {
   "cross_service_imports": [],
-  "digest": "b83ff0d290d90e791edc4aee6b07e43ac109592990efdebed19cfbc0cada2b62",
+  "digest": "eca5f8940efb10b57d4787d4a8e7620511fd5f949e663bbf2eb99af659e50e42",
   "identities": {
     "MI-000001": "engine|edge|gen2/app/engine.py->gen2/app/station.py",
     "MI-000002": "engine|edge|gen2/app/engine.py->gen2/operator/auth.py",
@@ -1078,12 +1078,23 @@
     "MI-001135": "gateway|reach|gateway/research_gateway/mcp/homelab_adapter.py->gateway/research_gateway/adapters/_transport.py",
     "MI-001136": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/adapters/_response.py",
     "MI-001137": "gateway|reach|gateway/research_gateway/smoke.py->gateway/research_gateway/adapters/_transport.py",
-    "MI-001138": "gateway|smell_unstable_dependency|gateway/research_gateway/adapters/base.py->gateway/research_gateway/adapters/_transport.py"
+    "MI-001138": "gateway|smell_unstable_dependency|gateway/research_gateway/adapters/base.py->gateway/research_gateway/adapters/_transport.py",
+    "MI-001139": "engine|edge|gen2/router/evidence_writer.py->gen2/core/canonical.py",
+    "MI-001140": "engine|edge|gen2/router/evidence_writer.py->gen2/router/boundary.py",
+    "MI-001141": "engine|edge|gen2/router/service.py->gen2/router/evidence_writer.py",
+    "MI-001142": "engine|file|gen2/router/evidence_writer.py",
+    "MI-001143": "engine|reach|gen2/app/engine.py->gen2/router/evidence_writer.py",
+    "MI-001144": "engine|reach|gen2/app/station.py->gen2/router/evidence_writer.py",
+    "MI-001145": "engine|reach|gen2/router/evidence_writer.py->gen2/core/canonical.py",
+    "MI-001146": "engine|reach|gen2/router/evidence_writer.py->gen2/core/instants.py",
+    "MI-001147": "engine|reach|gen2/router/evidence_writer.py->gen2/core/pagination.py",
+    "MI-001148": "engine|reach|gen2/router/evidence_writer.py->gen2/router/boundary.py",
+    "MI-001149": "engine|reach|gen2/router/service.py->gen2/router/evidence_writer.py"
   },
-  "identity_serial": 1138,
+  "identity_serial": 1149,
   "pin": {
-    "commit": "fa4e2b2b02dbd9e483caca763b92a8e1921985f2",
-    "production_sha256": "64e48aa772281a2d878f4a70eb9cae6fed126d0e68058775416a1bd26ba35032"
+    "commit": "aa40400062b5f140b8a1d3167239c9ded80057d9",
+    "production_sha256": "1cc6c4f6415e8dd94b18bc76bd798865c5cd896a7e4e52a28553c095ba3a2532"
   },
   "services": {
     "engine": {
@@ -1093,7 +1104,7 @@
         "gen2/app/cli.py": 0,
         "gen2/app/engine.py": 0,
         "gen2/app/station.py": 1,
-        "gen2/core/canonical.py": 13,
+        "gen2/core/canonical.py": 14,
         "gen2/core/control.py": 1,
         "gen2/core/instants.py": 6,
         "gen2/core/pagination.py": 4,
@@ -1105,8 +1116,9 @@
         "gen2/operator/service.py": 1,
         "gen2/operator/status.py": 1,
         "gen2/router/amendments.py": 2,
-        "gen2/router/boundary.py": 7,
+        "gen2/router/boundary.py": 8,
         "gen2/router/capabilities.py": 1,
+        "gen2/router/evidence_writer.py": 1,
         "gen2/router/lifecycle.py": 3,
         "gen2/router/registries.py": 2,
         "gen2/router/scheduling.py": 1,
@@ -1141,11 +1153,12 @@
         "gen2/router/amendments.py": 2,
         "gen2/router/boundary.py": 3,
         "gen2/router/capabilities.py": 4,
+        "gen2/router/evidence_writer.py": 2,
         "gen2/router/lifecycle.py": 2,
         "gen2/router/registries.py": 2,
         "gen2/router/scheduling.py": 2,
         "gen2/router/schemas.py": 1,
-        "gen2/router/service.py": 12,
+        "gen2/router/service.py": 13,
         "gen2/router/status.py": 2,
         "gen2/store/api.py": 3,
         "gen2/store/compat.py": 0,
@@ -1235,8 +1248,8 @@
           "cyclomatic": 45
         },
         "gen2/router/service.py::Router._write_evidence": {
-          "cognitive": 14,
-          "cyclomatic": 14
+          "cognitive": 0,
+          "cyclomatic": 1
         },
         "gen2/supervisor/fake_executor.py::run": {
           "cognitive": 40,
@@ -1304,6 +1317,10 @@
           "gen2/router/lifecycle.py",
           "gen2/router/registries.py"
         ],
+        "gen2/router/evidence_writer.py": [
+          "gen2/core/canonical.py",
+          "gen2/router/boundary.py"
+        ],
         "gen2/router/lifecycle.py": [
           "gen2/core/instants.py",
           "gen2/router/boundary.py"
@@ -1326,6 +1343,7 @@
           "gen2/router/amendments.py",
           "gen2/router/boundary.py",
           "gen2/router/capabilities.py",
+          "gen2/router/evidence_writer.py",
           "gen2/router/lifecycle.py",
           "gen2/router/registries.py",
           "gen2/router/scheduling.py",
@@ -1368,8 +1386,8 @@
         "reach_pairs": 20
       },
       "propagation_file": {
-        "nodes": 32,
-        "reach_pairs": 145
+        "nodes": 33,
+        "reach_pairs": 153
       },
       "reach": {
         "gen2/app/cli.py": [],
@@ -1385,6 +1403,7 @@
           "gen2/router/amendments.py",
           "gen2/router/boundary.py",
           "gen2/router/capabilities.py",
+          "gen2/router/evidence_writer.py",
           "gen2/router/lifecycle.py",
           "gen2/router/registries.py",
           "gen2/router/scheduling.py",
@@ -1407,6 +1426,7 @@
           "gen2/router/amendments.py",
           "gen2/router/boundary.py",
           "gen2/router/capabilities.py",
+          "gen2/router/evidence_writer.py",
           "gen2/router/lifecycle.py",
           "gen2/router/registries.py",
           "gen2/router/scheduling.py",
@@ -1469,6 +1489,12 @@
           "gen2/router/lifecycle.py",
           "gen2/router/registries.py"
         ],
+        "gen2/router/evidence_writer.py": [
+          "gen2/core/canonical.py",
+          "gen2/core/instants.py",
+          "gen2/core/pagination.py",
+          "gen2/router/boundary.py"
+        ],
         "gen2/router/lifecycle.py": [
           "gen2/core/canonical.py",
           "gen2/core/instants.py",
@@ -1498,6 +1524,7 @@
           "gen2/router/amendments.py",
           "gen2/router/boundary.py",
           "gen2/router/capabilities.py",
+          "gen2/router/evidence_writer.py",
           "gen2/router/lifecycle.py",
           "gen2/router/registries.py",
           "gen2/router/scheduling.py",
