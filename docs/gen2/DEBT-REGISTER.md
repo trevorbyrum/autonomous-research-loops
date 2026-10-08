@@ -270,3 +270,15 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - source: private/reviews/gen2-2q-b6-astra-review-20261007.md (non-blocking list)
 - removal: the harness unloads replaced modules between serial cases, with a regression test, and the docstring distinguishes reads from writes; the next 2q review confirms both.
 - closed by: task 2q-t3 (`a3d1b34`..`8f8e8d2`), confirmed by Astra in private/reviews/gen2-2q-t3-astra-review-20261007.md ("2q-t3 is ACCEPTED", landing confirmation 2026-10-08 on the combined run at `623576e`), 2026-10-08
+
+### DEBT-026 - 2q-b8/2q-b9 documentation follow-through (2q)
+- kind: obligation
+- status: open
+- owner: task 2q
+- what: Non-blocking follow-through from Astra's 2q-b8 and 2q-b9 re-review, accepted in advance under the charter's "Review throughput" rule:
+  - (1) `docs/gen2/BOUNDARIES.md` (around line 14) and `private/evidence/2q-b9/README.txt` still credit the `--inline` checker with checking the declared plumbing; mark those claims superseded and advisory, citing the re-review and the charter's "Refactor evidence standard";
+  - (2) close out the remaining documentation: the historical mixin prose; the 2q-b8 README's replacement-rollback overstatement; the 2q-b9 branch and mutant accounting (106/108 branches; the unique-mutant count).
+
+  The 352 unresolved replay scenarios are already DEBT-023 item 1.
+- source: private/reviews/gen2-2q-b8-b9-astra-rereview-20261008.md (non-blocking follow-through)
+- removal: the corrections land and the next 2q review confirms them before 2q closes.

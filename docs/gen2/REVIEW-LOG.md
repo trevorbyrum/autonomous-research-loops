@@ -1788,3 +1788,9 @@ The post-2q Gate D is renumbered #5.
 ## 2026-10-08: 2q-t3, landing confirmation
 - **Astra** (`f1339f58`): the combined run at `623576e` covers the reviewed pin. **"2q-t3 is ACCEPTED."**
 - **DEBT-020, DEBT-024 and DEBT-025 are CLOSED.** DEBT-023 items 2–3 are done; item 1 (352 unresolved scenarios) stays open. The partial 2q-t4 work is not accepted.
+
+## 2026-10-08: 2q-b8 and 2q-b9 re-review (under the "Refactor evidence standard")
+- **Astra** (`47e85d9b`; `private/reviews/gen2-2q-b8-b9-astra-rereview-20261008.md`): **PASS on A, B and C for both. "2q-b8 is ACCEPTED." "2q-b9 is ACCEPTED."**
+- **2q-b8 C1:** resolved as ROOT-CAUSE by 2q-b8b's frozen fixture (15 files byte-identical to `f216133`; 132/19 reproduced).
+- **2q-b9:** C1 is resolved as a blocker under the amended standard. The checker is advisory with no gate credit. L1 is resolved by the green combined run.
+- **Non-blocking:** documentation that still credits the inline-back checker, plus the remaining documentation closeout. Registered as DEBT-026.
