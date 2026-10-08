@@ -122,16 +122,27 @@ class DistinctnessTest(unittest.TestCase):
 
 
 class AccountingTest(unittest.TestCase):
-    def test_the_interpreters_a_test_started_are_counted_against_those_that_armed_and_the_kinds_that_did_not_are_named(self) -> None:
+    def account(self, code: str, *names: str) -> dict:
         with tempfile.TemporaryDirectory() as registry, tempfile.TemporaryDirectory() as scripts:
-            for name in ("armed_one.py", "unarmed_one.py"):
+            for name in names:
                 Path(scripts, name).write_text("pass\n")
-            code = (f"import os, subprocess, sys; subprocess.run([sys.executable, {scripts + '/armed_one.py'!r}]); "  # inherits the environment: arms
-                    f"subprocess.run([sys.executable, {scripts + '/unarmed_one.py'!r}], env={{k: v for k, v in os.environ.items() if k not in ('{ENV}', 'PYTHONPATH')}}); print('[]')")
-            at_once(registry, 1, code)
+            at_once(registry, 1, code.replace("SCRIPTS", scripts))
             with mock.patch.dict(os.environ, {ENV: registry}):
-                self.assertEqual(SEAMS["account"](), {"launched": 2, "armed": 2, "unarmed": {"unarmed_one.py": 1}})  # armed: the child (-c) and armed_one.py
-            self.assertEqual(SEAMS["account"](), {"launched": 0, "armed": 0})  # no registry named: a test that runs real has nothing to count
+                return SEAMS["account"]()
+
+    def test_the_interpreters_a_test_started_are_counted_against_those_that_armed_and_the_kinds_that_did_not_are_named(self) -> None:
+        bare = f"{{k: v for k, v in os.environ.items() if k not in ('{ENV}', 'PYTHONPATH')}}"
+        code = ("import os, subprocess, sys; subprocess.run([sys.executable, 'SCRIPTS/armed_one.py']); "  # inherits the environment: arms
+                f"subprocess.run([sys.executable, 'SCRIPTS/unarmed_one.py'], env={bare}); print('[]')")  # the launcher leaves the registry out: unarmed, and said so
+        self.assertEqual(self.account(code, "armed_one.py", "unarmed_one.py"),
+                         {"launched": 2, "armed": 2, "unarmed": {"unarmed_one.py": 1}, "withheld": {"-c > unarmed_one.py": 1}})  # armed: the child itself (-c) and armed_one.py; nothing unexplained
+
+    def test_a_child_that_was_given_the_registry_and_did_not_arm_is_unexplained(self) -> None:
+        code = "import subprocess, sys; subprocess.run([sys.executable, '-I', 'SCRIPTS/isolated.py']); print('[]')"  # -I ignores PYTHONPATH: no sitecustomize from the overlay
+        self.assertEqual(self.account(code, "isolated.py"), {"launched": 1, "armed": 1, "unarmed": {"-I": 1}, "unexplained": {"-I": 1}})
+
+    def test_a_test_that_runs_real_has_nothing_to_count(self) -> None:
+        self.assertEqual(SEAMS["account"](), {"launched": 0, "armed": 0})
 
 
 class RecorderTest(unittest.TestCase):
@@ -155,10 +166,10 @@ class RecorderTest(unittest.TestCase):
         self.assertRegex(held[self.REAL][0], r"^pid=(?!1001;)\d+;starttime=\d+;session=\d+$")  # the launcher's own, which the test asserted
         self.assertEqual(run["seams"][self.REAL], {"launched": 0, "armed": 0})  # no poll waited for, no interpreter counted
         fixed = run["seams"][self.FIXED]
-        self.assertEqual((fixed["waited"], fixed["launched"], fixed["armed"], fixed["unarmed"]), (1, 2, 1, {"fake_executor.py": 1}))  # the launcher armed; the executor's environment is the job's own
-        natural = self.record(self.FIXED, GEN2_REPLAY_POLLING="natural")  # the poll schedule left out of a run: no look waits, the rest is the same
-        self.assertEqual(({k: v for k, v in natural["seams"][self.FIXED].items() if k != "waited"}, "waited" in natural["seams"][self.FIXED], natural["tests"][self.FIXED]["outcome"]),
-                         ({"launched": 2, "armed": 1, "unarmed": {"fake_executor.py": 1}}, False, "pass"))
+        self.assertEqual(fixed, {"waited": 1, "capped": 0, "launched": 2, "armed": 1, "unarmed": {"fake_executor.py": 1}, "withheld": {"jobshim.py > fake_executor.py": 1}})  # the launcher armed; the executor's environment is the job's own, and the launcher said so
+        natural = self.record(self.FIXED, GEN2_REPLAY_POLLING="natural")["seams"][self.FIXED]  # the poll schedule left out of a run: no look waits, the rest is the same
+        rest = lambda seams: {k: v for k, v in seams.items() if k not in ("waited", "capped")}
+        self.assertEqual((rest(natural) == rest(fixed), "waited" in natural), (True, False))
 
 
 class RealIdentityTest(unittest.TestCase):

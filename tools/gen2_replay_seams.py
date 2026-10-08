@@ -77,24 +77,33 @@ def kind(argv: list) -> str:
 
 
 def launching(event: str, args: tuple) -> None:
-    """Audit hook: the test's processes note each Python interpreter they start (`subprocess.Popen` of an argv list that names one) by what it runs."""
+    """Audit hook: the test's processes note each Python interpreter they start (`subprocess.Popen` of an argv list that names one) by what it runs, and those they start with an
+    environment that leaves out the registry (`withheld`, with the launcher: a job's executor gets the job's own environment, not the test's)."""
     if event == "subprocess.Popen" and os.environ.get(ENV) and isinstance(args[1], (list, tuple)) and args[1] and os.path.basename(str(args[1][0])).startswith("python"):
         note("launched", kind(list(args[1])))
+        if args[3] is not None and ENV not in args[3]:
+            note("withheld", f"{kind(sys.orig_argv)} > {kind(list(args[1]))}")
 
 
 def account() -> dict:
-    """For the test now running: the Python interpreters its processes started, the children that armed themselves, the kinds that were started and did not arm, and how many
+    """For the test now running: the Python interpreters its processes started, the children that armed themselves, the kinds that were started and did not arm (`unarmed`), of those
+    the launches that withheld the registry (`withheld`), the unarmed kinds no launch withheld it from (`unexplained`: a child that should have armed and did not), and how many
     children asked for a job process's identity."""
     seen = {}
-    for name in ("launched", "armed", "identified"):
+    for name in ("launched", "armed", "withheld", "identified"):
         try:
             with open(os.path.join(os.environ[ENV], name), encoding="utf-8") as handle:
                 seen[name] = collections.Counter(handle.read().splitlines())
         except (KeyError, FileNotFoundError):
             seen[name] = collections.Counter()
     unarmed = dict(seen["launched"] - seen["armed"])
+    withheld = collections.Counter()
+    for line, n in seen["withheld"].items():
+        withheld[line.split(" > ")[1]] += n
+    unexplained = dict(collections.Counter(unarmed) - withheld)
     by_children = len(set(seen["identified"]) - {str(os.getpid())})  # the processes other than the recorder that asked for an identity
-    return {"launched": sum(seen["launched"].values()), "armed": sum(seen["armed"].values()), **({"unarmed": unarmed} if unarmed else {}), **({"identified_by_children": by_children} if by_children else {})}
+    return {"launched": sum(seen["launched"].values()), "armed": sum(seen["armed"].values()), **({"unarmed": unarmed} if unarmed else {}), **({"withheld": dict(seen["withheld"])} if seen["withheld"] else {}),
+            **({"unexplained": unexplained} if unexplained else {}), **({"identified_by_children": by_children} if by_children else {})}
 
 
 def tick(name: str) -> int:
