@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from .base import RC, RE, SVC, Mutation
 
-WF, WIRING = "test_router_workflow.", "test_router_commit_wiring."
+WIRING = "test_router_commit_wiring."
 FENCE, ATOMIC, TRIGGER = RC + "FencingTest.", RC + "AtomicityTest.", RE + "TriggerAndOrdinalTest."
 STATE, KIND, CHANGES = FENCE + "test_a_wrong_expected_revision_is_refused", FENCE + "test_one_final_outcome_per_invocation", RC + "BoundaryValidationTest.test_an_artifact_recorded_meanwhile_is_held_to_what_was_validated"
 POSITIVE, RELEASED = FENCE + "test_positive_control", RC + "ReplayAndIdentityTest.test_a_retained_receipt_authorizes_nothing_after_its_lease_ends"
