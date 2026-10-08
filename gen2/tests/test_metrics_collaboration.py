@@ -32,6 +32,7 @@ lies outside it is refused, not guessed).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -286,8 +287,38 @@ def real_engine_files() -> dict[str, str]:
     return {p: (fx.REPO / p).read_text(encoding="utf-8") for p in tracked if p.endswith(".py") and not p.startswith("gen2/tests/") and (fx.REPO / p).is_file()}
 
 
+FROZEN_ROUTER = fx.REPO / "gen2" / "tests" / "fixtures" / "router_mixins_f216133"   # provenance and digests: PROVENANCE.md and SHA256SUMS there
+FROZEN_ROUTER_BASES = "Lifecycle, Registries, Amendments, Scheduling, Status, Capabilities"
+
+
+def frozen_router_files() -> dict[str, str]:
+    """The router as 2q-b2 found it, composed of six mixins, with every module it imports: a fixed fixture of the analyser's inputs, so that a property of the analyser
+    (the same inventory however a base is spelled; a conditional class refused) is not tied to how the production Router happens to be composed (task 2q-b8b, Astra's C1)."""
+    return {p.relative_to(FROZEN_ROUTER).as_posix().removesuffix(".txt"): p.read_text(encoding="utf-8") for p in sorted(FROZEN_ROUTER.rglob("*.py.txt"))}   # stored as .py.txt: see PROVENANCE.md
+
+
+class FrozenRouterFixtureTest(unittest.TestCase):
+    """The fixture is the recorded commit and still the mixin-composed router, so the tests that stand on it have something to protect."""
+
+    def test_every_file_is_the_one_recorded(self) -> None:
+        recorded = {}
+        for line in (FROZEN_ROUTER / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
+            digest, name = line.split("  ", 1)
+            recorded[name] = digest
+        found = {p.relative_to(FROZEN_ROUTER).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in FROZEN_ROUTER.rglob("*.py.txt")}
+        self.assertEqual(found, recorded)
+        self.assertEqual(len(found), 15)
+
+    def test_the_router_in_it_is_composed_of_its_six_mixins(self) -> None:
+        text = frozen_router_files()["gen2/router/service.py"]
+        self.assertEqual(re.findall(r"^class Router\b.*$", text, flags=re.M), [f"class Router({FROZEN_ROUTER_BASES}):"])
+        for name in FROZEN_ROUTER_BASES.split(", "):
+            self.assertRegex(text, rf"(?m)^from gen2\.router\.\w+ import .*\b{name}\b", msg=f"{name} is imported from a module of its own")
+
+
 class TheRealRouterTest(CollaborationCase):
-    """Astra's real-tree probe: the production Router's bases rewritten without changing a line of what runs."""
+    """Astra's probe of the real router: its bases rewritten without changing a line of what runs. The router it is run on is the frozen mixin-composed one (`frozen_router_files`),
+    not the production class: production has no bases and no cross-file self-calls since 2q-b8, and the analyser's property must not wait on that."""
 
     def rewritten(self, files: dict[str, str], how: str) -> dict[str, str]:
         text = files["gen2/router/service.py"]
@@ -299,7 +330,7 @@ class TheRealRouterTest(CollaborationCase):
                 modules = {n: m.group(1) for n, m in found.items()}
                 break
         else:
-            raise AssertionError("no class in gen2/router/service.py is composed of classes imported by `from gen2.router.<module> import`: update this test with the router")
+            raise AssertionError("no class in the frozen gen2/router/service.py is composed of classes imported by `from gen2.router.<module> import`: the fixture was changed")
         if how == "qualified":
             head = "\n".join(f"import {m}" for m in sorted(set(modules.values())))
             bases = ", ".join(f"{modules[n]}.{n}" for n in names)
@@ -310,12 +341,15 @@ class TheRealRouterTest(CollaborationCase):
         return files | {"gen2/router/service.py": rewritten}
 
     def test_a_syntax_only_rewrite_of_the_production_routers_bases_leaves_the_inventory_exactly_as_it_was(self) -> None:
-        files = real_engine_files()
+        files = frozen_router_files()
         before = calls(self.repo(files))
-        self.assertGreater(before["sites"], 0, "the production Router no longer has cross-file self-calls: this test has nothing left to protect")
+        self.assertGreater(before["sites"], 0, "the frozen Router has no cross-file self-calls: this test has nothing left to protect")
+        self.assertEqual((before["sites"], len(before["pairs"])), (132, 19), "the 132 sites and 19 file pairs Astra measured on this router in 2q-a")
         for how in ("qualified", "aliased"):
             with self.subTest(how=how):
-                after = calls(self.repo(self.rewritten(files, how)))
+                rewritten = self.rewritten(files, how)
+                self.assertNotEqual(rewritten["gen2/router/service.py"], files["gen2/router/service.py"], "the rewrite changed nothing: it would prove nothing")
+                after = calls(self.repo(rewritten))
                 self.assertEqual((after["sites"], after["pairs"], after.get("unresolved", {})), (before["sites"], before["pairs"], {}))
 
 

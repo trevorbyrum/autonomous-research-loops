@@ -11,11 +11,12 @@ validity of the AST metrics (Gate A/D review).
 """
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
 from gen2.tests import children
-from gen2.tests.test_metrics_collaboration import BASE, calls, real_engine_files, tree, use
+from gen2.tests.test_metrics_collaboration import BASE, FROZEN_ROUTER_BASES, calls, frozen_router_files, real_engine_files, tree, use
 from gen2.tests.test_metrics_dependencies import CHAIN
 from gen2.tests.test_metrics_offenders import scored
 from gen2.tests.test_metrics_ratchet import RatchetTestCase
@@ -369,17 +370,26 @@ class BindingTest(RatchetTestCase):
             self.refused(repo, "SRC-BASE-ALIAS")
 
     def test_conditional_real_router_is_refused_while_the_runtime_mro_is_unchanged(self):
-        repo = self.baselined(real_engine_files())
-        code = 'from gen2.router.service import Router; print([c.__name__ for c in Router.__mro__]); print(hasattr(Router,"commit_outcome"))'
-        before = self.runtime(repo, code)
-        path = "gen2/router/service.py"
-        original = (repo.root / path).read_text()
-        start = original.index("class Router(")
-        changed = original[:start] + "if True:\n" + "".join("    " + line if line.strip() else line for line in original[start:].splitlines(keepends=True)) + "\nelse:\n    class Router:\n        pass\n"
-        repo.write({path: changed})
-        self.assertEqual(self.runtime(repo, code), before)
-        self.assertIn("True", before)
-        self.refused(repo, "SRC-CLASS-CONDITIONAL", "SRC-DEF-DUPLICATE")
+        """Run on two real routers: the one composed of six mixins (a frozen fixture, so the multi-base case stays tested whatever production becomes) and the production
+        one, whatever its bases (task 2q-b8b, Astra's C1: the declaration is located without assuming it has explicit bases)."""
+        for name, files, mro in (("the frozen mixin-composed router", frozen_router_files(), str(["Router", *FROZEN_ROUTER_BASES.split(", "), "object"])),
+                                 ("the production router", real_engine_files(), None)):
+            with self.subTest(router=name):
+                repo = self.baselined(files)
+                code = 'from gen2.router.service import Router; print([c.__name__ for c in Router.__mro__]); print(hasattr(Router,"commit_outcome"))'
+                before = self.runtime(repo, code)
+                path = "gen2/router/service.py"
+                original = (repo.root / path).read_text()
+                declarations = list(re.finditer(r"^class Router\b[^\n]*:[ \t]*$", original, flags=re.M))
+                self.assertEqual(len(declarations), 1, "exactly one `class Router` statement, with or without bases")
+                start = declarations[0].start()
+                changed = original[:start] + "if True:\n" + "".join("    " + line if line.strip() else line for line in original[start:].splitlines(keepends=True)) + "\nelse:\n    class Router:\n        pass\n"
+                repo.write({path: changed})
+                self.assertEqual(self.runtime(repo, code), before)
+                self.assertTrue(before.endswith("True\n"), msg=before)
+                if mro:
+                    self.assertEqual(before.splitlines()[0], mro, "the mixins really are the bases the runtime resolves through")
+                self.refused(repo, "SRC-CLASS-CONDITIONAL", "SRC-DEF-DUPLICATE")
 
     def same_now(self, original_text, changed_path):
         """Whether `Router._now` of the original source and the one in `changed_path` are the same method, and what each does with a deterministic clock (printed: the code is the
