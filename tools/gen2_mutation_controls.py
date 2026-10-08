@@ -227,7 +227,7 @@ MANUAL: dict[str, dict] = {
         "why": "writes a brief version over a raw-SQL first version and confirms nothing, so `_record_replacements` is never called: dropping its `now` changes nothing the test can see"},
     "2QB8-router-delegate-calls-another-route": {"controls": ["test_router_amendments.BriefVersionTest.test_the_same_version_again_replays"],
         "why": "versions a brief and never closes one through the Router: the changed `close_brief` delegate is not reached"},
-    # task 2q-b9: the evidence write's five helpers; every edit is at a call or a return in service.py, killed by an existing or a wiring test, and the control is a test that
+    # task 2q-b9: the evidence write's five helpers (in evidence_writer.py since task 2q-b10); every edit is at a call or a return, killed by an existing or a wiring test, and the control is a test that
     # commits without exercising the one property the edit changes
     "2QB9-claims-result-dropped": {"controls": ["test_router_commit.TopicAuthorizationTest.test_the_same_bytes_staged_by_this_topic_are_its_own"],
         "why": "commits a claim and reads back its rows and its answer, never the audit event that lists what the helper returned: dropping the returned list changes nothing the test sees"},
@@ -251,6 +251,18 @@ MANUAL: dict[str, dict] = {
         "why": "commits a claim and promotes nothing: the order of the claims helper against the promotions helper changes nothing it sees"},
     "2QB9-reports-refusal-swallowed": {"controls": ["test_router_workflow.ScopingReportTest.test_the_report_hands_the_topic_to_the_operator"],
         "why": "commits one accepted scoping report: the helper raises no refusal, so catching it changes nothing"},
+    # task 2q-b10: the same, for evidence_writer.py; the two static edits are killed by the composition test (another static test is the control), the two delegate edits by the
+    # existing evidence tests, and the control is a test that commits through the delegate without the one thing the edit drops
+    "2QB10-evidence-core-omits-a-member": {"controls": ["test_router_composition.CollaboratorInterfaceTest.test_control_every_declared_member_is_one_the_router_has"],
+        "why": "checks every member EvidenceCore declares is one a real Router has: the mutant removes a declaration, so what is left is still all the Router's"},
+    "2QB10-evidence-writer-opens-its-own-transaction": {"controls": ["test_router_composition.CollaboratorInterfaceTest.test_every_core_member_a_collaborator_uses_is_declared"],
+        "why": "checks every member evidence_writer.py reads off self._core is declared by EvidenceCore: the mutant's extra line reads only `_store`, a member that is declared"},
+    "2QB10-router-inherits-the-evidence-writer": {"controls": ["test_router_composition.CollaboratorInterfaceTest.test_a_collaborator_holds_only_the_core_and_reaches_the_store_through_it"],
+        "why": "builds the Router's collaborators and checks each holds only the core and reaches the store through it: the Router still composes them under the mutant"},
+    "2QB10-router-delegate-drops-the-outbox": {"controls": ["test_router_evidence.TriggerAndOrdinalTest.test_a_replayed_trigger_opens_nothing_new"],
+        "why": "commits review triggers and no export: an empty outbox is the outbox the delegate was given"},
+    "2QB10-router-delegate-drops-the-triggers": {"controls": ["test_router_evidence.ExportTest.test_an_approved_manifest_enters_the_outbox_with_its_hash"],
+        "why": "commits an export and no review trigger: an empty trigger list is the list the delegate was given"},
     # task 2q-t3: the order status lists capability facts and engine-wide holds in, and the harness's restoration of a serial case's modules; each control reads or runs the same
     # rows or the same restoration without asserting the order or the state the mutant changes
     "2QT3-status-capability-facts-reversed": {"controls": ["test_router_status_order.StatusOrderTest.test_control_status_lists_the_same_two_rows_of_each_whatever_their_order"],

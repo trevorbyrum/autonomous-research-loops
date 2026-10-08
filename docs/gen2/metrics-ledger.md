@@ -39,3 +39,93 @@ reason, and task. Targets use service|kind|location; file identities own fan-out
 fan-in; function IDs own both scores; edge, reach, self_calls, cycle, smell and aggregate
 IDs own their respective budgets. Cross-service imports belong to repo.
 
+### ML-0001
+- action: admit
+- target: engine|edge|gen2/router/evidence_writer.py->gen2/core/canonical.py
+- reason: evidence_writer.py is a new collaborator file (task 2q-b10) holding `_write_evidence` and its five helpers, moved from service.py: `_write_source_proposals` calls `canonical.logical_hash`, so the file imports `canonical`; service.py keeps its own uses of `canonical`, so this edge is added and none leaves
+- task: 2q-b10
+
+### ML-0002
+- action: admit
+- target: engine|edge|gen2/router/evidence_writer.py->gen2/router/boundary.py
+- reason: the six moved methods raise `Refusal` (and the Router's `_guarded` still turns it into a refusal): evidence_writer.py imports it from `boundary`, as the other collaborators do; service.py keeps its own import, so the edge is added and none leaves
+- task: 2q-b10
+
+### ML-0003
+- action: admit
+- target: engine|edge|gen2/router/service.py->gen2/router/evidence_writer.py
+- reason: service.py composes the new collaborator (`EvidenceWriter(self)` in `Router.__init__`) and delegates `_write_evidence` to it, as it does for the six earlier collaborators
+- task: 2q-b10
+
+### ML-0004
+- action: admit
+- target: engine|file|gen2/router/evidence_writer.py
+- reason: the new file of task 2q-b10: `EvidenceWriter`, `EvidenceCore` and `Rows` (189 lines); service.py gives up 149 lines of it (1,498 -> 1,349), which is the headroom the next slices of this file need under the 1,500-line rule
+- task: 2q-b10
+
+### ML-0005
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/evidence_writer.py
+- reason: transitive: engine.py imports `router.service`, which now imports evidence_writer.py (the same way it reaches amendments.py and scheduling.py)
+- task: 2q-b10
+
+### ML-0006
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/evidence_writer.py
+- reason: transitive: station.py imports `router.service`, which now imports evidence_writer.py (the same way it reaches amendments.py and scheduling.py)
+- task: 2q-b10
+
+### ML-0007
+- action: admit
+- target: engine|reach|gen2/router/evidence_writer.py->gen2/core/canonical.py
+- reason: the direct edge ML-0001, as a reach pair
+- task: 2q-b10
+
+### ML-0008
+- action: admit
+- target: engine|reach|gen2/router/evidence_writer.py->gen2/core/instants.py
+- reason: transitive: evidence_writer.py -> boundary.py -> instants.py; no new path to `instants` for any other file
+- task: 2q-b10
+
+### ML-0009
+- action: admit
+- target: engine|reach|gen2/router/evidence_writer.py->gen2/core/pagination.py
+- reason: transitive: evidence_writer.py -> boundary.py -> pagination.py; no new path to `pagination` for any other file
+- task: 2q-b10
+
+### ML-0010
+- action: admit
+- target: engine|reach|gen2/router/evidence_writer.py->gen2/router/boundary.py
+- reason: the direct edge ML-0002, as a reach pair
+- task: 2q-b10
+
+### ML-0011
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/evidence_writer.py
+- reason: the direct edge ML-0003, as a reach pair
+- task: 2q-b10
+
+### ML-0012
+- action: budget
+- metric: fan_in
+- location: engine:gen2/core/canonical.py
+- limit: 14
+- reason: a new dependent: evidence_writer.py imports `canonical` (ML-0001); fan-in 13 -> 14. No other file's dependency on it changed
+- task: 2q-b10
+
+### ML-0013
+- action: budget
+- metric: fan_in
+- location: engine:gen2/router/boundary.py
+- limit: 8
+- reason: a new dependent: evidence_writer.py imports `boundary` (ML-0002); fan-in 7 -> 8. No other file's dependency on it changed
+- task: 2q-b10
+
+### ML-0014
+- action: budget
+- metric: fan_out
+- location: engine:gen2/router/service.py
+- limit: 13
+- reason: service.py imports the new collaborator (ML-0003); fan-out 12 -> 13. It still imports everything it imported before (`canonical`, `boundary` and the rest are used by the code that stayed)
+- task: 2q-b10
+

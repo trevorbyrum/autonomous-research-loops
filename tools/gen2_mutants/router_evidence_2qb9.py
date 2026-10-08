@@ -1,4 +1,4 @@
-"""Mutants of task 2q-b9: Router._write_evidence split into five private helpers by extract-method. The rules the split added are the helper boundaries: what each returns, the order and
+"""Mutants of task 2q-b9: Router._write_evidence split into five private helpers by extract-method (since task 2q-b10 the method and its helpers are EvidenceWriter's, in gen2/router/evidence_writer.py: the mutants are the same edits, re-anchored there). The rules the split added are the helper boundaries: what each returns, the order and
 the arguments of its call, that each is called, and that its refusals still reach `_guarded`. Each is broken alone at the call or the return; the tests that kill them are the existing
 evidence and workflow tests and gen2/tests/test_router_evidence_wiring.py, and the tests that do not reach the changed line are their controls (by hand: nothing here was traced).
 
@@ -16,7 +16,7 @@ evidence and workflow tests and gen2/tests/test_router_evidence_wiring.py, and t
 """
 from __future__ import annotations
 
-from .base import RE, SVC, Mutation
+from .base import EVW, RE, Mutation
 
 WF, WIRING = "test_router_workflow.", "test_router_evidence_wiring."
 ADOPT = RE + "ProductionAndAdoptionTest.test_a_scoping_claim_is_adopted_by_a_revision_the_admitted_commit_produces"
@@ -29,7 +29,7 @@ SWAPPED = lambda call: call.replace("op_id, now", "now, op_id")  # noqa: E731
 
 
 def mutant(name: str, description: str, killer: str, old: str, new: str, *also: tuple[str, str]) -> Mutation:
-    return Mutation(f"2QB9-{name}", "2q-b9", description, (killer,), target=SVC, old=old, new=new, also=also)
+    return Mutation(f"2QB9-{name}", "2q-b9", description, (killer,), target=EVW, old=old, new=new, also=also)
 
 
 MUTATIONS: list[Mutation] = [

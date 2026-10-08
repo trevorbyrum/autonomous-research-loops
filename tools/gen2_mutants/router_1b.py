@@ -5,7 +5,7 @@ Moved verbatim from the one inventory list in tools/gen2_mutations.py (task
 """
 from __future__ import annotations
 
-from .base import BND, CB, IN, LC, Mutation, RC, RE, RO, RR, RS, RT, RX, SVC
+from .base import BND, CB, EVW, IN, LC, Mutation, RC, RE, RO, RR, RS, RT, RX, SVC
 
 MUTATIONS: list[Mutation] = [
     # --- 1b: the router (task 1b) -----------------------------------------------------
@@ -199,16 +199,16 @@ MUTATIONS: list[Mutation] = [
            '        new_triggers = list({identity: t for identity, t in triggers}.items())'),
           # claims: production, adoption, promotion (V-10, the 1a review's carried obligation)
           ("claim-revision-gap", "a claim revision may skip numbers",
-           (RE + "ProductionAndAdoptionTest.test_a_scoping_claim_is_adopted_by_a_revision_the_admitted_commit_produces",), SVC,
+           (RE + "ProductionAndAdoptionTest.test_a_scoping_claim_is_adopted_by_a_revision_the_admitted_commit_produces",), EVW,
            '            if claim["revision"] != max((row["revision"] for row in prior), default=0) + 1:', '            if False:'),
           ("claim-cross-topic-revision", "a new revision of another topic's claim is recorded under this topic",
-           (RC + "FencingTest.test_another_topics_claim_cannot_be_revised_or_promoted",), SVC,
+           (RC + "FencingTest.test_another_topics_claim_cannot_be_revised_or_promoted",), EVW,
            '            if any(row["topic_id"] != topic_id for row in prior):', '            if False:'),
           ("promotion-cross-topic", "another topic's claim is promoted",
-           (RC + "FencingTest.test_another_topics_claim_cannot_be_revised_or_promoted",), SVC,
+           (RC + "FencingTest.test_another_topics_claim_cannot_be_revised_or_promoted",), EVW,
            '            if row["topic_id"] != topic_id:\n                raise Refusal("cross_topic", f"{promotion', '            if False:\n                raise Refusal("cross_topic", f"{promotion'),
           ("promotion-any-status", "an already accepted revision is promoted again",
-           (RE + "ProductionAndAdoptionTest.test_only_a_provisional_or_contested_revision_is_promoted",), SVC,
+           (RE + "ProductionAndAdoptionTest.test_only_a_provisional_or_contested_revision_is_promoted",), EVW,
            '            if row["status"] not in ("provisional", "contested"):', '            if False:'),
           # every artifact reference a document embeds, one rule (A10; Astra 1b review A4)
           ("artifact-ref-unstaged", "an embedded artifact reference need not be staged or recorded",

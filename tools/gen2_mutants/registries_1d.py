@@ -6,7 +6,7 @@ Moved verbatim from the one inventory list in tools/gen2_mutations.py (task
 """
 from __future__ import annotations
 
-from .base import AM, AMD, APP, BND, LIF, Mutation, RC, REG, RG, SCH, SPV, SQ, SR, SRQ, STC, STR, STS, SVC
+from .base import AM, AMD, APP, BND, EVW, LIF, Mutation, RC, REG, RG, SCH, SPV, SQ, SR, SRQ, STC, STR, STS, SVC
 
 MUTATIONS: list[Mutation] = [
     # --- task 1d: registries, config bundles, reservations, versions, G-1 impact, re-queues -------------------
@@ -219,8 +219,8 @@ MUTATIONS: list[Mutation] = [
            (RG + "QuestionPinTest.test_a_spec_whose_question_the_pinned_bundle_lacks_is_refused", RG + "ConfigBundleTest.test_admitted_work_keeps_its_pinned_bundle"), SVC,
            '        bundle = self._bundle(inv["config_bundle_hash"])', '        bundle = self._active_bundle()["document"]'),
           ("stale-claim-promoted", "a claim produced under an incompatibly superseded revision is promoted",
-           (AM + "ImpactTest.test_a_stale_claim_is_not_promoted_and_an_adopted_revision_is",), SVC,
-           '            if producer["admission_context"] == "contract/1" and self._pin_status(producer) not in ("current", "compatible"):', "            if False:"),
+           (AM + "ImpactTest.test_a_stale_claim_is_not_promoted_and_an_adopted_revision_is",), EVW,
+           '            if producer["admission_context"] == "contract/1" and self._core._pin_status(producer) not in ("current", "compatible"):', "            if False:"),
           ("reframe-as-amendment", "a framing change is approved as a plain amendment (and a reframe approval approves anything)",
            (AM + "AmendmentApprovalTest.test_a_framing_change_is_approved_as_a_reframe_and_only_as_one",), SVC,
            '        if reframe != (d["kind"] == "reframe_approval"):', "        if False:"),
