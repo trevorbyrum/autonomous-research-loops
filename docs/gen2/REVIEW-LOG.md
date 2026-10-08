@@ -1774,3 +1774,13 @@ The post-2q Gate D is renumbered #5.
 - **Session recovery note:** the previous orchestrator session ended mid-flight.
   - The 2q-e2 landing run and Astra review (`ab6b6af6`) didn't complete, with no report, so they'll be redone.
   - Astra's 2q-t3 review (`a3e11f6a`) completed: **no blocking finding**, and DEBT-024, DEBT-025, DEBT-023 items 2–3 and DEBT-020 are closable. Final acceptance is pending a landing record, which also inherits the two 2q-b8 test failures.
+
+## 2026-10-08: 2q-r1 (trial of established tools)
+- **Coder report** (`ac72fe8`; `docs/gen2/research/refactor-verification-trial-20261008.md`):
+  - **Hypothesis `old == new`: worked.** On the 2q-b4 decoder: 150k cases with 0 differences, 100% line coverage, and 17 of 17 behaviour-changing mutants caught within 5.6 s.
+  - **rope plus RefactoringMiner: partly worked.**
+    - rope reproduced the 2q-b9 split in 1.2 s, but with one spurious parameter, a rope fault that the existing tests caught in 19 s.
+    - RefactoringMiner reported exactly the five Extract Methods. It describes changes and doesn't prove behaviour.
+  - **time-machine and seeded ids: partly worked.** They cover the test process only, not child processes or the real job-process identity; a 9-line fingerprint mock fixed one scenario.
+  - **Dependencies:** `rope`, `hypothesis` and `time-machine` are hash-locked as dev-only; the RefactoringMiner image is pinned by digest.
+- **Adopted under the operator's 2026-10-08 authorisation:** the charter's new "Refactor evidence standard" rule. **2q-b9b is dropped.** 2q-b9's evidence is re-judged under the new standard. 2q-t4's process-identity seam stays needed, in reduced form.
