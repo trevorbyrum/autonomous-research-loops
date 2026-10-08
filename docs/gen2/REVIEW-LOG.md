@@ -1759,3 +1759,18 @@ The post-2q Gate D is renumbered #5.
   - NB2: wording.
   - NB3: the replay limit (DEBT-023).
 - Routed to **2q-b9b** (the checker grammar plus NB2). L1 goes with 2q-b8b. NB1 shapes the next Router structure slice.
+
+## 2026-10-08: operator ruling, established refactoring and verification tools
+- **The operator asked why we write custom proof tools, and for research on established practice.** Research note: `docs/gen2/research/refactor-verification-20261008.md`:
+  - refactoring engines (`rope`, LibCST);
+  - refactoring detection (RefactoringMiner 3.x for Python, PyRef);
+  - characterisation and approval tests;
+  - Hypothesis old-versus-new differential properties;
+  - `time-machine` and seeded determinism;
+  - an LLM as a triage oracle, not a proof.
+- **Ruling 2026-10-08:** "Okay, then do that. You have my authorization."
+  - It approves the dev-only dependencies (`rope`, `hypothesis`, `time-machine`, and RefactoringMiner or PyRef) and a one-slice trial: **2q-r1**, queued behind the small 2q-b8b test fix.
+  - 2q-b9b (the custom stitch-back checker fix) is **held** pending the trial. 2q-t4 (hand-built replay seams; commit `5ef2130` of 3, after the coder session ended) is **paused**; the trial tests whether `time-machine` and seeded fixtures replace it.
+- **Session recovery note:** the previous orchestrator session ended mid-flight.
+  - The 2q-e2 landing run and Astra review (`ab6b6af6`) didn't complete, with no report, so they'll be redone.
+  - Astra's 2q-t3 review (`a3e11f6a`) completed: **no blocking finding**, and DEBT-024, DEBT-025, DEBT-023 items 2–3 and DEBT-020 are closable. Final acceptance is pending a landing record, which also inherits the two 2q-b8 test failures.
