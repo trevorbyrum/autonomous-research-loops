@@ -11,8 +11,21 @@
 # Gen-2 code never imports these: gen2/boundaries.toml grants a third-party
 # package only where it declares one (today rfc8785, to module core, from
 # gen2/requirements.txt) and grants none of these anywhere.
+#
+# Refactoring and verification trial (task 2q-r1; docs/gen2/research/
+# refactor-verification-20261008.md), operator-authorised 2026-10-08, dev-only
+# like the above: no production module, and not tools/gen2_metrics.py, imports
+# any of them.
+#   rope          — the refactoring engine (extract-method and friends) that
+#                   performs a mechanical refactor instead of a hand edit;
+#                   needs pytoolconfig, which needs packaging and platformdirs
+#   hypothesis    — property-based old == new differential tests of pure
+#                   functions; needs sortedcontainers
+#   time-machine  — fixes or moves the clock of the test process for
+#                   deterministic replays (no dependencies)
 # Hashes: from PyPI for these exact releases — the universal wheel and sdist,
-# plus pyrsistent's CPython 3.12 wheels (the project interpreter; another
+# plus the CPython 3.12 wheels of the packages that ship compiled code
+# (pyrsistent, hypothesis, time-machine; the project interpreter — another
 # interpreter version needs its wheel hash added here).
 jsonschema==4.10.3 \
     --hash=sha256:443442f9ac2fdfde7bc99079f0ba08e5d167fc67749e9fc706a393bc8857ca48 \
@@ -27,3 +40,55 @@ pyrsistent==0.20.0 \
     --hash=sha256:a14798c3005ec892bbada26485c2eea3b54109cb2533713e355c806891f63c5e \
     --hash=sha256:09848306523a3aba463c4b49493a760e7a6ca52e4826aa100ee99d8d39b7ad1e \
     --hash=sha256:4021a7f963d88ccd15b523787d18ed5e5269ce57aa4037146a2377ff607ae87d
+rope==1.15.0 \
+    --hash=sha256:1445f5c6eb3c2c6eda9f9532ed02513a09c1694bfee4a9291f7a86a990ac44a1 \
+    --hash=sha256:a9e82c9f5ca5a1054387c22fdf6c9de9e948af556138bda57d4da81d3378793a
+pytoolconfig==1.3.1 \
+    --hash=sha256:5d8cea8ae1996938ec3eaf44567bbc5ef1bc900742190c439a44a704d6e1b62b \
+    --hash=sha256:51e6bd1a6f108238ae6aab6a65e5eed5e75d456be1c2bf29b04e5c1e7d7adbae
+packaging==26.3 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c \
+    --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79
+platformdirs==4.12.4 \
+    --hash=sha256:78bfb9db2a8471ed7eebe3c3c932da413911042994e699b384fbb4493fa872d7 \
+    --hash=sha256:63743c02414e755de4e31b8f68125c1407495b86c5a006e203c01ff8b9924250
+hypothesis==6.168.5 \
+    --hash=sha256:ca43a751410a9c6685f029fd5126cc5507664cafaa76017922aa8ae2e17b6620 \
+    --hash=sha256:c8b98707cbe9f430d100a945bbe17612fd3aa44eac1b0ac5299669fe3b8e4128 \
+    --hash=sha256:4dde52a0b696c642e7f988a03026c7c29f90daf21e74507b6f865c3ccc9d536e \
+    --hash=sha256:42f02e4541fe0c17a1320617effc0ab8a8aca2a9af15e3358d4150acf3bbdc00 \
+    --hash=sha256:bf6dd7e537a12763c9afa017f7a6159e5cda608e98670621fa44596a1e8e9288 \
+    --hash=sha256:df2c04cd30abf42c52580184216162a75b5508b214a472b86670f6dd50659a3b \
+    --hash=sha256:278662eb21aaec9eaae71ea4dabd4fe390c2af11ec58a6a0606687cf6d7689b0 \
+    --hash=sha256:6bcedc4ab8ab92dd0f3af0cfe24dce184d225751d7bc870a9cddb9a557de847f \
+    --hash=sha256:8b58097cc3b98d8616f635ac73888fc9f859311875f2adc043f1544c40c3c466 \
+    --hash=sha256:f8a387d9ee7f804e830b31f2e2e339ab5731665e922cfda4f6f6fbdb05e191b4 \
+    --hash=sha256:326f6383fdf2e37ac69773589a8238a3bf396ca8ac8efacb0fb9ed42dd08e426 \
+    --hash=sha256:5d33fc74e43bbd7c3a8f6f7161a8b93b676924286e97e70e828c6e0dcee5c01f \
+    --hash=sha256:1994923cf5e5220ae6bf19645302504b27c0289d83e5d8690df71dcae63d8416 \
+    --hash=sha256:501038fd24d3bc95239cfd093a23cf1151f29dd82382a3554dac5dfdab9729ae \
+    --hash=sha256:e2292ddc24fe6d04b7d30fa6a7e2c9e280ad5078fe671d0bf4aa6df6e143b5ac \
+    --hash=sha256:925d67c69b719d416334aa961c0cdfc4a58a471af1ebd2d7101bd515a70f4e5f \
+    --hash=sha256:2311590eccba452de863dfe3466daa86a05c25f072ab31ed8bb4d3313ee68439 \
+    --hash=sha256:222a6d23a2a824b0f9f73761c2fb9cd2aca96cf3e5b441617625bce4f7eb4fd4 \
+    --hash=sha256:ddee1ef4bab47e315b705e42d2f4354e789973d11f9620d2df242aef4cfa42b2 \
+    --hash=sha256:81ceb49b0dc3a4b6126cd0d3bf2b634af4e91513c8f1e2daee16041414ed8e3d \
+    --hash=sha256:0a09caa95d2d7e6546f727f703de606145835d9ca215fb3134a21353c69afaac \
+    --hash=sha256:97ac1d516a42a3b1f13b36a1aa6a5f842e43d67e69d4dc664a9645b28de411ef \
+    --hash=sha256:e4819fba78c6cbaa6e2f9fd5a69a413817446943f286763819b5ac52391bff3e \
+    --hash=sha256:87334b95dfbc101652fa48a427a742b0715b814506d9a10f621c29e476b4a2c1 \
+    --hash=sha256:2fcec23ff4eb526ee85d3510f564b938ca74f6011f1eec1050e4eb55280b0468 \
+    --hash=sha256:76b9226962fe11d40858253a967eda95bb65811365286317e0118f4ec8f808c7
+sortedcontainers==2.4.0 \
+    --hash=sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0 \
+    --hash=sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88
+time-machine==3.5.1 \
+    --hash=sha256:a6415979fac70c7142cfb7d863a118ba2d8c45a96c8d6efa311c9751ec270486 \
+    --hash=sha256:8dc65728653643b742ae5ad859d4cc50fdc456533b23c942ea4011aa99b1e67f \
+    --hash=sha256:075cc8ff3bf229d96bc7adb8b26be6b1021ee0a5213efe4f57898cda3a3bd766 \
+    --hash=sha256:091bd22bf9dbf297dbff35b688b7667b37a30ab7c1f5831b0688e9ddd2321386 \
+    --hash=sha256:e5dbc1ffa96ff9100c617024d9119a27046f531c71839eaebd7ad8bb3542d130 \
+    --hash=sha256:e9aeaee418b1696b01edc8015b33c2aa746619ca0ce6ebcbc941363ad73b8464 \
+    --hash=sha256:1b3575d91df2325270e0ae255253e7ecb5f3add4b83d3a01b8c74e02c26470a8 \
+    --hash=sha256:991c4bc4b4a20a96355672065bafb2e517209de09b83d4ac92efe223632a713a \
+    --hash=sha256:eb2c50404820fde8bfc6a0713b2a0b8eabececfecefde3a5847ae8006037829f

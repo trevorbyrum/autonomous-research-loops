@@ -10,6 +10,7 @@ This replaces the earlier practice of installing the runtime dependency with `pi
 |---|---|---|
 | `gen2/requirements.txt` | `rfc8785==0.1.4` (no dependencies) | runtime: `gen2/core/canonical.py`, the only module `gen2/boundaries.toml` grants it to |
 | `gen2/requirements-dev.txt` | `jsonschema==4.10.3` and its complete Python 3.12 dependency graph: `attrs==23.2.0`, `pyrsistent==0.20.0` | `tools/check_gen2_schemas.py` only; no gen-2 module may import it |
+| `gen2/requirements-dev.txt` (task 2q-r1) | `rope==1.15.0` with `pytoolconfig==1.3.1`, `packaging==26.3`, `platformdirs==4.12.4`; `hypothesis==6.168.5` with `sortedcontainers==2.4.0`; `time-machine==3.5.1` (no dependencies) | dev tooling for refactors and their verification (below); no gen-2 module and no tool of `make gen2-check` imports them |
 
 Every entry carries its PyPI SHA-256 hashes. `make gen2-venv` runs:
 
@@ -27,6 +28,26 @@ python3 -m venv --clear .venv-gen2
 Every check target (`gen2-sqlite`, `gen2-boundaries`, `gen2-schemas`, `gen2-ddl`, `gen2-catalog`, `gen2-catalog-check`, `gen2-test`, `gen2-trigger-order`, `gen2-mutation`, `gen2-size`, `gen2-linecount`) depends on `gen2-venv` and runs with `PYTHON = .venv-gen2/bin/python`. The only host input is the interpreter the venv is created from: `PYTHON_BOOTSTRAP`, default `python3`. The **reference environment is CPython 3.12.3 with SQLite 3.45.1**, pinned exactly for reproducibility. The standard-library `sqlite3` comes with the interpreter; `make gen2-check` reports the linked SQLite version.
 
 The reference pin does not establish portability. The gateway client's project-owned address serializer preserves the accepted address spelling from value and family across Python patch releases, with interpreter-independent regression tests (task 2b-repair-20; CI design D5). The planned report-only drift qualification is a **Jenkins nightly**, not GitHub Actions (operator-approved CI design D4); it remains planned until that CI work is implemented.
+
+## Refactoring and verification tools (task 2q-r1; dev-only, operator-authorised 2026-10-08)
+
+The trial in `docs/gen2/research/refactor-verification-trial-20261008.md` adds established tools in place of per-refactor proof tools. None of them is imported by a production module, the boundary graph grants them to no module, and the metrics tool stays stdlib-only.
+
+| Tool | Purpose | Notes |
+|---|---|---|
+| `rope` | performs a mechanical refactoring (extract method and the like) programmatically, instead of by hand | needs a `source_folders` setting for a directory without `__init__.py` (the gen-2 packages are namespace packages); a known fault, with a minimal reproduction, is in the trial write-up |
+| `hypothesis` | property-based `old == new` differentials of pure functions, with shrinking | ships a compiled extension (`_native`); the lock lists its CPython 3.12 wheels |
+| `time-machine` | freezes or moves the wall clock of one process (`time.time`, `datetime.now`, `time.gmtime`, `clock_gettime(REALTIME)`) | does not touch `time.monotonic`, `perf_counter`, `sleep` or file times; **does not reach a child interpreter**, which must arm it itself (a `sitecustomize` through `GEN2_CHILD_ROOT`) |
+| RefactoringMiner (Java; not a Python dependency) | describes the refactorings in a commit range, Python included | runs from the official image **pinned by digest**, offline, through `tools/gen2_refactoring_detect.py` |
+
+The detector needs Docker and one pull, by hand, of the pinned image (Java is not installed on the build host). The wrapper never pulls: with the image absent it prints the command and exits 2.
+
+```
+docker pull tsantalis/refactoringminer@sha256:2d44dccea74ffcd4fa8e1fcd8cef0d29e78a52e2662d5c863b7e5e691d51e1ba
+python3 tools/gen2_refactoring_detect.py START END [--expect "Extract Method=5" ...]
+```
+
+It runs `docker run --network none --pull never --read-only` with the repository mounted read-only. The image carries no tag but `latest`; the digest above is the multi-architecture index published on 2026-10-08, and a newer detector is a deliberate re-pin, not a re-pull. `gen2-venv`'s import check names `rfc8785` and `jsonschema` only: a lock that lacked a transitive dependency of the tools above would fail at their first import, not at `make gen2-venv` (the lock was checked complete with `pip check` and imports in a venv built by the Makefile's own recipe).
 
 ## Upgrading the reference interpreter
 
