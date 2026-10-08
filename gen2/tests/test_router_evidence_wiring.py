@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 
-from gen2.router import service
 from gen2.store import api
 from gen2.tests import test_router_evidence as ev
 from gen2.tests import test_router_workflow as wf
@@ -35,7 +34,7 @@ class UnrecordedPromotionTest(ev.EvidenceCase):
 
 
 class RefusesOnce:
-    """The router's store, refusing its `at`-th write (an insert or an update, counted from 0) and no other; `tables` lists the tables written to, the refused write included."""
+    """The router's store, refusing its `at`-th write (an insert or an update, counted from 0) and no other, unless that is the audit event of a rejection; `tables` lists the tables written to, the refused write included."""
 
     def __init__(self, store, at: int) -> None:
         self._store, self.at, self.tables = store, at, []
@@ -47,7 +46,7 @@ class RefusesOnce:
 
         def write(table, *args, **kwargs):
             self.tables.append(table)
-            if len(self.tables) - 1 == self.at:
+            if len(self.tables) - 1 == self.at and not (table == "audit_events" and args[0]["kind"] == "commit_rejected"):  # the refusal's own audit event is no write of the commit
                 raise api.StoreWriteError("refused for the test")
             return member(table, *args, **kwargs)
         return write
@@ -56,12 +55,12 @@ class RefusesOnce:
 class Rollback(wf.Workflow):
     """A world and a `commit()` answering through self.router; no test of its own."""
 
-    def whichever_write_is_refused(self, commit, table: str) -> None:
-        """Run `commit` with each of its writes refused in turn, then with none; the run with none must have written `table`, and every write before it was refused once."""
+    def whichever_write_is_refused(self, commit, table: str) -> list[str]:
+        """Run `commit` with each of its writes refused in turn, then with none; the run with none must have written `table`, and every write before it was refused once. Returns the tables of the run with none, in write order."""
         before, rejected = self.state(), 0
         for position in range(80):
             double = RefusesOnce(self.store, position)
-            self.router = service.Router(double, self.spool, clock=self.clock, new_id=self.ids, fault=self.fault)
+            self.router = type(self.router)(double, self.spool, clock=self.clock, new_id=self.ids, fault=self.fault)  # the Router class the fixtures built: a mutant of service.py is the class under test
             out = commit()
             if out["status"] == "committed":
                 break
@@ -74,6 +73,7 @@ class Rollback(wf.Workflow):
             self.fail("every run was refused")
         self.assertEqual(position, len(double.tables))
         self.assertIn(table, double.tables)
+        return double.tables
 
 
 class ClaimLinkTest(Rollback):

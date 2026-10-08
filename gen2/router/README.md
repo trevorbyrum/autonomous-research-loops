@@ -5,7 +5,7 @@
 Every operation follows one shape:
 1. The request is normalized to its RFC 8785 form, which refuses what C-13 refuses. It is validated against its schema, including timestamps as real instants.
 2. With no transaction open, the router reads staged bytes and re-hashes them. It runs the hash-truth and A10 checks.
-3. One short transaction fences against current state and writes. The clock is read inside it, once `BEGIN IMMEDIATE` has returned, so every lease, deadline and expiry is judged at the time the write lock is held: time spent waiting for the lock counts (Astra 1b review A1). A lease or deadline at instant E is over at E. A write the DDL refuses rolls the whole transaction back and is reported as a refusal. Nothing is retried.
+3. One short transaction fences against current state and writes. The clock is read inside it, once `BEGIN IMMEDIATE` has returned, so every lease, deadline and expiry is judged at the time the write lock is held: time spent waiting for the lock counts (Astra 1b review A1). A lease or deadline at instant E is over at E. A write the DDL refuses rolls the whole transaction back and is reported as a refusal. Nothing is retried. The body of `commit_outcome`'s transaction, `_commit_in_transaction`, calls nine private helpers (three fences, two decisions, the receipt and three writes; task 2q-b11, BOUNDARIES.md "Router commit transaction"), all inside it.
 4. The reply is returned after the transaction commits.
 
 Authority is the capability the router minted at claim. The invocation's kind, topic, pins and lease are read from its row, never from the request. A request carrying a role, actor or authority field fails its schema.
