@@ -276,7 +276,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - status: open
 - owner: task 2q
 - what: Non-blocking follow-through from Astra's 2q-b8 and 2q-b9 re-review, accepted in advance under the charter's "Review throughput" rule:
-  - (1) `docs/gen2/BOUNDARIES.md` (around line 14) and `private/evidence/2q-b9/README.txt` still credit the `--inline` checker with checking the declared plumbing; mark those claims superseded and advisory, citing the re-review and the charter's "Refactor evidence standard";
+  - (1) `docs/gen2/BOUNDARIES.md` (around line 14) and the 2q-b9 evidence README (private evidence, outside the repo) still credit the `--inline` checker with checking the declared plumbing; mark those claims superseded and advisory, citing the re-review and the charter's "Refactor evidence standard";
   - (2) close out the remaining documentation: the historical mixin prose; the 2q-b8 README's replacement-rollback overstatement; the 2q-b9 branch and mutant accounting (106/108 branches; the unique-mutant count).
 
   The 352 unresolved replay scenarios are already DEBT-023 item 1.
