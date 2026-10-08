@@ -295,3 +295,11 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   NB1 is DEBT-023 item 1.
 - source: private/reviews/gen2-2q-b10-astra-review-20261008.md (non-blocking list)
 - removal: a 2q tooling and documentation slice makes the corrections, and its review confirms them before 2q closes.
+
+### DEBT-028 - readiness test flaky under load (2q)
+- kind: obligation
+- status: open
+- owner: task 2q
+- what: `gen2/tests/test_children.py::ReadinessTest.test_a_child_that_died_before_saying_it_fails_the_test_with_its_exit_status_and_stderr` failed once in the 2q-b11 landing run under machine load. A child that exited with status 3 ("database is locked") was classified as "still running when stopped, waited 0.0s" rather than "it had exited". It passes 10 out of 10 runs alone, and the code hasn't changed since `dd3b920`. This looks like a race between the readiness deadline and the child's exit; that's an inference, not measured. Make the classification deterministic: check exit status before the deadline verdict, or use an injectable clock. Add a regression that forces the race.
+- source: the orchestrator 2q-b11 landing run of 2026-10-08, attempt 1 (private/evidence/2q-b11/orchestrator-attempt1/)
+- removal: a deterministic classification with a forced-race regression, confirmed by a 2q review before 2q closes.
