@@ -299,8 +299,9 @@ class IdentityTest(RatchetTestCase):
         repo.write({"gen2/core/normalized.py": "import gen2.core.canonical\nimport gen2.core.instants\n"})
         result = self.check(repo, 1)
         self.assertIn("engine|file|gen2/core/normalized.py", result.stderr)
-        self.assertIn("fan_in engine:gen2/core/canonical.py: 14 against a baseline of 13", result.stderr)
-        self.assertIn("fan_in engine:gen2/core/instants.py: 7 against a baseline of 6", result.stderr)
+        fan_in = repo.baseline()["services"]["engine"]["fan_in"]   # the real engine's own, as the baseline just recorded it: a new file in the production code changes them
+        for module in ("canonical", "instants"):
+            self.assertIn(f"fan_in engine:gen2/core/{module}.py: {fan_in[f'gen2/core/{module}.py'] + 1} against a baseline of {fan_in[f'gen2/core/{module}.py']}", result.stderr)
         self.assertEqual(repo.run("rebaseline").returncode, 1)
 
 
