@@ -1,6 +1,6 @@
 {
   "cross_service_imports": [],
-  "digest": "eca5f8940efb10b57d4787d4a8e7620511fd5f949e663bbf2eb99af659e50e42",
+  "digest": "bdab476885223d5a5002fb85f2fc5d65b5d6fe6b5f1d822840525872957fc367",
   "identities": {
     "MI-000001": "engine|edge|gen2/app/engine.py->gen2/app/station.py",
     "MI-000002": "engine|edge|gen2/app/engine.py->gen2/operator/auth.py",
@@ -1093,8 +1093,8 @@
   },
   "identity_serial": 1149,
   "pin": {
-    "commit": "aa40400062b5f140b8a1d3167239c9ded80057d9",
-    "production_sha256": "1cc6c4f6415e8dd94b18bc76bd798865c5cd896a7e4e52a28553c095ba3a2532"
+    "commit": "50b6061a4ccd5b7d70868424bd7903e5cbf6fa87",
+    "production_sha256": "e9e8083f74fc3dd5f27a14b22e9c4ba552159ac51a11ba198e71d1b82978fcb0"
   },
   "services": {
     "engine": {
@@ -1240,8 +1240,8 @@
           "cyclomatic": 22
         },
         "gen2/router/service.py::Router._commit_in_transaction": {
-          "cognitive": 60,
-          "cyclomatic": 52
+          "cognitive": 3,
+          "cyclomatic": 4
         },
         "gen2/router/service.py::Router._validate_commit": {
           "cognitive": 65,
