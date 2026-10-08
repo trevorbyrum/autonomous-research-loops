@@ -1800,3 +1800,16 @@ The post-2q Gate D is renumbered #5.
   - C1 (a structural `LoopbackURL`) and C2 (the inventory comes first; validated envelopes) are RESOLVED as ROOT-CAUSE, and **the evidence family is now ROOT-CAUSE.** Astra reproduced on the real driver that the repaired core gives DIFFERENT where the old one gave EQUIVALENT.
   - The round cap was not triggered.
 - **Non-blocking:** nothing new. The DEBT-024 prose it mentions was already corrected in 2q-t3 (`a3d1b34`, after this pin) and is closed.
+
+## 2026-10-08: 2q-b10 (the `EvidenceWriter` collaborator) and the 2q-r1 tooling
+- **Astra** (`adbb7b7e`, pinned 93e8338; `private/reviews/gen2-2q-b10-astra-review-20261008.md`): **PASS on A, B and C. ROOT-CAUSE. "2q-b10 is ACCEPTED; the 2q-r1 tooling is ACCEPTED."** This is the first slice under the "Refactor evidence standard". Astra reran the rope driver and the outputs matched.
+- **Detector and deps:** RefactoringMiner (digest-pinned, `--network none`, `--pull never`) is accepted as descriptive tooling, not a behaviour gate. The dev deps are accepted.
+- **Replay:** the 352 → 6 count is validated, but **2q-t4's seam isn't accepted**. Its own review must cover:
+  - parent and child identity consistency and distinctness;
+  - opting out;
+  - child activation;
+  - the poll schedule;
+  - a repeated comparison on `c02fa74` → `8bc87cc`;
+  - negative controls for identity, fencing and result binding;
+  - the five real-identity assertions kept intact.
+- **Non-blocking:** NB2 (flaky mutation-verdict diagnostics), NB3 (ENVIRONMENT and BOUNDARIES wording), NB4 (the detector's exit code). Registered as DEBT-027.
