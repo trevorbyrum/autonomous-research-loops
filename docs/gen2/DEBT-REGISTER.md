@@ -288,7 +288,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - status: open
 - owner: task 2q
 - what: Non-blocking findings from Astra's 2q-b10 and 2q-r1 review, accepted in advance under the charter's "Review throughput" rule:
-  - (NB2) an intermittent `test_mutation_verdict` failure with lost diagnostics: `SerialRunTest.serial()` discards the child's stderr, and `verdicts()` asserts stdout before showing the return code. Keep the command, exit code, stdout and stderr on failure, and fix any cause that reproduces;
+  - (NB2) an intermittent `test_mutation_verdict` failure with lost diagnostics: `code: SerialRunTest.serial()` discards the child's stderr, and `verdicts()` asserts stdout before showing the return code. Keep the command, exit code, stdout and stderr on failure, and fix any cause that reproduces;
   - (NB3) `docs/gen2/ENVIRONMENT.md` still says the venv import check names only rfc8785/jsonschema, and its blanket transitive-dependency claim is too strong. Describe the actual import check and the separately verified dependency closure. The BOUNDARIES replay paragraph should separate the historical 352-scenario limit from the current 6 unresolved scenarios and the seam coverage that hasn't been reviewed;
   - (NB4) `tools/gen2_refactoring_detect.py` exits 1 (the count-mismatch status) on an invalid revision, where it documents exit 2. Align the error categories without changing how expectations are enforced.
 
