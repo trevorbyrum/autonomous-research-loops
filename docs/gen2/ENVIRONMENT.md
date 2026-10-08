@@ -17,11 +17,11 @@ Every entry carries its PyPI SHA-256 hashes. `make gen2-venv` runs:
 ```
 python3 -m venv --clear .venv-gen2
 .venv-gen2/bin/python -m pip install --require-hashes --no-deps -r gen2/requirements.txt -r gen2/requirements-dev.txt
-.venv-gen2/bin/python -c "import rfc8785, jsonschema"
+.venv-gen2/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine"
 ```
 
 - `--require-hashes` refuses any file whose hash is not listed.
-- `--no-deps` installs nothing that is not in the lock. A top-level pin alone does not lock its transitive graph, so the lock lists the whole graph. A missing dependency fails the import check at once instead of being resolved silently.
+- `--no-deps` installs nothing that is not in the lock. A top-level pin alone does not lock its transitive graph, so the lock lists the whole graph. A missing dependency fails the import check at once instead of being resolved silently. The check names the dev tools of task 2q-r1 as well, so a missing `rope`, `hypothesis` or `time-machine` pin fails `make gen2-venv` itself.
 - `venv --clear` starts from an empty environment every time either lock changes. The target is keyed on both files.
 - A venv does not see the base interpreter's site-packages or the user site (`~/.local`), so a package installed on the host can neither satisfy nor shadow a locked one.
 

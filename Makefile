@@ -28,7 +28,7 @@ $(GEN2_VENV)/.gen2-installed: gen2/requirements.txt gen2/requirements-dev.txt
 	$(PYTHON_BOOTSTRAP) -m venv --clear $(GEN2_VENV)
 	$(GEN2_VENV)/bin/python -m pip install --no-input --disable-pip-version-check --require-hashes --no-deps \
 		-r gen2/requirements.txt -r gen2/requirements-dev.txt
-	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema"
+	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine"
 	touch $@
 
 # The store's SQLite compatibility gate (gen2/store/compat.py; Astra third
