@@ -1794,3 +1794,9 @@ The post-2q Gate D is renumbered #5.
 - **2q-b8 C1:** resolved as ROOT-CAUSE by 2q-b8b's frozen fixture (15 files byte-identical to `f216133`; 132/19 reproduced).
 - **2q-b9:** C1 is resolved as a blocker under the amended standard. The checker is advisory with no gate credit. L1 is resolved by the green combined run.
 - **Non-blocking:** documentation that still credits the inline-back checker, plus the remaining documentation closeout. Registered as DEBT-026.
+
+## 2026-10-08: 2q-e2 (the gateway differential core, completed)
+- **Astra** (`095a9dbb`, pinned 15bac9a, fresh session; `private/reviews/gen2-2q-e2-astra-review-20261007.md`): **Gate C PASS, with A and B retained. "2q-e2 is ACCEPTED; 2q-e1 and 2q-b5 are ACCEPTED."**
+  - C1 (a structural `LoopbackURL`) and C2 (the inventory comes first; validated envelopes) are RESOLVED as ROOT-CAUSE, and **the evidence family is now ROOT-CAUSE.** Astra reproduced on the real driver that the repaired core gives DIFFERENT where the old one gave EQUIVALENT.
+  - The round cap was not triggered.
+- **Non-blocking:** nothing new. The DEBT-024 prose it mentions was already corrected in 2q-t3 (`a3d1b34`, after this pin) and is closed.
