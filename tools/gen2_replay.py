@@ -14,8 +14,12 @@ Nondeterminism is fixed at its source, not scrubbed from the output:
 A Router a test gives its own clock or ids keeps them.
 Real processes (task 2q-t4; tools/gen2_replay_seams.py, which says how): the identity a supervisor embeds in its records for a real job process (the pid, start time and session of
 the launcher it started) is the ordinal of the real one among those the test saw, the same in every process of the test; a child process reads a fixed clock and draws counted ids
-of its own range; and the first poll of a started job waits for the job's end, so how many polls a test makes no longer depends on how fast a real process ran. Each of these acts
-only in a replay run, and a test in REAL_IDENTITY (it asserts the real identity file) runs with none of it. NOT seams, so a test they show in is reported unresolved with the field
+of its own range; and the first poll of a started job waits for the job's end, so how many polls a test makes no longer depends on how fast a real process ran (that wait
+removes the one to three polls a supervisor makes while the job still runs, in about half the lifecycle tests, and stabilises a few that vary by timing: GEN2_REPLAY_POLLING=natural
+leaves it out of a run, and the polls come as they come; evidence/2q-t4b/README.txt has the measure). Each of these acts
+only in a replay run, and a test in REAL_IDENTITY (it asserts the real identity file) runs with none of it: its identity, its children and its polls are the real ones. The run
+file also holds, outside `tests` (the comparator never reads it), what each test's seams did: the looks that waited for a job's end (`waited`, and `capped` when it never came), the
+Python interpreters its processes started (`launched`), the children that armed themselves (`armed`), the kinds that did not (`unarmed`) and the children that asked for a job process's identity (`identified_by_children`). NOT seams, so a test they show in is reported unresolved with the field
 named: that real identity, and the order in which threads the operating system schedules take their clock readings (two probes whose runners wait for each other).
 """
 from __future__ import annotations
@@ -32,7 +36,7 @@ import threading
 import time
 import unittest
 
-SEED = "PYTHONHASHSEED"
+SEED, POLLING = "PYTHONHASHSEED", "GEN2_REPLAY_POLLING"
 if os.environ.get(SEED) != "0":
     os.execve(sys.executable, [sys.executable, *sys.argv], {**os.environ, SEED: "0"})
 TREE, OUT, MODULES = os.path.realpath(sys.argv[1]), sys.argv[2], sys.argv[3:]
@@ -80,7 +84,8 @@ def seam_processes() -> str:
     path = seams.overlay(TREE)
     os.environ.update(GEN2_CHILD_ROOT=path, PYTHONPATH=path)
     seams.install(child=False)
-    supervised.Supervisor._observe = seams.Settle.first_look(supervised.Supervisor._observe)
+    if os.environ.get(POLLING) != "natural":  # the poll schedule is a seam like the others, and a run may leave it out: the polls then come as they come
+        supervised.Supervisor._observe = seams.Settle.first_look(supervised.Supervisor._observe)
     return path
 
 
@@ -192,11 +197,13 @@ def noting(kind: str):
 
 class Result(unittest.TextTestResult):
     log: dict = {}
+    seams: dict = {}
     addFailure, addError, addSkip = noting("Failure"), noting("Error"), noting("Skip")
 
     def startTest(self, test):
         Recorder.calls, Recorder.routers = [], []
         Counters.clock = Counters.tokens = 0
+        seams.Settle.stats.clear()
         fix_seams()
         real = test.id() in seams.REAL_IDENTITY
         if real:
@@ -219,6 +226,7 @@ class Result(unittest.TextTestResult):
 
     def stopTest(self, test):
         Result.log.setdefault(test.id(), {}).setdefault("outcome", "pass")
+        Result.seams[test.id()] = {**seams.Settle.stats, **seams.account()}  # after the cleanups: the children are reaped
         super().stopTest(test)
 
 
@@ -231,5 +239,5 @@ if __name__ == "__main__":
     assert not stale, f"seams.REAL_IDENTITY names tests that did not run: {stale}"
     head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     with gzip.open(OUT, "wt", encoding="utf-8") as handle:
-        json.dump({"tree": head, "python": sys.version.split()[0], "tests": Result.log}, handle, default=repr)
+        json.dump({"tree": head, "python": sys.version.split()[0], "tests": Result.log, "seams": Result.seams}, handle, default=repr)
     print(f"{len(Result.log)} tests, {sum(len(v.get('calls', [])) for v in Result.log.values())} Router calls, {len(result.failures)} failures, {len(result.errors)} errors", file=sys.stderr)

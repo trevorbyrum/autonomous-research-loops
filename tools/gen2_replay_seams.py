@@ -8,14 +8,18 @@
              `datetime.now` is one reading per millisecond of a fixed instant and `secrets.token_hex` a counter, each counting in a file the children of the test share, and the
              ids start in a range (a leading 8) the recorder's own counter never reaches, so a child never mints an id the test process minted.
   polling    `Settle`: how many times a supervisor polls a job depends on whether the real process had ended when the first poll came; see the class.
+  accounting Every Python interpreter a process of the test starts is noted (`launched`, by an audit hook, PEP 578) and every child that armed itself notes `armed`: the recorder
+             reports both per test, so a child that did not get the seams is seen, not assumed away.
 
 How a child gets the seams without a production change: the recorder points GEN2_CHILD_ROOT (the documented place a gen-2 child imports the code from, gen2/tests/children.py) and
 PYTHONPATH at an overlay directory holding a link to the tree's `gen2/` and a link to this file named `sitecustomize.py`, which Python imports on start (`__name__` is then
-"sitecustomize"). All of it works only while ENV names the test's registry directory: unset or empty, every function here returns the real answer. A test that asserts the real
-identity of a job process runs with ENV unset and stays real. Outside a replay run nothing here is loaded.
+"sitecustomize"). All of it works only while ENV names the test's registry directory: unset or empty, every function here returns the real answer (the identity, the polls, the
+audit hook), and a child that starts without it installs nothing, so its clock, ids and imports are the stock ones. A test that asserts the real identity of a job process runs
+with ENV unset and stays real in all of these. Outside a replay run nothing here is loaded.
 """
 from __future__ import annotations
 
+import collections
 import contextlib
 import datetime
 import fcntl
@@ -60,6 +64,39 @@ def ordinal(real: str) -> int:
         return seen.index(real) + 1
 
 
+def note(name: str, line: str) -> None:
+    """Add a line to the test's registry file `name`."""
+    with registry(name) as handle:
+        handle.write(line + "\n")
+
+
+def kind(argv: list) -> str:
+    """What an interpreter was told to run, as one word: a script's name, `-m module` or `-c`."""
+    first = str(argv[1]) if len(argv) > 1 else ""
+    return f"-m {argv[2]}" if first == "-m" and len(argv) > 2 else first if first.startswith("-") else os.path.basename(first)
+
+
+def launching(event: str, args: tuple) -> None:
+    """Audit hook: the test's processes note each Python interpreter they start (`subprocess.Popen` of an argv list that names one) by what it runs."""
+    if event == "subprocess.Popen" and os.environ.get(ENV) and isinstance(args[1], (list, tuple)) and args[1] and os.path.basename(str(args[1][0])).startswith("python"):
+        note("launched", kind(list(args[1])))
+
+
+def account() -> dict:
+    """For the test now running: the Python interpreters its processes started, the children that armed themselves, the kinds that were started and did not arm, and how many
+    children asked for a job process's identity."""
+    seen = {}
+    for name in ("launched", "armed", "identified"):
+        try:
+            with open(os.path.join(os.environ[ENV], name), encoding="utf-8") as handle:
+                seen[name] = collections.Counter(handle.read().splitlines())
+        except (KeyError, FileNotFoundError):
+            seen[name] = collections.Counter()
+    unarmed = dict(seen["launched"] - seen["armed"])
+    by_children = len(set(seen["identified"]) - {str(os.getpid())})  # the processes other than the recorder that asked for an identity
+    return {"launched": sum(seen["launched"].values()), "armed": sum(seen["armed"].values()), **({"unarmed": unarmed} if unarmed else {}), **({"identified_by_children": by_children} if by_children else {})}
+
+
 def tick(name: str) -> int:
     """The next value of a counter the test's children share."""
     with registry(name) as handle:
@@ -75,6 +112,7 @@ def replaced(fingerprint):
         if not os.environ.get(ENV):
             return real
         n = ordinal(real)
+        note("identified", str(os.getpid()))
         return f"pid={1000 + n};starttime={2000 + n};session={1000 + n}"
     return virtual
 
@@ -114,13 +152,17 @@ class Wrap(importlib.abc.MetaPathFinder):
 
 
 def install(*, child: bool) -> None:
-    """In the recorder (child=False): the identity. In a child (child=True): the identity, and the clock and the ids."""
+    """In the recorder (child=False): the identity. In a child (child=True): the identity, and the clock and the ids; a child of a test that runs real installs nothing."""
+    if child and not os.environ.get(ENV):
+        return
+    sys.addaudithook(launching)
     module = sys.modules.get(JOBS)
     if module is not None:
         module.fingerprint = replaced(module.fingerprint)
     else:
         sys.meta_path.insert(0, Wrap())
     if child:
+        note("armed", kind(sys.orig_argv))
         datetime.datetime = ChildDatetime
         secrets.token_hex = child_tokens(secrets.token_hex)
 
@@ -129,19 +171,28 @@ class Settle:
     """The poll schedule. How many times a supervisor polls a job, and so how many router calls, clock readings and ids a test makes, depends on whether the real process had
     ended when the first poll came. The first time a supervisor looks at a launch that has recorded its identity and no end (`Supervisor._observe`, once per advance), it waits,
     up to CAP_S, for the launch to record its end, so that look finds the end however fast the process ran. A job that does not end in CAP_S (one that hangs, or waits for a gate
-    the test opens) is looked at as in production, and where its polls then differ between runs the comparison says so."""
+    the test opens) is looked at as in production, and where its polls then differ between runs the comparison says so. A test that runs real (ENV unset) is looked at as in
+    production throughout: `stats` counts, for the test now running, the looks that waited and those that waited the whole CAP_S."""
     CAP_S = 1.5
     looked: set = set()
+    stats: collections.Counter = collections.Counter()
+
+    @staticmethod
+    def look(job) -> None:
+        launch = (str(job.dir), (job.read("spawn.json") or {}).get("attempts"))
+        if launch not in Settle.looked and (job.dir / "identity.json").exists():
+            Settle.looked.add(launch)
+            deadline = time.monotonic() + Settle.CAP_S
+            while not (job.dir / "exit.json").exists() and time.monotonic() < deadline:
+                time.sleep(0.001)
+            Settle.stats["waited"] += 1
+            Settle.stats["capped"] += not (job.dir / "exit.json").exists()
 
     @staticmethod
     def first_look(observe):
         def wrapped(self, job, order, journal):
-            launch = (str(job.dir), (job.read("spawn.json") or {}).get("attempts"))
-            if launch not in Settle.looked and (job.dir / "identity.json").exists():
-                Settle.looked.add(launch)
-                deadline = time.monotonic() + Settle.CAP_S
-                while not (job.dir / "exit.json").exists() and time.monotonic() < deadline:
-                    time.sleep(0.001)
+            if os.environ.get(ENV):
+                Settle.look(job)
             return observe(self, job, order, journal)
         return wrapped
 
