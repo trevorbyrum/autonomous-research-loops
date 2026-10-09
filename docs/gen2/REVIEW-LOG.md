@@ -1893,3 +1893,19 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check`: 2,470 tests; 2,406 of 2,406 mutants killed, including 24 accounting mutants.
   - `gen2-gateway`: 1,540 tests twice; 413 of 413 mutants killed.
 - **No new non-blocking items.** 2c-2 dispatched (`docs/gen2/tasks/2c-2.md`).
+
+## 2026-10-09: 2c-2a (attributable semantic assessments and source lineage): round 1 BLOCK, on the landing gate only
+- **Context:** 2c-2 was split at the design stage (~900 lines estimated). 2c-2a was coded by Sol `647d8de0` and landed at `bfe0975`.
+- **Astra review** `07b3a13b` (`private/reviews/gen2-2c-2a-astra-review-20261009.md`): **A PASS, B PASS, C BLOCK, all ROOT-CAUSE.**
+- **What passed:**
+  - **Admission:** limited to authorized actors, with attribution set by the Router.
+  - **Storage:** immutable DDL with foreign keys and a binding trigger; replay-safe.
+  - **Accounting:** stays pure; label conversion only.
+  - **Lineage:** shared origin keeps the works distinct.
+  - **The 2a/2b split** is coherent.
+  - **The coder's pre-commit snapshot method** is sound.
+- **F1 (blocking):** `Router.evidence_inventory` is missing from the composition test's `PUBLIC_API`.
+  - The landing `gen2-check` exited 2: 2,490 tests, 3 failures, all from this one cause. The trigger-order and full-mutation stages didn't run.
+  - `gen2-gateway` was green: 1,540 tests twice, 413 of 413 mutants killed.
+- **NB1:** the assessment collaborator is missing from `COLLABORATORS`.
+- **Routed:** `docs/gen2/tasks/2c-2a-repair-1.md`, round 1 of 3, to Sol.
