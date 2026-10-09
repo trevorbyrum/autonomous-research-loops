@@ -1987,3 +1987,17 @@ The post-2q Gate D is renumbered #5.
   - A reference-model test that enumerates the completions.
 - **Routed:** `docs/gen2/tasks/2c-3a-repair-2.md`, **round 3 of 3 (the cap)**.
 - **Operator informed:** Astra flags this as a blocking mitigation to escalate. It is not accepted as debt.
+
+## 2026-10-09: 2c-3a round 3 (2c-3a-repair-2): PASS, and 2c-3a is accepted
+- **Astra** (`634edab2`, pinned e9c0a47; `private/reviews/gen2-2c-3a-r3-astra-review-20261009.md`): **A, B and C all PASS, ROOT-CAUSE. "2c-3a is ACCEPTED."** No operator decision is needed at the round cap.
+- **The fix:**
+  - Coverage resolves global credit dependencies before it applies scope.
+  - Recoverable chain gaps are treated as indeterminate.
+  - Bounds are sound under the Addendum 1 completion semantics.
+- **Astra's checks:**
+  - All three round-2 probes now give `unknown`, with their controls holding.
+  - The 1,250 bound cases and 5,000 refinements are preserved.
+- **Coder's reference model:** 2,754 completions, 0 disagreements, 27 conservative unknowns.
+- **Landing at e9c0a47:** `gen2-check` green (2,585 tests). Gateway carried forward.
+- **Lesson:** the window-projection family took three rounds. Doing the research addendum before round 3 is what closed it.
+- **Next:** 2c-3b dispatched (`docs/gen2/tasks/2c-3b.md`).
