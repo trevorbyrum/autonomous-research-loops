@@ -1,0 +1,15 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json#/$defs/confidence_scheme",
+    "expect": "valid",
+    "tests": "2c-4a part 1: example plan-specific categorical scale; no engine default"
+  },
+  "instance": {
+    "scheme_id": "plan-corroboration",
+    "version": 1,
+    "labels": {
+      "corroborated": "Independent retained evidence agrees within the declared scope.",
+      "tentative": "Retained evidence is relevant but material limitations remain."
+    }
+  }
+}

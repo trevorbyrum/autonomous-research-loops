@@ -1,0 +1,1 @@
+{"fixture":{"schema":"contract-v2.schema.json#/$defs/confidence_scheme","expect":"invalid","tests":"2c-4a part 1: confidence-label refused in isolation","base":"valid-confidence-scheme.json","patch":[{"op":"add","path":"/labels/","value":"A rubric for an invalid empty label."}],"errors":[{"keyword":"minLength","path":"/labels"}]}}

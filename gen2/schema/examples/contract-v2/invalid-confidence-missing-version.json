@@ -1,0 +1,1 @@
+{"fixture":{"schema":"contract-v2.schema.json#/$defs/confidence_scheme","expect":"invalid","tests":"2c-4a part 1: confidence-missing-version refused in isolation","base":"valid-confidence-scheme.json","patch":[{"op":"remove","path":"/version"}],"errors":[{"keyword":"required","path":""}]}}

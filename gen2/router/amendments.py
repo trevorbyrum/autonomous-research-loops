@@ -56,8 +56,11 @@ governing design:
             reframe"); methodology §2's revision taxonomy (replacing the
             framing is the changed-objective boundary). Any change of these,
             or of the framing version, is `reframed`.
-  protocol  the protocol revision, eligibility protocol, stopping profiles
-            and applicability rules (G-1: the lock covers that protocol;
+  protocol  the protocol revision, eligibility protocol, stopping profiles,
+            applicability rules and optional confidence scheme (2c-4a:
+            its identity, version, labels and rubrics are approved protocol;
+            addition/removal also changes it; there is no default scale)
+            (G-1: the lock covers that protocol;
             G-7: eligibility, required access tier, stopping
             interpretation; RG-6: labels under an old protocol do not count
             under the new one), and the approved inventory (G-1): every
@@ -136,7 +139,7 @@ from gen2.accounting.stopping import bind_profile
 from gen2.router import boundary
 from gen2.router.boundary import Refusal, instant
 
-PROTOCOL_SECTIONS = ("eligibility_protocol", "stopping_profiles", "applicability_rules")
+PROTOCOL_SECTIONS = ("eligibility_protocol", "stopping_profiles", "applicability_rules", "confidence_scheme")
 BRIEF_LINEAGE = ("version", "parent_version", "created_at", "content_hash")
 COMPATIBLE = ("current", "compatible", "lineage_only")
 ENDED = ("committed", "failed", "cancelled")
@@ -213,7 +216,7 @@ def framing(doc: dict) -> dict:
 
 
 def protocol(doc: dict) -> dict:
-    """What a protocol revision names: the eligibility protocol, stopping profiles and applicability rules."""
+    """Protocol content, including a declared confidence scheme; absence supplies no scale."""
     return {k: doc.get(k) for k in PROTOCOL_SECTIONS}
 
 

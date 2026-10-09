@@ -793,6 +793,8 @@ def _inventory():
     MANUAL.update(STOPPING_PROTOCOL_CONTROLS)
     from gen2_mutants.views_2c4b import CONTROLS as VIEW_CONTROLS
     MANUAL.update(VIEW_CONTROLS)
+    from gen2_mutants.confidence_2c4a import CONTROLS as CONFIDENCE_CONTROLS
+    MANUAL.update(CONFIDENCE_CONTROLS)
     return gen2_mutations
 
 

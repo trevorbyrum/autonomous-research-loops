@@ -9397,6 +9397,97 @@
   ],
   "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
  },
+ "2C4A-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-id": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-id-required": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-label": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-labels-bounded": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-labels-nonempty": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-labels-object": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-labels-required": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-object": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-protocol-content": {
+  "by_hand": true,
+  "controls": [
+   "test_confidence_contract.SchemeClassificationTest.test_control_unchanged_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-rubric": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-version": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
+ "2C4A-version-required": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_confidence_scheme"
+  ],
+  "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
+ },
  "2C4B-active-lifecycle-standing": {
   "by_hand": true,
   "controls": [

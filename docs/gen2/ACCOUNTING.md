@@ -437,7 +437,7 @@ Existing ledger admissions ML-0033–0045 cover these accounting paths. This
 slice adds no module, dependency edge, reachability, Router member or numeric
 exemption; the baseline and committed metrics ledger need no changes.
 
-## 2c-4 design note (2026-10-09, before implementation; BLOCKED)
+## 2c-4 design note (2026-10-09; original blocked proposal)
 
 Input tip: `0da76bdda79411f88fb90ce38a0331bc7383dad1`, branch `gen2`.
 Sources: plan audit `gen2-phase2-plan-audit-astra-20260929.md` F9 and rows
@@ -538,6 +538,77 @@ research-state views and remaining fixtures, including the contradiction
 visible in the dossier, mapping and bundle. Tests must use hand-written
 expected records, prove an exact round trip, preserve explicit unknown
 confidence and old `/1` meaning, and pair every new guard with a mutant.
+
+### 2c-4a: ruled design and split (2026-10-09, before code)
+
+Input tip: `5d03caab6ffad2c31e4c3b5fdea676bcb8f0282d`, branch `gen2`.
+The operator rulings in tasks/2c-4.md and tasks/2c-4a.md supersede the
+original decision boundary above. Adopt vocabulary A and confidence A;
+the reconciliation table stands, with `open` admitted as a separate
+not-yet-assessed state. Every contradiction and deferral record survives.
+Views (4b) are already accepted. The engine selects no confidence scale.
+
+**Contract binding.** Add optional `confidence_scheme` to Contract v2,
+following 2c-3b2's additive declaration style: existing documents remain
+valid, with no implicit scheme. The closed object contains `scheme_id`,
+integer `version`, and a nonempty `labels` object mapping each allowed label
+to its nonempty textual rubric. A map gives each label exactly one definition;
+it contains no numeric confidence or engine-provided labels. Canonical
+contract hashing includes the entire declaration, and the existing exact-hash
+operator approval approves it. Add the declaration to the existing protocol
+content comparison: addition, removal, id/version, label-set and rubric
+changes require a new protocol revision and record `protocol_changed` through
+the existing G-1 amendment-impact path. Unchanged declarations preserve
+compatibility for otherwise compatible edits. No new approval path or DDL.
+
+**Remaining pure mapping.** Define explicit typed obligation-assessment
+operands in `gen2/accounting`: assessment identity, topic/obligation subject,
+invocation/actor attribution, contract/protocol/framing pins, evidence
+references, recorded date, reason, explicit predecessor, disposition and
+confidence. An open obligation is an explicit unassessed operand, not a
+judgment inferred from counts or registry text. Admission of a recorded
+confidence must check scheme id, version and label against that operand's
+approved contract revision; absence of a declaration permits only explicit
+unknown confidence with its retained reason. Historical judgments retain
+their own contract pins and full original records beside recorded G-1 standing.
+The mapper keeps all supplied assessment/deferral history, contradiction and
+branch history, lifecycle, semantic and lineage operands, including competing
+judgments and explicit replacements. It never manufactures assessments.
+
+**Additive bundle.** Create a separate export-bundle-v2.schema.json using
+unchanged `/1` definitions by reference where their meanings still apply.
+Replace obligation and completion representations and add the typed history
+envelope. Carry all five G-9 outcomes independently of scientific completion,
+with required qualifications/residual uncertainty as applicable. Keep `/1`
+schema bytes and fixtures unchanged. A hand-written dossier-input fixture
+containing 2c-2b2a unresolved contradiction records must map into a valid `/2`
+bundle and decode back to exactly those operands. Assembly/approval/delivery
+remain on the existing Phase-3 Router/export path in EXPORT-API; this slice
+adds no exporter, delivery or publication authority.
+
+**Re-estimate and split.** Full 4a is **about 800 hand-written lines**:
+contract declaration/G-1 binding and its independent oracles/fixtures/mutants
+300; typed reconciliation and inverse 110; additive history/bundle schemas
+160; round-trip/contradiction/admission tests 140; remaining mutants/docs 90.
+The original 490-line estimate omitted explicit input-history schema shapes
+and moved the end-to-end contradiction fixture to 4b; the accepted 4a brief
+requires them here. Split into **2c-4a-part-1** (about 300 lines: contract
+declaration, hashing/approval, protocol classification, fixtures and paired
+mutants) and **2c-4a-part-2** (about 500 lines: remaining mapping, `/2`, exact
+round trip, contradiction fixture and guards). Implement part 1 only and stop
+for review; re-estimate part 2 before code. No disposition mapping or recorded
+confidence admission is claimed complete by part 1.
+
+**Registered follow-on production obligation (owner 2d/2e).** There is no
+durable obligation-assessment inventory in the accepted records. 2d owns
+durable admission/retention, the approved-revision snapshot and bundle assembly;
+2e owns attributable judgment production under the approved scheme. Removal
+condition: production supplies the explicit typed records, checks the exact
+approved contract scheme at admission, retains evidence/pins/predecessors and
+all deferrals, and exercises them through the authorized export path. Until
+then part 2 uses explicit fixture operands; claim counts, rule status and
+registry subject prose supply no assessment authority. This is registered
+here for the orchestrator to track; the coder does not edit DEBT-REGISTER.
 
 ## 2c-4b: snapshot coverage and depth views (2026-10-09, before code)
 

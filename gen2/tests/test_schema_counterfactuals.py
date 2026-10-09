@@ -44,6 +44,7 @@ runtime behaviour.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -93,6 +94,18 @@ class FixtureCounterfactualTest(unittest.TestCase):
             shutil.copyfile(REPO / "docs" / "gen2" / "BOUNDARIES.md", root / "docs" / "gen2" / "BOUNDARIES.md")
             for name, filename in OVERRIDES.items():
                 shutil.copyfile(globals()[name], root / "gen2" / "schema" / filename)
+            # Reuse the literal legacy contract rather than commit its entire
+            # duplicate for one optional property. Both expected verdicts and
+            # the scalar negative's single type error are independent oracles.
+            examples = root / "gen2" / "schema" / "examples" / "contract-v2"
+            full = json.loads((examples / "valid-two-obligations.json").read_text())
+            full["instance"]["confidence_scheme"] = json.loads((examples / "valid-confidence-scheme.json").read_text())["instance"]
+            (examples / "valid-confidence-contract-probe.json").write_text(json.dumps(full))
+            negative = {"fixture": {"schema": "contract-v2.schema.json", "expect": "invalid",
+                "tests": "2c-4a: declaration must be an object, isolated from its members",
+                "base": "valid-confidence-contract-probe.json", "patch": [{"op": "replace", "path": "/confidence_scheme", "value": "a scale"}],
+                "errors": [{"keyword": "type", "path": "/confidence_scheme"}]}}
+            (examples / "invalid-confidence-type-probe.json").write_text(json.dumps(negative))
             result = subprocess.run([sys.executable, str(CHECKER), "--root", str(root), "--part", "schemas"],
                                     capture_output=True, text=True, timeout=120, env=ENV)
         cls.failures: dict[str, list[str]] = {}
@@ -113,6 +126,25 @@ class FixtureCounterfactualTest(unittest.TestCase):
 
     def test_control_stopping_families_and_old_document(self):
         self.assertBehaveAsDeclared("contract-v2", "valid-descriptive.json", "valid-coverage.json", "valid-two-obligations.json")
+
+    def test_control_confidence_scheme(self):
+        self.assertBehaveAsDeclared("contract-v2", "valid-confidence-scheme.json", "valid-confidence-contract-probe.json", "valid-two-obligations.json")
+
+    def test_confidence_scheme_closed(self):
+        self.assertBehaveAsDeclared("contract-v2", "invalid-confidence-extra.json", "invalid-confidence-type-probe.json")
+
+    def test_confidence_scheme_required_members(self):
+        self.assertBehaveAsDeclared("contract-v2", "invalid-confidence-missing-id.json", "invalid-confidence-missing-version.json",
+                                   "invalid-confidence-missing-labels.json")
+
+    def test_confidence_scheme_identity_version(self):
+        self.assertBehaveAsDeclared("contract-v2", "invalid-confidence-id.json", "invalid-confidence-version.json")
+        self.assertBehaveAsDeclared("contract-v2", "invalid-confidence-version-type.json")
+
+    def test_confidence_scheme_labels_and_rubrics(self):
+        self.assertBehaveAsDeclared("contract-v2", "invalid-confidence-labels-type.json", "invalid-confidence-empty-labels.json",
+                                   "invalid-confidence-label.json", "invalid-confidence-empty-rubric.json", "invalid-confidence-numeric-rubric.json")
+        self.assertBehaveAsDeclared("contract-v2", "invalid-confidence-too-many-labels.json")
 
     def test_descriptive_has_no_threshold_parameters(self):
         self.assertBehaveAsDeclared("contract-v2", "invalid-descriptive-parameter.json")

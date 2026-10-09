@@ -369,10 +369,10 @@ MUTATIONS: list[Mutation] = [
            (AM + "CompatibilityRuleTest.test_each_section_is_classed_as_the_design_says", AM + "InventoryImpactTest.test_a_filled_gap_lets_work_complete_and_its_claim_promote"),
            " and not any(_same(was, cell) for was in old.get(pair, ()))", ""),
           *((f"protocol-without-{part}", f"an edit of the {what} alone is compatible", (AM + "CompatibilityRuleTest.test_each_section_is_classed_as_the_design_says",),
-             'PROTOCOL_SECTIONS = ("eligibility_protocol", "stopping_profiles", "applicability_rules")', new)
-            for part, what, new in (("eligibility", "eligibility protocol", 'PROTOCOL_SECTIONS = ("stopping_profiles", "applicability_rules")'),
-                                    ("stopping", "stopping profiles", 'PROTOCOL_SECTIONS = ("eligibility_protocol", "applicability_rules")'),
-                                    ("applicability", "applicability rules", 'PROTOCOL_SECTIONS = ("eligibility_protocol", "stopping_profiles")'))),
+             'PROTOCOL_SECTIONS = ("eligibility_protocol", "stopping_profiles", "applicability_rules", "confidence_scheme")', new)
+            for part, what, new in (("eligibility", "eligibility protocol", 'PROTOCOL_SECTIONS = ("stopping_profiles", "applicability_rules", "confidence_scheme")'),
+                                    ("stopping", "stopping profiles", 'PROTOCOL_SECTIONS = ("eligibility_protocol", "applicability_rules", "confidence_scheme")'),
+                                    ("applicability", "applicability rules", 'PROTOCOL_SECTIONS = ("eligibility_protocol", "stopping_profiles", "confidence_scheme")'))),
           # a label names one content: an unchanged one keeps its label, a changed one takes a new label above every recorded one
           ("unchanged-relabelled", "an unchanged framing or protocol takes a new label",
            (AM + "VersionBindingTest.test_an_unchanged_framing_keeps_its_version", AM + "VersionBindingTest.test_a_protocol_revision_names_one_protocol"),
