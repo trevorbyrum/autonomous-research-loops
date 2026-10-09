@@ -1948,3 +1948,13 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check`: 2,521 tests; 2,500 of 2,500 mutants killed.
   - `gen2-gateway`: 1,540 tests twice; 413 of 413 mutants killed.
 - **Next:** 2c-2b2b dispatched (`docs/gen2/tasks/2c-2b2b.md`).
+
+## 2026-10-09: 2c-2b2b (accrual operands, G-1 label selection, E-9 re-screening views): PASS on first review; 2c-2 complete
+- **Astra** (`cbb1d9c5`, pinned 7941ea3; `private/reviews/gen2-2c-2b2b-astra-review-20261009.md`): **A, B and C all PASS, ROOT-CAUSE. "2c-2b2b is ACCEPTED; 2c-2 is complete."**
+  - No blocking or non-blocking findings.
+  - No boundary drift or research misuse.
+- **G-1 label selection:** uses revision identity plus recorded standing only. Invalidation is checked first, and a label stays stale however it is cycled. Astra probed all 364 sequences of length 0 to 5. Unknown is kept separate from stale.
+- **`as_of`:** limits the histories, not the approval authority.
+- **E-9:** consumes recorded reopenings only.
+- **Landing at 7941ea3: `gen2-check` green on the first run.** The `gen2-gateway` record was carried forward from c1ffb16, since nothing in the gateway has changed.
+- **Next:** 2c-3 dispatched (`docs/gen2/tasks/2c-3.md`).
