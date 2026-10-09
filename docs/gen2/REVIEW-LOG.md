@@ -1824,3 +1824,10 @@ The post-2q Gate D is renumbered #5.
 - **2q-b11's repeated landing run** (on a mostly idle machine, as a systemd unit) **failed the same test again**: `test_children` readiness ("database is locked", the child classified as still running at 5.0 s). It passes alone 10 of 10 times, and it passed in 2q-b10's landing run. **The earlier "flake under load" reading (DEBT-028) is therefore doubtful.** This could be a test-isolation or lock interaction that appears in the full suite at 2q-b11; the cause is unknown and needs investigating before 2q-b11 is accepted.
 - **2q-t4b:** commits `e9d090e` and `5de8d7f`; the replay pair 1 finished (before-1, after-1), and pair 2 was stopped by the pause. The coder (`157195fc`) is stopped.
 - **Nothing is running.** Resume from: investigate the 2q-b11 landing failure; finish the 2q-t4b replays and review; the 2q debt slice (DEBT-026, DEBT-027, DEBT-028); Gate D #5.
+
+## 2026-10-09: RESUMED (the operator raised `agent-hub` to 24 vCPUs and 62 GB)
+- **2q-b11 landing investigation:** the readiness failure is a race in the **test helper** `gen2/tests/children.py::started`, not in 2q-b11's change. `poll()` runs immediately after EOF, while an exiting child can still be unreaped.
+  - Evidence: full `gen2-test` runs at 2q-b11 (twice) and 2q-b10 (once) all pass on the new VM (`private/evidence/2q-b11/investigation/`).
+  - DEBT-028 is updated with the cause and fix.
+  - Landing attempt 3 at `7e59054` is running.
+- 2q-t4b has resumed: rebuild `/tmp`, then replay pairs 2 and 3.
