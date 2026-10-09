@@ -8551,6 +8551,223 @@
   ],
   "why": "A strictly later same-topic/kind/identity successor appends a resolution and preserves the original unresolved record."
  },
+ "2C2B2B-branch-date": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-branch-disagreement": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-branch-empty": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-branch-identity": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-branch-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-branch-replacement": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-branch-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-compatible-revision": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_compatible"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-current-impact": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_compatible"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-current-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-cycling": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_compatible"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-effective-labels": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-invalidation": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_compatible"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-lifecycle-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-lifecycle-version": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-lifecycle-work": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-lineage-join": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-missing-current": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-missing-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_compatible"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-read-approved": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.SnapshotTest.test_control_empty_topic"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-read-current": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.SnapshotTest.test_control_empty_topic"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-read-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.SnapshotTest.test_control_initial"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-read-reopened": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.SnapshotTest.test_control_context"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-read-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.SnapshotTest.test_control_context"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-read-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.SnapshotTest.test_control_context"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-reopened-exclusion": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_reopened"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-reopened-id": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_reopened"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-revision-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_compatible"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-semantic-date": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-semantic-version": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
+ "2C2B2B-semantic-work": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.AccrualTest.test_control_current"
+  ],
+  "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

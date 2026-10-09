@@ -224,3 +224,40 @@ reuse; invalidation/missing standing yields stale/unknown, with no revival by
 label cycling. Consume recorded reopened exclusions for E-9, retaining their
 reason-coded old-framing assessments and an unaffected-framing control. No
 protocol comparison, inferred impact or judgment production (2e; plan audit F3).
+
+### 2c-2b2b design note (2026-10-09, before implementation)
+
+Estimate: **about 480 hand-written lines**, without a further split: typed
+operands/arithmetic 150, snapshot adapter 25, fixtures/properties 180,
+paired mutants 85, documentation/ledger 40 (generated controls excluded).
+No new write path, DDL, provider call or authority grant is needed.
+
+The existing inventory snapshot additionally reads the recorded approved
+contract revision, typed contract amendment standing/reopened exclusion IDs,
+and reason-coded screening history. Pure accounting returns semantic operands
+with retained assessment, exact assessment-linked lineage and exact work/version
+lifecycle with each disposition's standing; branch operands retain promote/park/drop history and only explicitly
+unreplaced dated dispositions. Competing records remain visible. These are
+operands for 2c-3, never sufficiency or scheduling judgments.
+
+Label selection uses revision identity and recorded standing only. A current
+approved revision stands; an older revision needs explicit compatibility in
+the impact naming the snapshot's current revision. Any recorded invalidation
+is sticky, including across label cycling; missing standing is unknown.
+Stale/unknown semantic operands expose unknown effective labels while retaining
+the original labels. Missing or unusable branch records yield unknown operands,
+never an inferred active/parked status. The supplied date limits semantic and
+branch histories and lifecycle replacements; standing describes the current
+snapshot context, not a reconstruction of historical approval authority.
+
+E-9 returns the recorded reopened exclusion assessments, with original framing,
+protocol, reason and attribution, without treating a changed framing as an
+inferred reopening. Tests specify compatibility, invalidation, missing standing,
+cycling, exact lineage/version joins, lifecycle/branch reversals, disagreement,
+and reframe versus unaffected controls by hand. Hypothesis checks unrelated
+append invariance, future-history invariance and unknown propagation. Every
+selection guard has a paired mutant. Judgment production stays in 2e.
+
+Implementation keeps the existing module graph and metric budgets; the current
+accounting/adapter and instant-helper ledger admissions cover these reads. The
+new context-read helper keeps snapshot assembly below its complexity threshold.

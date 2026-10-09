@@ -30,7 +30,25 @@ def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory
     lineage = tuple(a.SourceLineage(**l) for l in rows.select("source_lineage") if l["assessment_id"] in ids)
     lifecycle = tuple(read_lifecycle(r) for r in rows.select("source_lifecycle", where))
     dispositions = tuple(read_registry_disposition(r) for r in rows.select("registry_dispositions", where))
-    return a.Inventory(history, observations, retrievals, links, assessments, claims, passes, semantic, lineage, lifecycle, dispositions)
+    current, impacts, screening = read_context(rows, where)
+    return a.Inventory(history, observations, retrievals, links, assessments, claims, passes, semantic, lineage, lifecycle, dispositions,
+                       current, impacts, screening)
+
+
+def read_context(rows: Rows, where: Mapping[str, object]) -> tuple[int | None, tuple[a.AmendmentImpact, ...], tuple[a.ScreeningAssessment, ...]]:
+    approved = rows.select("contract_revisions", {**where, "status": "approved"})
+    current = approved[0]["revision"] if approved else None
+    impacts = tuple(read_impact(r) for r in rows.select("amendment_impacts", {**where, "kind": "contract"}))
+    screening = tuple(a.ScreeningAssessment(**{k: v for k, v in r.items() if k not in {"topic_id", "criterion_results"}})
+                      for r in rows.select("screening_assessments", where))
+    return current, impacts, screening
+
+
+def read_impact(record: dict) -> a.AmendmentImpact:
+    doc = record["document"]
+    return a.AmendmentImpact(record["decision_id"], doc["current"]["revision"],
+                             tuple(a.RevisionStanding(**s) for s in doc.get("standing", ())),
+                             tuple(doc.get("reopened_exclusions", ())), record["recorded_at"])
 
 
 def read_registry_disposition(record: dict) -> a.RegistryDisposition:

@@ -783,6 +783,8 @@ def _inventory():
     MANUAL.update(LIFECYCLE_CONTROLS)
     from gen2_mutants.dispositions_2c2b2 import CONTROLS as DISPOSITION_CONTROLS
     MANUAL.update(DISPOSITION_CONTROLS)
+    from gen2_mutants.accrual_2c2b2b import CONTROLS as ACCRUAL_CONTROLS
+    MANUAL.update(ACCRUAL_CONTROLS)
     return gen2_mutations
 
 

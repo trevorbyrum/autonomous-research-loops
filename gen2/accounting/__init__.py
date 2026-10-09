@@ -172,6 +172,43 @@ class RegistryDisposition:
     created_at: str
 
 
+Standing = Literal["current", "compatible", "stale", "unknown"]
+
+
+@dataclass(frozen=True)
+class RevisionStanding:
+    revision: int
+    classification: str
+
+
+@dataclass(frozen=True)
+class AmendmentImpact:
+    decision_id: str
+    current_revision: int
+    standing: tuple[RevisionStanding, ...]
+    reopened_exclusions: tuple[str, ...]
+    recorded_at: str
+
+
+@dataclass(frozen=True)
+class ScreeningAssessment:
+    assessment_id: str
+    work_id: str
+    contract_revision: int
+    eligibility_protocol_version: int
+    framing_version: int
+    stage: str
+    decision: str
+    reason_code: str | None
+    actor_kind: str
+    invocation_id: str | None
+    decision_receipt_id: str | None
+    operator_decision_id: str | None
+    supersedes_assessment_id: str | None
+    recorded_by_operation_id: str
+    created_at: str
+
+
 @dataclass(frozen=True)
 class Inventory:
     history: History
@@ -185,6 +222,94 @@ class Inventory:
     source_lineage: tuple[SourceLineage, ...] = ()
     source_lifecycle: tuple[SourceDisposition, ...] = ()
     registry_dispositions: tuple[RegistryDisposition, ...] = ()
+    current_contract_revision: int | None = None
+    amendment_impacts: tuple[AmendmentImpact, ...] = ()
+    screening_history: tuple[ScreeningAssessment, ...] = ()
+
+
+def label_standing(inventory: Inventory, revision: int) -> Standing:
+    """Recorded G-1 authority only; an invalidation cannot be undone by cycling."""
+    listed = tuple(s.classification for impact in inventory.amendment_impacts
+                   for s in impact.standing if s.revision == revision)
+    if any(c not in ("compatible", "lineage_only") for c in listed):
+        return "stale"
+    if inventory.current_contract_revision is None:
+        return "unknown"
+    if revision == inventory.current_contract_revision:
+        return "current"
+    current = tuple(s.classification for impact in inventory.amendment_impacts
+                    if impact.current_revision == inventory.current_contract_revision
+                    for s in impact.standing if s.revision == revision)
+    return "compatible" if current else "unknown"
+
+
+@dataclass(frozen=True)
+class LifecycleOperand:
+    record: SourceDisposition
+    standing: Standing
+
+
+@dataclass(frozen=True)
+class SemanticOperand:
+    assessment: SemanticAssessment
+    standing: Standing
+    lineage: tuple[SourceLineage, ...]
+    lifecycle: tuple[LifecycleOperand, ...]
+
+    @property
+    def labels(self) -> tuple[str, str, str, str]:
+        if self.standing not in ("current", "compatible"):
+            return ("unknown", "unknown", "unknown", "unknown")
+        r = self.assessment
+        return (r.novelty, r.independence, r.applicability, r.contribution)
+
+
+def semantic_accrual(inventory: Inventory, work_id: str, source_version: str, as_of: str) -> tuple[SemanticOperand, ...]:
+    """Retain judgments and exact lineage/version joins; never infer contribution."""
+    instant = utc_instant_ns(as_of)
+    lifecycle = tuple(LifecycleOperand(r, label_standing(inventory, r.contract_revision)) for r in lifecycle_view(inventory.source_lifecycle, as_of)
+                      if (r.work_id, r.source_version) == (work_id, source_version))
+    return tuple(SemanticOperand(r, label_standing(inventory, r.contract_revision),
+                                tuple(l for l in inventory.source_lineage if l.assessment_id == r.assessment_id), lifecycle)
+                 for r in sorted(inventory.semantic_assessments, key=lambda r: r.assessment_id)
+                 if (r.work_id, r.source_version) == (work_id, source_version) and utc_instant_ns(r.created_at) <= instant)
+
+
+@dataclass(frozen=True)
+class BranchOperand:
+    record: RegistryDisposition
+    standing: Standing
+
+
+@dataclass(frozen=True)
+class BranchAccrual:
+    history: tuple[RegistryDisposition, ...]
+    active: tuple[BranchOperand, ...]
+
+    @property
+    def dispositions(self) -> tuple[str, ...] | None:
+        if not self.active or any(r.standing not in ("current", "compatible") for r in self.active):
+            return None
+        return tuple(r.record.disposition for r in self.active)
+
+
+def branch_accrual(inventory: Inventory, registry_id: str, as_of: str) -> BranchAccrual:
+    """Recorded proposals only, retaining reversals and competing judgments."""
+    instant = utc_instant_ns(as_of)
+    history = tuple(sorted((r for r in inventory.registry_dispositions
+                            if r.registry_kind == "branch" and r.registry_id == registry_id and utc_instant_ns(r.created_at) <= instant),
+                           key=lambda r: (utc_instant_ns(r.created_at), r.disposition_id)))
+    replaced = {r.supersedes_id for r in history if r.supersedes_id is not None}
+    active = tuple(BranchOperand(record, label_standing(inventory, record.contract_revision))
+                   for record in history if record.disposition_id not in replaced)
+    return BranchAccrual(history, active)
+
+
+def rescreening_view(inventory: Inventory) -> tuple[ScreeningAssessment, ...]:
+    """E-9: retain reason-coded old assessments; consume recorded reopenings."""
+    reopened = {assessment_id for impact in inventory.amendment_impacts for assessment_id in impact.reopened_exclusions}
+    return tuple(sorted((r for r in inventory.screening_history if r.assessment_id in reopened and r.decision == "exclude"),
+                        key=lambda r: r.assessment_id))
 
 
 @dataclass(frozen=True)
