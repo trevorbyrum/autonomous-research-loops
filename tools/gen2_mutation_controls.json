@@ -9397,6 +9397,195 @@
   ],
   "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
  },
+ "2C4B-active-lifecycle-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-all-attempts": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-branch-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-branch-link-identity": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-branch-window-identity": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-competing-records": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-duplicate-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-effective-registry": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-empty-registry": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_registry_labels"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-explicit-replacement": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-g1": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-impact-date": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-lifecycle-active": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-lifecycle-date": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-lifecycle-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-link-inventory": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-missing-links": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-missing-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-missing-window": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-registry-date": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-registry-id": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-registry-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-registry-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-reopening-date": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-reopening-recorded": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_current"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-search-identities": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_missing_capture"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
+ "2C4B-semantic-accrual": {
+  "by_hand": true,
+  "controls": [
+   "test_research_views.ViewsTest.test_control_empty"
+  ],
+  "why": "Literal accepted view executes the changed selection statement or its guard and retains its expected records under the mutant."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

@@ -20,6 +20,7 @@ from . import accrual_2c2b2b
 from . import stopping_2c3
 from . import stopping_2c3b
 from . import stopping_2c3b2
+from . import views_2c4b
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -60,4 +61,5 @@ MUTATIONS: list[Mutation] = [
     *stopping_2c3.MUTATIONS,
     *stopping_2c3b.MUTATIONS,
     *stopping_2c3b2.MUTATIONS,
+    *views_2c4b.MUTATIONS,
 ]

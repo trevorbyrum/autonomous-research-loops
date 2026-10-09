@@ -231,9 +231,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/core/instants.py
-- limit: 8
-- reason: Two additional callers, accounting and its admission collaborator, share exact instant comparison instead of introducing another timestamp representation.
-- task: 2c-2b1
+- limit: 9
+- reason: The two 2c-2b1 callers (accounting and its admission collaborator) and the new 2c-4b views share exact instant comparison. The views add one direct caller to the admitted fan-in of 8; no clock capability or other caller growth is admitted.
+- task: 2c-4b
 
 ### ML-0033
 - action: admit
@@ -314,4 +314,46 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - limit: 3
 - reason: One additional dependency on the pure stopping binder closes G-11 without adding evaluator arithmetic to the Router.
 - task: 2c-3b-part-1
+
+### ML-0046
+- action: admit
+- target: engine|edge|gen2/accounting/views.py->gen2/accounting/__init__.py
+- reason: Pure views compose the accepted typed accounting records and arithmetic, without I/O or new authority.
+- task: 2c-4b
+
+### ML-0047
+- action: admit
+- target: engine|edge|gen2/accounting/views.py->gen2/accounting/stopping.py
+- reason: Views consume the existing typed WindowPin only; stopping predicates are not exposed as sufficiency.
+- task: 2c-4b
+
+### ML-0048
+- action: admit
+- target: engine|edge|gen2/accounting/views.py->gen2/core/instants.py
+- reason: Depth views compare caller-supplied dates with the accepted exact UTC instant helper; no clock is read.
+- task: 2c-4b
+
+### ML-0049
+- action: admit
+- target: engine|file|gen2/accounting/views.py
+- reason: A pure coverage/depth composition module implements flow S7 views over supplied snapshot operands.
+- task: 2c-4b
+
+### ML-0050
+- action: admit
+- target: engine|reach|gen2/accounting/views.py->gen2/accounting/__init__.py
+- reason: Coverage and depth reach only existing pure inventory/arithmetic helpers and preserve unknown operands.
+- task: 2c-4b
+
+### ML-0051
+- action: admit
+- target: engine|reach|gen2/accounting/views.py->gen2/accounting/stopping.py
+- reason: The supplied WindowPin type is the only stopping-module operand imported by the new views.
+- task: 2c-4b
+
+### ML-0052
+- action: admit
+- target: engine|reach|gen2/accounting/views.py->gen2/core/instants.py
+- reason: Existing accounting helpers and the explicit date filter reach the pure instant parser without clock authority.
+- task: 2c-4b
 

@@ -538,3 +538,34 @@ research-state views and remaining fixtures, including the contradiction
 visible in the dossier, mapping and bundle. Tests must use hand-written
 expected records, prove an exact round trip, preserve explicit unknown
 confidence and old `/1` meaning, and pair every new guard with a mutant.
+
+## 2c-4b: snapshot coverage and depth views (2026-10-09, before code)
+
+Input tip: `d182608`, branch `gen2`; operator ruling 3 builds views first.
+Estimate: **about 450 hand-written lines** (pure views/types 140, fixtures and
+properties 210, paired mutants/tool registration 65, design/boundary/ledger 35).
+Implement this slice together; the dossier-to-bundle contradiction fixture
+belongs to 2c-4a, as the 4b brief specifies.
+
+Coverage composes the accepted four-unit counts and 2c-3a window standings,
+retaining capture reasons, exact observation/request/page identities and
+recorded lane populations. G-1 standing is shown separately beside each
+window's supplied contract pin; capture completion does not imply usable
+current-framing credit. Typed branch-to-invocation links are explicit supplied
+snapshot operands, like window pins: existing inventories have no durable
+branch/search link table. Missing links or linked windows leave branch coverage
+unknown; registry subjects never establish links. No new admission/storage path.
+
+Depth composes semantic accrual and its exact lineage joins, complete dated
+lifecycle history plus active records, and branch/contradiction histories with
+explicit replacements and competing judgments retained. An unresolved record
+can leave the active set only through an explicit successor and remains in
+history. The caller supplies `as_of`; it clips record dates, while G-1 reflects
+the supplied snapshot's current standing, as accepted accrual already does.
+Recorded amendment impacts and reopened exclusions remain inspectable.
+
+Both functions live in `gen2/accounting/views.py` and consume the existing
+`Router.evidence_inventory` snapshot plus typed supplied operands. No Router
+API/wiring, clock, writes, provider calls, sufficiency predicate or export
+authority is added. Hand-written positive/negative oracles, isolated Hypothesis
+laws, read-only/topic-isolation fixtures and paired controls cover the guards.
