@@ -1958,3 +1958,15 @@ The post-2q Gate D is renumbered #5.
 - **E-9:** consumes recorded reopenings only.
 - **Landing at 7941ea3: `gen2-check` green on the first run.** The `gen2-gateway` record was carried forward from c1ffb16, since nothing in the gateway has changed.
 - **Next:** 2c-3 dispatched (`docs/gen2/tasks/2c-3.md`).
+
+## 2026-10-09: 2c-3a (typed stopping results and evaluators): round 1 BLOCK
+- **Astra** (`bc8e462c`, pinned df1dffd; `private/reviews/gen2-2c-3a-astra-review-20261009.md`): **A BLOCK, B PASS, C BLOCK.** One blocking finding.
+- **What conforms:**
+  - strong-Kleene `all`/`any`, and gates conjoined separately;
+  - pinned and versioned results;
+  - the descriptive and known-item evaluators;
+  - purity, the ledger and DEBT-030.
+- **F1 (HIGH, MITIGATION; Astra flags it as boundary drift against the Evidence-accounting unknown rule):** `coverage()` counts only the E-4 eligibility list, so windows that were attempted but only partly observed give `not_satisfied` instead of `unknown`. Four probe cases reproduce this.
+- **Landing at df1dffd:** `gen2-check` green; gateway carried forward.
+- **Recurring family** (with 2c-1 F1–F3: lossy window projection), so the research came first: `docs/gen2/research/2c-coverage-unknown-20261009.md`. It uses certain-answer semantics (Libkin 2015) and PRISMA-style separate accounting of unknowns.
+- **Routed:** `docs/gen2/tasks/2c-3a-repair-1.md`, round 1 of 3.
