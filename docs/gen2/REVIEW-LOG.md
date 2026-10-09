@@ -1831,3 +1831,7 @@ The post-2q Gate D is renumbered #5.
   - DEBT-028 is updated with the cause and fix.
   - Landing attempt 3 at `7e59054` is running.
 - 2q-t4b has resumed: rebuild `/tmp`, then replay pairs 2 and 3.
+
+## 2026-10-09: 2q-b11, L1 confirmation
+- **Astra** (`0354cd4e`): L1 is resolved by landing attempt 3 at `7e59054` (2,430 tests; 2,382/2,382 engine and 413/413 gateway mutants). The helper-race attribution is credible; DEBT-028 stays non-blocking until 2q-t5's fix. **"2q-b11 is ACCEPTED."**
+- **2q-b's planned structural items are all accepted:** the gateway cycle; all six Router mixins as collaborators; `_decode`; `adapters/base.py`; `_write_evidence`; `EvidenceWriter`; `_commit_in_transaction`.
