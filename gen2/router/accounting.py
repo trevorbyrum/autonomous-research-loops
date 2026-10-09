@@ -29,7 +29,13 @@ def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory
     ids = {s.assessment_id for s in semantic}
     lineage = tuple(a.SourceLineage(**l) for l in rows.select("source_lineage") if l["assessment_id"] in ids)
     lifecycle = tuple(read_lifecycle(r) for r in rows.select("source_lifecycle", where))
-    return a.Inventory(history, observations, retrievals, links, assessments, claims, passes, semantic, lineage, lifecycle)
+    dispositions = tuple(read_registry_disposition(r) for r in rows.select("registry_dispositions", where))
+    return a.Inventory(history, observations, retrievals, links, assessments, claims, passes, semantic, lineage, lifecycle, dispositions)
+
+
+def read_registry_disposition(record: dict) -> a.RegistryDisposition:
+    fields = {k: v for k, v in record.items() if k not in {"topic_id", "evidence_refs"}}
+    return a.RegistryDisposition(**fields, evidence_refs=tuple(a.EvidenceReference(**ref) for ref in record["evidence_refs"]))
 
 
 def read_lifecycle(record: dict) -> a.SourceDisposition:

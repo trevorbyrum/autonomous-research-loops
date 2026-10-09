@@ -8320,6 +8320,237 @@
   ],
   "why": "Two valid, strictly dated predecessor links, including a reversal, exercise the accepted chain admission path."
  },
+ "2C2B2-actor": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryTest.test_control_histories"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-ddl-actor": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-ddl-evidence": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-ddl-identity": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-ddl-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-ddl-labels": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-ddl-reason": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-ddl-subject": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-evidence": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryTest.test_control_histories"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-forged-attribution": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-contract_revision": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-disposition": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-disposition_id": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-eligibility_protocol_version": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-evidence_refs": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-framing_version": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-reason_code": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-registry_id": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-registry_kind": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-subject": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-missing-supersedes_id": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-overwrite-is-replay": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryTest.test_control_histories"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-pins": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryTest.test_control_histories"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-predecessor": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryTest.test_control_reversal"
+  ],
+  "why": "A strictly later same-topic/kind/identity successor appends a resolution and preserves the original unresolved record."
+ },
+ "2C2B2-registry_dispositions_bound": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-registry_dispositions_immutable_d": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-registry_dispositions_immutable_u": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-registry_dispositions_predecessor": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryDDLTest.test_control_insert"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-schema-branch": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-schema-contradiction": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-schema-evidence": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-schema-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.RegistrySchemaTest.test_control"
+  ],
+  "why": "Complete primary-attributed record with pins and retained evidence; all six admitted dispositions stay visible, including competing contradiction judgments."
+ },
+ "2C2B2-time": {
+  "by_hand": true,
+  "controls": [
+   "test_registry_dispositions.RegistryTest.test_control_reversal"
+  ],
+  "why": "A strictly later same-topic/kind/identity successor appends a resolution and preserves the original unresolved record."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

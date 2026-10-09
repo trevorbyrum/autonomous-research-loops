@@ -194,6 +194,30 @@ labels_law()
 '''
 
 
+class RegistrySchemaTest(unittest.TestCase):
+    def schemas(self):
+        return SchemaSet(extra={"outcome-document.schema.json": json.loads(OUTCOME_SCHEMA.read_text())})
+
+    def record(self, **changes):
+        from gen2.tests.test_registry_dispositions import example_disposition
+        return example_disposition({"content_hash": "sha256:" + "7" * 64, "size_bytes": 10, "media_type": "application/json"}, **changes)
+
+    def test_control(self):
+        for kind, label in (("contradiction", "unresolved"), ("branch", "park")):
+            self.assertEqual(self.schemas().errors(self.record(registry_kind=kind, disposition=label), "outcome-document.schema.json#/$defs/registry_disposition"), [])
+
+    def test_guards(self):
+        target = "outcome-document.schema.json#/$defs/registry_disposition"
+        record = self.record()
+        for field in record:
+            with self.subTest(field=field):
+                self.assertTrue(self.schemas().errors({k: v for k, v in record.items() if k != field}, target))
+        for changes in ({"actor_kind": "operator"}, {"created_at": "2026-10-09T00:00:00Z"}, {"registry_kind": "invalid"},
+                        {"registry_kind": "invalid", "disposition": "park"}, {"disposition": "invalid"},
+                        {"disposition": "park"}, {"registry_kind": "branch"}, {"evidence_refs": []}):
+            self.assertTrue(self.schemas().errors(self.record(**changes), target), changes)
+
+
 class SemanticDDLTest(StoreTestCase):
     """Raw DDL fixture, so mutants exercise guards without the opening identity gate."""
     def setUp(self):

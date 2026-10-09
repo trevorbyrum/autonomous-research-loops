@@ -31,9 +31,12 @@ class Assessments:
         for record in payload.get("source_lifecycle", []):
             for ref in record["evidence_refs"]:
                 bind(ref, f"{record['disposition_id']}: its evidence")
+        for record in payload.get("registry_dispositions", []):
+            for ref in record["evidence_refs"]:
+                bind(ref, f"registry {record['disposition_id']}: its evidence")
 
     def validate(self, payload: dict, inv: dict) -> None:
-        records = payload.get("semantic_assessments", []) + payload.get("source_lifecycle", [])
+        records = payload.get("semantic_assessments", []) + payload.get("source_lifecycle", []) + payload.get("registry_dispositions", [])
         if not records:
             return
         if inv["kind"] not in PRIMARY or inv["admission_context"] != "contract/1":
@@ -43,8 +46,9 @@ class Assessments:
             pins = (record["contract_revision"], record["framing_version"], record["eligibility_protocol_version"])
             if pins != (inv["contract_revision"], contract["framing_version"], contract["document"]["eligibility_protocol"]["protocol_version"]):
                 raise Refusal("payload_invalid", "semantic assessment protocol/framing differs from the invocation's pins")
-            if not self._core._work_of_topic(record["work_id"], inv["topic_id"]):
-                raise Refusal("cross_topic", "semantic assessment subject was not retrieved by this topic")
+            if "work_id" in record:
+                if not self._core._work_of_topic(record["work_id"], inv["topic_id"]):
+                    raise Refusal("cross_topic", "semantic assessment subject was not retrieved by this topic")
             lineage = record.get("lineage")
             if lineage is not None and lineage["related_work_id"] is not None:
                 if not self._core._work_of_topic(lineage["related_work_id"], inv["topic_id"]):
@@ -66,6 +70,21 @@ class Assessments:
                 "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
             written.append(record["disposition_id"])
         return {"source_lifecycle": written} if written else {}
+
+    def write_dispositions(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
+        self.validate(payload, inv)
+        written = []
+        for record in payload.get("registry_dispositions", []):
+            if record["supersedes_id"] is not None:
+                prior = self._core._one("registry_dispositions", {"disposition_id": record["supersedes_id"]})
+                if prior is None or (prior["topic_id"], prior["registry_kind"], prior["registry_id"]) != (inv["topic_id"], record["registry_kind"], record["registry_id"]):
+                    raise Refusal("payload_invalid", "registry predecessor must exist for this topic, kind and identity")
+                if utc_instant_ns(now) <= utc_instant_ns(prior["created_at"]):
+                    raise Refusal("payload_invalid", "registry successor must be dated after its predecessor")
+            self._core._store.insert("registry_dispositions", {**record, "topic_id": inv["topic_id"], "actor_kind": "primary",
+                "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
+            written.append(record["disposition_id"])
+        return {"registry_dispositions": written} if written else {}
 
     def write(self, payload: dict, inv: dict, operation_id: str, now: str) -> list[str]:
         self.validate(payload, inv)

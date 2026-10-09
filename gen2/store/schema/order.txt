@@ -11,3 +11,4 @@
 04-registries-and-export.sql
 05-semantic-assessments.sql
 06-source-lifecycle.sql
+07-registry-dispositions.sql

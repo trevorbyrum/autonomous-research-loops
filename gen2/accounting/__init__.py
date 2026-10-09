@@ -154,6 +154,25 @@ def lifecycle_view(records: tuple[SourceDisposition, ...], as_of: str) -> tuple[
 
 
 @dataclass(frozen=True)
+class RegistryDisposition:
+    disposition_id: str
+    registry_kind: Literal["contradiction", "branch"]
+    registry_id: str  # scoped by topic and kind, not a global work identity
+    subject: str
+    disposition: Literal["unresolved", "resolved", "contested", "promote", "park", "drop"]
+    contract_revision: int
+    eligibility_protocol_version: int
+    framing_version: int
+    supersedes_id: str | None
+    reason_code: str
+    evidence_refs: tuple[EvidenceReference, ...]
+    actor_kind: Literal["primary"]
+    invocation_id: str
+    recorded_by_operation_id: str
+    created_at: str
+
+
+@dataclass(frozen=True)
 class Inventory:
     history: History
     observations: tuple[Observation, ...] = ()
@@ -165,6 +184,7 @@ class Inventory:
     semantic_assessments: tuple[SemanticAssessment, ...] = ()
     source_lineage: tuple[SourceLineage, ...] = ()
     source_lifecycle: tuple[SourceDisposition, ...] = ()
+    registry_dispositions: tuple[RegistryDisposition, ...] = ()
 
 
 @dataclass(frozen=True)

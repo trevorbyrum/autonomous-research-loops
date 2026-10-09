@@ -60,7 +60,7 @@ python("schema-action", SCHEMA_TEST + "test_required_and_attribution_guards",
     '"action": {"enum": ["add", "keep", "supersede", "coexist", "quarantine", "duplicate-report"]}', '"action": {"type": "string"}', SCHEMA)
 python("schema-related-pair", SCHEMA_TEST + "test_required_and_attribution_guards",
     '"then": {"properties": {"related_work_id": {"type": "string"}, "related_source_version": {"type": "string"}}}', '"then": {}', SCHEMA)
-evidence = '"evidence_refs": {"type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/artifact_ref"}}\n      },\n      "if":'
+evidence = '"evidence_refs": {"type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/artifact_ref"}}\n      },\n      "if": {"required": ["action"]'
 python("schema-evidence", SCHEMA_TEST + "test_required_and_attribution_guards", evidence, evidence.replace('"minItems": 1', '"minItems": 0'), SCHEMA)
 
 CONTROLS = {m.mid: {"controls": [SCHEMA_TEST + "test_control" if m.target == SCHEMA else DDL + "test_control_insert" if m.target == "ddl"

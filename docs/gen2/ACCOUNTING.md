@@ -192,3 +192,35 @@ refused, and migration remains Phase 4. Tests use only in-memory fixtures.
 Validation uses hand-written expectations, Router refusals (unauthorized actor,
 missing revision/framing, overwrite, wrong pins/topic/evidence), shared-origin
 and explicit-novelty fixtures, append-only laws, and paired guard mutants.
+
+### 2c-2b2 design note (2026-10-09, before implementation)
+
+Full estimate: about 800 hand-written lines (disposition histories 480;
+typed accrual, G-1 selection, E-9 reopening and their tests/mutants 320).
+Split into **2b2a**, implemented here, and **2b2b**, remaining; stop after
+committing 2b2a. First-part estimate: DDL 65, schema 35, admission/wiring 40,
+typed records/read 30, tests/properties 175, mutants 85, docs/ledger 50.
+
+**2b2a.** The declared branch registry and contradiction ledger currently
+have prose/export references, but no durable registry tables (store README
+defers them to Phase 2). Extend that registry vocabulary with one ordered
+DDL table, `registry_dispositions`: topic-local registry identity and kind
+(contradiction/branch), subject text, disposition (unresolved/resolved/contested
+or promote/park/drop), reason, evidence, pins and Router attribution. Promotion
+records a proposal only; it grants no scope, support or scheduling authority.
+Optional `supersedes_id` names a strictly earlier record of that exact topic,
+kind and registry identity; reversals append, never update. Parallel judgments
+remain visible, including an unresolved contradiction beside a resolution.
+The existing Assessments collaborator admits these optional outcome/1 records
+with the same primary/contract authority, evidence binding and exact pins.
+Inventory reads expose all typed histories inside the existing `_snapshot()`.
+Tests independently specify refusals, replay/rollback, disagreement and retained
+history; Hypothesis checks that successful appends preserve the entire prefix.
+
+**2b2b remaining.** Join these histories with semantic assessments, lineage,
+dated lifecycle and existing `amendment_impacts` in that snapshot. Consume
+recorded standing and dispositions only: explicit compatibility permits label
+reuse; invalidation/missing standing yields stale/unknown, with no revival by
+label cycling. Consume recorded reopened exclusions for E-9, retaining their
+reason-coded old-framing assessments and an unaffected-framing control. No
+protocol comparison, inferred impact or judgment production (2e; plan audit F3).

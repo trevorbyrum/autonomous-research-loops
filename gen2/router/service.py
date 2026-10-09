@@ -1157,6 +1157,7 @@ class Router:
         if assessments:
             written["semantic_assessments"] = assessments
         written.update(self._assessments.write_lifecycle(checked["payload"], inv, env["operation_id"], now))
+        written.update(self._assessments.write_dispositions(checked["payload"], inv, env["operation_id"], now))
         return written
 
     # -- operator decisions ------------------------------------------------------
