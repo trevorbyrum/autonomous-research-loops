@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Literal
 
-from gen2.accounting import CandidateUnits, Count, EvidenceReference, Inventory, NoveltyJudgment, SemanticOperand, Standing, candidate_units, label_standing, novelty, saturation_passes, semantic_accrual
+from gen2.accounting import CandidateUnits, Count, EvidenceReference, Inventory, NoveltyJudgment, SemanticOperand, Standing, WindowStanding, WindowState, candidate_units, label_standing, novelty, semantic_accrual, window_standings
 
 State = Literal["satisfied", "not_satisfied", "unknown"]
 Operator = Literal["all", "any"]
@@ -35,6 +35,8 @@ class WindowOperand:
     invocation_id: str
     contract_revision: int | None
     standing: Standing
+    state: WindowState = "eligible"
+    reason: str = "completed distinct search"
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,10 @@ class CoverageOperands:
     minimum_windows: int
     windows: tuple[WindowOperand, ...]
     history: str
+    eligible: int
+    ineligible: int
+    indeterminate: int
+    scope: frozenset[str] | None
 
 
 @dataclass(frozen=True)
@@ -77,19 +83,38 @@ def descriptive(context: Context, rule_id: str, inventory: Inventory, as_of: str
     return RuleResult(context, rule_id, "descriptive", "unknown", DescriptiveOperands(units, labels, fraction))
 
 
-def coverage(context: Context, rule_id: str, inventory: Inventory, pins: tuple[WindowPin, ...], minimum_windows: int) -> RuleResult:
+def _window_operand(window: WindowStanding, inventory: Inventory, revisions: dict[str, int]) -> WindowOperand:
+    i = window.invocation_id
+    standing = label_standing(inventory, revisions[i]) if i in revisions else "unknown"
+    state, reason = window.state, window.reason
+    if state != "ineligible":
+        if standing == "stale":
+            state, reason = "ineligible", "contract revision stale"
+        elif standing == "unknown":
+            state, reason = "indeterminate", "contract standing unknown; " + reason
+    return WindowOperand(i, revisions.get(i), standing, state, reason)
+
+
+def coverage(context: Context, rule_id: str, inventory: Inventory, pins: tuple[WindowPin, ...], minimum_windows: int, *, scope: frozenset[str] | None = None) -> RuleResult:
     """A declared window-count prerequisite only; no recall/meaning guarantee."""
     if minimum_windows < 1:
         raise ValueError("minimum_windows must be positive")
     revisions = {p.invocation_id: p.contract_revision for p in pins}
     if len(revisions) != len(pins):
         raise ValueError("duplicate window pins")
-    windows = tuple(WindowOperand(i, revisions.get(i), label_standing(inventory, revisions[i]) if i in revisions else "unknown")
-                    for i in saturation_passes(inventory))
-    state: State = "satisfied" if len(windows) >= minimum_windows else "not_satisfied"
-    if inventory.history == "legacy_unknown" or inventory.current_contract_revision != context.contract_revision or any(w.standing not in ("current", "compatible") for w in windows):
+    windows = tuple(_window_operand(w, inventory, revisions) for w in window_standings(inventory)
+                    if scope is None or w.invocation_id in scope)
+    eligible = sum(w.state == "eligible" for w in windows)
+    ineligible = sum(w.state == "ineligible" for w in windows)
+    indeterminate = sum(w.state == "indeterminate" for w in windows)
+    state: State = "unknown"
+    if eligible >= minimum_windows:
+        state = "satisfied"
+    elif eligible + indeterminate < minimum_windows:
+        state = "not_satisfied"
+    if inventory.current_contract_revision != context.contract_revision or inventory.history == "legacy_unknown":
         state = "unknown"
-    return RuleResult(context, rule_id, "coverage", state, CoverageOperands(minimum_windows, windows, inventory.history))
+    return RuleResult(context, rule_id, "coverage", state, CoverageOperands(minimum_windows, windows, inventory.history, eligible, ineligible, indeterminate, scope))
 
 
 def known_item(context: Context, rule_id: str, inventory: Inventory, declared: KnownItems) -> RuleResult:

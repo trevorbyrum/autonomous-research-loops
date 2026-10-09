@@ -303,3 +303,41 @@ and sentinel membership. Hypothesis checks truth-order monotonicity and unknown
 conjunction persistence. Paired mutants cover these guards. SOURCE-CONTRACT v2,
 existing accounting grants and new-file/edge ledger admissions apply; no Router
 wiring, DDL, migration, store, clock or provider call is added in 3a.
+
+### 2c-3a repair-1: standing and certain-answer coverage
+
+The representation follows `research/2c-coverage-unknown-20261009.md` (F1).
+`window_standings()` sits beside the unchanged E-4 `saturation_passes()`
+eligibility view. It accounts for every attempted research invocation, with
+its transitive delegates forming one window rather than additional windows.
+Each standing retains its root identity, eligibility state and reason.
+Completed distinct windows are eligible; failed/cancelled, capped, repeated,
+non-search and invalid-chain windows are known ineligible. Missing, partial,
+unobserved or incoherent capture, missing search metadata, unfinished work and
+unknown pagination ends are indeterminate. A parent may coordinate completely
+captured delegate searches without its own observation. Known failures exclude
+the affected window even when another member is unobserved. Other historical
+windows remain available.
+
+Coverage applies the supplied invocation/contract pins to those standings:
+recorded stale G-1 standing is known ineligible; missing/unknown standing is
+indeterminate unless the window is already known ineligible. Compatible
+historical revisions remain eligible. An optional explicit `scope` selects
+research root IDs for each rule; omission includes every attempted window.
+Pins record revision provenance and do not implicitly restrict scope.
+Coverage operands retain every scoped window, its G-1 standing, eligibility
+and reason, the three counts, and the explicit scope. Indeterminate windows
+remain visible even when the verdict is definite.
+
+For minimum N, coverage is satisfied when eligible >= N, not_satisfied when
+eligible + indeterminate < N, and unknown otherwise. Known stale windows now
+contribute to the ineligible count rather than forcing unrelated valid windows
+unknown. Legacy history and an evaluator/snapshot contract mismatch still make
+the result unknown because the attempted-window universe/context is untrusted.
+No arithmetic establishes scientific sufficiency.
+
+Literal tests cover the four F1 cases, direct/transitive delegate cases, no
+attempts, complete windows, mixed lower/upper bounds, known exclusions, scope
+and G-1 standing. Hypothesis checks that resolving an indeterminate window to
+eligible or ineligible cannot flip a definite verdict. Paired mutants cover
+each new classification guard, both bound errors and retained standing operands.

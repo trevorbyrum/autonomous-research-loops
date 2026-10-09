@@ -8901,6 +8901,209 @@
   ],
   "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
  },
+ "2C3R-attempt-universe": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_complete"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-blanket-unknown": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_between_bounds"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-capped-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-continuation-guard": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-drop-delegates": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-eligible-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-end-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-failed-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-g1-blanket-unknown": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_complete"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-g1-unknown": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_complete"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-indeterminate-as-eligible": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_lower_bound"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-indeterminate-as-ineligible": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_complete"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-ineligible-count": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_complete"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-known-exclusion-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_complete"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-legacy-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-metadata-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-missing-delegate-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-missing-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-nonpaging-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_unknown_end"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-nonresearch-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_complete"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-partial-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-scope": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_complete"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-standing-operands": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_complete"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-standing-reasons": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_complete"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-unfinished-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-unknown-end-guard": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-unobserved-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-upper-bound-equality": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_upper_bound"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
+ "2C3R-window-membership": {
+  "by_hand": true,
+  "controls": [
+   "test_coverage.CoverageTest.test_control_nonpaging"
+  ],
+  "why": "Literal coverage inventory exercises the changed standing/bound operand on a path this mutant still accepts."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

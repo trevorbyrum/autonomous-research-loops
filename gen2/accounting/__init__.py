@@ -418,6 +418,70 @@ def saturation_passes(inventory: Inventory) -> tuple[str, ...]:
     return tuple(eligible)
 
 
+WindowState = Literal["eligible", "ineligible", "indeterminate"]
+
+
+@dataclass(frozen=True)
+class WindowStanding:
+    invocation_id: str
+    state: WindowState
+    reason: str
+
+
+def _excluded_window(root: Pass, inventory: Inventory) -> WindowStanding:
+    members = (root, *_descendants(root, inventory))
+    member_ids = {p.invocation_id for p in members}
+    observations = tuple(o for o in inventory.observations if o.invocation_id in member_ids)
+    state: WindowState = "ineligible"
+    if any(p.state in ("failed", "cancelled") for p in members):
+        reason = "invocation failed or cancelled"
+    elif any(o.page_outcome in ("failed", "limit_reached") for o in observations):
+        reason = "request failed or capped"
+    else:
+        state, reason = _window_uncertainty(members, observations, inventory)
+    return WindowStanding(root.invocation_id, state, reason)
+
+
+def _window_uncertainty(members: tuple[Pass, ...], observations: tuple[Observation, ...], inventory: Inventory) -> tuple[WindowState, str]:
+    if any(p.state != "committed" for p in members):
+        return "indeterminate", "invocation unfinished"
+    if inventory.history == "legacy_unknown":
+        return "indeterminate", "legacy historical capture unknown"
+    observed = {o.invocation_id for o in observations}
+    missing = tuple(p.invocation_id for p in members[1:] if p.invocation_id not in observed)
+    if missing or not observations:
+        return "indeterminate", "invocation capture missing: " + ", ".join(missing or (members[0].invocation_id,))
+    if any(o.completeness == "unobserved" for o in observations):
+        return "indeterminate", "request unobserved"
+    if any(not _captured(o, inventory) for o in observations):
+        return "indeterminate", "capture partial or unknown"
+    finds = tuple(o for o in observations if o.request_type == "find")
+    return _search_completion(finds)
+
+
+def _search_completion(finds: tuple[Observation, ...]) -> tuple[WindowState, str]:
+    if any(o.page is None for o in finds):
+        return "indeterminate", "search page metadata missing"
+    chains: dict[tuple[str, SearchIdentity], list[Observation]] = {}
+    for o in finds:
+        chains.setdefault((o.lane, replace(o.page.search, lanes=(o.lane,))), []).append(o)
+    if any(o.page_outcome == "end_unknown" for o in finds) or any(max(chain, key=lambda o: o.page.number).page_outcome == "continuation" for chain in chains.values()):
+        return "indeterminate", "pagination end unknown"
+    return "ineligible", "no complete distinct search"
+
+
+def window_standings(inventory: Inventory) -> tuple[WindowStanding, ...]:
+    """Every attempted research window, with transitive delegates in its standing.
+
+    E-4 eligibility is unchanged; exclusions retain whether completion is known.
+    Contract standing and each rule's scope are applied by the coverage consumer.
+    """
+    eligible = frozenset(saturation_passes(inventory))
+    return tuple(WindowStanding(p.invocation_id, "eligible", "completed distinct search")
+                 if p.invocation_id in eligible else _excluded_window(p, inventory)
+                 for p in inventory.passes if p.kind == "research_pass")
+
+
 def candidate_units(inventory: Inventory) -> CandidateUnits:
     """Four distinct units; identity deduplication establishes no study independence."""
     reason = _capture_reason(inventory)

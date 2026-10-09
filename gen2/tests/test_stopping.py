@@ -92,7 +92,7 @@ class StoppingTest(unittest.TestCase):
             impact = a.AmendmentImpact("amendment", 1, (a.RevisionStanding(1, classification),), (), DATE)
             inv = replace(inventory(), amendment_impacts=(impact,))
             self.assertIsNone(s.descriptive(CTX, "yield", inv, DATE).operands.new_fraction)
-            self.assertEqual(s.coverage(CTX, "coverage", inv, (s.WindowPin("p", 1),), 1).state, U)
+            self.assertEqual(s.coverage(CTX, "coverage", inv, (s.WindowPin("p", 1),), 1).state, N)
         for inv in (replace(inventory(), current_contract_revision=2), replace(inventory(), semantic_assessments=()),
                     replace(inventory(), assessments=()), replace(inventory(), semantic_assessments=(replace(inventory().semantic_assessments[0], novelty="unknown"),))):
             self.assertIsNone(s.descriptive(CTX, "yield", inv, DATE).operands.new_fraction)
@@ -123,15 +123,17 @@ class StoppingTest(unittest.TestCase):
     def test_nonwindows_repetition_and_missing_pins(self):
         inv = inventory()
         for changed in (replace(inv, passes=(replace(inv.passes[0], state="failed"),)),
-                        replace(inv, observations=(replace(inv.observations[0], completeness="partial"),)),
                         replace(inv, observations=(replace(inv.observations[0], request_type="resolve", page=None),))):
             self.assertEqual(s.coverage(CTX, "coverage", changed, (s.WindowPin("p", 1),), 1).state, N)
+        partial = replace(inv, observations=(replace(inv.observations[0], completeness="partial"),))
+        self.assertEqual(s.coverage(CTX, "coverage", partial, (s.WindowPin("p", 1),), 1).state, U)
         repeat = replace(inv, passes=inv.passes + (a.Pass("p2", "research_pass", "committed"),),
                          observations=inv.observations + (replace(inv.observations[0], observation_id="o2", invocation_id="p2"),),
                          retrievals=inv.retrievals + (a.Retrieval("r2", "o2"),), links=inv.links + (a.WorkLink("r2", "w1"),))
         self.assertEqual(s.coverage(CTX, "coverage", repeat, (s.WindowPin("p", 1), s.WindowPin("p2", 1)), 2).state, N)
         self.assertEqual(s.coverage(CTX, "coverage", inv, (), 1).state, U)
         self.assertEqual(s.coverage(CTX, "coverage", replace(inv, history="legacy_unknown"), (), 1).state, U)
+        self.assertEqual(s.coverage(CTX, "coverage", a.Inventory("legacy_unknown", current_contract_revision=1), (), 1).state, U)
         with self.assertRaises(ValueError): s.coverage(CTX, "coverage", inv, (), 0)
         with self.assertRaises(ValueError): s.coverage(CTX, "coverage", inv, (s.WindowPin("p", 1),) * 2, 1)
 
