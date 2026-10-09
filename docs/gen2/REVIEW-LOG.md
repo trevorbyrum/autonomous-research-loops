@@ -1970,3 +1970,20 @@ The post-2q Gate D is renumbered #5.
 - **Landing at df1dffd:** `gen2-check` green; gateway carried forward.
 - **Recurring family** (with 2c-1 F1–F3: lossy window projection), so the research came first: `docs/gen2/research/2c-coverage-unknown-20261009.md`. It uses certain-answer semantics (Libkin 2015) and PRISMA-style separate accounting of unknowns.
 - **Routed:** `docs/gen2/tasks/2c-3a-repair-1.md`, round 1 of 3.
+
+## 2026-10-09: 2c-3a round 2 (2c-3a-repair-1): BLOCK, F1 continues as a MITIGATION
+- **Astra** (`69bb1f26`, pinned 4f5a91e; `private/reviews/gen2-2c-3a-r2-astra-review-20261009.md`): **A BLOCK, B PASS, C BLOCK.**
+- **Now fixed:** the four original cases and delegates.
+- **Accepted:** G-1 stale = known-ineligible, and per-rule scope.
+- **F1 continues on two counts:**
+  - **Earlier uncertain windows.** An earlier indeterminate root can take the distinctness credit of later eligible roots. The eligible count is therefore not a lower bound: `satisfied` flips to `not_satisfied`, including across the scope boundary.
+  - **Recoverable chains.** A chain with a missing page 1 is called known-invalid, when it is only recoverable.
+- **Test gap:** the Hypothesis monotonicity test excluded overlap and earlier-uncertain cases.
+- **Landing at 4f5a91e is green:** `gen2-check` 2,575 tests; 2,579 of 2,579 mutants killed.
+- **Research addendum** written before the re-brief (charter rule): `docs/gen2/research/2c-coverage-unknown-20261009.md` Addendum 1.
+  - Sound approximation of certain answers (Libkin ICDT 2015; Console, Guagliardo, Libkin, PODS 2020).
+  - Dependency-aware bounds.
+  - Chain classes.
+  - A reference-model test that enumerates the completions.
+- **Routed:** `docs/gen2/tasks/2c-3a-repair-2.md`, **round 3 of 3 (the cap)**.
+- **Operator informed:** Astra flags this as a blocking mitigation to escalate. It is not accepted as debt.
