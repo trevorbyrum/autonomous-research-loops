@@ -17,6 +17,7 @@ from . import assessments_2c2a
 from . import lifecycle_2c2b1
 from . import dispositions_2c2b2
 from . import accrual_2c2b2b
+from . import stopping_2c3
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -54,4 +55,5 @@ MUTATIONS: list[Mutation] = [
     *lifecycle_2c2b1.MUTATIONS,
     *dispositions_2c2b2.MUTATIONS,
     *accrual_2c2b2b.MUTATIONS,
+    *stopping_2c3.MUTATIONS,
 ]

@@ -8768,6 +8768,139 @@
   ],
   "why": "Hand-written accepted operand fixture exercises the changed selection path; original judgments and dispositions remain available."
  },
+ "2C3-descriptive-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_descriptive"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-empty-unknown": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_satisfied"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-gate-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_gate_pass"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-gate-vote": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_gate_pass"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-known-empty": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_known_item"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-known-membership": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_known_item"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-known-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_known_item"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-known-unknown": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_known_item"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-majority": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_satisfied"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-missing-gate": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_gate_pass"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-missing-rule": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_satisfied"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-nonwindow": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_coverage"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-rule-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_satisfied"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-stale-label": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_descriptive"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-unknown-false": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_satisfied"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-window-legacy": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_coverage"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-window-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_coverage"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-window-standing": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_coverage"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
+ "2C3-window-threshold": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping.StoppingTest.test_control_short_coverage"
+  ],
+  "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

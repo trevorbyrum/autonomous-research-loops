@@ -235,3 +235,27 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - reason: Two additional callers, accounting and its admission collaborator, share exact instant comparison instead of introducing another timestamp representation.
 - task: 2c-2b1
 
+### ML-0033
+- action: admit
+- target: engine|file|gen2/accounting/stopping.py
+- reason: Pure typed stopping signals and explicit three-valued composition belong to evidence accounting; no store, clock, model or Router authority.
+- task: 2c-3a
+
+### ML-0034
+- action: admit
+- target: engine|edge|gen2/accounting/stopping.py->gen2/accounting/__init__.py
+- reason: Reuse the accepted candidate units, E-4 windows and G-1-selected semantic operands within the existing accounting module.
+- task: 2c-3a
+
+### ML-0035
+- action: admit
+- target: engine|reach|gen2/accounting/stopping.py->gen2/accounting/__init__.py
+- reason: Stopping arithmetic reaches existing pure inventory accounting, without a new module grant or Router wiring.
+- task: 2c-3a
+
+### ML-0036
+- action: admit
+- target: engine|reach|gen2/accounting/stopping.py->gen2/core/instants.py
+- reason: Descriptive operands reuse dated semantic selection and its existing exact UTC comparison helper, without reading a clock.
+- task: 2c-3a
+

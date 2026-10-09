@@ -261,3 +261,45 @@ selection guard has a paired mutant. Judgment production stays in 2e.
 Implementation keeps the existing module graph and metric budgets; the current
 accounting/adapter and instant-helper ledger admissions cover these reads. The
 new context-read helper keeps snapshot assembly below its complexity threshold.
+
+## 2c-3 design note (2026-10-09, before implementation)
+
+Full estimate: **about 760 hand-written lines** (pure types/evaluators 200,
+fixtures/properties 180, mutants 55, documentation/ledger 55, Router admission
+and approval plus the changed-protocol fixture 270). Split as the brief directs:
+implement **2c-3a only**, estimated at **about 490 lines**, then stop.
+**2c-3b remains:** G-11 refusals at both Router boundaries, contract-to-evaluator
+binding, and the changed-protocol/compatible-amendment integration fixture.
+
+3a adds one pure accounting module. Results carry `stopping-result/1`, topic,
+contract revision and protocol revision, the rule identity, and typed operands.
+Descriptive arithmetic retains all four candidate units and attributed semantic
+operands, using their G-1-selected effective labels for novelty; its rule state
+is unknown because reporting yield declares no stopping predicate. Coverage
+compares a declared minimum with E-4 completed distinct windows from the existing
+inventory arithmetic. Explicit per-invocation contract pins select each window's
+recorded G-1 standing; missing, stale or unknown pins cannot satisfy coverage.
+Known-item retrieval compares an explicitly referenced, nonempty sentinel work
+inventory with deduplicated works, retaining found/missing identities and unknown
+capture. Finding sentinels says nothing about undiscovered literature. Screening
+and both-mode sentinel checks are not implemented by this retrieval evaluator;
+3b must refuse unsupported bindings rather than silently reinterpret them.
+
+Typed recursive expressions accept only rule references and nonempty `all`/`any`
+branches. Strong three-valued conjunction/disjunction preserve unknown except
+where a decisive false/true operand determines the expression. Declared gates
+are conjoined separately, including under an `any` rule expression. Missing
+rules/gates or mismatched result pins yield unknown; operands remain inspectable.
+Gate inputs retain evidence references and status supplied by the code-owned
+assembly path; gate evidence production/validation remains 2d/2e, not invented
+here. No evaluator produces meaning or a scientific sufficiency ruling (E-7).
+
+The schema already closes expressions, requires completion gates and restricts
+capture-recapture/VoI/SAFE/meaning saturation to reviewed judgments. 3b closes the
+remaining implemented-support gap, including statistical recall, without schema
+duplication. Tests in 3a use hand-built inventories and hand-written truth tables,
+failing/unknown gates, stale/unknown labels, repeated/partial/non-search controls,
+and sentinel membership. Hypothesis checks truth-order monotonicity and unknown
+conjunction persistence. Paired mutants cover these guards. SOURCE-CONTRACT v2,
+existing accounting grants and new-file/edge ledger admissions apply; no Router
+wiring, DDL, migration, store, clock or provider call is added in 3a.

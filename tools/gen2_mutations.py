@@ -127,6 +127,7 @@ from gen2_mutants import MUTATIONS, SECOND_LAYER, SECOND_LAYER_TRIGGERS, Mutatio
 # ("disk",): a file only children run (a script started by path); the
 # mutant exists only in the child tree.
 FILE_TARGETS = {
+    "gen2/accounting/stopping.py": ("module", "gen2.accounting.stopping"),
     "tools/check_boundaries.py": ("attr", "test_check_boundaries", "CHECKER"),
     "gen2/boundaries.toml": ("attr", "test_check_boundaries", "REAL_BOUNDARIES"),
     "tools/check_gen2_schemas.py": ("attr", "test_check_ddl_rules", "CHECKER"),
