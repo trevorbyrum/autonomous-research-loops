@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Literal
 
-from gen2.accounting import CandidateUnits, Count, EvidenceReference, Inventory, NoveltyJudgment, SemanticOperand, Standing, WindowStanding, WindowState, candidate_units, label_standing, novelty, semantic_accrual, window_standings
+from gen2.accounting import CandidateUnits, Count, EvidenceReference, Inventory, NoveltyJudgment, SemanticOperand, Standing, WindowStanding, WindowState, candidate_units, label_standing, novelty, semantic_accrual, window_search_knowledge, window_standings
 
 State = Literal["satisfied", "not_satisfied", "unknown"]
 Operator = Literal["all", "any"]
@@ -48,6 +48,8 @@ class CoverageOperands:
     ineligible: int
     indeterminate: int
     scope: frozenset[str] | None
+    lower: int
+    upper: int
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,44 @@ def _window_operand(window: WindowStanding, inventory: Inventory, revisions: dic
     return WindowOperand(i, revisions.get(i), standing, state, reason)
 
 
+def _credit_risks(inventory: Inventory, standings: tuple[WindowStanding, ...], operands: dict[str, WindowOperand], scope: frozenset[str] | None) -> tuple[int, list[set[str]]]:
+    """Guaranteed roots and possible earlier thieves of all their new credit."""
+    roots = {p.invocation_id: p for p in inventory.passes}
+    seen, earlier = set(), {}
+    safe, risks = 0, []
+    for w in standings:
+        searches = window_search_knowledge(roots[w.invocation_id], inventory)
+        if w.state == "indeterminate":
+            earlier[w.invocation_id] = searches
+        if w.state != "eligible":
+            continue
+        credit = searches - seen
+        seen.update(searches)
+        if operands[w.invocation_id].state != "eligible" or (scope is not None and w.invocation_id not in scope):
+            continue
+        possible = set().union(*(keys for keys in earlier.values() if keys is not None))
+        unknown = any(keys is None for keys in earlier.values())
+        if not unknown and not credit <= possible:
+            safe += 1
+        else:
+            risks.append({i for i, keys in earlier.items() if keys is None or credit & keys})
+    return safe, risks
+
+
+def _coverage_lower_bound(inventory: Inventory, standings: tuple[WindowStanding, ...], operands: dict[str, WindowOperand], scope: frozenset[str] | None) -> int:
+    safe, risks = _credit_risks(inventory, standings, operands, scope)
+    groups: list[set[str]] = []
+    for risk in risks:
+        linked = [g for g in groups if g & risk]
+        groups = [g for g in groups if not g & risk]
+        groups.append(risk.union(*linked))
+    # In each group, failed thieves retain the observed roots; a completing
+    # thief earns at least one window if every possible first owner counts.
+    replacements = sum(all((scope is None or i in scope) and operands[i].standing == "current"
+                           for i in group) for group in groups)
+    return safe + replacements
+
+
 def coverage(context: Context, rule_id: str, inventory: Inventory, pins: tuple[WindowPin, ...], minimum_windows: int, *, scope: frozenset[str] | None = None) -> RuleResult:
     """A declared window-count prerequisite only; no recall/meaning guarantee."""
     if minimum_windows < 1:
@@ -102,19 +142,23 @@ def coverage(context: Context, rule_id: str, inventory: Inventory, pins: tuple[W
     revisions = {p.invocation_id: p.contract_revision for p in pins}
     if len(revisions) != len(pins):
         raise ValueError("duplicate window pins")
-    windows = tuple(_window_operand(w, inventory, revisions) for w in window_standings(inventory)
+    standings = window_standings(inventory)
+    global_operands = {w.invocation_id: _window_operand(w, inventory, revisions) for w in standings}
+    windows = tuple(global_operands[w.invocation_id] for w in standings
                     if scope is None or w.invocation_id in scope)
     eligible = sum(w.state == "eligible" for w in windows)
     ineligible = sum(w.state == "ineligible" for w in windows)
     indeterminate = sum(w.state == "indeterminate" for w in windows)
+    lower = _coverage_lower_bound(inventory, standings, global_operands, scope)
+    upper = eligible + indeterminate
     state: State = "unknown"
-    if eligible >= minimum_windows:
+    if lower >= minimum_windows:
         state = "satisfied"
     elif eligible + indeterminate < minimum_windows:
         state = "not_satisfied"
     if inventory.current_contract_revision != context.contract_revision or inventory.history == "legacy_unknown":
         state = "unknown"
-    return RuleResult(context, rule_id, "coverage", state, CoverageOperands(minimum_windows, windows, inventory.history, eligible, ineligible, indeterminate, scope))
+    return RuleResult(context, rule_id, "coverage", state, CoverageOperands(minimum_windows, windows, inventory.history, eligible, ineligible, indeterminate, scope, lower, upper))
 
 
 def known_item(context: Context, rule_id: str, inventory: Inventory, declared: KnownItems) -> RuleResult:

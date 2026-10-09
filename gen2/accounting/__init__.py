@@ -428,6 +428,46 @@ class WindowStanding:
     reason: str
 
 
+def window_search_knowledge(root: Pass, inventory: Inventory) -> frozenset[tuple[str, SearchIdentity]] | None:
+    """Recorded populations, or unknown when a member's searches are missing."""
+    children = _descendants(root, inventory)
+    ids = {root.invocation_id} | {p.invocation_id for p in children}
+    observations = tuple(o for o in inventory.observations if o.invocation_id in ids)
+    observed = {o.invocation_id for o in observations}
+    if not observations or any(p.invocation_id not in observed for p in children):
+        return None
+    finds = tuple(o for o in observations if o.request_type in ("find",))
+    if any(o.page is None for o in finds):
+        return None
+    return frozenset((o.lane, replace(o.page.search, lanes=(o.lane,))) for o in finds)
+
+
+ChainState = Literal["invalid", "recoverable", "complete"]
+
+
+def _chain_knowledge(chain: list[Observation]) -> ChainState:
+    """Contradictions cannot be repaired by adding consistent missing pages."""
+    pages = sorted(chain, key=lambda o: o.page.number)
+    if len({o.page.number for o in pages}) != len(pages):
+        return "invalid"
+    for o in pages:
+        if o.page.number < 1 or (o.page.cursor is None) != (o.page.number == 1):
+            return "invalid"
+        if o.page_outcome == "exhausted" and o.page.continuation is not None:
+            return "invalid"
+        if o.page_outcome == "continuation" and o.page.continuation is None:
+            return "invalid"
+    for previous, following in zip(pages, pages[1:]):
+        if previous.page_outcome == "exhausted":
+            return "invalid"
+        adjacent = following.page.number == previous.page.number + 1
+        if adjacent and previous.page.continuation is not None and previous.page.continuation != following.page.cursor:
+            return "invalid"
+    if pages[0].page.number != 1 or any(b.page.number != a.page.number + 1 for a, b in zip(pages, pages[1:])):
+        return "recoverable"
+    return "complete"  # Structural completeness; terminal knowledge is checked below.
+
+
 def _excluded_window(root: Pass, inventory: Inventory) -> WindowStanding:
     members = (root, *_descendants(root, inventory))
     member_ids = {p.invocation_id for p in members}
@@ -465,8 +505,13 @@ def _search_completion(finds: tuple[Observation, ...]) -> tuple[WindowState, str
     chains: dict[tuple[str, SearchIdentity], list[Observation]] = {}
     for o in finds:
         chains.setdefault((o.lane, replace(o.page.search, lanes=(o.lane,))), []).append(o)
+    classes = tuple(_chain_knowledge(chain) for chain in chains.values())
+    if "invalid" in classes:
+        return "ineligible", "no complete distinct search"
     if any(o.page_outcome == "end_unknown" for o in finds) or any(max(chain, key=lambda o: o.page.number).page_outcome == "continuation" for chain in chains.values()):
         return "indeterminate", "pagination end unknown"
+    if "recoverable" in classes:
+        return "indeterminate", "pagination pages missing"
     return "ineligible", "no complete distinct search"
 
 

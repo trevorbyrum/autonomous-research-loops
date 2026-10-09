@@ -304,7 +304,7 @@ conjunction persistence. Paired mutants cover these guards. SOURCE-CONTRACT v2,
 existing accounting grants and new-file/edge ledger admissions apply; no Router
 wiring, DDL, migration, store, clock or provider call is added in 3a.
 
-### 2c-3a repair-1: standing and certain-answer coverage
+### 2c-3a repairs: standing and sound certain-answer bounds
 
 The representation follows `research/2c-coverage-unknown-20261009.md` (F1).
 `window_standings()` sits beside the unchanged E-4 `saturation_passes()`
@@ -312,7 +312,7 @@ eligibility view. It accounts for every attempted research invocation, with
 its transitive delegates forming one window rather than additional windows.
 Each standing retains its root identity, eligibility state and reason.
 Completed distinct windows are eligible; failed/cancelled, capped, repeated,
-non-search and invalid-chain windows are known ineligible. Missing, partial,
+non-search and provably invalid-chain windows are known ineligible. Missing, partial,
 unobserved or incoherent capture, missing search metadata, unfinished work and
 unknown pagination ends are indeterminate. A parent may coordinate completely
 captured delegate searches without its own observation. Known failures exclude
@@ -326,18 +326,55 @@ historical revisions remain eligible. An optional explicit `scope` selects
 research root IDs for each rule; omission includes every attempted window.
 Pins record revision provenance and do not implicitly restrict scope.
 Coverage operands retain every scoped window, its G-1 standing, eligibility
-and reason, the three counts, and the explicit scope. Indeterminate windows
+and reason, the three counts, the explicit scope, and lower/upper bounds. Indeterminate windows
 remain visible even when the verdict is definite.
 
-For minimum N, coverage is satisfied when eligible >= N, not_satisfied when
-eligible + indeterminate < N, and unknown otherwise. Known stale windows now
+Addendum 1 of the research note governs completion dependencies. The upper
+bound is eligible + indeterminate. The lower bound considers earlier
+indeterminate roots in global inventory order, including roots outside the
+rule's scope and roots with stale G-1 standing. `window_search_knowledge()`
+retains the recorded lane/search populations of each root and its delegates;
+missing searches or search metadata give an unknown population. Known searches
+can consume only their recorded populations; unknown searches can consume any
+later population. Known complete roots retain their global E-4 allocation even
+when their results cannot be reused under the rule's contract.
+
+The lower bound counts each scoped current eligible root whose new search
+credit cannot all be consumed by earlier indeterminate roots. It considers
+their combined populations, so several uncertain roots can jointly take a
+multi-search root's credit. Vulnerable roots sharing possible earlier owners
+form connected groups. Each group guarantees one window only if every possible
+owner is current and in scope: failed/uncompleted owners leave the observed
+windows intact, and a completing first owner contributes its own window.
+Otherwise the group's conservative guarantee is zero. This takes the minimum
+over failed and complete resolutions while allowing additional unknown verdicts;
+it does not freeze allocation or change E-4's counting unit.
+
+Chains with contradictions (null incoming cursor after page 1, a cursor on
+page 1, conflicting page numbers, incompatible adjacent cursors, or exhaustion
+before another page) are provably invalid. Consistent missing prefixes/interior
+pages and unknown terminal pagination are recoverable and remain indeterminate.
+Complete chains satisfy the existing captured-page and exhaustion requirements.
+Recoverable chains remain absent from `saturation_passes()`, whose implementation
+and exclusions are unchanged.
+
+For minimum N, coverage is satisfied when lower >= N, not_satisfied when
+upper < N, and unknown otherwise. Known stale windows
 contribute to the ineligible count rather than forcing unrelated valid windows
 unknown. Legacy history and an evaluator/snapshot contract mismatch still make
 the result unknown because the attempted-window universe/context is untrusted.
 No arithmetic establishes scientific sufficiency.
 
-Literal tests cover the four F1 cases, direct/transitive delegate cases, no
-attempts, complete windows, mixed lower/upper bounds, known exclusions, scope
-and G-1 standing. Hypothesis checks that resolving an indeterminate window to
-eligible or ineligible cannot flip a definite verdict. Paired mutants cover
-each new classification guard, both bound errors and retained standing operands.
+Literal tests retain the original F1 cases and add Astra's pure, scoped and
+Router overlap probes and missing-prefix probe with positive/negative controls.
+Hypothesis builds small inventories with uncertainty before, between and after
+complete roots, overlap/disjoint and multi-search populations, prefix/interior
+gaps, delegates, scope, and current/compatible/stale/unknown G-1 standings.
+An independent finite oracle enumerates every admissible failed/uncompleted or
+complete resolution over the inventory's populations plus one fresh population,
+allocates first-owner credit globally, then applies scope and reuse standing.
+Definite verdicts must agree with every completion; unknown verdicts where all
+completions agree are counted and reported as permitted approximations. This
+replaces the restricted monotonicity claim with differential soundness checks.
+Paired mutants cover the earlier-owner discount, known/unknown populations,
+recoverable chains, scope ordering, joint thieves, and replacement contributions.

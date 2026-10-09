@@ -1,4 +1,4 @@
-"""Certain-answer coverage: literal inventories and knowledge refinement."""
+"""Certain-answer coverage: literal inventories and finite completion oracle."""
 import unittest
 from dataclasses import replace
 
@@ -243,29 +243,26 @@ class CoverageTest(unittest.TestCase):
     def test_properties(self):
         result = children.python(["-c", PROPERTIES], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        print("coverage reference model: " + result.stdout.strip())
 
 
 PROPERTIES = '''
-from dataclasses import replace
-from hypothesis import given, settings, strategies as st
-from gen2.tests.test_coverage import attempts, evaluate
-@settings(max_examples=100, derandomize=True, database=None)
-@given(st.integers(0, 6), st.integers(1, 6), st.integers(1, 14), st.integers(0, 5),
-       st.sampled_from(("missing", "partial", "unobserved", "end_unknown")))
-def knowledge_monotone(complete, uncertain, minimum, slot, mode):
-    inv = attempts(complete, uncertain)
-    if mode != "missing":
-        captures = attempts(complete + uncertain).observations[complete:]
-        captures = tuple(replace(o, completeness="partial" if mode == "partial" else "unobserved" if mode == "unobserved" else "complete",
-                                 page_outcome="end_unknown", result_count=None if mode == "unobserved" else 0) for o in captures)
-        inv = replace(inv, observations=(*inv.observations, *captures))
-    before = evaluate(inv, minimum).state
-    i = complete + slot % uncertain
-    observed = attempts(i + 1).observations[-1]
-    eligible = replace(inv, observations=(*(o for o in inv.observations if o.invocation_id != f"p{i}"), observed))
-    ineligible = replace(inv, passes=tuple(replace(p, state="failed") if p.invocation_id == f"p{i}" else p for p in inv.passes))
-    if before != "unknown":
-        assert evaluate(eligible, minimum).state == before
-        assert evaluate(ineligible, minimum).state == before
-knowledge_monotone()
+import json
+from hypothesis import example, given, settings, strategies as st
+from gen2.tests.coverage_reference import MODES, PINS, COUNTS, reference_model as oracle
+root = st.tuples(st.sampled_from(MODES), st.sets(st.integers(0, 2), min_size=1, max_size=3).map(frozenset),
+                 st.sampled_from(PINS), st.integers(0, 2))
+@settings(max_examples=180, derandomize=True, database=None, deadline=None)
+@given(st.lists(root, min_size=0, max_size=3), st.integers(0, 7), st.booleans())
+@example([("missing", frozenset({0}), "current", 0), ("complete", frozenset({1}), "current", 0), ("complete", frozenset({2}), "current", 0)], 7, True)
+@example([("partial", frozenset({0}), "current", 1), ("complete", frozenset({1}), "current", 0)], 2, False)
+@example([("complete", frozenset({0}), "current", 0), ("missing", frozenset({1}), "stale", 2), ("complete", frozenset({1, 2}), "current", 0)], 7, True)
+@example([("complete", frozenset({0}), "current", 0), ("complete", frozenset({1}), "current", 0), ("missing", frozenset({2}), "unknown", 1)], 7, True)
+@example([("prefix", frozenset({0}), "compatible", 1), ("interior", frozenset({1, 2}), "current", 2)], 3, True)
+@example([("partial", frozenset({0}), "current", 0), ("partial", frozenset({1}), "current", 0), ("complete", frozenset({0, 1}), "current", 0)], 4, False)
+@example([("missing_delegate", frozenset({0}), "current", 2), ("complete", frozenset({1, 2}), "current", 0)], 3, True)
+def reference_model(specs, mask, unscoped):
+    oracle(specs, mask, unscoped)
+reference_model()
+print(json.dumps(COUNTS, sort_keys=True))
 '''

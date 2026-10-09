@@ -8901,6 +8901,54 @@
   ],
   "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
  },
+ "2C3D-drop-discount": {
+  "controls": [
+   "test_coverage_dependencies.DependencyTest.test_control_disjoint"
+  ],
+  "why": "Literal disjoint history or provably invalid chain executes the changed guard and retains its expected verdict."
+ },
+ "2C3D-drop-replacement": {
+  "controls": [
+   "test_coverage_dependencies.DependencyTest.test_control_disjoint"
+  ],
+  "why": "Literal disjoint history or provably invalid chain executes the changed guard and retains its expected verdict."
+ },
+ "2C3D-ignore-combined-thieves": {
+  "controls": [
+   "test_coverage_dependencies.DependencyTest.test_control_disjoint"
+  ],
+  "why": "Literal disjoint history or provably invalid chain executes the changed guard and retains its expected verdict."
+ },
+ "2C3D-known-as-unknown": {
+  "controls": [
+   "test_coverage_dependencies.DependencyTest.test_control_invalid_chain"
+  ],
+  "why": "Literal disjoint history or provably invalid chain executes the changed guard and retains its expected verdict."
+ },
+ "2C3D-recoverable-invalid": {
+  "controls": [
+   "test_coverage_dependencies.DependencyTest.test_control_invalid_chain"
+  ],
+  "why": "Literal disjoint history or provably invalid chain executes the changed guard and retains its expected verdict."
+ },
+ "2C3D-scope-before-dependency": {
+  "controls": [
+   "test_coverage_dependencies.DependencyTest.test_control_disjoint"
+  ],
+  "why": "Literal disjoint history or provably invalid chain executes the changed guard and retains its expected verdict."
+ },
+ "2C3D-stale-thief-counts": {
+  "controls": [
+   "test_coverage_dependencies.DependencyTest.test_control_disjoint"
+  ],
+  "why": "Literal disjoint history or provably invalid chain executes the changed guard and retains its expected verdict."
+ },
+ "2C3D-unknown-as-known": {
+  "controls": [
+   "test_coverage_dependencies.DependencyTest.test_control_disjoint"
+  ],
+  "why": "Literal disjoint history or provably invalid chain executes the changed guard and retains its expected verdict."
+ },
  "2C3R-attempt-universe": {
   "by_hand": true,
   "controls": [

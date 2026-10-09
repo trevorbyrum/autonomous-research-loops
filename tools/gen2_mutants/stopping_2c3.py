@@ -28,7 +28,7 @@ guard("nonwindow", "test_nonwindows_repetition_and_missing_pins", "test_control_
 guard("window-pin", "test_nonwindows_repetition_and_missing_pins", "test_control_coverage", 'if i in revisions else "unknown"', 'if i in revisions else "current"')
 guard("window-standing", "test_stale_unknown_and_empty_labels", "test_control_coverage", 'if standing == "stale":', 'if False:')
 guard("window-legacy", "test_nonwindows_repetition_and_missing_pins", "test_control_coverage", ' or inventory.history == "legacy_unknown"', '')
-guard("window-threshold", "test_control_coverage", "test_control_short_coverage", 'eligible >= minimum_windows', 'eligible > minimum_windows')
+guard("window-threshold", "test_control_coverage", "test_control_short_coverage", 'lower >= minimum_windows', 'lower > minimum_windows')
 guard("known-membership", "test_known_item_missing_and_unknown", "test_control_known_item", 'missing = declared.work_ids - found', 'missing = frozenset()')
 guard("known-empty", "test_known_item_missing_and_unknown", "test_control_known_item", 'not declared.work_ids or ', '')
 guard("known-unknown", "test_known_item_missing_and_unknown", "test_control_known_item", 'retrieved.value is None or ', '')
@@ -46,15 +46,15 @@ ACCOUNTING = "gen2/accounting/__init__.py"
 repair("indeterminate-as-ineligible", "test_missing_capture", "test_control_complete",
        'eligible + indeterminate < minimum_windows', 'eligible < minimum_windows')
 repair("indeterminate-as-eligible", "test_between_bounds", "test_control_lower_bound",
-       'if eligible >= minimum_windows:', 'if eligible + indeterminate >= minimum_windows:')
+       'if lower >= minimum_windows:', 'if upper >= minimum_windows:')
 repair("upper-bound-equality", "test_between_bounds", "test_control_upper_bound",
        'elif eligible + indeterminate < minimum_windows:', 'elif eligible + indeterminate <= minimum_windows:')
 repair("blanket-unknown", "test_control_lower_bound", "test_between_bounds",
-       'if eligible >= minimum_windows:', 'if eligible >= minimum_windows and not indeterminate:')
+       'if lower >= minimum_windows:', 'if lower >= minimum_windows and not indeterminate:')
 repair("scope", "test_rule_scope", "test_control_complete",
        'if scope is None or w.invocation_id in scope)', 'if True)')
 repair("standing-operands", "test_missing_capture", "test_control_complete",
-       'for w in window_standings(inventory)\n', 'for w in window_standings(inventory) if w.state == "eligible"\n')
+       'standings = window_standings(inventory)', 'standings = tuple(w for w in window_standings(inventory) if w.state == "eligible")')
 repair("standing-reasons", "test_missing_capture", "test_control_complete",
        'standing, state, reason)', 'standing, state, "" if state == "indeterminate" else reason)')
 repair("ineligible-count", "test_known_exclusions", "test_control_complete",
@@ -103,3 +103,30 @@ repair("end-standing", "test_unknown_end", "test_control_nonpaging",
        'return "indeterminate", "pagination end unknown"', 'return "ineligible", "pagination end unknown"', ACCOUNTING)
 repair("attempt-universe", "test_unfinished_and_metadata", "test_control_complete",
        'for p in inventory.passes if p.kind == "research_pass")', 'for p in inventory.passes if p.kind == "research_pass" and p.state == "committed")', ACCOUNTING)
+
+
+def dependency(name, killer, control, old, new, target=TARGET):
+    mid = "2C3D-" + name
+    prefix = "test_coverage_dependencies.DependencyTest."
+    MUTATIONS.append(Mutation(mid, "2c-3a-repair-2", name, (prefix + killer,), target=target, old=old, new=new))
+    CONTROLS[mid] = {"controls": [prefix + control], "why":
+                     "Literal disjoint history or provably invalid chain executes the changed guard and retains its expected verdict."}
+
+
+dependency("drop-discount", "test_overlap_probe", "test_control_disjoint",
+           'lower = _coverage_lower_bound(inventory, standings, global_operands, scope)', 'lower = eligible')
+dependency("known-as-unknown", "test_known_search_discount", "test_control_invalid_chain",
+           'earlier[w.invocation_id] = searches', 'earlier[w.invocation_id] = None')
+dependency("unknown-as-known", "test_overlap_probe", "test_control_disjoint",
+           'earlier[w.invocation_id] = searches', 'earlier[w.invocation_id] = searches or frozenset()')
+dependency("recoverable-invalid", "test_recoverable_prefix_and_interior", "test_control_invalid_chain",
+           'return "indeterminate", "pagination pages missing"', 'return "ineligible", "pagination pages missing"', ACCOUNTING)
+dependency("scope-before-dependency", "test_scoped_overlap_probe", "test_control_disjoint",
+           '_credit_risks(inventory, standings, operands, scope)',
+           '_credit_risks(inventory, tuple(w for w in standings if scope is None or w.invocation_id in scope), operands, scope)')
+dependency("drop-replacement", "test_overlap_probe", "test_control_disjoint",
+           'return safe + replacements', 'return safe')
+dependency("ignore-combined-thieves", "test_combined_thieves_and_existing_credit", "test_control_disjoint",
+           'not credit <= possible', 'not any(keys is None or credit <= keys for keys in earlier.values())')
+dependency("stale-thief-counts", "test_stale_thief", "test_control_disjoint",
+           'and operands[i].standing == "current"', '')
