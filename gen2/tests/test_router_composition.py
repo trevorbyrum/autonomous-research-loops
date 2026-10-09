@@ -8,16 +8,17 @@ import inspect
 import unittest
 from pathlib import Path
 
-from gen2.router import amendments, capabilities, evidence_writer, lifecycle, registries, scheduling, service, status
+from gen2.router import amendments, assessments, capabilities, evidence_writer, lifecycle, registries, scheduling, service, status
 from gen2.tests.router_fixtures import RouterTestCase
 
 COLLABORATORS = ((status, status.Status, status.StatusCore, "_status"), (capabilities, capabilities.Capabilities, capabilities.CapabilityCore, "_capabilities"),
                  (registries, registries.Registries, registries.RegistriesCore, "_registries"), (lifecycle, lifecycle.Lifecycle, lifecycle.LifecycleCore, "_lifecycle"),
                  (scheduling, scheduling.Scheduling, scheduling.SchedulingCore, "_scheduling"), (amendments, amendments.Amendments, amendments.AmendmentsCore, "_amendments"),
-                 (evidence_writer, evidence_writer.EvidenceWriter, evidence_writer.EvidenceCore, "_evidence_writer"))
-PUBLIC_API = {  # Router's public methods at be5b2f1, before status.py, capabilities.py, registries.py, lifecycle.py, scheduling.py and amendments.py stopped being mixins
+                 (evidence_writer, evidence_writer.EvidenceWriter, evidence_writer.EvidenceCore, "_evidence_writer"),
+                 (assessments, assessments.Assessments, assessments.AssessmentCore, "_assessments"))
+PUBLIC_API = {  # Router's public methods at be5b2f1 plus intentional additions (evidence_inventory, task 2c-2a)
     "ack_delivery", "activate_config_bundle", "apply_operator_decision", "claim", "close", "close_brief", "commit_outcome", "config_bundle", "create_topic", "draft_contract",
-    "candidate_units", "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",
+    "candidate_units", "evidence_inventory", "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",
     "receipt", "reconcile", "record_capability_probe", "record_gateway_facts", "record_observation", "record_qualification", "record_transition", "register_works",
     "request_cancel", "requeue", "restore_config_bundle", "revoke_qualification", "status", "version_brief"}
 
@@ -72,7 +73,7 @@ class CollaboratorInterfaceTest(RouterTestCase):
                 self.assertEqual("_snapshot" in used(module), module is status)
 
     def test_the_router_composes_its_collaborators_and_keeps_its_public_methods(self):
-        self.assertFalse(isinstance(self.router, (status.Status, capabilities.Capabilities, registries.Registries, lifecycle.Lifecycle, scheduling.Scheduling, amendments.Amendments, evidence_writer.EvidenceWriter)))
+        self.assertFalse(isinstance(self.router, (status.Status, capabilities.Capabilities, registries.Registries, lifecycle.Lifecycle, scheduling.Scheduling, amendments.Amendments, evidence_writer.EvidenceWriter, assessments.Assessments)))
         self.assertEqual(service.Router.__bases__, (object,))  # the last mixin is gone
         self.assertEqual({n for n in dir(service.Router) if not n.startswith("_")}, PUBLIC_API)
 
