@@ -22,7 +22,13 @@ def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory
     assessments = tuple(a.Assessment(s["work_id"]) for s in rows.select("screening_assessments", where))
     claims = tuple(a.Claim(c["claim_id"], c["revision"], c["status"]) for c in rows.select("claims", where))
     passes = tuple(a.Pass(p["invocation_id"], p["kind"], p["state"], p["parent_invocation_id"]) for p in rows.select("invocations", where))
-    return a.Inventory(history, observations, retrievals, links, assessments, claims, passes)
+    semantic = tuple(a.SemanticAssessment(s["assessment_id"], s["work_id"], s["source_version"], s["contract_revision"],
+        s["eligibility_protocol_version"], s["framing_version"], s["novelty"], s["independence"], s["applicability"], s["contribution"],
+        tuple(a.EvidenceReference(**ref) for ref in s["evidence_refs"]), s["actor_kind"], s["invocation_id"],
+        s["recorded_by_operation_id"], s["created_at"]) for s in rows.select("semantic_assessments", where))
+    ids = {s.assessment_id for s in semantic}
+    lineage = tuple(a.SourceLineage(**l) for l in rows.select("source_lineage") if l["assessment_id"] in ids)
+    return a.Inventory(history, observations, retrievals, links, assessments, claims, passes, semantic, lineage)
 
 
 def read_page(observation: dict) -> a.SearchPage | None:

@@ -147,7 +147,6 @@ class DurableAccountingTest(Workflow):
         grant = self.started("inv_research01")
         events = self.observe(grant, "obs_search0001", ("A", "A-copy", "B"))
         self.assertEqual(self.register(grant, [("doi", "10.1/A", events[:2]), ("doi", "10.1/B", events[2:])])["status"], "recorded")
-        self.x("UPDATE works SET study_group_id = 'shared-origin'")  # lineage never merges distinct identities.
         work = self.rows("SELECT work_id FROM works ORDER BY identity_value")[0][0]
         text = self.artifact(b"claim")
         outcome = {**empty_outcome("inv_research01"), "claims": [{"claim_id": "clm_00000001", "revision": 1, "text_ref": text,

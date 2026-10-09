@@ -54,6 +54,7 @@ from typing import Callable, Mapping
 from gen2 import accounting
 from gen2.core import canonical, instants, pagination
 from gen2.router.accounting import read_inventory
+from gen2.router.assessments import Assessments
 from gen2.router import boundary
 from gen2.router.amendments import AMENDMENT_COMMANDS, COMPATIBLE, Amendments, brief_compatibility, contract_compatibility
 from gen2.router.boundary import Refusal, instant
@@ -222,6 +223,7 @@ class Router:
         self._scheduling = Scheduling(self)
         self._amendments = Amendments(self)
         self._evidence_writer = EvidenceWriter(self)
+        self._assessments = Assessments(self)
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
@@ -248,6 +250,15 @@ class Router:
 
     def record_capability_probe(self, request: Mapping) -> dict:
         return self._capabilities.record_capability_probe(request)
+
+    def evidence_inventory(self, topic_id: str, *, history: accounting.History) -> accounting.Inventory:
+        """Raw attributed operands, including semantic history, in one snapshot."""
+        if history not in ("native", "legacy_unknown"):
+            raise ValueError("history must be native or legacy_unknown")
+        with self._snapshot():
+            if self._one("queue_entries", {"topic_id": topic_id}) is None:
+                raise Refusal("unknown_topic", topic_id)
+            return read_inventory(self._store, topic_id, history)
 
     def record_gateway_facts(self, request: Mapping) -> dict:
         return self._capabilities.record_gateway_facts(request)
@@ -895,6 +906,7 @@ class Router:
         if payload["next_queue_state"] is not None and inv["kind"] != "research_pass":
             raise Refusal("kind_not_permitted", "only a research pass proposes its topic's next queue state")
         boundary.check_sections(payload, inv["kind"], inv["admission_context"])
+        self._assessments.validate(payload, inv)
         artifacts = {env["payload_digest"]: {"size_bytes": len(raw), "media_type": "application/json"}}
         staged = {env["payload_digest"]: raw}
         for ref in env["result_refs"]:
@@ -932,6 +944,7 @@ class Router:
 
         for claim in payload["claims"]:
             bind(claim["text_ref"], f"{claim['claim_id']}: its text")
+        self._assessments.bind_evidence(payload, bind)
         for report in payload["scoping_reports"]:  # task 2a: flow S2's hand-off, by the work whose admission it names (C-12)
             if report["topic_id"] != inv["topic_id"]:
                 raise Refusal("cross_topic", f"{report['report_id']} is about topic {report['topic_id']}")
@@ -1139,7 +1152,11 @@ class Router:
             self._transition_row(inv["invocation_id"], "result_ready", "committed", now, "commit_outcome")
 
     def _write_evidence(self, env: dict, inv: dict, checked: dict, now: str, new_triggers: list, outbox: list) -> dict:
-        return self._evidence_writer._write_evidence(env, inv, checked, now, new_triggers, outbox)
+        written = self._evidence_writer._write_evidence(env, inv, checked, now, new_triggers, outbox)
+        assessments = self._assessments.write(checked["payload"], inv, env["operation_id"], now)
+        if assessments:
+            written["semantic_assessments"] = assessments
+        return written
 
     # -- operator decisions ------------------------------------------------------
     def apply_operator_decision(self, request: Mapping) -> dict:

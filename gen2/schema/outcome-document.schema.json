@@ -3,7 +3,7 @@
   "$id": "https://research-loops.invalid/gen2/schema/outcome-document.schema.json",
   "$comment": "flow: S4 step 7 (the result is committed through commit_outcome as typed proposals, never as agent-written state); S4 steps 3, 6, 8, 9 (screening, provisional capture, verification, accepted support at the commit boundary); §3 step 4 (a decision action commits through the same path); S8 item 1 (the outbox event is committed atomically) | boundaries: Router; Station supervisor; Primary agent (per-station frontier LLM); Verifier; Secondary/delegate agents | design-review: §5 commit_outcome steps 1-4 (the typed outcome document lives in the protected spool, addressed by payload_digest, and is validated outside the write transaction) | invariants: C-2; C-3; C-4; C-7; C-9; C-12; V-4; V-10; RG-5; G-12; P-1; D-2 | note: added by task 1b. The document the router reads, by digest, for one commit. It carries only proposals whose authority the router derives from the committing capability: there is no producer, verifier, recorder, signal-source or role field, because the router fills each of those in from the invocation the capability names. Which sections an invocation kind may carry is the router's rule (gen2/router/boundary.py SECTION_KINDS), not this schema's",
   "title": "commit_outcome outcome document",
-  "description": "Staged by trusted station code in the protected spool and named by the commit envelope's payload_digest (the bytes are hashed exactly as staged). Every section is present, empty when unused, so a missing section is a malformed document rather than a silent default. Identity fields repeat the envelope's so the document cannot be replayed under another invocation, topic or operation kind.",
+  "description": "Staged by trusted station code in the protected spool and named by the commit envelope's payload_digest (the bytes are hashed exactly as staged). Core sections are present, empty when unused; the additive semantic_assessments section is optional and its absence supplies no judgments. Identity fields repeat the envelope's so the document cannot be replayed under another invocation, topic or operation kind.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -134,6 +134,11 @@
         ]
       }
     },
+    "semantic_assessments": {
+      "description": "2c-2a: append-only judgments and optional lineage, attributed to the committing primary invocation. Optional for existing outcome/1 producers; absent means no judgments. Protocol pins are checked by the Router; evidence references obey its artifact authorization rule.",
+      "type": "array", "maxItems": 256,
+      "items": {"$ref": "#/$defs/semantic_assessment"}
+    },
     "review_triggers": {
       "description": "Semantic trigger observations of the primary (flow S5). The identity is the router's hash of (topic, reason, cause, source revision), so a replayed trigger collides instead of re-opening; mandatory retraction and decision-record signals are raised by code policy or the operator, never by a commit (G-12).",
       "type": "array",
@@ -208,7 +213,38 @@
     }
   },
   "$defs": {
-    "assessment_id": {"type": "string", "pattern": "^asm_[A-Za-z0-9_-]{8,64}$"}
+    "assessment_id": {"type": "string", "pattern": "^asm_[A-Za-z0-9_-]{8,64}$"},
+    "semantic_assessment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["assessment_id", "work_id", "source_version", "contract_revision", "eligibility_protocol_version", "framing_version", "novelty", "independence", "applicability", "contribution", "evidence_refs", "lineage"],
+      "properties": {
+        "assessment_id": {"$ref": "#/$defs/assessment_id"},
+        "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
+        "source_version": {"$ref": "common.schema.json#/$defs/short_text"},
+        "contract_revision": {"$ref": "common.schema.json#/$defs/revision"},
+        "eligibility_protocol_version": {"$ref": "common.schema.json#/$defs/revision"},
+        "framing_version": {"$ref": "common.schema.json#/$defs/revision"},
+        "novelty": {"enum": ["novel", "not_novel", "unknown"]},
+        "independence": {"enum": ["independent", "shared_origin", "unknown"]},
+        "applicability": {"enum": ["applicable", "not_applicable", "unknown"]},
+        "contribution": {"enum": ["answer", "confidence", "applicability", "options", "question_formulation", "boundary_condition", "contradiction", "unknown"]},
+        "evidence_refs": {"type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/artifact_ref"}},
+        "lineage": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/source_lineage"}]}
+      }
+    },
+    "source_lineage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["relation", "study_origin_id", "related_work_id", "related_source_version"],
+      "properties": {
+        "relation": {"enum": ["shared_study_origin", "version_of", "derived_from"]},
+        "study_origin_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]},
+        "related_work_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/work_id"}]},
+        "related_source_version": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
+      },
+      "if": {"properties": {"relation": {"const": "shared_study_origin"}}},
+      "then": {"properties": {"study_origin_id": {"type": "string"}, "related_work_id": {"type": "null"}, "related_source_version": {"type": "null"}}},
+      "else": {"properties": {"study_origin_id": {"type": "null"}, "related_work_id": {"type": "string"}, "related_source_version": {"type": "string"}}}
+    }
   },
   "allOf": [
     {

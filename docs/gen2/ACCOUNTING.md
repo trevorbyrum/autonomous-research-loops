@@ -71,3 +71,72 @@ and mutants for search normalization, ancestry, chain bounds/continuity and
 non-paging membership. Targeted tests and --only
 mutants; boundary/source/metrics checks and explicit ledger admissions. Later
 slices extend this note when their concrete inventories are defined.
+
+## 2c-2: attributable assessments and lineage
+
+Design recorded before code (2026-10-09). Full-slice estimate: about 900
+hand-written lines (records/DDL/schema 240, Router admission and wiring 160,
+typed reads/arithmetic 120, tests/properties 260, mutants/ledger/docs 120).
+This exceeds the approximately 500-line guide: implement **2c-2a only**,
+estimated at about 490 lines, then stop for its independent review.
+
+**2c-2a records.** New append-only `semantic_assessments` records name a
+retrieved work and its explicit source version, novelty (novel/not_novel/
+unknown), independence (independent/shared_origin/unknown), applicability
+(applicable/not_applicable/unknown), and contribution (the existing
+claim-source contribution vocabulary plus unknown). New append-only
+`source_lineage` extensions, keyed to an assessment, name either a study-origin id
+(`shared_study_origin`), another work/version (`version_of`), or an acquisition
+origin (`derived_from`, another work/version). The assessment retains its
+record id, invocation/primary actor, contract revision, eligibility-protocol
+version, framing version, evidence artifact references, operation receipt and
+Router recording date; its lineage extension inherits that exact attribution
+and subject version through its foreign key. Source versions are explicit labels, as in existing
+claim-source and verification records; evidence references bind retained
+bytes, not an inferred version. No new work identity or source-version table
+is needed. `works`, retrieval links and screening assessments remain the
+four-unit inventories; the legacy `works.study_group_id` annotation supplies
+no authority and is not consumed. Explicit shared-origin records keep two
+papers as two works, never merge their identities (E-3/V-9).
+
+**Admission and authority.** An optional additive `semantic_assessments`
+outcome/1 section, with an optional lineage extension on each record, enters
+through the existing fenced, atomic, replay-safe `commit_outcome`. A new
+Router collaborator validates and inserts them; service.py adds thin wiring.
+Only contract-admitted primary-class research_pass/checkpoint
+invocations may record these judgments, with actor identity taken from the
+capability's invocation, never supplied in the payload. Delegates, verifiers,
+code and advisory providers cannot claim primary authority. Protocol/framing
+fields are required and must equal the pinned contract. Subjects and related
+works must be retrieved by this topic; evidence references must be staged in
+the commit or already authorized for its topic, with exact size/media type.
+Record-id reuse cannot overwrite; DDL also forbids updates/deletes. Distinct
+records may disagree: duplicates are retained, never silently resolved.
+Human and qualified-provider judgment production/routing belongs to 2e;
+this slice provides the authorized primary recording path without extending
+operator decisions or granting automatic provider authority.
+
+**Reads.** Extend the 2c-1 typed Inventory and Router read adapter with both
+inventories inside the same `_snapshot()`. A public inventory read exposes
+attributed operands without writes or a clock. Novelty consumes these explicit
+labels through the existing `NoveltyJudgment` arithmetic: absent, unknown or
+multiple labels remain unknown (E-7). Semantic records do not enlarge the
+screened-candidate denominator. No arithmetic creates independence or other
+semantic labels, and no semantic label establishes saturation eligibility.
+
+**2c-2b remaining.** Add dated reversible source lifecycle chains (add, keep,
+supersede, coexist, quarantine, duplicate-report), contradiction and branch
+dispositions, and typed semantic/branch accrual operands. Later records reverse
+dispositions without changing earlier dated views; tests include supersede
+then reversal. Read these with slice 1 and 2a in the same snapshot. Consume
+the existing G-1 impact dispositions to invalidate/reopen old-framing labels
+and reason-coded screening exclusions (E-9), without comparing protocols or
+re-deriving impact judgments. Until then 2a exposes raw attributed history,
+not a current-framing or lifecycle view; 2c-3 consumes the completed operands.
+
+DDL uses the existing ordered schema mechanism and exact-identity opening
+gate; there is no in-place migration/backfill mechanism. Old stores are
+refused, and migration remains Phase 4. Tests use only in-memory fixtures.
+Validation uses hand-written expectations, Router refusals (unauthorized actor,
+missing revision/framing, overwrite, wrong pins/topic/evidence), shared-origin
+and explicit-novelty fixtures, append-only laws, and paired guard mutants.

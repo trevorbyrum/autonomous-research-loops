@@ -777,6 +777,8 @@ def _inventory():
     import gen2_mutations  # noqa: E402
     from gen2_mutants.accounting_2c1 import CONTROLS as ACCOUNTING_CONTROLS
     MANUAL.update(ACCOUNTING_CONTROLS)  # by-hand accepted paths, kept with their family
+    from gen2_mutants.assessments_2c2a import CONTROLS as ASSESSMENT_CONTROLS
+    MANUAL.update(ASSESSMENT_CONTROLS)
     return gen2_mutations
 
 

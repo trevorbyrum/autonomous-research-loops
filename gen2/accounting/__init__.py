@@ -85,6 +85,41 @@ class Pass:
 
 
 @dataclass(frozen=True)
+class EvidenceReference:
+    content_hash: str
+    size_bytes: int
+    media_type: str
+
+
+@dataclass(frozen=True)
+class SemanticAssessment:
+    assessment_id: str
+    work_id: str
+    source_version: str
+    contract_revision: int
+    eligibility_protocol_version: int
+    framing_version: int
+    novelty: Literal["novel", "not_novel", "unknown"]
+    independence: Literal["independent", "shared_origin", "unknown"]
+    applicability: Literal["applicable", "not_applicable", "unknown"]
+    contribution: Literal["answer", "confidence", "applicability", "options", "question_formulation", "boundary_condition", "contradiction", "unknown"]
+    evidence_refs: tuple[EvidenceReference, ...]
+    actor_kind: Literal["primary"]
+    invocation_id: str
+    recorded_by_operation_id: str
+    created_at: str
+
+
+@dataclass(frozen=True)
+class SourceLineage:
+    assessment_id: str  # attribution and work/version are the parent assessment's
+    relation: Literal["shared_study_origin", "version_of", "derived_from"]
+    study_origin_id: str | None
+    related_work_id: str | None
+    related_source_version: str | None
+
+
+@dataclass(frozen=True)
 class Inventory:
     history: History
     observations: tuple[Observation, ...] = ()
@@ -93,6 +128,8 @@ class Inventory:
     assessments: tuple[Assessment, ...] = ()
     claims: tuple[Claim, ...] = ()
     passes: tuple[Pass, ...] = ()
+    semantic_assessments: tuple[SemanticAssessment, ...] = ()
+    source_lineage: tuple[SourceLineage, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -223,6 +260,12 @@ def candidate_units(inventory: Inventory) -> CandidateUnits:
 class NoveltyJudgment:
     work_id: str
     novel: bool | None
+
+
+def novelty_judgments(records: tuple[SemanticAssessment, ...]) -> tuple[NoveltyJudgment, ...]:
+    """Translate retained labels only; callers select context, duplicates stay."""
+    labels = {"novel": True, "not_novel": False, "unknown": None}
+    return tuple(NoveltyJudgment(r.work_id, labels[r.novelty]) for r in records)
 
 
 def novelty(assessed: Count, judgments: tuple[NoveltyJudgment, ...]) -> Fraction | None:

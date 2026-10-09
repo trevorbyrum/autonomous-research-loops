@@ -115,7 +115,91 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_out
 - location: engine:gen2/router/service.py
-- limit: 15
-- reason: Fan-out 13 to 15 is exactly the pure accounting component and minimal row adapter, within existing Router grants; no other fan-out growth authorized.
-- task: 2c-1
+- limit: 16
+- reason: Fan-out 13 to 16 is exactly the 2c-1 pure accounting component and row adapter plus the 2c-2a assessment collaborator, all within existing Router grants; no other fan-out growth authorized.
+- task: 2c-2a
+
+### ML-0014
+- action: admit
+- target: engine|edge|gen2/router/assessments.py->gen2/router/boundary.py
+- reason: The assessment collaborator uses the existing primary-kind authority set and refusal vocabulary at the Router boundary.
+- task: 2c-2a
+
+### ML-0015
+- action: admit
+- target: engine|edge|gen2/router/service.py->gen2/router/assessments.py
+- reason: Thin Router wiring composes semantic admission and append-only recording into the existing fenced commit transaction.
+- task: 2c-2a
+
+### ML-0016
+- action: admit
+- target: engine|file|gen2/router/assessments.py
+- reason: One small Router collaborator owns semantic record admission and recording without arithmetic, I/O or a separate transaction.
+- task: 2c-2a
+
+### ML-0017
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/assessments.py
+- reason: Existing engine-to-Router composition reaches the assessment collaborator; no new engine authority or direct store access.
+- task: 2c-2a
+
+### ML-0018
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/assessments.py
+- reason: Existing station-to-Router composition reaches the assessment collaborator; no provider or direct store access.
+- task: 2c-2a
+
+### ML-0019
+- action: admit
+- target: engine|reach|gen2/router/assessments.py->gen2/core/canonical.py
+- reason: The collaborator reaches canonical helpers transitively through the existing Router boundary import; no new direct capability.
+- task: 2c-2a
+
+### ML-0020
+- action: admit
+- target: engine|reach|gen2/router/assessments.py->gen2/core/instants.py
+- reason: The collaborator reaches instant helpers transitively through the existing Router boundary import; it reads no clock.
+- task: 2c-2a
+
+### ML-0021
+- action: admit
+- target: engine|reach|gen2/router/assessments.py->gen2/core/pagination.py
+- reason: The collaborator reaches pagination vocabulary transitively through the existing Router boundary import; it performs no retrieval.
+- task: 2c-2a
+
+### ML-0022
+- action: admit
+- target: engine|reach|gen2/router/assessments.py->gen2/router/boundary.py
+- reason: The collaborator reaches only the existing Router boundary for primary authority and refusals.
+- task: 2c-2a
+
+### ML-0023
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/assessments.py
+- reason: The Router reaches the assessment collaborator it invokes in its existing commit transaction.
+- task: 2c-2a
+
+### ML-0024
+- action: budget
+- metric: fan_in
+- location: engine:gen2/router/boundary.py
+- limit: 9
+- reason: Boundary fan-in grows by one for the new assessment collaborator using the single existing primary authority vocabulary.
+- task: 2c-2a
+
+### ML-0025
+- action: budget
+- metric: function_cyclomatic
+- location: engine:gen2/router/service.py::Router._write_evidence
+- limit: 2
+- reason: The evidence-write wrapper conditionally reports newly appended assessment ids; it has one branch and keeps existing empty outcome responses unchanged.
+- task: 2c-2a
+
+### ML-0026
+- action: budget
+- metric: function_cognitive
+- location: engine:gen2/router/service.py::Router._write_evidence
+- limit: 1
+- reason: One conditional in the thin evidence-write wrapper reports nonempty assessment writes; all admission and persistence remains in collaborators.
+- task: 2c-2a
 

@@ -626,6 +626,10 @@ class StoreTestCase(unittest.TestCase):
         self.x("INSERT INTO record_work_links (event_id, work_id, dedup_method_version, linked_at) VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
         self.x("INSERT INTO screening_assessments (assessment_id, topic_id, work_id, contract_revision, eligibility_protocol_version, framing_version, stage, decision, reason_code, criterion_results, actor_kind, invocation_id, recorded_by_operation_id, created_at) "
                "VALUES ('sa1', ?, 'wrk_00000001', ?, 1, 1, 'abstract', 'include', NULL, '{}', 'primary', 'inv_pppppppp', 'op_00000001', ?)", TOPIC, rev, T)
+        self.x("INSERT INTO semantic_assessments (assessment_id, topic_id, work_id, source_version, contract_revision, eligibility_protocol_version, framing_version, novelty, independence, applicability, contribution, evidence_refs, actor_kind, invocation_id, recorded_by_operation_id, created_at) "
+               "VALUES ('sem1', ?, 'wrk_00000001', 'v1', ?, 1, 1, 'unknown', 'shared_origin', 'unknown', 'unknown', ?, 'primary', 'inv_pppppppp', 'op_00000001', ?)",
+               TOPIC, rev, json.dumps([{"content_hash": h("7"), "size_bytes": 10, "media_type": "application/json"}]), T)
+        self.x("INSERT INTO source_lineage VALUES ('sem1', 'shared_study_origin', 'study-1', NULL, NULL)")
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
         self.x("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, evidence_origin_lineage, created_at) "
                "VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, ?, 'O-1', '[]', 'answer', 'study-1', ?)", TOPIC, rev, T)

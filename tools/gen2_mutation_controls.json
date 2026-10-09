@@ -7893,6 +7893,174 @@
   ],
   "why": "Hand-written complete-window control exercises the accepted path of this window guard."
  },
+ "2C2A-actor": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_control_records_labels_and_shared_origin"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-ddl-actor_kind": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-ddl-applicability": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-ddl-contribution": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-ddl-independence": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-ddl-novelty": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-evidence": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_control_records_labels_and_shared_origin"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-lineage-shape": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-missing-contract_revision": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_schema_control"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-missing-eligibility_protocol_version": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_schema_control"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-missing-framing_version": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_schema_control"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-missing-novelty": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_schema_control"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-missing-source_version": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_schema_control"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-overwrite-is-replay": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_control_records_labels_and_shared_origin"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-pins": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_control_records_labels_and_shared_origin"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-precontract": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_control_records_labels_and_shared_origin"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-related-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_control_records_labels_and_shared_origin"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-semantic_assessments_bound": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-semantic_assessments_immutable_d": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-semantic_assessments_immutable_u": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-source_lineage_immutable_d": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-source_lineage_immutable_u": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticDDLTest.test_control_insert"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-subject-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_control_records_labels_and_shared_origin"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
+ "2C2A-unknown-label": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.SemanticTest.test_control_records_labels_and_shared_origin"
+  ],
+  "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

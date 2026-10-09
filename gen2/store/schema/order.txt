@@ -9,3 +9,4 @@
 02-invocations-and-records.sql
 03-evidence-and-decisions.sql
 04-registries-and-export.sql
+05-semantic-assessments.sql
