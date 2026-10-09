@@ -1862,3 +1862,23 @@ The post-2q Gate D is renumbered #5.
   - only the implemented evaluators;
   - lossless disposition and confidence reconciliation;
   - the four fixture cases.
+
+## 2026-10-09: 2c-1 (the accounting component and the four candidate units): round 1 BLOCK
+- **Astra** (`351f8d18`, pinned bd0a989; `private/reviews/gen2-2c-1-astra-review-20261009.md`): **BLOCK on A, PASS on B, BLOCK on C.**
+- **What conforms:**
+  - E-1, E-2, E-3, E-5, E-7 and E-8;
+  - the four units and unknown handling;
+  - accounting is pure, and the Router reads in one snapshot;
+  - DEBT-030 placement (`service.py` +11);
+  - 13 tests and 12 mutants accepted.
+- **Blocking (one family, a lossy window projection; E-4 is a MITIGATION):**
+  - **F1:** the exact request hash lets equivalent searches earn extra windows.
+  - **F2:** dropped ancestry hides failed or partial delegates from the parent's window.
+  - **F3:** an exhausted tail page is accepted without its captured prefix.
+- **Non-blocking, folded into the repair:**
+  - **N1:** complete multi-page searches are rejected.
+  - **N2:** non-paging work erases a valid find window.
+- **Landing run at bd0a989: green.**
+  - `gen2-check`: 2,454 tests; 2,394 of 2,394 mutants killed.
+  - `gen2-gateway`: 1,540 tests twice; 413 of 413 mutants killed.
+- **Routed:** to `docs/gen2/tasks/2c-1-repair-1.md` (round 1 of 3), Sol coder.
