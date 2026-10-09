@@ -1849,3 +1849,16 @@ The post-2q Gate D is renumbered #5.
 - **Astra** (`9cf2cbfe`, pinned 96d9541): **PASS on A, B and C. "2q-t5 is ACCEPTED; DEBT-026, DEBT-027 and DEBT-028 are closable."** The readiness race is fixed with a forced regression; the verdict diagnostics, environment and replay wording, and the detector exit code are corrected; the inline-back claims are superseded.
 - **The orchestrator closed DEBT-026, DEBT-027 and DEBT-028, and set task 2q to `closed` in phase-status.json.** No 2q-owned entry is open.
 - **Gate D #5 dispatched** in a fresh session; it must pass before 2c.
+
+## 2026-10-09: GATE D #5 (whole system after 2q): PASS
+- **Astra, fresh session** (`c4ecca2b`, pinned 03b9b16; `private/reviews/gen2-gate-d-5-astra-review.md`): **PASS. "Task 2c may start. No prerequisite repair is required."** There is no realistic blocking-class defect.
+  - **2q-b both reduced and moved coupling:** the gateway cycle is gone and the Router collaboration is explicit, but coordination is still concentrated in the Router.
+  - **The evidence tooling is proportionate** under the accepted limits; the inline-back checker stays advisory.
+- **F1 (Medium):** Router headroom. Keep 2c arithmetic in `gen2/accounting` (DEBT-030, owner 2c).
+- **F2 (Low):** stale summaries and the 2q-b11 NB1 and NB2 dispositions (DEBT-031, owner phase 2).
+- **Readiness for 2c:** the structure is fit. 2c's deliverables are as planned:
+  - denominators from durable inventories, keeping the four units and unknown distinct;
+  - attributable semantic assessments and lineage;
+  - only the implemented evaluators;
+  - lossless disposition and confidence reconciliation;
+  - the four fixture cases.

@@ -319,3 +319,21 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   These are owned by phase 2 rather than task 2q so that 2q can close; they're documentation and test titles only.
 - source: private/reviews/gen2-2q-t4b-astra-review-20261009.md (non-blocking findings)
 - removal: the corrections land in a phase 2 maintenance slice, and its review confirms them before phase 2 closes.
+
+### DEBT-030 - Gate D #5 F1: keep 2c arithmetic out of the Router (2c)
+- kind: obligation
+- status: open
+- owner: task 2c
+- what: Gate D #5 F1 (Medium, non-blocking). `gen2/router/service.py` is 1,381 of 1,500 lines, `_validate_commit` is 45/65 and the Router package is 4,244 lines. 2c must put the new arithmetic in the accounting component (`gen2/accounting`, with typed operands and results and the imports BOUNDARIES allows), and keep commit authorisation and transactions in the Router. If 2c does need more Router validation, review that responsibility and its size in the slice concerned. No speculative extraction before 2c.
+- source: private/reviews/gen2-gate-d-5-astra-review.md (F1)
+- removal: 2c demonstrates that separation and stays within the ratchet and file limits, confirmed by the 2c reviews.
+
+### DEBT-031 - Gate D #5 F2: summaries and b11 follow-ups (phase 2)
+- kind: obligation
+- status: open
+- owner: phase 2
+- what: Gate D #5 F2 (Low, non-blocking):
+  - reconcile current summaries: BOUNDARIES still calls the 2q-t4b review pending and the DEBT-023 seam disposition open, and the BUILD-STATE debt and metrics summary is stale (15 entries, SOURCE-CONTRACT v1);
+  - carry or dispose of 2q-b11's NB1 (the signature and binding review reminder, to go in the next extraction brief) and NB2 (the test-module introduction overstates the interim tests' write-order coverage).
+- source: private/reviews/gen2-gate-d-5-astra-review.md (F2)
+- removal: the summaries are reconciled and b11 NB1 and NB2 are disposed of in a phase 2 maintenance slice, alongside DEBT-029.
