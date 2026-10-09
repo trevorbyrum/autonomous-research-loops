@@ -1,9 +1,42 @@
 """Pure durable-inventory arithmetic (2c-1); see docs/gen2/ACCOUNTING.md."""
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from typing import Literal
 
 History = Literal["native", "legacy_unknown"]
+
+
+@dataclass(frozen=True)
+class SearchIdentity:
+    domain: str
+    commercial: bool
+    accept_per_item: bool
+    query: str
+    kind: str | None
+    year_from: int | None
+    published_after: str | None
+    lanes: tuple[str, ...] | None
+
+
+def search_identity(request: dict) -> SearchIdentity:
+    """Mirror gateway effective_request(find), excluding cursors and page size.
+
+    Cross-service imports are forbidden; the gateway comparison test pins this
+    form. Capture/replay request_identity is retained separately and unchanged.
+    """
+    domain = request.get("domain")
+    return SearchIdentity(domain if domain in {"finance", "market", "social", "management", "ai-ml", "software", "biomed"} else "other",
+                          bool(request.get("commercial")), bool(request.get("accept_per_item")), request.get("query") or "",
+                          request.get("kind"), request.get("year_from"), request.get("published_after"),
+                          tuple(sorted(request["lanes"])) if request.get("lanes") else None)
+
+
+@dataclass(frozen=True)
+class SearchPage:
+    search: SearchIdentity
+    number: int
+    cursor: str | int | None
+    continuation: str | int | None
 
 
 @dataclass(frozen=True)
@@ -16,6 +49,7 @@ class Observation:
     completeness: str
     page_outcome: str
     result_count: int | None
+    page: SearchPage | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +81,7 @@ class Pass:
     invocation_id: str
     kind: str
     state: str
+    parent_invocation_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -99,19 +134,67 @@ def _capture_reason(inventory: Inventory) -> str | None:
     return None
 
 
+def _descendants(root: Pass, inventory: Inventory) -> list[Pass]:
+    members = {root.invocation_id}
+    pending = [root.invocation_id]
+    descendants = []
+    while pending:
+        parent = pending.pop()
+        for child in inventory.passes:
+            if child.parent_invocation_id == parent and child.invocation_id not in members:
+                members.add(child.invocation_id)
+                pending.append(child.invocation_id)
+                descendants.append(child)
+    return descendants
+
+
+def _complete_chain(observations: list[Observation]) -> bool:
+    pages = sorted(observations, key=lambda o: o.page.number)
+    number, cursor = 1, None  # Full window bounds: page 1 / no cursor through exhaustion.
+    for o in pages:
+        if o.page.number != number or o.page.cursor != cursor:
+            return False
+        number += 1
+        cursor = o.page.continuation
+        if o is not pages[-1] and (o.page_outcome != "continuation" or cursor is None):
+            return False
+    return pages[-1].page_outcome == "exhausted" and cursor is None
+
+
+def _window_searches(root: Pass, inventory: Inventory) -> set[tuple[str, SearchIdentity]]:
+    descendants = _descendants(root, inventory)
+    members = {root.invocation_id} | {p.invocation_id for p in descendants}
+    observations = [o for o in inventory.observations if o.invocation_id in members]
+    observed = {o.invocation_id for o in observations}
+    if any(p.state != "committed" or p.invocation_id not in observed for p in descendants):
+        return set()
+    if any(not _captured(o, inventory) or o.page_outcome == "failed" for o in observations):
+        return set()
+    chains: dict[tuple[str, SearchIdentity], list[Observation]] = {}
+    for o in observations:
+        if o.request_type != "find":
+            continue  # Non-paging success adds no window; its failures were checked above.
+        if o.page is None:
+            return set()
+        # Each observation covers one lane: automatic/explicit lane selection
+        # and the other lanes' pagination do not change this lane's population.
+        search = replace(o.page.search, lanes=(o.lane,))
+        chains.setdefault((o.lane, search), []).append(o)
+    if any(not _complete_chain(chain) for chain in chains.values()):
+        return set()
+    return set(chains)
+
+
 def saturation_passes(inventory: Inventory) -> tuple[str, ...]:
     """Completed distinct search windows only; eligibility, never sufficiency (E-4)."""
     if inventory.history == "legacy_unknown":
         return ()
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, SearchIdentity]] = set()
     eligible = []
     for p in inventory.passes:
-        observations = [o for o in inventory.observations if o.invocation_id == p.invocation_id]
-        if p.kind != "research_pass" or p.state != "committed" or not observations:
+        if p.kind != "research_pass" or p.state != "committed":
             continue
-        if any(not _captured(o, inventory) or o.request_type != "find" or o.page_outcome != "exhausted" for o in observations):
-            continue
-        requests = {(o.lane, o.request_identity) for o in observations}
+        requests = _window_searches(p, inventory)
         if requests - seen:
             eligible.append(p.invocation_id)
         seen.update(requests)

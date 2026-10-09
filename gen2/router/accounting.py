@@ -11,7 +11,8 @@ class Rows(Protocol):
 def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory:
     where = {"topic_id": topic_id}
     observations = tuple(a.Observation(o["observation_id"], o["invocation_id"], o["lane"], o["request_identity"],
-                                       o["request"]["request"]["request_type"], o["completeness"], o["page_outcome"], o["result_count"])
+                                       o["request"]["request"]["request_type"], o["completeness"], o["page_outcome"], o["result_count"],
+                                       read_page(o))
                          for o in rows.select("search_observations", where))
     retrievals = tuple(a.Retrieval(r["event_id"], r["observation_id"]) for r in rows.select("retrieval_events", where))
     events = {r.event_id for r in retrievals}
@@ -20,5 +21,15 @@ def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory
                   if l["event_id"] in events and l["work_id"] in works)
     assessments = tuple(a.Assessment(s["work_id"]) for s in rows.select("screening_assessments", where))
     claims = tuple(a.Claim(c["claim_id"], c["revision"], c["status"]) for c in rows.select("claims", where))
-    passes = tuple(a.Pass(p["invocation_id"], p["kind"], p["state"]) for p in rows.select("invocations", where))
+    passes = tuple(a.Pass(p["invocation_id"], p["kind"], p["state"], p["parent_invocation_id"]) for p in rows.select("invocations", where))
     return a.Inventory(history, observations, retrievals, links, assessments, claims, passes)
+
+
+def read_page(observation: dict) -> a.SearchPage | None:
+    request = observation["request"]["request"]
+    if request["request_type"] != "find":
+        return None
+    continuation = observation["continuation"]
+    return a.SearchPage(a.search_identity(request), observation["request"]["page"],
+                        (request.get("cursors") or {}).get(observation["lane"]),
+                        continuation["cursor"] if continuation is not None else None)

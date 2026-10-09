@@ -7809,6 +7809,90 @@
   ],
   "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
  },
+ "2C1R-accept-broken-chain": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_complete_linked_pages"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-accept-capped-prefix": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_complete_linked_pages"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-capture-as-search-identity": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_distinct_search_control"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-drop-ancestry": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_complete_delegated_search"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-drop-transitive-ancestry": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_complete_delegated_search"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-ignore-cursor-continuity": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_complete_linked_pages"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-ignore-failed-delegate": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_complete_delegated_search"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-ignore-missing-delegate-capture": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_complete_delegated_search"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-ignore-nonpaging-failure": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_nonpaging_success_preserves_window"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-ignore-page-continuity": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_complete_linked_pages"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-infer-start-from-tail": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.WindowTest.test_complete_linked_pages"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
+ "2C1R-nonpaging-erases-window": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "Hand-written complete-window control exercises the accepted path of this window guard."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

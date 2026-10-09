@@ -34,16 +34,40 @@ even when some new records are available: no reconstruction or invented zero.
 The audited migration path is Phase 4; until then the read API requires explicit
 history provenance and cannot detect an import from a queue row alone.
 
-Saturation eligibility is a prerequisite view, not a stopping verdict: research
-passes must be committed, have complete successful captured observations, and
-report exhausted pagination for find requests. Repeated lane/request identities
-provide no new saturation evidence. Failed, partial, capped, missing and unknown
-observations remain visible but ineligible. Novelty arithmetic accepts separately
-supplied labeled judgments; absent judgments and empty assessed windows are unknown.
+Saturation eligibility is a prerequisite view, not a stopping verdict. A window
+is one committed research invocation and its transitive delegates, read in the
+same Router snapshot. Delegates must be committed and have captured work; the
+parent may coordinate a search performed entirely by delegates. Failed, partial,
+missing and unknown work invalidates that window, without poisoning unrelated
+historical windows. All captures retain their exact request/replay identities.
+
+Typed search identities separately mirror the gateway's effective `find` form
+(`core/request_identity.py`): domain resolution, booleans, defaults and sorted
+lane selection, preserving query, kind, filters and population. The engine's
+boundary forbids importing gateway code, so a test pins this minimal mirror to
+the gateway form. Page size does not change the searched population; cursors
+and the outer page number are pagination operands, not search identity.
+Window membership uses the observation's actual lane as
+its population: automatic and explicit selection of that same lane, and the
+other requested lanes' cursors, do not change its identity. Each lane/search
+chain must start at declared page 1 with no cursor, have consecutive pages
+whose continuation equals the next cursor,
+and terminate exhausted. Every page must be fully captured. No cursor-bounded
+subwindows are supported, and pages from another research invocation cannot
+supply a missing prefix. Repeated lane/search identities earn no new window.
+
+Successful resolve/enrich/fetch/data work belongs to the invocation's capture
+inventory but adds no paging window and does not erase a completed find chain;
+its failures and partial capture still invalidate the window. Novelty arithmetic
+accepts separately supplied labeled judgments; absent judgments and empty
+assessed windows are unknown. This window model enforces E-4 in slice 2c-1;
+slice 2c-3 consumes it when evaluating stopping rules.
 
 Validation: independently hand-calculated zero-denominator and repeated-study /
 overlapping-lanes fixtures; Hypothesis identity/idempotence and unknown laws;
 paired-control mutants for unknown→zero, cross-lane multiplication, partial passes,
-missing identity links, deferral and legacy history. Targeted tests and --only
+missing identity links, deferral and legacy history, plus Router window regressions
+and mutants for search normalization, ancestry, chain bounds/continuity and
+non-paging membership. Targeted tests and --only
 mutants; boundary/source/metrics checks and explicit ledger admissions. Later
 slices extend this note when their concrete inventories are defined.
