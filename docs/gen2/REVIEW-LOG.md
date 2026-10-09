@@ -2015,3 +2015,14 @@ The post-2q Gate D is renumbered #5.
   - **N2:** G-11 locator. **Done:** INVARIANTS G-11 now names the support binder and both Router boundaries.
 - **Landing at 869d576:** `gen2-check` green: 2,597 tests, 2,600 of 2,600 mutants killed. Gateway carried forward.
 - **Next:** 2c-3b2 dispatched (`docs/gen2/tasks/2c-3b2.md`).
+
+## 2026-10-09: 2c-3b2 (descriptive/coverage contract vocabulary and bindings; changed-protocol fixture): PASS on first review; 2c-3 complete
+- **Astra** (`3cd49d5e`, pinned `549a351`; `private/reviews/gen2-2c-3b2-astra-review-20261009.md`): **A, B and C all PASS, ROOT-CAUSE. "2c-3b2 is ACCEPTED; 2c-3 is complete."** No blocking or non-blocking findings.
+- **Schema extension:** strictly additive. All 20 earlier contract fixtures are byte-identical.
+- **Coverage:** still a prerequisite only. Profiles have no sufficiency authority.
+- **G-1 reuse:** consumes recorded standing only, and a later compatibility record never revives an earlier invalidation.
+- **Gate inputs:** still require the exact current context.
+- **Landing at `549a351`: green.**
+  - `gen2-check` exit 0.
+  - `gen2-gateway` exit 0: 413 of 413 mutants killed.
+- **Next:** 2c-4 dispatched (`docs/gen2/tasks/2c-4.md`).
