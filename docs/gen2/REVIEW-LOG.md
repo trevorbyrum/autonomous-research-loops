@@ -1927,3 +1927,13 @@ The post-2q Gate D is renumbered #5.
 - **Landing run at 62d6c52:** `gen2-check` green: 2,490 tests, 2,430 of 2,430 mutants killed. `gen2-gateway` is carried forward from bfe0975 (413 of 413 killed; no gateway or production changes since).
 - **Standing rule (2c-2a lesson):** a slice that edits a file runs `--only` on every mutant family that targets that file, and runs the full composition module if it touches a public Router member or collaborator.
 - **2c-2b dispatched** (`docs/gen2/tasks/2c-2b.md`).
+
+## 2026-10-09: 2c-2b1 (reversible source lifecycle chains and dated views): PASS, first review
+- **Astra** (`1eeeb412`, pinned `6524e58`; review at `private/reviews/gen2-2c-2b1-astra-review-20261009.md`): **PASS on A, B and C. ROOT-CAUSE. "2c-2b1 is ACCEPTED."** No blocking or non-blocking findings.
+- **Admission:** primary-only, with versions pinned and attribution supplied by the Router.
+- **Storage:** the DDL has foreign keys, a binding trigger and immutability guards. Time order is enforced by the Router at nanosecond precision under the commit lock, not by the DDL; the design documents this.
+- **Dated view:** filters by `as_of` first, then removes only predecessors that are explicitly named. Competing records stay visible.
+- **Landing at 6524e58: green on the first run.**
+  - `gen2-check` exited 0.
+  - `gen2-gateway` exited 0: 1,540 tests twice, 413 of 413 mutants killed.
+- **Next:** 2c-2b2 dispatched (`docs/gen2/tasks/2c-2b2.md`).
