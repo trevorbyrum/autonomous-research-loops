@@ -1,25 +1,88 @@
 {
   "about": "Machine-readable phase and task status for tools/check_gen2_debt.py (make gen2-debt, run by gen2-check): a task or phase marked closed that still owns an open entry in docs/gen2/DEBT-REGISTER.md fails the build. Set a task or phase to closed here in the same commit that records its acceptance in BUILD-STATE.md. States: pending (not started), open (in progress), closed (accepted).",
-  "phases": {"0": "closed", "1": "closed", "2": "open", "3": "pending", "4": "pending"},
+  "phases": {
+    "0": "closed",
+    "1": "closed",
+    "2": "open",
+    "3": "pending",
+    "4": "pending"
+  },
   "tasks": {
-    "0a": {"phase": "0", "state": "closed"},
-    "0b": {"phase": "0", "state": "closed"},
-    "0c": {"phase": "0", "state": "closed"},
-    "0d": {"phase": "0", "state": "closed"},
-    "1a": {"phase": "1", "state": "closed"},
-    "1b": {"phase": "1", "state": "closed"},
-    "1c": {"phase": "1", "state": "closed"},
-    "1d": {"phase": "1", "state": "closed"},
-    "1e": {"phase": "1", "state": "closed"},
-    "1f": {"phase": "1", "state": "closed"},
-    "2a": {"phase": "2", "state": "closed"},
-    "2r": {"phase": "2", "state": "closed"},
-    "2b": {"phase": "2", "state": "closed"},
-    "2q": {"phase": "2", "state": "open"},
-    "2c": {"phase": "2", "state": "pending"},
-    "2d": {"phase": "2", "state": "pending"},
-    "2e1": {"phase": "2", "state": "pending"},
-    "2e2": {"phase": "2", "state": "pending"},
-    "2f": {"phase": "2", "state": "pending"}
+    "0a": {
+      "phase": "0",
+      "state": "closed"
+    },
+    "0b": {
+      "phase": "0",
+      "state": "closed"
+    },
+    "0c": {
+      "phase": "0",
+      "state": "closed"
+    },
+    "0d": {
+      "phase": "0",
+      "state": "closed"
+    },
+    "1a": {
+      "phase": "1",
+      "state": "closed"
+    },
+    "1b": {
+      "phase": "1",
+      "state": "closed"
+    },
+    "1c": {
+      "phase": "1",
+      "state": "closed"
+    },
+    "1d": {
+      "phase": "1",
+      "state": "closed"
+    },
+    "1e": {
+      "phase": "1",
+      "state": "closed"
+    },
+    "1f": {
+      "phase": "1",
+      "state": "closed"
+    },
+    "2a": {
+      "phase": "2",
+      "state": "closed"
+    },
+    "2r": {
+      "phase": "2",
+      "state": "closed"
+    },
+    "2b": {
+      "phase": "2",
+      "state": "closed"
+    },
+    "2q": {
+      "phase": "2",
+      "state": "closed"
+    },
+    "2c": {
+      "phase": "2",
+      "state": "pending"
+    },
+    "2d": {
+      "phase": "2",
+      "state": "pending"
+    },
+    "2e1": {
+      "phase": "2",
+      "state": "pending"
+    },
+    "2e2": {
+      "phase": "2",
+      "state": "pending"
+    },
+    "2f": {
+      "phase": "2",
+      "state": "pending"
+    }
   }
 }

@@ -274,7 +274,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 
 ### DEBT-026 - 2q-b8/2q-b9 documentation follow-through (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Non-blocking follow-through from Astra's 2q-b8 and 2q-b9 re-review, accepted in advance under the charter's "Review throughput" rule:
   - (1) `docs/gen2/BOUNDARIES.md` (around line 14) and the 2q-b9 evidence README (private evidence, outside the repo) still credit the `--inline` checker with checking the declared plumbing; mark those claims superseded and advisory, citing the re-review and the charter's "Refactor evidence standard";
@@ -283,10 +283,11 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   The 352 unresolved replay scenarios are already DEBT-023 item 1.
 - source: private/reviews/gen2-2q-b8-b9-astra-rereview-20261008.md (non-blocking follow-through)
 - removal: the corrections land and the next 2q review confirms them before 2q closes.
+- closed by: task 2q-t5 (`96d9541`, Sol), confirmed by Astra in private/reviews/gen2-2q-t5-astra-review-20261009.md ("2q-t5 is ACCEPTED; DEBT-026, DEBT-027 and DEBT-028 are closable"), 2026-10-09
 
 ### DEBT-027 - 2q-b10/2q-r1 non-blocking review findings (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Non-blocking findings from Astra's 2q-b10 and 2q-r1 review, accepted in advance under the charter's "Review throughput" rule:
   - (NB2) an intermittent `test_mutation_verdict` failure with lost diagnostics: `code: SerialRunTest.serial()` discards the child's stderr, and `verdicts()` asserts stdout before showing the return code. Keep the command, exit code, stdout and stderr on failure, and fix any cause that reproduces;
@@ -296,14 +297,16 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   NB1 is DEBT-023 item 1.
 - source: private/reviews/gen2-2q-b10-astra-review-20261008.md (non-blocking list)
 - removal: a 2q tooling and documentation slice makes the corrections, and its review confirms them before 2q closes.
+- closed by: task 2q-t5 (`96d9541`, Sol), confirmed by Astra in private/reviews/gen2-2q-t5-astra-review-20261009.md ("2q-t5 is ACCEPTED; DEBT-026, DEBT-027 and DEBT-028 are closable"), 2026-10-09
 
 ### DEBT-028 - readiness test flaky under load (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: `gen2/tests/test_children.py::ReadinessTest.test_a_child_that_died_before_saying_it_fails_the_test_with_its_exit_status_and_stderr` failed once in the 2q-b11 landing run under machine load. A child that exited with status 3 ("database is locked") was classified as "still running when stopped, waited 0.0s" rather than "it had exited". It passes 10 out of 10 runs alone, and the code hasn't changed since `dd3b920`. Update 2026-10-09: the cause, from reading `gen2/tests/children.py::started`, is a race. After the child's stdout reaches EOF, `code: child.poll()` is called at once, and an exiting child can still be unreaped, so it's classified as "still running when stopped" and killed. Its scripted stderr ("database is locked") isn't a real database. Two of four full runs at 2q-b11's pin failed this way; the two reproduction runs on the 24-vCPU VM and one at 2q-b10 passed. The fix is to wait (bounded) for the child's exit after EOF before classifying. Make the classification deterministic: check exit status before the deadline verdict, or use an injectable clock. Add a regression that forces the race.
 - source: the orchestrator 2q-b11 landing run of 2026-10-08, attempt 1 (private/evidence/2q-b11/orchestrator-attempt1/)
 - removal: a deterministic classification with a forced-race regression, confirmed by a 2q review before 2q closes.
+- closed by: task 2q-t5 (`96d9541`, Sol), confirmed by Astra in private/reviews/gen2-2q-t5-astra-review-20261009.md ("2q-t5 is ACCEPTED; DEBT-026, DEBT-027 and DEBT-028 are closable"), 2026-10-09
 
 ### DEBT-029 - 2q-t4b non-blocking review findings (phase 2)
 - kind: obligation

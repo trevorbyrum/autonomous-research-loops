@@ -1844,3 +1844,8 @@ The post-2q Gate D is renumbered #5.
   - The 7 unresolved scenarios are accepted with bounded contract evidence.
   - The landing run at f356814 is green.
 - **DEBT-023 is CLOSED.** **Non-blocking:** NB1 evidence wording and NB2 test titles, registered as DEBT-029, owned by phase 2.
+
+## 2026-10-09: 2q-t5 (DEBT-026, DEBT-027, DEBT-028), and task 2q closed
+- **Astra** (`9cf2cbfe`, pinned 96d9541): **PASS on A, B and C. "2q-t5 is ACCEPTED; DEBT-026, DEBT-027 and DEBT-028 are closable."** The readiness race is fixed with a forced regression; the verdict diagnostics, environment and replay wording, and the detector exit code are corrected; the inline-back claims are superseded.
+- **The orchestrator closed DEBT-026, DEBT-027 and DEBT-028, and set task 2q to `closed` in phase-status.json.** No 2q-owned entry is open.
+- **Gate D #5 dispatched** in a fresh session; it must pass before 2c.
