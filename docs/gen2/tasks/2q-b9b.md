@@ -1,5 +1,7 @@
 # Task 2q-b9b: make the inline-back checker enforce its helper/call grammar (closes 2q-b9's C1)
 
+**Superseded; not an active repair task.** The operator dropped this checker repair on 2026-10-08 under the charter's [Refactor evidence standard](../BUILD-CHARTER.md#review-throughput), as confirmed by [Astra's 2q-b8/2q-b9 re-review](/home/trevor/work/research-loops-public/private/reviews/gen2-2q-b8-b9-astra-rereview-20261008.md). The unchanged checker is advisory and `IDENTICAL` supplies no behavioral guarantee. The documentation/accounting closeout is owned by task 2q-t5; the brief below is historical.
+
 **Source:** Astra's 2q-b9 review (`~/work/research-loops-public/private/reviews/gen2-2q-b9-astra-review-20261007.md`), C1 and its "Required repair", plus NB2. The production extraction is ROOT-CAUSE and is **not** changed. L1 (the inherited 2q-b8 test failures) is fixed separately by 2q-b8b.
 
 Astra's counterexamples (`private/evidence/astra-2q-b9/checker-counterexamples.json`, `review_probes.py`) all pass `--inline` as IDENTICAL while changing behaviour:

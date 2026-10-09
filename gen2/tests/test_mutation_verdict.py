@@ -22,12 +22,14 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import subprocess
 import sys
 import tempfile
 import textwrap
 import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from gen2.tests import children
 from gen2.tests.tool_repo_fixtures import Repo
@@ -206,17 +208,18 @@ class SerialRunTest(unittest.TestCase):
     """Astra's two reproductions of the contamination (DEBT-025 NB1), through the real harness run as `--jobs 1` in a process of its own: before the fix `--only 2QB6` reported 5
     of 6 killed and the Status pair 1 of 2 (the control of the mutant after a transaction mutant read the deleted temporary file of the one before)."""
 
-    def serial(self, only: str) -> tuple[int, list[str]]:
-        done = children.python([str(REPO / "tools" / "gen2_mutations.py"), "--only", only, "--jobs", "1"], capture_output=True, text=True, timeout=900)
-        return done.returncode, done.stdout.splitlines()
+    def serial(self, only: str) -> subprocess.CompletedProcess:
+        return children.python([str(REPO / "tools" / "gen2_mutations.py"), "--only", only, "--jobs", "1"], capture_output=True, text=True, timeout=900)
 
     def verdicts(self, only: str, expected: list[str]) -> None:
-        code, lines = self.serial(only)
+        done = self.serial(only)
+        diagnostic = f"command: {done.args!r}\nexit code: {done.returncode}\nstdout:\n{done.stdout}\nstderr:\n{done.stderr}"
+        self.assertEqual(done.returncode, 0, msg=diagnostic)
+        lines = done.stdout.splitlines()
         said = [line for line in lines if line.startswith(("KILLED", "INVALID", "SURVIVED"))]
-        self.assertEqual([line.split()[0] for line in said], ["KILLED"] * len(expected), msg="\n".join(lines))
-        self.assertEqual(sorted(line.split()[1] for line in said), sorted(expected))
-        self.assertIn(f"mutation run: {len(expected)}/{len(expected)} killed", lines[-1])
-        self.assertEqual(code, 0)
+        self.assertEqual([line.split()[0] for line in said], ["KILLED"] * len(expected), msg=diagnostic)
+        self.assertEqual(sorted(line.split()[1] for line in said), sorted(expected), msg=diagnostic)
+        self.assertIn(f"mutation run: {len(expected)}/{len(expected)} killed", lines[-1] if lines else "", msg=diagnostic)
 
     def test_the_six_lifecycle_composition_mutants_are_all_killed_serially(self) -> None:
         expected = [m.mid for m in harness().MUTATIONS if m.mid.startswith("2QB6")]
@@ -226,6 +229,19 @@ class SerialRunTest(unittest.TestCase):
     def test_the_status_pair_is_killed_serially_too(self) -> None:
         pair = ["2QB2-status-opens-its-own-transaction", "2QB2-router-inherits-a-collaborator"]
         self.verdicts(",".join(pair), pair)
+
+
+class SerialDiagnosticsTest(unittest.TestCase):
+    def test_every_verdict_failure_keeps_the_command_exit_code_stdout_and_stderr(self) -> None:
+        command = [sys.executable, str(HARNESS), "--only", "T-example", "--jobs", "1"]
+        for code, out in ((7, "partial output\n"), (0, ""), (0, "KILLED T-other\n"), (0, "KILLED T-example\nwrong summary\n")):
+            with self.subTest(code=code, out=out):
+                done = subprocess.CompletedProcess(command, code, out, "child startup diagnostic\n")
+                with mock.patch.object(children, "python", return_value=done), self.assertRaises(AssertionError) as caught:
+                    SerialRunTest().verdicts("T-example", ["T-example"])
+                message = str(caught.exception)
+                for needle in (repr(command), f"exit code: {code}", "stdout:", out, "stderr:", done.stderr):
+                    self.assertIn(needle, message)
 
 
 if __name__ == "__main__":

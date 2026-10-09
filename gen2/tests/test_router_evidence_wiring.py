@@ -1,7 +1,7 @@
 """The Router's evidence write and the five helpers split out of it (task 2q-b9, Astra's 2q-b3b ruling 4): what the exact replay cannot settle. Independent of the replay.
 
 UnrecordedPromotionTest and ReportLineageTest.test_the_next_version_...: the two branches of `_write_evidence` that no test took before the split (a branch-level reach run,
-evidence/2q-b9/reach-vs-verdicts-before.txt: 102 of its 104 were taken by a test whose replay verdict is `same`). Each is tested by what it refuses, and the accepted case beside it.
+evidence/2q-b9/reach-vs-verdicts-before.txt: 106/108 branches were taken by a test whose replay verdict is `same`). Each is tested by what it refuses, and the accepted case beside it.
 
 Rollback (the four tests named ..._whichever_write_is_refused): a commit that goes through a helper that writes (claims and links, scoping reports, source proposals, review closures)
 is run with the store refusing its first write, then its second, and so on up to its last: every refusal is `payload_invalid` ("the store refused the write"), every table but the audit

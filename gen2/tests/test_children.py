@@ -175,6 +175,31 @@ class ReadinessTest(unittest.TestCase):
         self.assertIn("first line ''", message, "the empty read the 13b failure showed")
         self.assertEqual([c.returncode for c in made], [3])
 
+    def test_eof_with_a_stale_poll_keeps_the_exit_status_even_at_the_deadline(self) -> None:
+        """Force the EOF/poll race: the OS has exited the child, but its first poll would still say None. No scheduling luck is required."""
+        args = ["-c", "import sys; sys.stderr.write('open failed: database is locked'); sys.exit(3)"]
+        for wait in (5.0, 0.0):
+            with self.subTest(wait=wait):
+                child = children.popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                self.addCleanup(children.reap, child)
+                self.assertEqual(child.wait(timeout=5), 3)
+                with mock.patch.object(children, "popen", return_value=child), mock.patch.object(child, "poll", side_effect=[None, 3]), \
+                        mock.patch.object(child, "kill", wraps=child.kill) as kill:
+                    message = self.failure(args, wait=wait)
+                    self.assertIn("it had exited", message)
+                    self.assertIn("exit status 3", message)
+                    self.assertIn("open failed: database is locked", message)
+                    self.assertIn("first line ''", message)
+                    kill.assert_not_called()
+
+    def test_eof_from_a_child_that_keeps_running_is_bounded_and_reaped(self) -> None:
+        made = self.launched()
+        began = time.monotonic()
+        message = self.failure(["-c", "import os, time; os.close(1); time.sleep(60)"])
+        self.assertLess(time.monotonic() - began, 1.5, "EOF does not allow an unbounded exit wait")
+        self.assertIn("still running when stopped", message)
+        self.assertIsNotNone(made[0].poll())
+
     def test_a_child_that_said_something_else_fails_the_test_with_what_it_said(self) -> None:
         message = self.failure(["-c", "print('starting'); print('ready', flush=True)"])
         self.assertIn("first line 'starting\\n'", message)

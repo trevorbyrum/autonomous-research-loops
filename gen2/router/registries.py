@@ -93,7 +93,7 @@ class RegistriesCore(Protocol):
     implements it without inheriting it. Every member is the core's own (service.py).
     The registries' own members the rest of the Router reads (`_active_bundle`,
     `_bundle`, `_router_policy`, `_templates`, `is_qualified`) are the core's delegating
-    members, so no other mixin or collaborator reaches the registries but through the core."""
+    members, so no other collaborator reaches the registries but through the core."""
     _store: Rows
     _schemas: Schemas
     _new_id: Callable[[str], str]
@@ -105,7 +105,7 @@ class RegistriesCore(Protocol):
 
 
 class Registries:
-    """Two writes here are not made inside `_guarded` but in a transaction of their own, as they were when this was a mixin, now the one the core hands out
+    """Two writes here are not made inside `_guarded` but in a transaction of their own, as in the historical mixin implementation, now the one the core hands out
     (`_core._transaction()`): the dated fact a refused bundle leaves (a store error there propagates as it is; it is not a second refusal) and a start's
     recovery fact (the clock is read only when there is an active bundle). Every other write is inside `_guarded`."""
 

@@ -105,10 +105,10 @@ class Schemas(Protocol):
 class SchedulingCore(Protocol):
     """What scheduling takes of the router core, and nothing else; service.Router
     implements it without inheriting it. A member with no comment is the core's own
-    (service.py); a comment names the mixin of the Router that defines it until that
-    mixin is made a collaborator too. Scheduling's own members the rest of the Router
+    (service.py); comments naming collaborators identify core delegates that forward
+    cross-collaborator access. Scheduling's own members the rest of the Router
     reads (`_lane_last`, `_admit_lane`, `_draw`) are the core's delegating members, so
-    no other mixin or collaborator reaches scheduling but through the core."""
+    no other collaborator reaches scheduling but through the core."""
     _store: Rows
     _schemas: Schemas
     _new_id: Callable[[str], str]

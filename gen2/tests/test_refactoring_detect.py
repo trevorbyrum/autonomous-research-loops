@@ -10,7 +10,10 @@ import unittest
 from collections import Counter
 from pathlib import Path
 
-TOOL = runpy.run_path(str(Path(__file__).resolve().parents[2] / "tools" / "gen2_refactoring_detect.py"))
+from gen2.tests import children
+
+TOOL_PATH = Path(__file__).resolve().parents[2] / "tools" / "gen2_refactoring_detect.py"
+TOOL = runpy.run_path(str(TOOL_PATH))
 
 
 def found(kind: str, path: str = "gen2/x.py", line: int = 3) -> dict:
@@ -32,6 +35,18 @@ class ContainerCommandTest(unittest.TestCase):
         self.assertEqual(command[command.index("--user") + 1], "1000:1001")
         self.assertEqual(command[command.index(TOOL["IMAGE"]) + 1:], ["-bc", "/repo", "s1", "e1", "-json", "/out/out.json"])
         self.assertRegex(TOOL["IMAGE"], r"^tsantalis/refactoringminer@sha256:[0-9a-f]{64}$")  # a digest, never a moving tag
+
+
+class RevisionTest(unittest.TestCase):
+    def test_an_invalid_start_or_end_revision_exits_two_with_the_git_diagnostic(self) -> None:
+        invalid = "0" * 40  # Git's null object ID cannot name a commit.
+        for start, end in ((invalid, "HEAD"), ("HEAD", invalid)):
+            with self.subTest(start=start, end=end):
+                done = children.python([str(TOOL_PATH), start, end], capture_output=True, text=True, timeout=10)
+                self.assertEqual(done.returncode, 2, msg=f"command: {done.args!r}\nstdout: {done.stdout}\nstderr: {done.stderr}")
+                self.assertIn(f"{invalid!r} is not a commit", done.stderr)
+                self.assertIn("fatal:", done.stderr)
+                self.assertEqual(done.stdout, "")
 
 
 class ReportTest(unittest.TestCase):

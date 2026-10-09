@@ -42,7 +42,8 @@ def docker_command(repo: Path, out_dir: Path, start: str, end: str, json_name: s
 def rev(repo: Path, name: str) -> str:
     done = subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", f"{name}^{{commit}}"], capture_output=True, text=True)
     if done.returncode != 0:
-        raise SystemExit(f"gen2_refactoring_detect: {name!r} is not a commit of {repo}: {done.stderr.strip()}")
+        print(f"gen2_refactoring_detect: {name!r} is not a commit of {repo}: {done.stderr.strip()}", file=sys.stderr)
+        raise SystemExit(2)
     return done.stdout.strip()
 
 

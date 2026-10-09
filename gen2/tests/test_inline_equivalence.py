@@ -1,4 +1,7 @@
-"""Tests for the extract-method check of tools/gen2_move_equivalence.py (`--inline`, task 2q-b9): a method split into private helpers is the original after the helpers are inlined back.
+"""Literal examples for the historical advisory extract-method checker in tools/gen2_move_equivalence.py (`--inline`, task 2q-b9).
+
+Its acceptance claim is superseded: false IDENTICAL verdicts for scalar/tuple plumbing, @staticmethod and async def remain. These examples supply no behavioral guarantee.
+See docs/gen2/BUILD-CHARTER.md, "Refactor evidence standard", and the external review private/reviews/gen2-2q-b8-b9-astra-rereview-20261008.md.
 
 Oracle: literal sources written here, with each verdict, line range and problem worked out by hand. What they cannot show: that the helpers behave the same where they now run
 (the replay's work), nor what a name resolves to beyond "the module or the builtins define it" (the scope check).

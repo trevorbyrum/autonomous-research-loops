@@ -137,8 +137,8 @@ class Schemas(Protocol):
 class CapabilityCore(Protocol):
     """What the capability record takes of the router core, and nothing else;
     service.Router implements it without inheriting it. A member with no comment
-    is the core's own (service.py); a comment names the mixin of the Router that
-    defines it until that mixin is made a collaborator too."""
+    is the core's own (service.py); comments naming collaborators identify core
+    delegates that forward cross-collaborator access. The Router has no mixins."""
     _store: Rows
     _schemas: Schemas
     _new_id: Callable[[str], str]

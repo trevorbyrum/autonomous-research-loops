@@ -12,7 +12,11 @@ compared are every non-test .py under gen2/ that differs between the trees. Exit
 It shows the moved bodies are the same code. It does not show the code behaves the same where it now runs (a rewrite can change what a name resolves to): that is the replay's
 work (tools/gen2_replay.py).
 
-Extract-method (task 2q-b9): `--inline FILE:Class.method=HELPER,HELPER...` names the private helpers a method was split into. The AFTER method gets each helper's call statement
+The --inline acceptance claim is SUPERSEDED / ADVISORY (2026-10-08): scalar/tuple return or assignment changes, @staticmethod and async def can receive false IDENTICAL
+verdicts. It supplies no behavioral guarantee. See docs/gen2/BUILD-CHARTER.md, "Refactor evidence standard", and the external review
+private/reviews/gen2-2q-b8-b9-astra-rereview-20261008.md. The description below records the historical algorithm, not an accepted plumbing guarantee.
+
+Extract-method (task 2q-b9, historical advisory report): `--inline FILE:Class.method=HELPER,HELPER...` names the private helpers a method was split into. The AFTER method gets each helper's call statement
 (`self.h(a, b)` or `x = self.h(a, b)`) replaced by the helper's body, and must then dump to the same AST as the BEFORE method, signature included. The only plumbing declared: the
 helper's signature, its docstring, and its last statement `return x` (or `return x, y`) when the call assigns exactly those names; the arguments must be the helper's parameters,
 name for name and in order, so no renaming is needed. A helper that already existed, one not called exactly once, a call outside statement position, a `return` anywhere but last,

@@ -117,7 +117,7 @@ def await_line(test: unittest.TestCase, child: subprocess.Popen, ready: str, *, 
     """Wait for `child` to print `ready` as its next stdout line, the whole line, newline included, inside ONE deadline of `wait` seconds from the call: a line that is still partial at the
     deadline, or whose newline arrives after it, is not the child saying it (task 2b-repair-15, Astra F3: one bounded `select` and then an unbounded `readline` took a line of which the first
     byte was timely and the rest 0.5 s late, and would have waited for ever on one that never ended). Otherwise fail `test` with the child's exit status, what it printed and its stderr (the
-    child is ended first when it still runs, so there is a stderr to read).
+    child gets up to 0.5 s to exit after a failed handshake, then is ended if it still runs, so there is a stderr to read). This exit wait never extends the readiness deadline.
 
     The line is read from the pipe's descriptor a byte at a time, so that nothing past its newline is taken from the pipe (what follows is the test's to read from `child.stdout`); this needs that
     nothing has been read from `child.stdout` before, which is so for a child just started."""
@@ -134,7 +134,12 @@ def await_line(test: unittest.TestCase, child: subprocess.Popen, ready: str, *, 
     line = raw.decode(errors="replace")
     if line.endswith("\n") and last <= deadline and line.strip() == ready:   # `last`: when the byte that ended it was read
         return
-    running = child.poll() is None
+    # EOF can precede exit notification: a single poll can misclassify an exiting child.
+    try:
+        child.wait(timeout=0.5)
+        running = False
+    except subprocess.TimeoutExpired:
+        running = True
     if running:
         child.kill()
     out, err = child.communicate(timeout=10)

@@ -21,7 +21,7 @@ python3 -m venv --clear .venv-gen2
 ```
 
 - `--require-hashes` refuses any file whose hash is not listed.
-- `--no-deps` installs nothing that is not in the lock. A top-level pin alone does not lock its transitive graph, so the lock lists the whole graph. A missing dependency fails the import check at once instead of being resolved silently. The check names the dev tools of task 2q-r1 as well, so a missing `rope`, `hypothesis` or `time-machine` pin fails `make gen2-venv` itself.
+- `--no-deps` installs nothing that is not in the lock. A top-level pin alone does not lock its transitive graph, so the lock lists the reference Python 3.12 dependency closure. The five-import check catches missing top-level packages and dependencies those imports load; it does not exercise every tool submodule. For example, it can pass without `pytoolconfig` even though importing `rope.base.project` then fails. Dependency closure was verified separately using installed requirement metadata, `pip check` and tool imports in an isolated environment (Astra's 2q-b10 review, below).
 - `venv --clear` starts from an empty environment every time either lock changes. The target is keyed on both files.
 - A venv does not see the base interpreter's site-packages or the user site (`~/.local`), so a package installed on the host can neither satisfy nor shadow a locked one.
 
@@ -47,7 +47,7 @@ docker pull tsantalis/refactoringminer@sha256:2d44dccea74ffcd4fa8e1fcd8cef0d29e7
 python3 tools/gen2_refactoring_detect.py START END [--expect "Extract Method=5" ...]
 ```
 
-It runs `docker run --network none --pull never --read-only` with the repository mounted read-only. The image carries no tag but `latest`; the digest above is the multi-architecture index published on 2026-10-08, and a newer detector is a deliberate re-pin, not a re-pull. `gen2-venv`'s import check names `rfc8785` and `jsonschema` only: a lock that lacked a transitive dependency of the tools above would fail at their first import, not at `make gen2-venv` (the lock was checked complete with `pip check` and imports in a venv built by the Makefile's own recipe).
+It runs `docker run --network none --pull never --read-only` with the repository mounted read-only. The image carries no tag but `latest`; the digest above is the multi-architecture index published on 2026-10-08, and a newer detector is a deliberate re-pin, not a re-pull. The actual `gen2-venv` check imports `rfc8785`, `jsonschema`, `rope`, `hypothesis` and `time_machine`, as the recipe above shows. It is a smoke check, not a dependency-closure proof. [Astra's 2q-b10 review](/home/trevor/work/research-loops-public/private/reviews/gen2-2q-b10-astra-review-20261008.md) separately verified the pinned Python 3.12 closure from installed dependency metadata and `pip check`, and recorded the `pytoolconfig` counterexample. That verification supports the reference environment, not arbitrary interpreter/platform portability.
 
 ## Upgrading the reference interpreter
 

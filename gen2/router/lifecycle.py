@@ -114,7 +114,7 @@ class LifecycleCore(Protocol):
     implements it without inheriting it. Every member is the core's own (service.py).
     The lifecycle's own members the rest of the Router reads (`_evidence`, `_bind_evidence`,
     `_record_artifact`, `_require_delegates_ended`, `_release_capacity`, `_open_unknown_hold`,
-    `_cancel_in_transaction`) are the core's delegating members, so no other mixin or
+    `_cancel_in_transaction`) are the core's delegating members, so no other
     collaborator reaches the lifecycle but through the core."""
     _store: Rows
     _spool: Spool
