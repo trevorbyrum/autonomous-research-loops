@@ -1909,3 +1909,13 @@ The post-2q Gate D is renumbered #5.
   - `gen2-gateway` was green: 1,540 tests twice, 413 of 413 mutants killed.
 - **NB1:** the assessment collaborator is missing from `COLLABORATORS`.
 - **Routed:** `docs/gen2/tasks/2c-2a-repair-1.md`, round 1 of 3, to Sol.
+
+## 2026-10-09: 2c-2a round 2 (2c-2a-repair-1): F1 closed, new BLOCK on F2 (a landing-gate failure)
+- **Astra** (`bac4c4c6`, pinned `c984af9`; `private/reviews/gen2-2c-2a-r2-astra-review-20261009.md`): **Gate C BLOCK.**
+- **Closed:** F1 (`PUBLIC_API`) and NB1 (`COLLABORATORS`).
+- **F2 (new):** the landing `gen2-check` exited 2 with 2,428 of 2,430 mutants killed. Two mutants are INVALID:
+  - **The mutants:** `2QB10-router-delegate-drops-the-outbox` and `-drops-the-triggers`.
+  - **Cause:** both still anchor on the `return self._evidence_writer._write_evidence(...)` delegate that 2c-2a rewrote.
+  - **When it started:** the defect has existed since `bfe0975`. Round 1's run stopped before reaching the mutation stage.
+- **What passed:** 2,490 tests and the trigger-order check.
+- **Routed:** `docs/gen2/tasks/2c-2a-repair-2.md`, round 3 of 3 (the cap). It also adds a standing rule: a slice that edits a file runs `--only` on every mutant family targeting that file.
