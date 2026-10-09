@@ -787,6 +787,8 @@ def _inventory():
     MANUAL.update(ACCRUAL_CONTROLS)
     from gen2_mutants.stopping_2c3 import CONTROLS as STOPPING_CONTROLS
     MANUAL.update(STOPPING_CONTROLS)
+    from gen2_mutants.stopping_2c3b import CONTROLS as STOPPING_BINDING_CONTROLS
+    MANUAL.update(STOPPING_BINDING_CONTROLS)
     return gen2_mutations
 
 

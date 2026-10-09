@@ -378,3 +378,31 @@ completions agree are counted and reported as permitted approximations. This
 replaces the restricted monotonicity claim with differential soundness checks.
 Paired mutants cover the earlier-owner discount, known/unknown populations,
 recoverable chains, scope ordering, joint thieves, and replacement contributions.
+
+## 2c-3b design note (2026-10-09, before implementation)
+
+Full estimate: **about 650 hand-written lines** (bindings and boundary checks
+140, contract vocabulary and snapshot/reuse assembly 150, Router integration
+fixtures 220, mutants 80, documentation/ledger 60). Split as instructed:
+implement **2c-3b part 1 only**, estimated at **about 400 lines**, then stop.
+This part closes G-11 at draft/amendment admission and all contract approvals,
+with a pure known-item retrieval binding and paired controls. The schema remains
+the authority for rule shape and reviewed-only families; the support check
+uses it and reports the offending rule identity, family and reason. Reviewed
+rules retain their declared parameters and have no automatic evaluator.
+
+The current schema has no descriptive or coverage family. Diminishing returns
+declares an assessment-window threshold; counterevidence declares a challenge
+scope and completed requests. Neither is implemented by 3a's descriptive yield
+or E-4 window-count prerequisite, so their automatic forms must also be refused,
+alongside statistical recall and screening/both sentinels. No family is silently
+reinterpreted. Existing Router fixtures will explicitly request reviewed
+judgments for those rules; the schema examples remain unchanged.
+
+**Part 2 remains:** an explicit contract vocabulary for descriptive and coverage
+bindings (including minimum N and invocation scope), and the changed-protocol
+Router integration fixture with incompatible invalidation, B-current
+re-evaluation and compatible reuse. That assembly must consume recorded G-1
+standing before composing old results or operands, rather than comparing
+documents again or relabeling old results as current. Gate evidence production
+and scientific sufficiency remain with 2d/2e and the operator.

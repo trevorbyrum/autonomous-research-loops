@@ -262,7 +262,7 @@ MUTATIONS: list[Mutation] = [
           ("approval-references-unchecked", "a draft is approved whatever became of its brief since it was written",
            (WBS + "test_closed_between_draft_and_first_approval", WBS + "test_replaced_between_an_amendment_and_its_approval",
             WBB + "test_different_brief_archived_after_proposal", WBB + "test_archived_lineage_then_different_archived_after_proposal"), SVC,
-           '        defect = self._recorded_references(revision["document"])  # task 2a-repair F1', "        defect = None  # task 2a-repair F1"),
+           ' or self._recorded_references(revision["document"])', ''),
           ("scope-brief-standing-unchecked", "a report is approved whatever became of its brief", (WBS + "test_replaced_or_closed_before_scope_approval",
            WBS + "test_replaced_before_scope_approval_scopes_again"), SVC, "            if standing not in COMPATIBLE:  # task 2a-repair F1", "            if False:  # task 2a-repair F1"),
           ("replacement-no-rescope", "a material replacement leaves the topic awaiting its old scope or contract approval",

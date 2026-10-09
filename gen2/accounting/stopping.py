@@ -1,5 +1,6 @@
 """Typed stopping signals, never scientific sufficiency (flow S7; E-6/E-7)."""
 from dataclasses import dataclass
+from copy import deepcopy
 from fractions import Fraction
 from typing import Literal
 
@@ -237,3 +238,58 @@ def evaluate_profile(context: Context, profile: Profile, rules: tuple[RuleResult
     rules_state = expression_state(profile.completion_condition, states)
     state = combine("all", (rules_state, *(gate_states.get(g, "unknown") for g in profile.conjunctive_gates)))
     return ProfileResult(context, profile, rules, gates, state)
+
+
+@dataclass(frozen=True)
+class RuleBinding:
+    rule_id: str
+    family: str
+    evaluation: str
+    params: dict
+    prerequisites: tuple[str, ...]
+    evaluator: Literal["known_item"] | None
+
+
+@dataclass(frozen=True)
+class ProfileBinding:
+    profile: Profile
+    rules: tuple[RuleBinding, ...]
+
+
+def bind_rule(rule: dict) -> RuleBinding:
+    """Evaluator support, after schema validation; never reinterpret a family."""
+    family, mode = rule["family"], rule["evaluation"]
+    name = f"stopping rule {rule['rule_id']} ({family})"
+    if family not in ("diminishing_returns", "known_item", "counterevidence_pass", "statistical_target_recall",
+                      "capture_recapture", "voi_evpi", "safe", "code_meaning_saturation"):
+        raise ValueError(f"{name}: unknown family")
+    evaluator = None
+    if mode == "automatic":
+        if family != "known_item":
+            raise ValueError(f"{name}: no automatic evaluator implements its declared operands (G-11)")
+        if family == "known_item" and rule["params"]["tests"] != "retrieval":
+            raise ValueError(f"{name}: {rule['params']['tests']} sentinel checks require an unimplemented screening evaluator (G-11)")
+        evaluator = "known_item"
+    elif mode != "reviewed_judgment":
+        raise ValueError(f"{name}: unknown evaluation mode {mode}")
+    return RuleBinding(rule["rule_id"], family, mode, deepcopy(rule["params"]), tuple(rule.get("prerequisites", ())), evaluator)
+
+
+def _bind_expression(document: dict) -> Expression:
+    if "rule" in document:
+        return Expression(rule=document["rule"])
+    return Expression(op=document["op"], operands=tuple(_bind_expression(e) for e in document["operands"]))
+
+
+def bind_profile(document: dict) -> ProfileBinding:
+    return ProfileBinding(Profile(document["profile_id"], _bind_expression(document["completion_condition"]),
+                                  tuple(document["conjunctive_gates"])), tuple(bind_rule(r) for r in document["rules"]))
+
+
+def evaluate_binding(binding: RuleBinding, context: Context, inventory: Inventory, declared: KnownItems) -> RuleResult:
+    """A referenced sentinel inventory must match the contract's exact operand."""
+    if binding.evaluator != "known_item":
+        raise ValueError(f"{binding.rule_id}: no automatic evaluator binding")
+    if declared.reference != EvidenceReference(**binding.params["sentinel_set"]):
+        raise ValueError(f"{binding.rule_id}: sentinel inventory does not match the declared reference")
+    return known_item(context, binding.rule_id, inventory, declared)

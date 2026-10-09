@@ -53,6 +53,11 @@ KINDS = ("research_pass", "discovery", "verification", "checkpoint")
 def contract_doc(revision: int, parent: int | None, *, rated: bool = True, edit=None) -> dict:
     """The example contract as TOPIC's revision `revision`; `edit` changes it."""
     doc = copy.deepcopy(EXAMPLE)
+    # 2c-3b: these declared thresholds/challenge/screening operands have no
+    # automatic evaluator. This Router fixture explicitly requests reviews.
+    for profile in doc["stopping_profiles"]:
+        for rule in profile["rules"]:
+            rule["evaluation"] = "reviewed_judgment"
     doc.update(topic_id=TOPIC, revision=revision, parent_revision=parent, created_at="2026-09-27T09:30:00Z")
     doc["decision_record"]["objective"]["confirmed_brief"] = {"brief_id": "brief-1", "version": 1, "confirmed_by": "opd_brieft101"}  # the world's (task 2a checks it)
     for entry in doc["facet_map"]["facets"] + doc["obligations"]:

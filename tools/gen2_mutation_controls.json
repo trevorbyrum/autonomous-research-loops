@@ -8901,6 +8901,97 @@
   ],
   "why": "Hand-written control executes the changed guard and retains its accepted result under this mutant."
  },
+ "2C3B-admission-only": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.ApprovalTest.test_control_supported_approval"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-approval-only": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.AdmissionTest.test_control_supported_admission"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-automatic-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.BindingTest.test_control_retrieval_binding"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-expression-reinterpreted": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.BindingTest.test_control_retrieval_binding"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-parameters-alias": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.BindingTest.test_control_retrieval_binding"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-profile-schema": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.ApprovalTest.test_control_supported_approval"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-reference-unbound": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.BindingTest.test_control_retrieval_binding"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-reviewed-executed": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.BindingTest.test_control_retrieval_binding"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-rule-schema": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.ApprovalTest.test_control_supported_approval"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-screening-reinterpreted": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.BindingTest.test_control_retrieval_binding"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-support-unchecked": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.ApprovalTest.test_control_supported_approval"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-unknown-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.BindingTest.test_control_reviewed_binding"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
+ "2C3B-unknown-mode": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.BindingTest.test_control_retrieval_binding"
+  ],
+  "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
+ },
  "2C3D-drop-discount": {
   "controls": [
    "test_coverage_dependencies.DependencyTest.test_control_disjoint"

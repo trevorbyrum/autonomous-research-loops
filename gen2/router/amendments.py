@@ -132,6 +132,7 @@ from __future__ import annotations
 from typing import Callable, Mapping, Protocol
 
 from gen2.core import canonical
+from gen2.accounting.stopping import bind_profile
 from gen2.router import boundary
 from gen2.router.boundary import Refusal, instant
 
@@ -317,6 +318,28 @@ class Schemas(Protocol):
     def errors(self, instance: object, target: str) -> list[str]: ...
 
 
+def stopping_defect(doc: dict, schemas: Schemas) -> str | None:
+    """Schema owns rule shape; accounting owns implemented evaluator support."""
+    profiles = doc.get("stopping_profiles", [])
+    if not isinstance(profiles, list):
+        return "stopping_profiles must be an array"
+    for profile in profiles:
+        rules = profile.get("rules", []) if isinstance(profile, dict) else []
+        for rule in rules if isinstance(rules, list) else ():
+            errors = schemas.errors(rule, "contract-v2.schema.json#/$defs/stopping_rule")
+            if errors:
+                name = f"{rule.get('rule_id', '?')} ({rule.get('family', '?')})" if isinstance(rule, dict) else repr(rule)
+                return f"stopping rule {name}: {'; '.join(errors[:2])}"
+        errors = schemas.errors(profile, "contract-v2.schema.json#/$defs/stopping_profile")
+        if errors:
+            return f"stopping profile: {'; '.join(errors[:2])}"
+        try:
+            bind_profile(profile)
+        except ValueError as exc:
+            return str(exc)
+    return None
+
+
 class AmendmentsCore(Protocol):
     """What amendments takes of the router core, and nothing else; service.Router
     implements it without inheriting it. Every member is the core's own (service.py:
@@ -364,6 +387,10 @@ class Amendments:
             req = boundary.normalize(request, "request_invalid")
             boundary.require_schema(self._core._schemas, req, f"router-commands#/$defs/{shape}", "request_invalid")
             if document_schema is not None:
+                if document_schema == "contract-v2.schema.json":
+                    defect = stopping_defect(req["document"], self._core._schemas)
+                    if defect is not None:
+                        raise Refusal("request_invalid", defect)
                 boundary.require_schema(self._core._schemas, req["document"], document_schema, "request_invalid")
                 if canonical.content_hash(req["document"]) != req["document"]["content_hash"]:
                     raise Refusal("request_invalid", "the document does not hash to its content hash (C-13, RA6)")

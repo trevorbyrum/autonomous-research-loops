@@ -56,7 +56,7 @@ from gen2.core import canonical, instants, pagination
 from gen2.router.accounting import read_inventory
 from gen2.router.assessments import Assessments
 from gen2.router import boundary
-from gen2.router.amendments import AMENDMENT_COMMANDS, COMPATIBLE, Amendments, brief_compatibility, contract_compatibility
+from gen2.router.amendments import AMENDMENT_COMMANDS, COMPATIBLE, Amendments, brief_compatibility, contract_compatibility, stopping_defect
 from gen2.router.boundary import Refusal, instant
 from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
 from gen2.router.evidence_writer import EvidenceWriter
@@ -1285,7 +1285,7 @@ class Router:
         key = {"topic_id": d["topic_id"]}
         revision = self._one("contract_revisions", {**key, "revision": d["subject_revision"]})
         previous = self._one("contract_revisions", {**key, "status": "approved"})
-        defect = self._recorded_references(revision["document"])  # task 2a-repair F1: its brief still stands at approval
+        defect = stopping_defect(revision["document"], self._schemas) or self._recorded_references(revision["document"])  # G-11 and brief standing at approval
         if defect is not None:
             raise Refusal("decision_refused", defect)
         if previous is not None and revision["parent_revision"] != previous["revision"]:
