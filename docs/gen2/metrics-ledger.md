@@ -259,3 +259,59 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - reason: Descriptive operands reuse dated semantic selection and its existing exact UTC comparison helper, without reading a clock.
 - task: 2c-3a
 
+### ML-0037
+- action: admit
+- target: engine|edge|gen2/router/amendments.py->gen2/accounting/stopping.py
+- reason: Admission and approval share the pure binding support check; arithmetic stays in accounting under the existing Router grant.
+- task: 2c-3b-part-1
+
+### ML-0038
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/accounting/stopping.py
+- reason: Existing engine composition reaches pure stopping bindings through the Router admission path.
+- task: 2c-3b-part-1
+
+### ML-0039
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/accounting/stopping.py
+- reason: Existing station composition reaches pure stopping bindings through the Router admission path.
+- task: 2c-3b-part-1
+
+### ML-0040
+- action: admit
+- target: engine|reach|gen2/router/amendments.py->gen2/accounting/__init__.py
+- reason: The support check reaches existing pure accounting operand types through stopping bindings, without store or clock authority.
+- task: 2c-3b-part-1
+
+### ML-0041
+- action: admit
+- target: engine|reach|gen2/router/amendments.py->gen2/accounting/stopping.py
+- reason: The amendment collaborator reaches the pure stopping binder to refuse unsupported automatic rules.
+- task: 2c-3b-part-1
+
+### ML-0042
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/accounting/stopping.py
+- reason: Thin approval wiring reaches the same support check and binder used at contract admission.
+- task: 2c-3b-part-1
+
+### ML-0043
+- action: admit
+- target: engine|reach|gen2/router/status.py->gen2/accounting/__init__.py
+- reason: Existing status composition reaches accounting through the amendment module; no new status behavior or authority.
+- task: 2c-3b-part-1
+
+### ML-0044
+- action: admit
+- target: engine|reach|gen2/router/status.py->gen2/accounting/stopping.py
+- reason: Existing status composition reaches stopping bindings through the amendment module; no new status behavior or authority.
+- task: 2c-3b-part-1
+
+### ML-0045
+- action: budget
+- metric: fan_out
+- location: engine:gen2/router/amendments.py
+- limit: 3
+- reason: One additional dependency on the pure stopping binder closes G-11 without adding evaluator arithmetic to the Router.
+- task: 2c-3b-part-1
+
