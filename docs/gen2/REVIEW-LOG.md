@@ -2036,3 +2036,8 @@ The post-2q Gate D is renumbered #5.
 - **Orchestrator check:** EXPORT-API lines 115–125, flow S7 and S8, and the methodology synthesis all leave the scheme undefined. This is a real operator choice, not a gap the coder could fill.
 - **Also found:** `export-bundle/1` can't carry the reconciliation losslessly, so an additive `/2` is needed. The estimate is about 820 lines, split as 4a (490) and 4b (330).
 - **Escalated to the operator.**
+- **Operator rulings (Trevor, 2026-10-09):**
+  - **Vocabulary A:** the four named dispositions plus an open state.
+  - **Confidence A:** a per-plan categorical scale, declared and hash-locked in the contract, approved with the plan. No built-in scale; labels are never probabilities.
+  - **Order:** views first (2c-4b), then reconciliation and `export-bundle/2` (2c-4a).
+  - Recorded in `docs/gen2/tasks/2c-4.md`. 2c-4b dispatched.
