@@ -2001,3 +2001,17 @@ The post-2q Gate D is renumbered #5.
 - **Landing at e9c0a47:** `gen2-check` green (2,585 tests). Gateway carried forward.
 - **Lesson:** the window-projection family took three rounds. Doing the research addendum before round 3 is what closed it.
 - **Next:** 2c-3b dispatched (`docs/gen2/tasks/2c-3b.md`).
+
+## 2026-10-09: 2c-3b1 (G-11 refusal at both Router boundaries; known-item binding): PASS on first review
+- **Astra** (`d701706a`, pinned 869d576 + ledger 1b691c3; `private/reviews/gen2-2c-3b1-astra-review-20261009.md`): **A, B and C all PASS, ROOT-CAUSE. "2c-3b1 is ACCEPTED."** No blocking findings.
+- **Support check:** one support binder, enforced independently at admission or amendment (`stopping_defect`) and at approval of the stored revision (`_approve_contract`). Astra's probes confirmed:
+  - legacy re-approval is refused;
+  - replay is inert;
+  - reframe dispatch is covered.
+- **Known-item binding:** exact over hash, bytes and media type.
+- **Part-2 schema ruling:** a narrow additive descriptive/coverage vocabulary is **in scope, with no operator ruling needed**, under these constraints: closed shapes; no reinterpretation; hash-locked protocol plus G-1 impact; coverage is a prerequisite, not sufficiency.
+- **Non-blocking:**
+  - **N1:** isolated wrong-hash test. Folded into the 2c-3b2 brief.
+  - **N2:** G-11 locator. **Done:** INVARIANTS G-11 now names the support binder and both Router boundaries.
+- **Landing at 869d576:** `gen2-check` green: 2,597 tests, 2,600 of 2,600 mutants killed. Gateway carried forward.
+- **Next:** 2c-3b2 dispatched (`docs/gen2/tasks/2c-3b2.md`).
