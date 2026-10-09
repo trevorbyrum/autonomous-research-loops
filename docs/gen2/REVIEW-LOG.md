@@ -2026,3 +2026,13 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` exit 0.
   - `gen2-gateway` exit 0: 413 of 413 mutants killed.
 - **Next:** 2c-4 dispatched (`docs/gen2/tasks/2c-4.md`).
+
+## 2026-10-09: 2c-4 BLOCKED at design, waiting on an operator decision (F9 vocabulary and confidence scheme)
+- **Sol** (`e0f049d3`, `cb1b67e`, design only; `docs/gen2/ACCOUNTING.md` §2c-4): reports BLOCKED, as the brief's "escalate rather than decide" clause allows.
+- **Why it is blocked:**
+  - EXPORT-API still marks the disposition vocabulary as *proposed*.
+  - EXPORT-API §2 says the confidence scheme "is declared by the contract revision". But Contract v2 has no field to pin a scheme, and no label set or rubric.
+  - No source defines a scale. The 0c rulings reject borrowing GRADE bands.
+- **Orchestrator check:** EXPORT-API lines 115–125, flow S7 and S8, and the methodology synthesis all leave the scheme undefined. This is a real operator choice, not a gap the coder could fill.
+- **Also found:** `export-bundle/1` can't carry the reconciliation losslessly, so an additive `/2` is needed. The estimate is about 820 lines, split as 4a (490) and 4b (330).
+- **Escalated to the operator.**
