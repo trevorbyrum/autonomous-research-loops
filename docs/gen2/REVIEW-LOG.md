@@ -1937,3 +1937,14 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` exited 0.
   - `gen2-gateway` exited 0: 1,540 tests twice, 413 of 413 mutants killed.
 - **Next:** 2c-2b2 dispatched (`docs/gen2/tasks/2c-2b2.md`).
+
+## 2026-10-09: 2c-2b2a (attributed contradiction and branch disposition histories): PASS on first review
+- **Astra** (`7354526c`, pinned `c1ffb16`; `private/reviews/gen2-2c-2b2a-astra-review-20261009.md`): **A, B and C all PASS, ROOT-CAUSE. "2c-2b2a is ACCEPTED."** No blocking or non-blocking findings, and **no boundary drift or research misuse.**
+- **The new registry table is in scope.** Plan-audit F3 assigns these histories to 2c, and the store README deferred the tables to Phase 2.
+- **One table with topic-local identity is sound.**
+- **A promote records only a proposal.**
+- **The narrowed lifecycle anchor still removes the same guard.**
+- **Landing at `c1ffb16`: green on the first run.**
+  - `gen2-check`: 2,521 tests; 2,500 of 2,500 mutants killed.
+  - `gen2-gateway`: 1,540 tests twice; 413 of 413 mutants killed.
+- **Next:** 2c-2b2b dispatched (`docs/gen2/tasks/2c-2b2b.md`).
