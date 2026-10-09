@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from . import ddl_0a, store_0b_0d, router_1b, supervisor_1c, registries_1d, operator_1e_1f, workflow_2a, size_2r, gateway_client_2b, gateway_client_2b17, gateway_client_2b18, metrics_2qa, metrics_2qa_repair, metrics_identity, metrics_source, metrics_closure, metrics_binding, metrics_scope, metrics_2q7, metrics_2qt1, router_composition_2qb2, router_composition_2qb3, router_composition_2qb6, router_composition_2qb7, router_composition_2qb8, router_composition_2qb10, router_evidence_2qb9, router_commit_2qb11, replay_2qt3
 from .base import Mutation
+from . import accounting_2c1
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -44,4 +45,5 @@ MUTATIONS: list[Mutation] = [
     *router_evidence_2qb9.MUTATIONS,
     *router_commit_2qb11.MUTATIONS,
     *replay_2qt3.MUTATIONS,
+    *accounting_2c1.MUTATIONS,
 ]

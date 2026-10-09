@@ -39,3 +39,83 @@ reason, and task. Targets use service|kind|location; file identities own fan-out
 fan-in; function IDs own both scores; edge, reach, self_calls, cycle, smell and aggregate
 IDs own their respective budgets. Cross-service imports belong to repo.
 
+### ML-0001
+- action: admit
+- target: engine|edge|gen2/router/accounting.py->gen2/accounting/__init__.py
+- reason: The Router read adapter converts durable rows to accounting records through the already granted accounting dependency.
+- task: 2c-1
+
+### ML-0002
+- action: admit
+- target: engine|edge|gen2/router/service.py->gen2/accounting/__init__.py
+- reason: Thin Router wiring calls pure accounting and names its operand/result types; authorization and snapshots stay in the Router.
+- task: 2c-1
+
+### ML-0003
+- action: admit
+- target: engine|edge|gen2/router/service.py->gen2/router/accounting.py
+- reason: The Router delegates row conversion to its minimal read adapter, keeping arithmetic outside service.py.
+- task: 2c-1
+
+### ML-0004
+- action: admit
+- target: engine|file|gen2/accounting/__init__.py
+- reason: Implement the declared accounting boundary with pure typed inventory, count, novelty and window functions; no internal imports or I/O.
+- task: 2c-1
+
+### ML-0005
+- action: admit
+- target: engine|file|gen2/router/accounting.py
+- reason: A small Router read adapter uses existing Store.select paths; it owns no transaction or arithmetic.
+- task: 2c-1
+
+### ML-0006
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/accounting/__init__.py
+- reason: Existing engine-to-Router wiring now reaches the accounting component; no new dependency between existing files.
+- task: 2c-1
+
+### ML-0007
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/accounting.py
+- reason: Existing engine-to-Router wiring now reaches the row adapter; no new dependency between existing files.
+- task: 2c-1
+
+### ML-0008
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/accounting/__init__.py
+- reason: Existing station-to-Router wiring now reaches the accounting component; no new dependency between existing files.
+- task: 2c-1
+
+### ML-0009
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/accounting.py
+- reason: Existing station-to-Router wiring now reaches the row adapter; no new dependency between existing files.
+- task: 2c-1
+
+### ML-0010
+- action: admit
+- target: engine|reach|gen2/router/accounting.py->gen2/accounting/__init__.py
+- reason: The row adapter reaches only the pure accounting types, an existing module grant.
+- task: 2c-1
+
+### ML-0011
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/accounting/__init__.py
+- reason: The Router reaches the accounting component through thin read wiring, an existing module grant.
+- task: 2c-1
+
+### ML-0012
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/accounting.py
+- reason: The Router reaches the row adapter it calls within its own read snapshot.
+- task: 2c-1
+
+### ML-0013
+- action: budget
+- metric: fan_out
+- location: engine:gen2/router/service.py
+- limit: 15
+- reason: Fan-out 13 to 15 is exactly the pure accounting component and minimal row adapter, within existing Router grants; no other fan-out growth authorized.
+- task: 2c-1
+

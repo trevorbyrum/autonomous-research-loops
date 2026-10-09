@@ -137,6 +137,7 @@ FILE_TARGETS = {
     "gen2/store/compat.py": ("module", "gen2.store.compat"),
     "gen2/store/db.py": ("module", "gen2.store.db"),
     "gen2/store/api.py": ("module", "gen2.store.api"),
+    "gen2/accounting/__init__.py": ("module", "gen2.accounting", "gen2.router.accounting", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/importer/dry_run.py": ("module", "gen2.importer.dry_run"),
     "gen2/importer/__main__.py": ("disk",),  # `python -m gen2.importer` runs it; only children do
     # task 1c. A supervisor module's dependents are reloaded over the mutant; jobshim.py runs only in children.

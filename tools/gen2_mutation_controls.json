@@ -7725,6 +7725,90 @@
   ],
   "why": "gen2/gateway_client/client.py: executes line 170"
  },
+ "2C1-capture-count-unchecked": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-deferred-is-assessed": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-failed-pass-counts": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-judgment-unknown-is-zero": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-legacy-history-known": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-overlapping-lanes-multiply": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-partial-pass-counts": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-repeating-search-counts": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-unexhausted-pass-counts": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-unknown-is-zero": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-unlinked-is-known": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
+ "2C1-zero-assessed-is-zero-novelty": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.AccountingTest.test_control_complete"
+  ],
+  "why": "By hand: one committed complete distinct search, linked and assessed work, current accepted claim and explicit novelty judgment; evaluates the changed guard or expression on its accepted path."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

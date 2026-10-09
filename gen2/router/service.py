@@ -51,7 +51,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
 
+from gen2 import accounting
 from gen2.core import canonical, instants, pagination
+from gen2.router.accounting import read_inventory
 from gen2.router import boundary
 from gen2.router.amendments import AMENDMENT_COMMANDS, COMPATIBLE, Amendments, brief_compatibility, contract_compatibility
 from gen2.router.boundary import Refusal, instant
@@ -235,6 +237,15 @@ class Router:
     def status(self, request: Mapping) -> dict:
         return self._status.status(request)
 
+    def candidate_units(self, topic_id: str, *, history: accounting.History) -> accounting.CandidateUnits:
+        """Durable accounting in one snapshot; provenance is explicit (E-8)."""
+        if history not in ("native", "legacy_unknown"):
+            raise ValueError("history must be native or legacy_unknown")
+        with self._snapshot():
+            if self._one("queue_entries", {"topic_id": topic_id}) is None:
+                raise Refusal("unknown_topic", topic_id)
+            return accounting.candidate_units(read_inventory(self._store, topic_id, history))
+
     def record_capability_probe(self, request: Mapping) -> dict:
         return self._capabilities.record_capability_probe(request)
 
@@ -370,7 +381,7 @@ class Router:
 
     # -- small helpers -----------------------------------------------------
     def _snapshot(self):
-        """One read transaction that writes nothing: the status read and the health probe run in it (status.py)."""
+        """One transaction that writes nothing: status, health and candidate accounting."""
         return self._store.transaction()
 
     def _transaction(self):

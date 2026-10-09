@@ -17,7 +17,7 @@ COLLABORATORS = ((status, status.Status, status.StatusCore, "_status"), (capabil
                  (evidence_writer, evidence_writer.EvidenceWriter, evidence_writer.EvidenceCore, "_evidence_writer"))
 PUBLIC_API = {  # Router's public methods at be5b2f1, before status.py, capabilities.py, registries.py, lifecycle.py, scheduling.py and amendments.py stopped being mixins
     "ack_delivery", "activate_config_bundle", "apply_operator_decision", "claim", "close", "close_brief", "commit_outcome", "config_bundle", "create_topic", "draft_contract",
-    "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",
+    "candidate_units", "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",
     "receipt", "reconcile", "record_capability_probe", "record_gateway_facts", "record_observation", "record_qualification", "record_transition", "register_works",
     "request_cancel", "requeue", "restore_config_bundle", "revoke_qualification", "status", "version_brief"}
 

@@ -775,6 +775,8 @@ _watch(*WATCH)
 def _inventory():
     sys.path[:0] = [str(ROOT / "tools"), str(TESTS), str(ROOT)]
     import gen2_mutations  # noqa: E402
+    from gen2_mutants.accounting_2c1 import CONTROLS as ACCOUNTING_CONTROLS
+    MANUAL.update(ACCOUNTING_CONTROLS)  # by-hand accepted paths, kept with their family
     return gen2_mutations
 
 
