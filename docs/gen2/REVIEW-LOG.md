@@ -2041,3 +2041,13 @@ The post-2q Gate D is renumbered #5.
   - **Confidence A:** a per-plan categorical scale, declared and hash-locked in the contract, approved with the plan. No built-in scale; labels are never probabilities.
   - **Order:** views first (2c-4b), then reconciliation and `export-bundle/2` (2c-4a).
   - Recorded in `docs/gen2/tasks/2c-4.md`. 2c-4b dispatched.
+
+## 2026-10-09: 2c-4b (research-state views): PASS on first review
+- **Astra** (`280d59b0`, pinned 70a851d; `private/reviews/gen2-2c-4b-astra-review-20261009.md`): **A, B and C all PASS, ROOT-CAUSE. "2c-4b is ACCEPTED."** No blocking findings. No boundary drift.
+- **Probes:**
+  - Views stay unknown without links, and prose never counts as a link.
+  - Eligible capture and stale G-1 standing are kept separate.
+  - Contradiction histories survive across 24 permutations at 3 cutoffs.
+- **N1 (non-blocking, scheduled obligation):** dossier assembly needs a durable branch/window association, because a pure caller can supply invented links. Registered as **DEBT-032**, owned by task 2d, with 2e2 producing the records.
+- **Landing at 70a851d:** `gen2-check` green, 2,624 tests and 2,649 of 2,649 mutants killed. The gateway result is carried forward from 549a351.
+- **Next:** 2c-4a dispatched, under the operator rulings in `docs/gen2/tasks/2c-4.md`.

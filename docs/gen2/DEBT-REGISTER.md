@@ -337,3 +337,20 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - carry or dispose of 2q-b11's NB1 (the signature and binding review reminder, to go in the next extraction brief) and NB2 (the test-module introduction overstates the interim tests' write-order coverage).
 - source: private/reviews/gen2-gate-d-5-astra-review.md (F2)
 - removal: the summaries are reconciled and b11 NB1 and NB2 are disposed of in a phase 2 maintenance slice, alongside DEBT-029.
+
+### DEBT-032 - 2c-4b N1: durable branch/window association before dossier assembly (task 2d)
+- kind: obligation
+- status: open
+- owner: task 2d
+- what: the 2c-4b coverage and depth views take branch links and window pins as explicit snapshot operands. The store has no durable branch/window association, so a pure caller could invent links. This is acceptable for the pure views. Before authoritative dossier assembly uses branch coverage, the Router-owned assembly path must do the following:
+  - obtain a durable, attributable branch/window association. It doesn't have to be a new table; any admitted, auditable record will do;
+  - validate the topic, the branch identity and the referenced window;
+  - read window revisions from the durable invocation and contract records;
+  - keep the result unknown when provenance is missing or unverified.
+
+  Task 2e2 produces the workflow records and emits them through the governed admission path.
+- source: private/reviews/gen2-2c-4b-astra-review-20261009.md (N1)
+- removal: task 2d shows all three of these:
+  - a recorded association yields the expected view;
+  - forged, cross-topic or mismatched associations and pins are rejected or left unknown;
+  - absent association evidence stays unknown.
