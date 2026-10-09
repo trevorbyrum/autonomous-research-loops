@@ -1835,3 +1835,12 @@ The post-2q Gate D is renumbered #5.
 ## 2026-10-09: 2q-b11, L1 confirmation
 - **Astra** (`0354cd4e`): L1 is resolved by landing attempt 3 at `7e59054` (2,430 tests; 2,382/2,382 engine and 413/413 gateway mutants). The helper-race attribution is credible; DEBT-028 stays non-blocking until 2q-t5's fix. **"2q-b11 is ACCEPTED."**
 - **2q-b's planned structural items are all accepted:** the gateway cycle; all six Router mixins as collaborators; `_decode`; `adapters/base.py`; `_write_evidence`; `EvidenceWriter`; `_commit_in_transaction`.
+
+## 2026-10-09: 2q-t4b (the replay seams for real processes)
+- **Astra** (`f1467d28`, pinned 5de8d7f; `private/reviews/gen2-2q-t4b-astra-review-20261009.md`): **PASS on A, B and C. "2q-t4b is ACCEPTED. DEBT-023 item 1 is closable."**
+  - Identity is consistent and distinct, with 0 real or fixed leakage and 0 duplicates.
+  - The opt-out is ROOT-CAUSE.
+  - Child activation and the poll wait are qualified as a bounded mitigation.
+  - The 7 unresolved scenarios are accepted with bounded contract evidence.
+  - The landing run at f356814 is green.
+- **DEBT-023 is CLOSED.** **Non-blocking:** NB1 evidence wording and NB2 test titles, registered as DEBT-029, owned by phase 2.

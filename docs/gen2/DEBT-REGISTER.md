@@ -239,7 +239,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 
 ### DEBT-023 - 2q-b3b non-blocking review findings (2q)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2q
 - what: Non-blocking findings from Astra's 2q-b3b review, accepted in advance under the charter's "Review throughput" rule:
   - (1) 352 replay scenarios per change remain UNRESOLVED (real job-process identity in `start_fingerprint`, plus 3 concurrency or replacement-process races), so they are outside the replay verdict; the remaining Router work, especially Lifecycle and Scheduling, must supply deterministic process and concurrency fixtures at the seams or separately accepted contract-level evidence;
@@ -248,6 +248,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - Progress 2026-10-08: items (2) and (3) are done by task 2q-t3 and accepted by Astra. Item (1), the 352 unresolved scenarios, stays open.
 - source: private/reviews/gen2-2q-b3b-astra-review-20261007.md (non-blocking list)
 - removal: the remaining 2q Router and replay slices meet each item, and the review confirms them before 2q closes.
+- closed by: item 1 by task 2q-t4b (`5ef2130`, `e9d090e`, `5de8d7f`; Astra private/reviews/gen2-2q-t4b-astra-review-20261009.md: "2q-t4b is ACCEPTED. DEBT-023 item 1 is closable with the explicit dispositions", with 7 named unresolved scenarios bounded by contract evidence); items 2 and 3 by task 2q-t3 (Astra, 2026-10-08), 2026-10-09
 
 ### DEBT-024 - 2q-b5 non-blocking documentation finding (2q)
 - kind: obligation
@@ -303,3 +304,15 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: `gen2/tests/test_children.py::ReadinessTest.test_a_child_that_died_before_saying_it_fails_the_test_with_its_exit_status_and_stderr` failed once in the 2q-b11 landing run under machine load. A child that exited with status 3 ("database is locked") was classified as "still running when stopped, waited 0.0s" rather than "it had exited". It passes 10 out of 10 runs alone, and the code hasn't changed since `dd3b920`. Update 2026-10-09: the cause, from reading `gen2/tests/children.py::started`, is a race. After the child's stdout reaches EOF, `code: child.poll()` is called at once, and an exiting child can still be unreaped, so it's classified as "still running when stopped" and killed. Its scripted stderr ("database is locked") isn't a real database. Two of four full runs at 2q-b11's pin failed this way; the two reproduction runs on the 24-vCPU VM and one at 2q-b10 passed. The fix is to wait (bounded) for the child's exit after EOF before classifying. Make the classification deterministic: check exit status before the deadline verdict, or use an injectable clock. Add a regression that forces the race.
 - source: the orchestrator 2q-b11 landing run of 2026-10-08, attempt 1 (private/evidence/2q-b11/orchestrator-attempt1/)
 - removal: a deterministic classification with a forced-race regression, confirmed by a 2q review before 2q closes.
+
+### DEBT-029 - 2q-t4b non-blocking review findings (phase 2)
+- kind: obligation
+- status: open
+- owner: phase 2
+- what: Non-blocking findings from Astra's 2q-t4b review, accepted in advance under the charter's "Review throughput" rule:
+  - (NB1) the 2q-t4b evidence wording: the Router-call total should read 15,349 and 15,344; opt-out zero counts describe inactive accounting; counted first looks are distinct from positive-duration waits; the four supplemental negative-control inputs should point at the reviewer's retained archive;
+  - (NB2) two replay-seam test titles promise more than their assertions (the stock-child poll check; ended-job "no second wait"), so narrow them or add the assertions.
+
+  These are owned by phase 2 rather than task 2q so that 2q can close; they're documentation and test titles only.
+- source: private/reviews/gen2-2q-t4b-astra-review-20261009.md (non-blocking findings)
+- removal: the corrections land in a phase 2 maintenance slice, and its review confirms them before phase 2 closes.
