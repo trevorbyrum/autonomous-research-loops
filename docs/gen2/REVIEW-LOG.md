@@ -1919,3 +1919,11 @@ The post-2q Gate D is renumbered #5.
   - **When it started:** the defect has existed since `bfe0975`. Round 1's run stopped before reaching the mutation stage.
 - **What passed:** 2,490 tests and the trigger-order check.
 - **Routed:** `docs/gen2/tasks/2c-2a-repair-2.md`, round 3 of 3 (the cap). It also adds a standing rule: a slice that edits a file runs `--only` on every mutant family targeting that file.
+
+## 2026-10-09: 2c-2a round 3 (2c-2a-repair-2): PASS, and 2c-2a is accepted
+- **Astra** (`fe7a5a70`, pinned 62d6c52; `private/reviews/gen2-2c-2a-r3-astra-review-20261009.md`): **Gate C PASS, ROOT-CAUSE. "2c-2a is ACCEPTED."**
+- **F2 closed:** the DELEGATE anchor was re-pointed. 2QB10 5/5 killed with controls.
+- **Independent audit:** all 47 families targeting changed files apply; 1,501 of 1,501 killed.
+- **Landing run at 62d6c52:** `gen2-check` green: 2,490 tests, 2,430 of 2,430 mutants killed. `gen2-gateway` is carried forward from bfe0975 (413 of 413 killed; no gateway or production changes since).
+- **Standing rule (2c-2a lesson):** a slice that edits a file runs `--only` on every mutant family that targets that file, and runs the full composition module if it touches a public Router member or collaborator.
+- **2c-2b dispatched** (`docs/gen2/tasks/2c-2b.md`).
