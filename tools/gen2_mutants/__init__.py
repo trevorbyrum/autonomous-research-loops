@@ -14,6 +14,7 @@ from . import ddl_0a, store_0b_0d, router_1b, supervisor_1c, registries_1d, oper
 from .base import Mutation
 from . import accounting_2c1
 from . import assessments_2c2a
+from . import lifecycle_2c2b1
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -48,4 +49,5 @@ MUTATIONS: list[Mutation] = [
     *replay_2qt3.MUTATIONS,
     *accounting_2c1.MUTATIONS,
     *assessments_2c2a.MUTATIONS,
+    *lifecycle_2c2b1.MUTATIONS,
 ]

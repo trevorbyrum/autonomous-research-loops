@@ -139,6 +139,10 @@
       "type": "array", "maxItems": 256,
       "items": {"$ref": "#/$defs/semantic_assessment"}
     },
+    "source_lifecycle": {
+      "description": "2c-2b1: attributed append-only lifecycle history. Dates/actor come from the Router; supersedes_id explicitly replaces an earlier record for this source version.",
+      "type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/source_disposition"}
+    },
     "review_triggers": {
       "description": "Semantic trigger observations of the primary (flow S5). The identity is the router's hash of (topic, reason, cause, source revision), so a replayed trigger collides instead of re-opening; mandatory retraction and decision-record signals are raised by code policy or the operator, never by a commit (G-12).",
       "type": "array",
@@ -213,6 +217,28 @@
     }
   },
   "$defs": {
+    "disposition_id": {"type": "string", "pattern": "^sld_[A-Za-z0-9_-]{8,64}$"},
+    "source_disposition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["disposition_id", "work_id", "source_version", "contract_revision", "eligibility_protocol_version", "framing_version", "action", "related_work_id", "related_source_version", "supersedes_id", "reason_code", "evidence_refs"],
+      "properties": {
+        "disposition_id": {"$ref": "#/$defs/disposition_id"},
+        "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
+        "source_version": {"$ref": "common.schema.json#/$defs/short_text"},
+        "contract_revision": {"$ref": "common.schema.json#/$defs/revision"},
+        "eligibility_protocol_version": {"$ref": "common.schema.json#/$defs/revision"},
+        "framing_version": {"$ref": "common.schema.json#/$defs/revision"},
+        "action": {"enum": ["add", "keep", "supersede", "coexist", "quarantine", "duplicate-report"]},
+        "related_work_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/work_id"}]},
+        "related_source_version": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]},
+        "supersedes_id": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/disposition_id"}]},
+        "reason_code": {"$ref": "common.schema.json#/$defs/local_id"},
+        "evidence_refs": {"type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/artifact_ref"}}
+      },
+      "if": {"required": ["action"], "properties": {"action": {"enum": ["supersede", "coexist", "duplicate-report"]}}},
+      "then": {"properties": {"related_work_id": {"type": "string"}, "related_source_version": {"type": "string"}}},
+      "else": {"properties": {"related_work_id": {"type": "null"}, "related_source_version": {"type": "null"}}}
+    },
     "assessment_id": {"type": "string", "pattern": "^asm_[A-Za-z0-9_-]{8,64}$"},
     "semantic_assessment": {
       "type": "object", "additionalProperties": false,

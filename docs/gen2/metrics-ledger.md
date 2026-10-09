@@ -203,3 +203,35 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - reason: One conditional in the thin evidence-write wrapper reports nonempty assessment writes; all admission and persistence remains in collaborators.
 - task: 2c-2a
 
+### ML-0027
+- action: admit
+- target: engine|edge|gen2/accounting/__init__.py->gen2/core/instants.py
+- reason: Pure dated views compare exact UTC instants using the existing core validator, including fractional timestamps; no clock or I/O.
+- task: 2c-2b1
+
+### ML-0028
+- action: admit
+- target: engine|edge|gen2/router/assessments.py->gen2/core/instants.py
+- reason: Admission compares the Router recording instant with the immutable predecessor using the existing exact time vocabulary.
+- task: 2c-2b1
+
+### ML-0030
+- action: admit
+- target: engine|reach|gen2/accounting/__init__.py->gen2/core/instants.py
+- reason: Lifecycle arithmetic reaches the pure core instant comparison helper, with no store or clock capability.
+- task: 2c-2b1
+
+### ML-0031
+- action: admit
+- target: engine|reach|gen2/router/accounting.py->gen2/core/instants.py
+- reason: The existing inventory adapter reaches pure instant comparison through accounting; snapshot ownership stays in the Router.
+- task: 2c-2b1
+
+### ML-0032
+- action: budget
+- metric: fan_in
+- location: engine:gen2/core/instants.py
+- limit: 8
+- reason: Two additional callers, accounting and its admission collaborator, share exact instant comparison instead of introducing another timestamp representation.
+- task: 2c-2b1
+

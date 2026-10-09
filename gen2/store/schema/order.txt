@@ -10,3 +10,4 @@
 03-evidence-and-decisions.sql
 04-registries-and-export.sql
 05-semantic-assessments.sql
+06-source-lifecycle.sql

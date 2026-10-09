@@ -3,6 +3,8 @@ from dataclasses import dataclass, replace
 from fractions import Fraction
 from typing import Literal
 
+from gen2.core.instants import utc_instant_ns
+
 History = Literal["native", "legacy_unknown"]
 
 
@@ -120,6 +122,38 @@ class SourceLineage:
 
 
 @dataclass(frozen=True)
+class SourceDisposition:
+    disposition_id: str
+    work_id: str
+    source_version: str
+    contract_revision: int
+    eligibility_protocol_version: int
+    framing_version: int
+    action: Literal["add", "keep", "supersede", "coexist", "quarantine", "duplicate-report"]
+    related_work_id: str | None
+    related_source_version: str | None
+    supersedes_id: str | None
+    reason_code: str
+    evidence_refs: tuple[EvidenceReference, ...]
+    actor_kind: Literal["primary"]
+    invocation_id: str
+    recorded_by_operation_id: str
+    created_at: str
+
+
+def lifecycle_view(records: tuple[SourceDisposition, ...], as_of: str) -> tuple[SourceDisposition, ...]:
+    """Active dated records; explicit replacement only, competing judgments retained.
+
+    Consumes admitted history of one topic, never chooses labels or sufficiency.
+    A reversal is a later disposition replacing its predecessor, not deletion.
+    """
+    instant = utc_instant_ns(as_of)
+    dated = tuple(r for r in records if utc_instant_ns(r.created_at) <= instant)
+    replaced = {r.supersedes_id for r in dated if r.supersedes_id is not None}
+    return tuple(sorted((r for r in dated if r.disposition_id not in replaced), key=lambda r: r.disposition_id))
+
+
+@dataclass(frozen=True)
 class Inventory:
     history: History
     observations: tuple[Observation, ...] = ()
@@ -130,6 +164,7 @@ class Inventory:
     passes: tuple[Pass, ...] = ()
     semantic_assessments: tuple[SemanticAssessment, ...] = ()
     source_lineage: tuple[SourceLineage, ...] = ()
+    source_lifecycle: tuple[SourceDisposition, ...] = ()
 
 
 @dataclass(frozen=True)

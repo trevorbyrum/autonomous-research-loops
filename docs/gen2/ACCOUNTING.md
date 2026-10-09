@@ -134,6 +134,58 @@ and reason-coded screening exclusions (E-9), without comparing protocols or
 re-deriving impact judgments. Until then 2a exposes raw attributed history,
 not a current-framing or lifecycle view; 2c-3 consumes the completed operands.
 
+### 2c-2b design addendum (2026-10-09, before implementation)
+
+Full remaining estimate: about 950 hand-written lines (lifecycle 490;
+contradiction/branch records, accrual and G-1/E-9 selection 460). Split into
+**2c-2b1**, lifecycle chains and dated views, and **2c-2b2**, contradiction
+and branch dispositions, semantic/branch accrual, G-1 selection and E-9
+re-screening. Implement and commit **2b1 only**, then stop.
+
+**2b1 storage/admission.** Append-only `source_lifecycle` is a new ordered
+DDL part, not an alteration or migration of a live store. Each record names
+its id, work/source version, contract/protocol/framing pins, one of add/keep/
+supersede/coexist/quarantine/duplicate-report, reason and evidence references.
+Supersede means the subject is replaced by the explicitly named related
+work/version; coexist and duplicate-report also require that related pair.
+Other actions have no related pair. These records neither merge identities
+nor grant claim-support authority. Optional `supersedes_id` replaces an
+earlier lifecycle record of the same topic and exact subject version; a
+later keep can reverse supersede or quarantine. The predecessor must already
+exist in durable history and have a strictly earlier Router recording time;
+no forward links, cycles, backdating or in-place rewrites. Parallel records
+may coexist and disagree: replacing one does not resolve the others.
+
+The optional outcome/1 section uses the existing `Assessments` collaborator,
+primary-only contract admission, topic-retrieved works and evidence binding.
+The Router supplies actor, invocation, receipt and recording time; callers
+cannot supply attribution or dates. DDL mirrors attribution/pins and forbids
+updates/deletes; admission checks chain identity and time under the commit
+lock. Record-id conflicts roll back, while exact operation replay writes
+nothing. `service.py` adds one thin write call; no new public Router API.
+
+**2b1 reads.** The existing inventory adapter reads typed lifecycle history
+in the same `_snapshot()` as slices 1/2a. Pure `lifecycle_view(records, as_of)`
+uses exact UTC instant comparison and returns all active records, canonically
+ordered, after removing only explicitly replaced predecessors dated by that
+instant. Empty history is empty/unknown, never an inferred add or keep.
+The view takes no clock/store and never chooses a semantic judgment.
+
+**2b2 next.** Attributed append-only contradiction/branch disposition records
+extend their existing registries without rewriting prior judgments. Typed
+accrual operands join those histories and assessments with existing G-1
+impact dispositions in the same snapshot; explicit compatibility permits
+reuse, invalidation leaves labels unknown/stale, and reframe dispositions
+reopen durable old-framing reason-coded exclusions (E-9). No protocol diff
+or inferred impact, and no silent resolution of disagreement. Judgment
+production, provider qualification and escalation remain 2e (plan audit F3).
+
+2b1 estimate breakdown: records/view/read 55, DDL/schema 100, admission and
+wiring 60, tests/properties 170, mutants and documentation/ledger 105.
+Validation: hand-written supersede/reversal and disagreement expectations,
+dated-view Hypothesis law, admission/DDL/schema refusals with paired controls,
+full composition module, every edited-file mutant family, and the six gates.
+
 DDL uses the existing ordered schema mechanism and exact-identity opening
 gate; there is no in-place migration/backfill mechanism. Old stores are
 refused, and migration remains Phase 4. Tests use only in-memory fixtures.

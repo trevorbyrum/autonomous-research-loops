@@ -779,6 +779,8 @@ def _inventory():
     MANUAL.update(ACCOUNTING_CONTROLS)  # by-hand accepted paths, kept with their family
     from gen2_mutants.assessments_2c2a import CONTROLS as ASSESSMENT_CONTROLS
     MANUAL.update(ASSESSMENT_CONTROLS)
+    from gen2_mutants.lifecycle_2c2b1 import CONTROLS as LIFECYCLE_CONTROLS
+    MANUAL.update(LIFECYCLE_CONTROLS)
     return gen2_mutations
 
 

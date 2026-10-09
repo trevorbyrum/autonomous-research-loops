@@ -6,6 +6,7 @@ G-1 semantic reuse and accrual are the later 2c-2b slice.
 """
 import json
 import sqlite3
+import unittest
 from fractions import Fraction
 from pathlib import Path
 
@@ -17,6 +18,26 @@ from gen2.tests.store_fixtures import StoreTestCase
 from gen2.tests.test_router_workflow import Workflow
 
 OUTCOME_SCHEMA = Path(__file__).resolve().parents[1] / "schema/outcome-document.schema.json"
+
+
+class LifecycleSchemaTest(unittest.TestCase):
+    RECORD = {"disposition_id": "sld_history00", "work_id": "wrk_00000001", "source_version": "v1", "contract_revision": 1,
+        "eligibility_protocol_version": 1, "framing_version": 1, "action": "add", "related_work_id": None,
+        "related_source_version": None, "supersedes_id": None, "reason_code": "new_source",
+        "evidence_refs": [{"content_hash": "sha256:" + "a" * 64, "size_bytes": 10, "media_type": "application/json"}]}
+
+    def errors(self, record):
+        return SchemaSet(extra={"outcome-document.schema.json": json.loads(OUTCOME_SCHEMA.read_text())}).errors(record, "outcome-document.schema.json#/$defs/source_disposition")
+
+    def test_control(self):
+        self.assertEqual(self.errors(self.RECORD), [])
+        self.assertEqual(self.errors({**self.RECORD, "action": "supersede", "related_work_id": "wrk_00000001", "related_source_version": "v2"}), [])
+
+    def test_required_and_attribution_guards(self):
+        for field in self.RECORD:
+            self.assertTrue(self.errors({k: v for k, v in self.RECORD.items() if k != field}), field)
+        for changes in ({"actor_kind": "operator"}, {"created_at": "2026-10-09T00:00:00Z"}, {"action": "invalid"}, {"action": "supersede"}, {"evidence_refs": []}):
+            self.assertTrue(self.errors({**self.RECORD, **changes}), changes)
 
 
 class SemanticTest(Workflow):

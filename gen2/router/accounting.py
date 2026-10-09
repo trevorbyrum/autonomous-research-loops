@@ -28,7 +28,13 @@ def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory
         s["recorded_by_operation_id"], s["created_at"]) for s in rows.select("semantic_assessments", where))
     ids = {s.assessment_id for s in semantic}
     lineage = tuple(a.SourceLineage(**l) for l in rows.select("source_lineage") if l["assessment_id"] in ids)
-    return a.Inventory(history, observations, retrievals, links, assessments, claims, passes, semantic, lineage)
+    lifecycle = tuple(read_lifecycle(r) for r in rows.select("source_lifecycle", where))
+    return a.Inventory(history, observations, retrievals, links, assessments, claims, passes, semantic, lineage, lifecycle)
+
+
+def read_lifecycle(record: dict) -> a.SourceDisposition:
+    fields = {k: v for k, v in record.items() if k not in {"topic_id", "evidence_refs"}}
+    return a.SourceDisposition(**fields, evidence_refs=tuple(a.EvidenceReference(**ref) for ref in record["evidence_refs"]))
 
 
 def read_page(observation: dict) -> a.SearchPage | None:

@@ -8061,6 +8061,265 @@
   ],
   "why": "Hand-written accepted record with all pins, authorized primary, retained evidence, explicit labels and shared-origin lineage; the schema control validates the complete record against the mutated required list."
  },
+ "2C2B1-actor": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleTest.test_control_actions_and_disagreement"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-ddl-action": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleDDLTest.test_control_insert"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-ddl-actor": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleDDLTest.test_control_insert"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-ddl-evidence": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleDDLTest.test_control_insert"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-ddl-reason": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleDDLTest.test_control_insert"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-ddl-related-pair": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleDDLTest.test_control_insert"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-ddl-version": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleDDLTest.test_control_insert"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-evidence": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleTest.test_control_actions_and_disagreement"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-forged-attribution": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-future-changes-past": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.DatedViewTest.test_control_current"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-implicit-latest-wins": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.DatedViewTest.test_control_current"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-action": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-contract_revision": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-disposition_id": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-eligibility_protocol_version": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-evidence_refs": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-framing_version": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-reason_code": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-related_source_version": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-related_work_id": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-source_version": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-supersedes_id": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-missing-work_id": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-overwrite-is-replay": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleTest.test_control_actions_and_disagreement"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-pins": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleTest.test_control_actions_and_disagreement"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-predecessor": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleTest.test_control_supersede_then_reversal"
+  ],
+  "why": "Two valid, strictly dated predecessor links, including a reversal, exercise the accepted chain admission path."
+ },
+ "2C2B1-related-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleTest.test_control_actions_and_disagreement"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-replacement-ignored": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.DatedViewTest.test_control_current"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-schema-action": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-schema-evidence": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-schema-related-pair": {
+  "by_hand": true,
+  "controls": [
+   "test_semantic_assessments.LifecycleSchemaTest.test_control"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-source_lifecycle_bound": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleDDLTest.test_control_insert"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-source_lifecycle_immutable_d": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleDDLTest.test_control_insert"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-source_lifecycle_immutable_u": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleDDLTest.test_control_insert"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-source_lifecycle_predecessor": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleDDLTest.test_control_insert"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-subject-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleTest.test_control_actions_and_disagreement"
+  ],
+  "why": "Accepted primary record with explicit pins, evidence and all six actions, or a complete schema/DDL record or present-time view; no refused input in the control."
+ },
+ "2C2B1-time": {
+  "by_hand": true,
+  "controls": [
+   "test_source_lifecycle.LifecycleTest.test_control_supersede_then_reversal"
+  ],
+  "why": "Two valid, strictly dated predecessor links, including a reversal, exercise the accepted chain admission path."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

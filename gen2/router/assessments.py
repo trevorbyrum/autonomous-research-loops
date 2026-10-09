@@ -6,6 +6,7 @@ to the Router. Only its primary-class invocations supply semantic labels.
 """
 from typing import Callable, Mapping, Protocol
 
+from gen2.core.instants import utc_instant_ns
 from gen2.router.boundary import PRIMARY, Refusal
 
 
@@ -27,9 +28,12 @@ class Assessments:
         for record in payload.get("semantic_assessments", []):
             for ref in record["evidence_refs"]:
                 bind(ref, f"{record['assessment_id']}: its evidence")
+        for record in payload.get("source_lifecycle", []):
+            for ref in record["evidence_refs"]:
+                bind(ref, f"{record['disposition_id']}: its evidence")
 
     def validate(self, payload: dict, inv: dict) -> None:
-        records = payload.get("semantic_assessments", [])
+        records = payload.get("semantic_assessments", []) + payload.get("source_lifecycle", [])
         if not records:
             return
         if inv["kind"] not in PRIMARY or inv["admission_context"] != "contract/1":
@@ -41,10 +45,27 @@ class Assessments:
                 raise Refusal("payload_invalid", "semantic assessment protocol/framing differs from the invocation's pins")
             if not self._core._work_of_topic(record["work_id"], inv["topic_id"]):
                 raise Refusal("cross_topic", "semantic assessment subject was not retrieved by this topic")
-            lineage = record["lineage"]
+            lineage = record.get("lineage")
             if lineage is not None and lineage["related_work_id"] is not None:
                 if not self._core._work_of_topic(lineage["related_work_id"], inv["topic_id"]):
                     raise Refusal("cross_topic", "related lineage work was not retrieved by this topic")
+
+    def write_lifecycle(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
+        self.validate(payload, inv)
+        written = []
+        for record in payload.get("source_lifecycle", []):
+            if record["related_work_id"] is not None and not self._core._work_of_topic(record["related_work_id"], inv["topic_id"]):
+                raise Refusal("cross_topic", "related lifecycle work was not retrieved by this topic")
+            if record["supersedes_id"] is not None:
+                prior = self._core._one("source_lifecycle", {"disposition_id": record["supersedes_id"]})
+                if prior is None or (prior["topic_id"], prior["work_id"], prior["source_version"]) != (inv["topic_id"], record["work_id"], record["source_version"]):
+                    raise Refusal("payload_invalid", "lifecycle predecessor must exist for this topic and source version")
+                if utc_instant_ns(prior["created_at"]) >= utc_instant_ns(now):
+                    raise Refusal("payload_invalid", "lifecycle successor must be dated after its predecessor")
+            self._core._store.insert("source_lifecycle", {**record, "topic_id": inv["topic_id"], "actor_kind": "primary",
+                "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
+            written.append(record["disposition_id"])
+        return {"source_lifecycle": written} if written else {}
 
     def write(self, payload: dict, inv: dict, operation_id: str, now: str) -> list[str]:
         self.validate(payload, inv)
