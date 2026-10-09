@@ -13,7 +13,7 @@ from __future__ import annotations
 from .base import EVW, SVC, Mutation
 from .router_composition_2qb2 import COMPOSES, HOLDS_ONLY_CORE, USED_DECLARED
 
-DELEGATE = "        return self._evidence_writer._write_evidence(env, inv, checked, now, new_triggers, outbox)"
+DELEGATE = "        written = self._evidence_writer._write_evidence(env, inv, checked, now, new_triggers, outbox)"
 OUTBOX, CLOSURE = "test_router_evidence.ExportTest.test_an_approved_manifest_enters_the_outbox_with_its_hash", "test_router_workflow.ReviewClosureTest.test_the_checkpoint_closes_its_episode_and_handles_its_triggers"
 HOLD = '            self._core._store.insert("holds", {**hold, "topic_id": topic_id, "created_at": now, "created_by_operation_id": op_id})'
 
