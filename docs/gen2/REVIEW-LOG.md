@@ -1882,3 +1882,14 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check`: 2,454 tests; 2,394 of 2,394 mutants killed.
   - `gen2-gateway`: 1,540 tests twice; 413 of 413 mutants killed.
 - **Routed:** to `docs/gen2/tasks/2c-1-repair-1.md` (round 1 of 3), Sol coder.
+
+## 2026-10-09: 2c-1 round 2 (2c-1-repair-1): PASS, and 2c-1 accepted
+- **Astra** (`06337c12`, pinned 2339991; `private/reviews/gen2-2c-1-r2-astra-review-20261009.md`): **A, B and C all PASS, ROOT-CAUSE. "2c-1 is ACCEPTED."**
+- **F1 closed:** search identity is separate from capture identity, and it mirrors the gateway's normalised find form. A comparison against the gateway's own function pins the mirror; the reviewer checked another 40 forms against it.
+- **F2 closed:** delegate trees are traversed, and the scope stays per window. The reviewer added a three-level tree as a probe.
+- **F3 closed:** a search needs the full linked page chain, from page 1 to an exhausted last page.
+- **N1 and N2** were confirmed as positive controls.
+- **Landing run at 2339991: green.**
+  - `gen2-check`: 2,470 tests; 2,406 of 2,406 mutants killed, including 24 accounting mutants.
+  - `gen2-gateway`: 1,540 tests twice; 413 of 413 mutants killed.
+- **No new non-blocking items.** 2c-2 dispatched (`docs/gen2/tasks/2c-2.md`).
