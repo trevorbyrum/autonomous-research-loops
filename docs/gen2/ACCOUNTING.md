@@ -436,3 +436,105 @@ stays within Astra's Part-2 ruling and crosses no escalation boundary.
 Existing ledger admissions ML-0033–0045 cover these accounting paths. This
 slice adds no module, dependency edge, reachability, Router member or numeric
 exemption; the baseline and committed metrics ledger need no changes.
+
+## 2c-4 design note (2026-10-09, before implementation; BLOCKED)
+
+Input tip: `0da76bdda79411f88fb90ce38a0331bc7383dad1`, branch `gen2`.
+Sources: plan audit `gen2-phase2-plan-audit-astra-20260929.md` F9 and rows
+31–32; flow architecture `gen2-flow-architecture-20260924.md` S7/S8;
+`methodology-synthesis-20260924.md` §§4–6; design review
+`gen2-design-astra-review-20260922.md` §8; 0c review September 25 §B and
+September 26 repair review §B; EXPORT-API §2; BOUNDARIES “Evidence
+accounting”; INVARIANTS E-7/G-8/G-9/P-1…P-7. The legacy semantic-state
+schema corroborates the disposition names only; it supplies no gen-2
+assessment authority or confidence scheme.
+
+**Decision boundary.** F9 requires the four evidence distinctions, but
+EXPORT-API still explicitly calls its vocabulary proposed. Its confidence
+shape presupposes a contract-declared scheme; Contract v2 has no structured
+scheme pin, permitted labels or rubric. Its statistical `confidence_level`
+parameter is a different operand, not obligation confidence. The export
+example's `contract-certainty` scheme/version is fixture data, not an approved
+scheme definition. Neither the methodology nor the 0c rulings supplies a
+validated certainty scale; those rulings expressly reject borrowing GRADE
+bands without a justified mapping. Selecting a scheme or declaring new
+obligation assessment semantics would therefore require an operator choice.
+Task 2c-4's “Escalate rather than decide” instruction applies: **stop before
+implementation**, retain this proposal, and report BLOCKED.
+
+**Proposed reconciliation table, pending that choice.** The second column
+describes a future `/2` mapping, not an adopted contract. Each judgment must
+retain its identity, subject, attribution, evidence, pins, date, reason and
+explicit predecessor; a display label alone is not a lossless mapping.
+
+| Authoritative input distinction | Proposed bundle representation | Why `/1` cannot substitute |
+|---|---|---|
+| Supported obligation assessment | `supported`, with original support links and assessment | `/1` already has this label, but does not carry the complete assessment record. |
+| Contradicted obligation assessment | `contradicted`, with its counterevidence and reason | `not_supported` does not distinguish contradiction from absence of support. |
+| Unresolved obligation assessment | `unresolved`, retaining the stated epistemic/coverage limits and open contradiction records | `unknown` specifically means unestablished coverage; `insufficient_evidence` specifically asserts adequate search; `mixed` asserts a conflict with a hold. None is a universal substitute. |
+| Deferred obligation assessment | `deferred`, with the recorded reason and pending work | No `/1` disposition represents deferral; resource/capability limits cannot become an evidence verdict. |
+| Open/unassessed obligation | Preserve an explicit open state separately, if admitted by the chosen scheme | The legacy `open` state is distinct from a recorded unresolved assessment; no automatic open→unresolved judgment. |
+| Contradiction `unresolved` / `resolved` / `contested` | Identity mapping of every registry record, retaining competing records and explicit replacements | A `mixed` obligation and hold ids do not preserve this registry history or establish that a resolution occurred. |
+| Branch `promote` / `park` / `drop` | Identity mapping with proposal meaning and reason intact | No bundle field carries these records; promotion grants no new authority. |
+| Lifecycle add/keep/supersede/coexist/quarantine/duplicate-report and semantic/lineage operands | Preserve typed dated records and recorded G-1 standing; retain original labels beside effective unknown labels | Claim status and rendered synthesis artifacts cannot replace these attributed histories. |
+| `completed_with_qualified_conclusions` | Same outcome plus framing, coverage and discovery qualifications | Existing completion representation is retained; arithmetic supplies no sufficiency ruling. |
+| `stopped_for_resources` | Same outcome plus residual uncertainty | Never map to qualified completion or saturation. |
+| `capability_blocked` | Same outcome, with retained capability evidence | Never map to a resource stop or an evidence conclusion. |
+| `awaiting_judgment` / `retired` | Same outcome, separately retained | `/1` has all five G-9 enum labels, but forces outcome to null when not completed; a recorded topic outcome needs independent preservation. |
+| Unknown confidence | `{basis: unknown, reason: <retained reason>}` | The existing shape fits; no default label, zero or probability. |
+| Recorded confidence | Original scheme id/version, label and assessing invocation, checked against the approved contract pin | The existing confidence shape fits syntactically, but the contract pin and scheme definition are missing. |
+
+**Bundle decision.** `/1` cannot carry this reconciliation losslessly. After
+the operator settles the scheme, introduce `export-bundle/2` additively;
+keep `/1` schemas, fixtures and meanings unchanged. Do not disguise new
+meanings in `/1` reason prose. Preserve recorded topic outcomes independently
+of the scientific completion fact; carrying a blocked/awaiting outcome must
+never require asserting completion. The accepted 2c-2 semantic records assess work
+novelty/independence/applicability/contribution, not obligation disposition or
+certainty; `contribution=confidence` is not a confidence rating. The 2c-3
+rule/profile results likewise provide stopping operands, not those judgments.
+The eventual mapper needs explicit attributable obligation-assessment inputs;
+it must not infer them from claim counts, registry subject text or rule status.
+Durable production of those judgments must be coordinated with 2d/2e.
+
+**Operator options and recommendation.** For vocabulary, (A) retain the four
+named evidence dispositions plus a separate open state and the complete
+contradiction/defer records, or (B) approve separate evidence, adjudication and
+deferral axes with an explicit mapping back to every original disposition.
+Recommend A for the smaller mapping and preservation of the named source
+distinctions; B needs additional definitions and tests. Neither option permits
+an unresolved contradiction to disappear behind a single chosen judgment.
+
+For confidence, (A) approve a per-contract categorical scheme with its actual
+id/version, allowed labels and rubric, bound into the hash-locked contract,
+or (B) explicitly authorize unknown-only confidence for this slice and assign
+recorded-confidence support to a later task. Recommend A, with labels treated
+as attributed judgments, never calibrated probabilities. B is a scope change,
+not completion of the current requirement. No high/medium/low or GRADE scheme
+is selected here. The operator must supply or approve the actual definition
+and the contract-binding shape before reconciliation code can be written.
+
+**Views and authority.** Coverage views expose the four candidate units,
+completed/failed/indeterminate windows, recorded lane/search identities and
+G-1 standing. Branch coverage requires recorded branch links; do not infer
+them from prose. Depth views expose accepted semantic accrual, exact lineage,
+dated lifecycle and branch/contradiction histories, plus recorded reopenings.
+Both are pure read-only views of supplied typed snapshot operands, without a
+clock, store writes, provider calls or automatic sufficiency (E-7). Mapping
+lives in `gen2/accounting`; approved-bundle assembly remains the Phase-3
+Router/export path in EXPORT-API. No new exporter, connector or approval path
+is authorized by this proposal; service.py needs no change for this note.
+
+**Provisional size and split.** Full post-decision estimate: **about 820
+hand-written lines**, excluding generated controls. Split into **2c-4a**
+(mapping/types 90, additive schema and contract binding 150, round-trip and
+compatibility tests 140, paired mutants 60, docs/ledger 50: **490**) and
+**2c-4b** (views 150, end-to-end unresolved-contradiction and view tests 110,
+paired mutants 40, docs/ledger 30: **330**). Re-estimate once the approved
+scheme and durable assessment inputs are known; split 4a again if necessary.
+Implementation is blocked before 4a, so this commit contains design only.
+After the decision, implement only 4a and stop for review. 4b retains the
+research-state views and remaining fixtures, including the contradiction
+visible in the dossier, mapping and bundle. Tests must use hand-written
+expected records, prove an exact round trip, preserve explicit unknown
+confidence and old `/1` meaning, and pair every new guard with a mutant.
