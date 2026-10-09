@@ -28,7 +28,7 @@ guard("support-unchecked", AMD, "ApprovalTest.test_each_unsupported_rule_at_appr
 guard("unknown-kind", STOP, "BindingTest.test_every_unsupported_binding", "BindingTest.test_control_reviewed_binding",
       'if family not in ("diminishing_returns",', 'if False and family not in ("diminishing_returns",')
 guard("automatic-kind", STOP, "BindingTest.test_every_unsupported_binding", "BindingTest.test_control_retrieval_binding",
-      'if family != "known_item":', 'if family not in ("known_item", "statistical_target_recall"):')
+      'if family not in ("known_item", "descriptive", "coverage"):', 'if family not in ("known_item", "descriptive", "coverage", "statistical_target_recall"):')
 guard("screening-reinterpreted", STOP, "BindingTest.test_every_unsupported_binding", "BindingTest.test_control_retrieval_binding",
       'if family == "known_item" and rule["params"]["tests"] != "retrieval":', 'if False:')
 guard("unknown-mode", STOP, "BindingTest.test_every_unsupported_binding", "BindingTest.test_control_retrieval_binding",

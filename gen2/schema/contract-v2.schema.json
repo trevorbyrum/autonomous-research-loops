@@ -435,7 +435,9 @@
             "capture_recapture",
             "voi_evpi",
             "safe",
-            "code_meaning_saturation"
+            "code_meaning_saturation",
+            "descriptive",
+            "coverage"
           ]
         },
         "evaluation": {"enum": ["automatic", "reviewed_judgment"]},
@@ -525,6 +527,27 @@
                   "target_recall": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
                   "confidence_level": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
                   "method": {"const": "callaghan-mueller-hansen-2020"}
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "Reporting only: no stopping predicate or scientific sufficiency (E-7).",
+          "if": {"properties": {"family": {"const": "descriptive"}}},
+          "then": {"properties": {"params": {"type": "object", "additionalProperties": false, "properties": {}}}}
+        },
+        {
+          "description": "A minimum count of eligible distinct E-4 windows in the explicit invocation scope. A prerequisite only, separate from coverage_integrity and scientific sufficiency (E-6/E-7). Empty scope selects no windows.",
+          "if": {"properties": {"family": {"const": "coverage"}}},
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object", "additionalProperties": false,
+                "required": ["minimum_windows", "scope"],
+                "properties": {
+                  "minimum_windows": {"type": "integer", "minimum": 1},
+                  "scope": {"type": "array", "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/invocation_id"}}
                 }
               }
             }

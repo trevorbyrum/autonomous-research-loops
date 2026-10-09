@@ -68,6 +68,7 @@ COMMON_SCHEMA = SCHEMAS / "common.schema.json"
 DECISION_RECEIPT_SCHEMA = SCHEMAS / "decision-receipt.schema.json"
 INVOCATION_SCHEMA = SCHEMAS / "invocation.schema.json"
 EXECUTION_RECORD_SCHEMA = SCHEMAS / "execution-record.schema.json"
+CONTRACT_SCHEMA = SCHEMAS / "contract-v2.schema.json"
 OVERRIDES = {
     "EXPORT_BUNDLE_SCHEMA": "export-bundle.schema.json",
     "EXPORT_RECEIPT_SCHEMA": "export-delivery-receipt.schema.json",
@@ -77,6 +78,7 @@ OVERRIDES = {
     "DECISION_RECEIPT_SCHEMA": "decision-receipt.schema.json",
     "INVOCATION_SCHEMA": "invocation.schema.json",
     "EXECUTION_RECORD_SCHEMA": "execution-record.schema.json",
+    "CONTRACT_SCHEMA": "contract-v2.schema.json",
 }
 FAILURE = re.compile(r"^SCHEMA CHECK FAILURE: (\S+?): (.*)$")
 
@@ -108,6 +110,18 @@ class FixtureCounterfactualTest(unittest.TestCase):
         for fixture in fixtures:
             path = f"gen2/schema/examples/{schema}/{fixture}"
             self.assertNotIn(path, self.failures, msg=f"{path}: {self.failures.get(path)}")
+
+    def test_control_stopping_families_and_old_document(self):
+        self.assertBehaveAsDeclared("contract-v2", "valid-descriptive.json", "valid-coverage.json", "valid-two-obligations.json")
+
+    def test_descriptive_has_no_threshold_parameters(self):
+        self.assertBehaveAsDeclared("contract-v2", "invalid-descriptive-parameter.json")
+
+    def test_coverage_has_closed_required_parameters(self):
+        self.assertBehaveAsDeclared("contract-v2", "invalid-coverage-parameter.json", "invalid-coverage-missing-minimum.json",
+            "invalid-coverage-missing-scope.json", "invalid-coverage-zero-minimum.json", "invalid-coverage-scope-type.json",
+            "invalid-coverage-scope-id.json", "invalid-coverage-duplicate-scope.json")
+        self.assertBehaveAsDeclared("contract-v2", "invalid-coverage-fractional-minimum.json")
 
     # --- export-bundle: a mixed disposition names its adjudication holds (A3, C1)
     def test_a_mixed_disposition_without_its_hold_list_is_refused(self) -> None:

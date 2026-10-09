@@ -1,0 +1,1 @@
+{"fixture":{"schema":"contract-v2.schema.json#/$defs/stopping_rule","expect":"invalid","tests":"2c-3b2: coverage-scope-id refused in isolation","base":"valid-coverage.json","patch":[{"op":"replace","path":"/params/scope/0","value":"p"}],"errors":[{"keyword":"pattern","path":"/params/scope/0"}]}}

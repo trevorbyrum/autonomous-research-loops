@@ -1,0 +1,1 @@
+{"fixture":{"schema":"contract-v2.schema.json#/$defs/stopping_rule","expect":"invalid","tests":"2c-3b2: descriptive-parameter refused in isolation","base":"valid-descriptive.json","patch":[{"op":"add","path":"/params/threshold","value":0}],"errors":[{"keyword":"additionalProperties","path":"/params"}]}}

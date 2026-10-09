@@ -1,0 +1,13 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json#/$defs/stopping_rule",
+    "expect": "valid",
+    "tests": "2c-3b2: closed descriptive declaration; E-6/E-7 prerequisite/reporting only"
+  },
+  "instance": {
+    "rule_id": "R-descriptive",
+    "family": "descriptive",
+    "evaluation": "automatic",
+    "params": {}
+  }
+}

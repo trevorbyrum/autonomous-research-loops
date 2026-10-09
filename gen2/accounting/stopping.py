@@ -230,11 +230,21 @@ class ProfileResult:
     schema_version: Literal["stopping-result/1"] = "stopping-result/1"
 
 
-def evaluate_profile(context: Context, profile: Profile, rules: tuple[RuleResult, ...], gates: tuple[GateResult, ...]) -> ProfileResult:
-    states = {r.rule_id: r.state if r.context == context else "unknown" for r in rules}
+def _rule_reusable(original: Context, current: Context, inventory: Inventory | None) -> bool:
+    if inventory is None:
+        return original == current
+    return (inventory.current_contract_revision == current.contract_revision
+            and original.topic_id == current.topic_id and original.protocol_revision == current.protocol_revision
+            and label_standing(inventory, original.contract_revision) in ("current", "compatible"))
+
+
+def evaluate_profile(context: Context, profile: Profile, rules: tuple[RuleResult, ...], gates: tuple[GateResult, ...], *, inventory: Inventory | None = None) -> ProfileResult:
+    """Reuse recorded-compatible rules with original provenance; never reuse gates."""
     gate_states = {g.gate: g.state if g.context == context else "unknown" for g in gates}
-    if len(states) != len(rules) or len(gate_states) != len(gates):
+    if len({r.rule_id for r in rules}) != len(rules) or len(gate_states) != len(gates):
         raise ValueError("duplicate rule or gate results")
+    rules = tuple(r for r in rules if _rule_reusable(r.context, context, inventory))
+    states = {r.rule_id: r.state for r in rules}
     rules_state = expression_state(profile.completion_condition, states)
     state = combine("all", (rules_state, *(gate_states.get(g, "unknown") for g in profile.conjunctive_gates)))
     return ProfileResult(context, profile, rules, gates, state)
@@ -247,7 +257,7 @@ class RuleBinding:
     evaluation: str
     params: dict
     prerequisites: tuple[str, ...]
-    evaluator: Literal["known_item"] | None
+    evaluator: Literal["descriptive", "coverage", "known_item"] | None
 
 
 @dataclass(frozen=True)
@@ -261,15 +271,15 @@ def bind_rule(rule: dict) -> RuleBinding:
     family, mode = rule["family"], rule["evaluation"]
     name = f"stopping rule {rule['rule_id']} ({family})"
     if family not in ("diminishing_returns", "known_item", "counterevidence_pass", "statistical_target_recall",
-                      "capture_recapture", "voi_evpi", "safe", "code_meaning_saturation"):
+                      "capture_recapture", "voi_evpi", "safe", "code_meaning_saturation", "descriptive", "coverage"):
         raise ValueError(f"{name}: unknown family")
     evaluator = None
     if mode == "automatic":
-        if family != "known_item":
+        if family not in ("known_item", "descriptive", "coverage"):
             raise ValueError(f"{name}: no automatic evaluator implements its declared operands (G-11)")
         if family == "known_item" and rule["params"]["tests"] != "retrieval":
             raise ValueError(f"{name}: {rule['params']['tests']} sentinel checks require an unimplemented screening evaluator (G-11)")
-        evaluator = "known_item"
+        evaluator = family
     elif mode != "reviewed_judgment":
         raise ValueError(f"{name}: unknown evaluation mode {mode}")
     return RuleBinding(rule["rule_id"], family, mode, deepcopy(rule["params"]), tuple(rule.get("prerequisites", ())), evaluator)
@@ -286,10 +296,18 @@ def bind_profile(document: dict) -> ProfileBinding:
                                   tuple(document["conjunctive_gates"])), tuple(bind_rule(r) for r in document["rules"]))
 
 
-def evaluate_binding(binding: RuleBinding, context: Context, inventory: Inventory, declared: KnownItems) -> RuleResult:
-    """A referenced sentinel inventory must match the contract's exact operand."""
+def evaluate_binding(binding: RuleBinding, context: Context, inventory: Inventory, declared: KnownItems | None = None, *, pins: tuple[WindowPin, ...] = (), as_of: str | None = None) -> RuleResult:
+    """Dispatch declared operands; a sentinel reference must match exactly."""
+    if binding.evaluator == "descriptive":
+        if as_of is None:
+            raise ValueError(f"{binding.rule_id}: descriptive reporting requires an explicit as_of")
+        return descriptive(context, binding.rule_id, inventory, as_of)
+    if binding.evaluator == "coverage":
+        return coverage(context, binding.rule_id, inventory, pins, binding.params["minimum_windows"], scope=frozenset(binding.params["scope"]))
     if binding.evaluator != "known_item":
         raise ValueError(f"{binding.rule_id}: no automatic evaluator binding")
+    if declared is None:
+        raise ValueError(f"{binding.rule_id}: sentinel inventory required")
     if declared.reference != EvidenceReference(**binding.params["sentinel_set"]):
         raise ValueError(f"{binding.rule_id}: sentinel inventory does not match the declared reference")
     return known_item(context, binding.rule_id, inventory, declared)

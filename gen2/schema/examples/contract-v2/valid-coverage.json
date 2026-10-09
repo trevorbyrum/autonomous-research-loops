@@ -1,0 +1,18 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json#/$defs/stopping_rule",
+    "expect": "valid",
+    "tests": "2c-3b2: closed coverage declaration; E-6/E-7 prerequisite/reporting only"
+  },
+  "instance": {
+    "rule_id": "R-coverage",
+    "family": "coverage",
+    "evaluation": "automatic",
+    "params": {
+      "minimum_windows": 1,
+      "scope": [
+        "inv_windowsA01"
+      ]
+    }
+  }
+}

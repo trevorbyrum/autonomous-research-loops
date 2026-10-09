@@ -8992,6 +8992,160 @@
   ],
   "why": "The literal retrieval or reviewed control passes the changed guard and asserts its declared binding or Router result."
  },
+ "2C3B2-compatibility-refused": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.BindingTest.test_control_current_profile"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-coverage-binding": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.BindingTest.test_control_descriptive"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-coverage-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_stopping_families_and_old_document"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-dated-descriptive": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.BindingTest.test_control_descriptive"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-declared-minimum": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.BindingTest.test_control_coverage"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-declared-scope": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.BindingTest.test_control_coverage_evaluation"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-descriptive-binding": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.BindingTest.test_control_coverage"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-descriptive-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_stopping_families_and_old_document"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-incompatible-reused": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.ProtocolTest.test_control_compatible_reuse"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-minimum-integer": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_stopping_families_and_old_document"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-minimum-positive": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_stopping_families_and_old_document"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-minimum-required": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_stopping_families_and_old_document"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-old-gates-reused": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.BindingTest.test_control_current_profile"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-protocol-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.ProtocolTest.test_control_compatible_reuse"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-scope-array": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_stopping_families_and_old_document"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-scope-identity": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_stopping_families_and_old_document"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-scope-required": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_stopping_families_and_old_document"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-scope-unique": {
+  "by_hand": true,
+  "controls": [
+   "test_schema_counterfactuals.FixtureCounterfactualTest.test_control_stopping_families_and_old_document"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-sentinel-hash-unbound": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.BindingTest.test_control_retrieval_binding"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-sentinel-required": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_bindings.BindingTest.test_control_retrieval_binding"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-snapshot-current": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.ProtocolTest.test_control_compatible_reuse"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
+ "2C3B2-topic-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_stopping_protocol.ProtocolTest.test_control_compatible_reuse"
+  ],
+  "why": "The separate literal valid declaration/evaluation or compatible Router reuse control traverses the changed guard and remains accepted."
+ },
  "2C3D-drop-discount": {
   "controls": [
    "test_coverage_dependencies.DependencyTest.test_control_disjoint"

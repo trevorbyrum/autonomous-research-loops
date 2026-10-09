@@ -20,7 +20,7 @@ guard("majority", "test_all_is_not_majority", "test_control_satisfied", 'if deci
 guard("gate-vote", "test_gates_override_any_and_unknown", "test_control_gate_pass", 'state = combine("all", (rules_state,', 'state = combine("any", (rules_state,')
 guard("missing-gate", "test_gates_override_any_and_unknown", "test_control_gate_pass", 'gate_states.get(g, "unknown")', 'gate_states.get(g, "satisfied")')
 guard("missing-rule", "test_expressions_and_pins", "test_control_satisfied", 'states.get(expression.rule, "unknown")', 'states.get(expression.rule, "satisfied")')
-guard("rule-pin", "test_expressions_and_pins", "test_control_satisfied", 'r.state if r.context == context else "unknown"', 'r.state')
+guard("rule-pin", "test_expressions_and_pins", "test_control_satisfied", 'return original == current', 'return True')
 guard("gate-pin", "test_expressions_and_pins", "test_control_gate_pass", 'g.state if g.context == context else "unknown"', 'g.state')
 guard("stale-label", "test_stale_unknown_and_empty_labels", "test_control_descriptive", '[o.labels[0]]', '[o.assessment.novelty]')
 guard("descriptive-pin", "test_evaluator_context", "test_control_descriptive", ' if inventory.current_contract_revision == context.contract_revision else None', '')

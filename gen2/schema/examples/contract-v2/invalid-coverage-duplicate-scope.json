@@ -1,0 +1,1 @@
+{"fixture":{"schema":"contract-v2.schema.json#/$defs/stopping_rule","expect":"invalid","tests":"2c-3b2: coverage-duplicate-scope refused in isolation","base":"valid-coverage.json","patch":[{"op":"add","path":"/params/scope/-","value":"inv_windowsA01"}],"errors":[{"keyword":"uniqueItems","path":"/params/scope"}]}}

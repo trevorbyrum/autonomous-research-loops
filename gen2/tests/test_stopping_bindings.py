@@ -151,7 +151,7 @@ class BindingTest(unittest.TestCase):
 
     def test_inventory_reference_and_reviewed_execution_are_refused(self):
         binding = s.bind_rule(rule())
-        for reference in (replace(st.REF, content_hash=REF["content_hash"]), replace(st.a.EvidenceReference(**REF), size_bytes=2049),
+        for reference in (replace(st.a.EvidenceReference(**REF), content_hash="sha256:" + "c" * 64), replace(st.a.EvidenceReference(**REF), size_bytes=2049),
                           replace(st.a.EvidenceReference(**REF), media_type="text/plain")):
             with self.subTest(reference=reference), self.assertRaisesRegex(ValueError, "declared reference"):
                 s.evaluate_binding(binding, st.CTX, st.inventory(), s.KnownItems(reference, frozenset({"w1"})))

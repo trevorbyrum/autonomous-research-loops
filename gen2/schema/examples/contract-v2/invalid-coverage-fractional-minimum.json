@@ -1,0 +1,1 @@
+{"fixture":{"schema":"contract-v2.schema.json#/$defs/stopping_rule","expect":"invalid","tests":"2c-3b2: fractional window count refused in isolation","base":"valid-coverage.json","patch":[{"op":"replace","path":"/params/minimum_windows","value":1.5}],"errors":[{"keyword":"type","path":"/params/minimum_windows"}]}}

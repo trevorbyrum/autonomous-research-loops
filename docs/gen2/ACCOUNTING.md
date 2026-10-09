@@ -406,3 +406,33 @@ re-evaluation and compatible reuse. That assembly must consume recorded G-1
 standing before composing old results or operands, rather than comparing
 documents again or relabeling old results as current. Gate evidence production
 and scientific sufficiency remain with 2d/2e and the operator.
+
+## 2c-3b2 design note (2026-10-09, before implementation)
+
+Estimate: **about 460 hand-written lines** (schema/fixtures 100, pure bindings
+and reuse 60, tests 180, paired mutants/tool wiring 90, docs/ledger 30).
+Add two closed families without changing any existing declaration:
+`descriptive` has empty parameters and always reports an unknown stopping
+state; `coverage` requires positive `minimum_windows` and an explicit `scope`
+array of invocation IDs (empty means no selected windows). Bind both to 3a;
+coverage remains an E-4 prerequisite alongside the unchanged completion gates.
+
+Extend pure binding dispatch with caller-supplied dated inventory/window pins.
+Profile composition optionally consumes the Router's existing evidence snapshot
+and recorded G-1 standing: only current/compatible rule results with matching
+topic/protocol and current snapshot may contribute. Unusable results, including
+their operands, are omitted, leaving affected expression leaves unknown;
+compatible results retain their original contexts. Gate evidence still requires
+the exact current context and is supplied by its existing authorities.
+
+Use the existing Router admission, approval, observation, outcome and inventory
+APIs for literal incompatible/compatible amendment fixtures. A stopping change
+must take a new protocol version; after invalidation, explicit B evaluation
+consumes B-current windows. No Router API, store format or authority changes.
+Add isolated schema negatives, binding controls, N1's wrong-hash regression and
+paired mutants; retain old schema fixtures byte-for-byte. This additive design
+stays within Astra's Part-2 ruling and crosses no escalation boundary.
+
+Existing ledger admissions ML-0033–0045 cover these accounting paths. This
+slice adds no module, dependency edge, reachability, Router member or numeric
+exemption; the baseline and committed metrics ledger need no changes.
