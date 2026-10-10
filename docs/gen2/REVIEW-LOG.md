@@ -2132,3 +2132,14 @@ The post-2q Gate D is renumbered #5.
 - **N1 closed.**
 - **Landing at 68849b8:** `gen2-check` green. The gateway result is carried forward.
 - **Next:** 2d-2, DEBT-032 (branch/window association), dispatched as `docs/gen2/tasks/2d-2.md`.
+
+## 2026-10-10: 2d-2 (durable branch/window association; provenance-derived window pins): PASS on first review; DEBT-032 closed
+- **Astra** (`f1bff563`, pinned de1ced0 plus ledger 09efd32; `private/reviews/gen2-2d-2-astra-review-20261010.md`): **A, B and C all PASS, ROOT-CAUSE. "2d-2 is ACCEPTED. DEBT-032 is closable."**
+- **Probes:** nine reviewer probes, covering cross-topic links, delegate/checkpoint/pre-contract windows, forged revisions and attribution, duplicates, missing provenance, fencing and transaction boundaries.
+- **N1:** DEBT-036 carries forward to slices 6 and 8. Coverage-view evaluation runs outside the writer lock, but selecting and joining the inputs still happens inside it. `service.py` is at 1,420 lines, leaving 80.
+- **Landing at de1ced0, all green:**
+  - `gen2-check`: 2,694 tests; 2,753 of 2,753 mutants killed.
+  - `gen2-gateway`: 413 of 413 mutants killed.
+- **Orchestrator:** DEBT-032 is closed.
+- **Next:** 2d-3 is dispatched (`docs/gen2/tasks/2d-3.md`, quote verification under the layered-matching ruling).
+  - **Mapping to V-6:** a near match counts as a mismatch. It is quarantined and comes with a diagnostic to help re-capture. It is never passed and never adjudicated.

@@ -342,7 +342,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 
 ### DEBT-032 - 2c-4b N1: durable branch/window association before dossier assembly (task 2d)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2d
 - what: the 2c-4b coverage and depth views take branch links and window pins as explicit snapshot operands. The store has no durable branch/window association, so a pure caller could invent links. This is acceptable for the pure views. Before authoritative dossier assembly uses branch coverage, the Router-owned assembly path must do the following:
   - obtain a durable, attributable branch/window association. It doesn't have to be a new table; any admitted, auditable record will do;
@@ -356,6 +356,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - a recorded association yields the expected view;
   - forged, cross-topic or mismatched associations and pins are rejected or left unknown;
   - absent association evidence stays unknown.
+- closed by: 2026-10-10, task 2d-2 (`de1ced0`). Astra's 2d-2 review (private/reviews/gen2-2d-2-astra-review-20261010.md) found all three removal conditions demonstrated: a recorded association gives the expected view; forged, cross-topic and mismatched associations and pins are refused or stay unknown; absent provenance stays unknown. Task 2e2 still produces the records through this path.
 
 ### DEBT-033 - 2c-4a: durable obligation-assessment admission, retention and export assembly (task 2d)
 - kind: obligation
