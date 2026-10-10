@@ -416,3 +416,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - target: engine|reach|gen2/router/service.py->gen2/accounting/views.py
 - reason: Thin coverage snapshot wiring reaches pure types through the existing read adapter; view arithmetic runs only after the snapshot returns.
 - task: 2d-2
+
+### ML-0063
+- action: admit
+- target: engine|file|gen2/router/quote_matching.py
+- reason: Task 2d-3a adds the planned pure V-6 matcher with retained byte/span and normalization operands; it has no internal dependencies or I/O and grants no admission authority.
+- task: 2d-3a
