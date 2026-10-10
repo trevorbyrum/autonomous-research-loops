@@ -354,3 +354,25 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - a recorded association yields the expected view;
   - forged, cross-topic or mismatched associations and pins are rejected or left unknown;
   - absent association evidence stays unknown.
+
+### DEBT-033 - 2c-4a: durable obligation-assessment admission, retention and export assembly (task 2d)
+- kind: obligation
+- status: open
+- owner: task 2d
+- what: there is no durable obligation-assessment inventory yet. 2c-4a maps explicit fixture operands. Task 2d must add the following:
+  - durable admission that enforces the approved contract's exact `confidence_scheme` binding (scheme id, version and label);
+  - retention of attribution, evidence, pins, predecessors and every deferral;
+  - snapshots of the approved revision;
+  - bundle assembly that consumes those records through the authorized export path.
+
+  Counts, rule status and registry prose must never stand in for these judgments.
+- source: private/reviews/gen2-2c-4a1-astra-review-20261009.md (N1); docs/gen2/ACCOUNTING.md §2c-4
+- removal: 2d admits real obligation-assessment records against the approved scheme, refuses off-scheme labels, keeps unknown confidence explicit with its reason, and assembles them through the authorized export path.
+
+### DEBT-034 - 2c-4a: attributable obligation-assessment production (task 2e2)
+- kind: obligation
+- status: open
+- owner: task 2e2
+- what: the real workflow must produce attributable obligation-assessment judgments (disposition plus a confidence label under the plan's approved scheme, or unknown with a reason) through the governed admission path from DEBT-033.
+- source: private/reviews/gen2-2c-4a1-astra-review-20261009.md (N1)
+- removal: the 2e2 workflow produces and exercises these records end to end through 2d's admission and export path.

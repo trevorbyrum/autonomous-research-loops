@@ -2051,3 +2051,14 @@ The post-2q Gate D is renumbered #5.
 - **N1 (non-blocking, scheduled obligation):** dossier assembly needs a durable branch/window association, because a pure caller can supply invented links. Registered as **DEBT-032**, owned by task 2d, with 2e2 producing the records.
 - **Landing at 70a851d:** `gen2-check` green, 2,624 tests and 2,649 of 2,649 mutants killed. The gateway result is carried forward from 549a351.
 - **Next:** 2c-4a dispatched, under the operator rulings in `docs/gen2/tasks/2c-4.md`.
+
+## 2026-10-10: 2c-4a part 1 (contract confidence-scheme declaration and G-1): PASS on first review
+- **Astra** (`5db3cd30`, pinned 346c83d; `private/reviews/gen2-2c-4a1-astra-review-20261009.md`): **A, B and C all PASS. ROOT-CAUSE. "2c-4a part 1 is ACCEPTED."** No drift from the operator rulings.
+- **The declaration:** closed, with categorical labels and textual rubrics. It has no numeric or probability field and no built-in scale. Legacy contracts are unchanged.
+- **G-1:** the whole scheme counts as protocol content. That includes rubric-text-only changes: Astra confirmed these are correctly incompatible.
+- **Re-anchored 1D mutants:** they still pin their sections.
+- **N1:** the obligation-assessment production obligation is now registered as two debts:
+  - **DEBT-033:** admission and assembly, owned by 2d.
+  - **DEBT-034:** production, owned by 2e2.
+- **Landing at 346c83d:** `gen2-check` and `gen2-gateway` both green.
+- **Next:** part 2 dispatched (`docs/gen2/tasks/2c-4a2.md`).
