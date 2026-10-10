@@ -1,0 +1,1 @@
+{"fixture": {"schema": "export-bundle-v2.schema.json", "expect": "invalid", "tests": "A full judgment retains attribution", "base": "valid-unresolved-contradiction.json", "patch": [{"op": "remove", "path": "/obligations/0/invocation_id"}], "errors": [{"keyword": "required", "path": "/obligations/0"}]}}

@@ -646,6 +646,27 @@ mapping; topic outcomes retain all five G-9 meanings independently of scientific
 completion. Assembly remains solely on the existing Phase-3 Router/export path.
 Implement only the first slice and stop; `/2` and task 2c are not complete.
 
+### 2c-4a3: mapper and additive bundle design (2026-10-10, before code)
+
+Input tip: `5d59054`, branch `gen2`. Re-estimate: **about 480 hand-written
+lines** (codec 80, schema 125, literal fixtures 80, tests 125, mutants/wiring
+50, documentation 20); no further split is needed. The ruled table stands.
+The pure mapper checks every obligation with `check_confidence` against its
+own supplied contract revision, then preserves tuple order, predecessors,
+competing records and every history field as JSON. Its inverse returns both
+the exact typed operands and the unchanged assembly fields, supporting laws
+in both directions. These remain explicit fixtures, not admitted provenance.
+
+The separate closed `/2` schema reuses unchanged `/1` fields by reference;
+obligations carry full assessment/open records, and a required history envelope
+carries semantic, lineage, lifecycle, registry and G-1 operands. Completion
+retains the five G-9 outcomes independently of status, including qualifications
+and residual uncertainty. The literal unresolved-contradiction fixture retains
+an independent competing resolution without replacing the unresolved record.
+Neither mapper selects a judgment or grants authority. Assembly fields are
+supplied by the existing authorized export path; DEBT-033/034 ownership and
+the Phase-3 assembly/approval/delivery requirements remain unchanged.
+
 ## 2c-4b: snapshot coverage and depth views (2026-10-09, before code)
 
 Input tip: `d182608`, branch `gen2`; operator ruling 3 builds views first.

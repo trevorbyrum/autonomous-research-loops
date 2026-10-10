@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/export-bundle-v2.schema.json",
+  "$comment": "flow: S7/S8 | boundaries: Evidence accounting; Exporter; Operator | invariants: E-7; G-1; G-9; P-1; P-4 | note: operator rulings tasks/2c-4.md, vocabulary A and confidence A. Additive /2; /1 retains its original meaning. Full histories are explicit operands, not proof of provenance or admission. Assembly stays on the authorized export path.",
+  "type": "object", "additionalProperties": false,
+  "required": ["bundle_version", "bundle_id", "topic_id", "contract", "completion", "obligations", "reconciliation_history", "claims", "claim_source_links", "synthesis_views", "stopping_dossier", "candidate_units", "content_policy", "assembler_version", "assembled_at", "hash_contract"],
+  "properties": {
+    "bundle_version": {"const": "export-bundle/2"},
+    "bundle_id": {"$ref": "export-bundle.schema.json#/properties/bundle_id"}, "topic_id": {"$ref": "export-bundle.schema.json#/properties/topic_id"},
+    "contract": {"$ref": "export-bundle.schema.json#/properties/contract"}, "completion": {"$ref": "#/$defs/completion"},
+    "obligations": {"type": "array", "items": {"$ref": "#/$defs/obligation"}}, "reconciliation_history": {"$ref": "#/$defs/history"},
+    "claims": {"$ref": "export-bundle.schema.json#/properties/claims"}, "claim_source_links": {"$ref": "export-bundle.schema.json#/properties/claim_source_links"},
+    "synthesis_views": {"$ref": "export-bundle.schema.json#/properties/synthesis_views"}, "stopping_dossier": {"$ref": "export-bundle.schema.json#/properties/stopping_dossier"},
+    "candidate_units": {"$ref": "export-bundle.schema.json#/properties/candidate_units"}, "content_policy": {"$ref": "export-bundle.schema.json#/properties/content_policy"},
+    "assembler_version": {"$ref": "export-bundle.schema.json#/properties/assembler_version"}, "assembled_at": {"$ref": "export-bundle.schema.json#/properties/assembled_at"},
+    "hash_contract": {"$ref": "export-bundle.schema.json#/properties/hash_contract"}
+  },
+  "allOf": [{"$ref": "export-bundle.schema.json#/allOf/0"}],
+  "$defs": {
+    "completion": {
+      "description": "Scientific completion status and recorded G-9 outcome are independent facts; an absent outcome is explicit null.",
+      "type": "object", "additionalProperties": false, "required": ["status", "outcome", "dossier_revision"],
+      "properties": {"status": {"$ref": "export-bundle.schema.json#/$defs/completion/properties/status"}, "outcome": {"$ref": "export-bundle.schema.json#/$defs/completion/properties/outcome"}, "dossier_revision": {"$ref": "export-bundle.schema.json#/$defs/completion/properties/dossier_revision"}, "qualifications": {"$ref": "export-bundle.schema.json#/$defs/completion/properties/qualifications"}, "residual_uncertainty": {"$ref": "export-bundle.schema.json#/$defs/completion/properties/residual_uncertainty"}},
+      "allOf": [{"$ref": "export-bundle.schema.json#/$defs/completion/allOf/0"}, {"$ref": "export-bundle.schema.json#/$defs/completion/allOf/2"}, {"$ref": "export-bundle.schema.json#/$defs/completion/allOf/3"}]
+    },
+    "revision": {"$ref": "common.schema.json#/$defs/revision"}, "nullable_revision": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/revision"}]},
+    "id": {"$ref": "common.schema.json#/$defs/local_id"}, "text": {"$ref": "common.schema.json#/$defs/long_text"},
+    "nullable_id": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/id"}]}, "nullable_text": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/text"}]},
+    "evidence": {"type": "array", "items": {"$ref": "common.schema.json#/$defs/artifact_ref"}},
+    "actor": {"const": "primary"}, "invocation": {"$ref": "common.schema.json#/$defs/invocation_id"}, "operation": {"$ref": "common.schema.json#/$defs/operation_id"}, "date": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "obligation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_id", "topic_id", "obligation_id", "subject", "contract_revision", "contract_content_hash", "eligibility_protocol_version", "framing_version", "evidence_refs", "actor_kind", "invocation_id", "recorded_by_operation_id", "created_at", "reason", "supersedes_id", "confidence"],
+      "properties": {
+        "record_id": {"$ref": "#/$defs/id"}, "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"}, "obligation_id": {"$ref": "#/$defs/id"}, "subject": {"$ref": "#/$defs/text"},
+        "contract_revision": {"$ref": "#/$defs/revision"}, "contract_content_hash": {"$ref": "common.schema.json#/$defs/sha256"}, "eligibility_protocol_version": {"$ref": "#/$defs/revision"}, "framing_version": {"$ref": "#/$defs/revision"},
+        "evidence_refs": {"$ref": "#/$defs/evidence"}, "actor_kind": {"$ref": "#/$defs/actor"}, "invocation_id": {"$ref": "#/$defs/invocation"}, "recorded_by_operation_id": {"$ref": "#/$defs/operation"}, "created_at": {"$ref": "#/$defs/date"},
+        "reason": {"$ref": "#/$defs/text"}, "supersedes_id": {"$ref": "#/$defs/nullable_id"}, "confidence": {"$ref": "export-bundle.schema.json#/$defs/confidence"},
+        "disposition": {"enum": ["supported", "contradicted", "unresolved", "deferred"]}, "state": {"const": "open"}
+      },
+      "oneOf": [{"required": ["disposition"], "properties": {"state": false}}, {"required": ["state"], "properties": {"disposition": false, "confidence": {"properties": {"basis": {"const": "unknown"}}}}}]
+    },
+    "history": {
+      "type": "object", "additionalProperties": false,
+      "required": ["semantic_assessments", "source_lineage", "source_lifecycle", "registry_dispositions", "current_contract_revision", "amendment_impacts"],
+      "properties": {
+        "semantic_assessments": {"type": "array", "items": {"$ref": "#/$defs/semantic"}}, "source_lineage": {"type": "array", "items": {"$ref": "#/$defs/lineage"}},
+        "source_lifecycle": {"type": "array", "items": {"$ref": "#/$defs/lifecycle"}}, "registry_dispositions": {"type": "array", "items": {"$ref": "#/$defs/registry"}},
+        "current_contract_revision": {"$ref": "#/$defs/nullable_revision"}, "amendment_impacts": {"type": "array", "items": {"$ref": "#/$defs/impact"}}
+      }
+    },
+    "semantic": {
+      "type": "object", "additionalProperties": false,
+      "required": ["assessment_id", "work_id", "source_version", "contract_revision", "eligibility_protocol_version", "framing_version", "novelty", "independence", "applicability", "contribution", "evidence_refs", "actor_kind", "invocation_id", "recorded_by_operation_id", "created_at"],
+      "properties": {
+        "assessment_id": {"$ref": "outcome-document.schema.json#/$defs/assessment_id"}, "work_id": {"$ref": "common.schema.json#/$defs/work_id"}, "source_version": {"$ref": "#/$defs/text"},
+        "contract_revision": {"$ref": "#/$defs/revision"}, "eligibility_protocol_version": {"$ref": "#/$defs/revision"}, "framing_version": {"$ref": "#/$defs/revision"},
+        "novelty": {"$ref": "outcome-document.schema.json#/$defs/semantic_assessment/properties/novelty"}, "independence": {"$ref": "outcome-document.schema.json#/$defs/semantic_assessment/properties/independence"},
+        "applicability": {"$ref": "outcome-document.schema.json#/$defs/semantic_assessment/properties/applicability"}, "contribution": {"$ref": "outcome-document.schema.json#/$defs/semantic_assessment/properties/contribution"},
+        "evidence_refs": {"$ref": "#/$defs/evidence"}, "actor_kind": {"$ref": "#/$defs/actor"}, "invocation_id": {"$ref": "#/$defs/invocation"}, "recorded_by_operation_id": {"$ref": "#/$defs/operation"}, "created_at": {"$ref": "#/$defs/date"}
+      }
+    },
+    "lineage": {
+      "type": "object", "additionalProperties": false, "required": ["assessment_id", "relation", "study_origin_id", "related_work_id", "related_source_version"],
+      "properties": {"assessment_id": {"$ref": "outcome-document.schema.json#/$defs/assessment_id"}, "relation": {"$ref": "outcome-document.schema.json#/$defs/source_lineage/properties/relation"}, "study_origin_id": {"$ref": "#/$defs/nullable_text"}, "related_work_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/work_id"}]}, "related_source_version": {"$ref": "#/$defs/nullable_text"}},
+      "if": {"$ref": "outcome-document.schema.json#/$defs/source_lineage/if"}, "then": {"$ref": "outcome-document.schema.json#/$defs/source_lineage/then"}, "else": {"$ref": "outcome-document.schema.json#/$defs/source_lineage/else"}
+    },
+    "lifecycle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["disposition_id", "work_id", "source_version", "contract_revision", "eligibility_protocol_version", "framing_version", "action", "related_work_id", "related_source_version", "supersedes_id", "reason_code", "evidence_refs", "actor_kind", "invocation_id", "recorded_by_operation_id", "created_at"],
+      "properties": {
+        "disposition_id": {"$ref": "outcome-document.schema.json#/$defs/disposition_id"}, "work_id": {"$ref": "common.schema.json#/$defs/work_id"}, "source_version": {"$ref": "#/$defs/text"},
+        "contract_revision": {"$ref": "#/$defs/revision"}, "eligibility_protocol_version": {"$ref": "#/$defs/revision"}, "framing_version": {"$ref": "#/$defs/revision"}, "action": {"$ref": "outcome-document.schema.json#/$defs/source_disposition/properties/action"},
+        "related_work_id": {"$ref": "outcome-document.schema.json#/$defs/source_disposition/properties/related_work_id"}, "related_source_version": {"$ref": "#/$defs/nullable_text"}, "supersedes_id": {"$ref": "outcome-document.schema.json#/$defs/source_disposition/properties/supersedes_id"}, "reason_code": {"$ref": "#/$defs/id"},
+        "evidence_refs": {"$ref": "#/$defs/evidence"}, "actor_kind": {"$ref": "#/$defs/actor"}, "invocation_id": {"$ref": "#/$defs/invocation"}, "recorded_by_operation_id": {"$ref": "#/$defs/operation"}, "created_at": {"$ref": "#/$defs/date"}
+      },
+      "if": {"$ref": "outcome-document.schema.json#/$defs/source_disposition/if"}, "then": {"$ref": "outcome-document.schema.json#/$defs/source_disposition/then"}, "else": {"$ref": "outcome-document.schema.json#/$defs/source_disposition/else"}
+    },
+    "registry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["disposition_id", "registry_kind", "registry_id", "subject", "disposition", "contract_revision", "eligibility_protocol_version", "framing_version", "supersedes_id", "reason_code", "evidence_refs", "actor_kind", "invocation_id", "recorded_by_operation_id", "created_at"],
+      "properties": {
+        "disposition_id": {"$ref": "outcome-document.schema.json#/$defs/registry_disposition/properties/disposition_id"}, "registry_kind": {"$ref": "outcome-document.schema.json#/$defs/registry_disposition/properties/registry_kind"}, "registry_id": {"$ref": "#/$defs/id"}, "subject": {"$ref": "#/$defs/text"}, "disposition": {"$ref": "outcome-document.schema.json#/$defs/registry_disposition/properties/disposition"},
+        "contract_revision": {"$ref": "#/$defs/revision"}, "eligibility_protocol_version": {"$ref": "#/$defs/revision"}, "framing_version": {"$ref": "#/$defs/revision"}, "supersedes_id": {"$ref": "outcome-document.schema.json#/$defs/registry_disposition/properties/supersedes_id"}, "reason_code": {"$ref": "#/$defs/id"},
+        "evidence_refs": {"$ref": "#/$defs/evidence"}, "actor_kind": {"$ref": "#/$defs/actor"}, "invocation_id": {"$ref": "#/$defs/invocation"}, "recorded_by_operation_id": {"$ref": "#/$defs/operation"}, "created_at": {"$ref": "#/$defs/date"}
+      },
+      "if": {"$ref": "outcome-document.schema.json#/$defs/registry_disposition/if"}, "then": {"$ref": "outcome-document.schema.json#/$defs/registry_disposition/then"}, "else": {"$ref": "outcome-document.schema.json#/$defs/registry_disposition/else"}
+    },
+    "impact": {
+      "type": "object", "additionalProperties": false, "required": ["decision_id", "current_revision", "standing", "reopened_exclusions", "recorded_at"],
+      "properties": {"decision_id": {"$ref": "common.schema.json#/$defs/operator_decision_id"}, "current_revision": {"$ref": "#/$defs/revision"}, "standing": {"type": "array", "items": {"$ref": "#/$defs/standing"}}, "reopened_exclusions": {"type": "array", "items": {"$ref": "#/$defs/id"}}, "recorded_at": {"$ref": "#/$defs/date"}}
+    },
+    "standing": {
+      "type": "object", "additionalProperties": false, "required": ["revision", "classification"],
+      "properties": {"revision": {"$ref": "#/$defs/revision"}, "classification": {"enum": ["compatible", "lineage_only", "protocol_changed", "reframed"]}}
+    }
+  }
+}

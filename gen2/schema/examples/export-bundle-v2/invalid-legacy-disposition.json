@@ -1,0 +1,1 @@
+{"fixture": {"schema": "export-bundle-v2.schema.json", "expect": "invalid", "tests": "Contradicted must not collapse into the /1 not_supported vocabulary", "base": "valid-unresolved-contradiction.json", "patch": [{"op": "replace", "path": "/obligations/1/disposition", "value": "not_supported"}], "errors": [{"keyword": "enum", "path": "/obligations/1/disposition"}]}}

@@ -9565,6 +9565,279 @@
   ],
   "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
  },
+ "2C4A3-assembly-overlap": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_control_supported"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-bundle-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-bundle-object": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-bundle-required": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-completion-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-completion-object": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-completion-required": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-confidence-unchecked": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_control_supported"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-contradicted-collapsed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_control_supported"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-deferred-dropped": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_control_supported"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-disposition-vocabulary": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-history-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-history-object": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-history-required": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-impact-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-impact-object": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-impact-required": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-inverse-version": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_control_supported"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-lifecycle-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-lifecycle-object": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-lifecycle-required": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-lineage-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-lineage-object": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-lineage-required": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-obligation-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-obligation-required": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-open-confidence": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-open-unresolved": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_control_supported"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-outcome-null": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_control_absent_outcome"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-registry-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-registry-object": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-registry-required": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-semantic-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-semantic-object": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-semantic-required": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-standing-closed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-standing-object": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-standing-required": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_exact_fixture_and_inverse"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
+ "2C4A3-topic-unchecked": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_bundle.BundleTest.test_control_supported"
+  ],
+  "why": "A separate literal accepted case exercises the mapped field or schema guard and remains accepted with its exact original values."
+ },
  "2C4B-active-lifecycle-standing": {
   "by_hand": true,
   "controls": [

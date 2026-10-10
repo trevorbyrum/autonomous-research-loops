@@ -1,0 +1,1 @@
+{"fixture": {"schema": "export-bundle-v2.schema.json", "expect": "invalid", "tests": "A missing history must not silently become an empty history", "base": "valid-unresolved-contradiction.json", "patch": [{"op": "remove", "path": "/reconciliation_history/amendment_impacts"}], "errors": [{"keyword": "required", "path": "/reconciliation_history"}]}}

@@ -140,13 +140,21 @@ the exact contributing payload the quote came from is the assembler's job
 with the quote. A reusable-metadata flag never licenses the full text of the
 paper it describes.
 
-**Open point for review.** The obligation `disposition` vocabulary
-(`supported` / `not_supported` / `mixed` / `insufficient_evidence` / `unknown`)
-is **proposed**. The authoritative dossier document is Phase-2 work; if it lands a
-different vocabulary, this becomes `export-bundle/2` rather than being edited in
-place. The schema's `$comment` says so. Astra's 0c review ruled that it may stand
-as proposed. Phase 2 must reconcile it with the authoritative dossier and
-assessment scheme.
+**Additive reconciliation (2c-4a3).** `export-bundle-v2.schema.json` defines
+`export-bundle/2`; `/1` schema bytes, fixtures and meanings stay unchanged.
+The operator's ruled vocabulary is supported, contradicted, unresolved and
+deferred, alongside separately recorded open obligations. `/2` carries full
+attributed obligation histories and semantic, lineage, lifecycle, contradiction,
+branch and recorded G-1 operands. All five G-9 outcomes survive independently
+of scientific completion status, with their qualifications/residual uncertainty.
+The pure accounting mapper and inverse consume explicit fixture operands and
+supplied contract revisions; they establish no durable admission or provenance.
+DEBT-033 (2d) owns admission and approved-revision assembly, and DEBT-034 (2e2)
+owns judgment production. Neither codec creates an exporter or approval path;
+the one authorized assembly, manifest and delivery path remains required.
+The current manifest and Router bundle admission still accept `/1`. Task 2d
+must enable `/2` assembly on that same exact-revision approval path; this
+fixture slice does not claim production export support.
 
 ## 3. The manifest: `export-manifest/2`
 

@@ -1,0 +1,51 @@
+{
+  "fixture": {"schema": "export-bundle-v2.schema.json", "expect": "valid", "tests": "2c-4a3: all four judgments and separate open state; full attributed histories; unresolved contradiction and independent competing resolution; awaiting judgment without scientific completion"},
+  "instance": {
+    "bundle_version": "export-bundle/2", "bundle_id": "exb_fixture001", "topic_id": "fleet-a:intake-latency",
+    "contract": {"revision": 2, "content_hash": "sha256:4cb2a0420c84361bb9d13e81e87b627ff283691db35f07081d1a2510e32f4d78"},
+    "completion": {"status": "not_completed", "outcome": "awaiting_judgment", "dossier_revision": 5},
+    "obligations": [
+      {"record_id": "oba_fixture001", "topic_id": "fleet-a:intake-latency", "obligation_id": "O-1", "subject": "Effect under the approved framing",
+       "contract_revision": 2, "contract_content_hash": "sha256:4cb2a0420c84361bb9d13e81e87b627ff283691db35f07081d1a2510e32f4d78", "eligibility_protocol_version": 1, "framing_version": 1,
+       "evidence_refs": [{"content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "size_bytes": 19, "media_type": "text/plain"}],
+       "actor_kind": "primary", "invocation_id": "inv_assess001", "recorded_by_operation_id": "op_assess0001", "created_at": "2026-10-10T00:00:00Z", "reason": "Independent estimate supports the effect.", "supersedes_id": null,
+       "disposition": "supported", "confidence": {"basis": "recorded_assessment", "scheme": {"scheme_id": "plan-corroboration", "version": 1}, "label": "tentative", "assessed_by_invocation_id": "inv_assess001"}},
+      {"record_id": "oba_fixture002", "topic_id": "fleet-a:intake-latency", "obligation_id": "O-1", "subject": "Effect under the approved framing",
+       "contract_revision": 2, "contract_content_hash": "sha256:4cb2a0420c84361bb9d13e81e87b627ff283691db35f07081d1a2510e32f4d78", "eligibility_protocol_version": 1, "framing_version": 1,
+       "evidence_refs": [{"content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "size_bytes": 19, "media_type": "text/plain"}],
+       "actor_kind": "primary", "invocation_id": "inv_assess001", "recorded_by_operation_id": "op_assess0001", "created_at": "2026-10-10T00:00:00Z", "reason": "Counterestimate contradicts the effect.", "supersedes_id": null,
+       "disposition": "contradicted", "confidence": {"basis": "unknown", "reason": "  Confidence judgment pending adjudication.  "}},
+      {"record_id": "oba_fixture003", "topic_id": "fleet-a:intake-latency", "obligation_id": "O-1", "subject": "Effect under the approved framing",
+       "contract_revision": 2, "contract_content_hash": "sha256:4cb2a0420c84361bb9d13e81e87b627ff283691db35f07081d1a2510e32f4d78", "eligibility_protocol_version": 1, "framing_version": 1,
+       "evidence_refs": [{"content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "size_bytes": 19, "media_type": "text/plain"}],
+       "actor_kind": "primary", "invocation_id": "inv_assess001", "recorded_by_operation_id": "op_assess0001", "created_at": "2026-10-10T00:00:00Z", "reason": "Opposing estimates remain unadjudicated.", "supersedes_id": null,
+       "disposition": "unresolved", "confidence": {"basis": "unknown", "reason": "  Confidence judgment pending adjudication.  "}},
+      {"record_id": "oba_fixture004", "topic_id": "fleet-a:intake-latency", "obligation_id": "O-1", "subject": "Effect under the approved framing",
+       "contract_revision": 2, "contract_content_hash": "sha256:4cb2a0420c84361bb9d13e81e87b627ff283691db35f07081d1a2510e32f4d78", "eligibility_protocol_version": 1, "framing_version": 1,
+       "evidence_refs": [{"content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "size_bytes": 19, "media_type": "text/plain"}],
+       "actor_kind": "primary", "invocation_id": "inv_assess001", "recorded_by_operation_id": "op_assess0001", "created_at": "2026-10-10T00:00:01Z", "reason": "Adjudication deferred pending the branch probe.", "supersedes_id": "oba_fixture003",
+       "disposition": "deferred", "confidence": {"basis": "unknown", "reason": "  Confidence judgment pending adjudication.  "}},
+      {"record_id": "oba_fixture005", "topic_id": "fleet-a:intake-latency", "obligation_id": "O-2", "subject": "Operator time remains unassessed",
+       "contract_revision": 2, "contract_content_hash": "sha256:4cb2a0420c84361bb9d13e81e87b627ff283691db35f07081d1a2510e32f4d78", "eligibility_protocol_version": 1, "framing_version": 1, "evidence_refs": [],
+       "actor_kind": "primary", "invocation_id": "inv_assess001", "recorded_by_operation_id": "op_assess0001", "created_at": "2026-10-10T00:00:00Z", "reason": "No obligation judgment has been recorded.", "supersedes_id": null,
+       "state": "open", "confidence": {"basis": "unknown", "reason": "  Confidence judgment pending adjudication.  "}}
+    ],
+    "reconciliation_history": {
+      "semantic_assessments": [{"assessment_id": "asm_fixture001", "work_id": "wrk_fixture001", "source_version": "v1", "contract_revision": 2, "eligibility_protocol_version": 1, "framing_version": 1, "novelty": "novel", "independence": "shared_origin", "applicability": "applicable", "contribution": "contradiction", "evidence_refs": [{"content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "size_bytes": 19, "media_type": "text/plain"}], "actor_kind": "primary", "invocation_id": "inv_assess001", "recorded_by_operation_id": "op_assess0001", "created_at": "2026-10-10T00:00:00Z"}],
+      "source_lineage": [{"assessment_id": "asm_fixture001", "relation": "shared_study_origin", "study_origin_id": "study-A", "related_work_id": null, "related_source_version": null}],
+      "source_lifecycle": [{"disposition_id": "sld_fixture001", "work_id": "wrk_fixture001", "source_version": "v1", "contract_revision": 2, "eligibility_protocol_version": 1, "framing_version": 1, "action": "add", "related_work_id": null, "related_source_version": null, "supersedes_id": null, "reason_code": "new", "evidence_refs": [{"content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "size_bytes": 19, "media_type": "text/plain"}], "actor_kind": "primary", "invocation_id": "inv_assess001", "recorded_by_operation_id": "op_assess0001", "created_at": "2026-10-10T00:00:00Z"}],
+      "registry_dispositions": [
+        {"disposition_id": "rdp_history00", "registry_kind": "contradiction", "registry_id": "C-1", "subject": "Opposing estimates in the retained evidence", "disposition": "unresolved", "contract_revision": 2, "eligibility_protocol_version": 1, "framing_version": 1, "supersedes_id": null, "reason_code": "conflicting_estimates", "evidence_refs": [{"content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "size_bytes": 19, "media_type": "text/plain"}], "actor_kind": "primary", "invocation_id": "inv_assess001", "recorded_by_operation_id": "op_assess0001", "created_at": "2026-10-10T00:00:00Z"},
+        {"disposition_id": "rdp_history01", "registry_kind": "contradiction", "registry_id": "C-1", "subject": "Opposing estimates in the retained evidence", "disposition": "resolved", "contract_revision": 2, "eligibility_protocol_version": 1, "framing_version": 1, "supersedes_id": null, "reason_code": "competing_resolution", "evidence_refs": [{"content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "size_bytes": 19, "media_type": "text/plain"}], "actor_kind": "primary", "invocation_id": "inv_assess002", "recorded_by_operation_id": "op_assess0002", "created_at": "2026-10-10T00:00:01Z"},
+        {"disposition_id": "rdp_history02", "registry_kind": "branch", "registry_id": "B-1", "subject": "Competing explanation probe", "disposition": "park", "contract_revision": 2, "eligibility_protocol_version": 1, "framing_version": 1, "supersedes_id": null, "reason_code": "probe_pending", "evidence_refs": [{"content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "size_bytes": 19, "media_type": "text/plain"}], "actor_kind": "primary", "invocation_id": "inv_assess001", "recorded_by_operation_id": "op_assess0001", "created_at": "2026-10-10T00:00:00Z"}
+      ],
+      "current_contract_revision": 2,
+      "amendment_impacts": [{"decision_id": "opd_amend0001", "current_revision": 2, "standing": [{"revision": 1, "classification": "protocol_changed"}], "reopened_exclusions": ["asm_excluded01"], "recorded_at": "2026-10-10T00:00:00Z"}]
+    },
+    "claims": [], "claim_source_links": [], "synthesis_views": [],
+    "stopping_dossier": {"dossier_revision": 5, "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "evaluator_version": "accounting/2", "profile_id": "SP-effect-default", "rules": [], "conjunctive_gates": []},
+    "candidate_units": {"retrieved_record": {"status": "observed", "value": 2}, "deduplicated_work": {"status": "observed", "value": 1}, "assessed_candidate": {"status": "observed", "value": 1}, "accepted_claim": {"status": "observed", "value": 0}},
+    "content_policy": {"policy_version": "export-content-policy/1", "source_content_included": false, "omitted_for_licence": []},
+    "assembler_version": "fixture-assembler/2", "assembled_at": "2026-10-10T00:00:01Z", "hash_contract": {"canonicalization": "jcs-rfc8785/1"}
+  }
+}

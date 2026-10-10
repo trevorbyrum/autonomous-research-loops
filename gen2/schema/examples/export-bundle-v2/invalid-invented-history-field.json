@@ -1,0 +1,1 @@
+{"fixture": {"schema": "export-bundle-v2.schema.json", "expect": "invalid", "tests": "The history envelope is closed", "base": "valid-unresolved-contradiction.json", "patch": [{"op": "add", "path": "/reconciliation_history/invented", "value": 1}], "errors": [{"keyword": "additionalProperties", "path": "/reconciliation_history"}]}}
