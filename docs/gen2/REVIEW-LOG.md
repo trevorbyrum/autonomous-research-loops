@@ -2062,3 +2062,13 @@ The post-2q Gate D is renumbered #5.
   - **DEBT-034:** production, owned by 2e2.
 - **Landing at 346c83d:** `gen2-check` and `gen2-gateway` both green.
 - **Next:** part 2 dispatched (`docs/gen2/tasks/2c-4a2.md`).
+
+## 2026-10-10: 2c-4a part 2 slice 1 (reconciliation operands and confidence-consistency check): PASS on first review
+- **Astra** (`f684ee80`, pinned 86132e7; `private/reviews/gen2-2c-4a2a-astra-review-20261010.md`): **A, B and C all PASS. ROOT-CAUSE. "2c-4a part 2 slice 1 is ACCEPTED."** No new findings.
+- **What was confirmed:**
+  - The four dispositions and the separate open type are in place, with no open→unresolved transition.
+  - `check_confidence` checks all five pins, plus the scheme id, version and label.
+  - Unknown confidence is kept exactly as supplied.
+  - The limit "fixture operands only, not provenance" is stated honestly. That is safe while DEBT-033 is open.
+- **Landing at 86132e7:** `gen2-check` green. The gateway result is carried forward.
+- **Next:** slice 2 dispatched (`docs/gen2/tasks/2c-4a3.md`).
