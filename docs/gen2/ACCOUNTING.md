@@ -610,6 +610,42 @@ then part 2 uses explicit fixture operands; claim counts, rule status and
 registry subject prose supply no assessment authority. This is registered
 here for the orchestrator to track; the coder does not edit DEBT-REGISTER.
 
+### 2c-4a2: re-estimate and sequential split (2026-10-10, before code)
+
+Input tip: `516112ea0dec368e796b409268da1ccc96cbc406`, branch `gen2`.
+The ruled reconciliation table and additive `/2` decision above stand.
+Re-estimate: **about 660 hand-written lines**, excluding generated controls:
+typed operands/confidence check 135; mapper/inverse 90; closed additive schema
+and fixtures 180; independent tests 145; paired mutants/wiring 60; docs/ledger
+50. Full typed histories, attribution and independent schema negatives make
+the previous remaining-part estimate too small. Split again as instructed.
+
+**First slice (about 300 lines):** explicit obligation-assessment and separate
+open-record types, a typed dossier operand envelope retaining every supplied
+obligation (including deferrals and predecessors), semantic/lineage/lifecycle
+and contradiction/branch record, and recorded G-1 operands. The pure confidence
+check compares the record's topic, exact contract revision/hash and protocol/
+framing pins with the supplied schema-validated approved contract document,
+then checks categorical scheme id, version and label. Unknown confidence has
+an explicit nonempty reason and is returned unchanged; open is unassessed.
+No scale, default, automatic disposition, selection or judgment is produced.
+Independent fixture tests and paired confidence/pin mutants accompany this.
+
+These are **explicit fixture operands**, not proof of approval, provenance or
+durable admission. DEBT-033 (2d) still owns durable admission, retention and
+approved-revision bundle assembly; DEBT-034 (2e2) owns judgment production.
+The helper has no Router wiring or export authority. Historical records are
+checked against their own exact supplied contract, never the current scheme.
+
+**Remaining slice (about 360 lines; re-estimate before code):** pure lossless
+mapper/inverse, additive `export-bundle-v2.schema.json`, valid/invalid `/2`
+fixtures, the hand-written end-to-end unresolved-contradiction bundle and exact
+round trip, `/1` compatibility, and the four disposition/outcome mutants.
+All supplied histories and recorded G-1 standing remain inspectable under the
+mapping; topic outcomes retain all five G-9 meanings independently of scientific
+completion. Assembly remains solely on the existing Phase-3 Router/export path.
+Implement only the first slice and stop; `/2` and task 2c are not complete.
+
 ## 2c-4b: snapshot coverage and depth views (2026-10-09, before code)
 
 Input tip: `d182608`, branch `gen2`; operator ruling 3 builds views first.

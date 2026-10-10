@@ -9488,6 +9488,83 @@
   ],
   "why": "A separate literal valid scheme or compatible amendment executes the changed declaration/protocol guard and remains accepted under the mutant."
  },
+ "2C4A2-contract-pins": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_recorded"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
+ "2C4A2-missing-scheme": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_recorded"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
+ "2C4A2-open-assessed": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_open"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
+ "2C4A2-recorded-basis": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_recorded"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
+ "2C4A2-scheme-id": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_recorded"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
+ "2C4A2-scheme-label": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_recorded"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
+ "2C4A2-scheme-version": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_recorded"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
+ "2C4A2-unknown-basis": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_unknown"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
+ "2C4A2-unknown-defaulted": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_recorded"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
+ "2C4A2-unknown-reason": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_unknown"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
+ "2C4A2-version-bool": {
+  "by_hand": true,
+  "controls": [
+   "test_reconciliation_operands.ConfidenceOperandTest.test_control_recorded"
+  ],
+  "why": "An independently specified accepted confidence reaches the changed line or its immediate guard and remains accepted with the exact original value."
+ },
  "2C4B-active-lifecycle-standing": {
   "by_hand": true,
   "controls": [

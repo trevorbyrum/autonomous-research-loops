@@ -357,3 +357,26 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - reason: Existing accounting helpers and the explicit date filter reach the pure instant parser without clock authority.
 - task: 2c-4b
 
+### ML-0053
+- action: admit
+- target: engine|edge|gen2/accounting/reconciliation.py->gen2/accounting/__init__.py
+- reason: Explicit reconciliation operands reuse the accepted typed evidence and judgment histories without producing or selecting judgments.
+- task: 2c-4a2
+
+### ML-0054
+- action: admit
+- target: engine|file|gen2/accounting/reconciliation.py
+- reason: A pure module holds fixture assessment/open operands and contract-pinned confidence consistency checks for the ruled reconciliation design.
+- task: 2c-4a2
+
+### ML-0055
+- action: admit
+- target: engine|reach|gen2/accounting/reconciliation.py->gen2/accounting/__init__.py
+- reason: The operand envelope retains existing semantic, lineage, lifecycle, registry and G-1 records unchanged and adds no store or provider authority.
+- task: 2c-4a2
+
+### ML-0056
+- action: admit
+- target: engine|reach|gen2/accounting/reconciliation.py->gen2/core/instants.py
+- reason: Reusing the accounting record module inherits its existing pure UTC parser dependency; the new confidence check reads no clock.
+- task: 2c-4a2

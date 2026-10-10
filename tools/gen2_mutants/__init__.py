@@ -22,6 +22,7 @@ from . import stopping_2c3b
 from . import stopping_2c3b2
 from . import views_2c4b
 from . import confidence_2c4a
+from . import reconciliation_2c4a2
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -64,4 +65,5 @@ MUTATIONS: list[Mutation] = [
     *stopping_2c3b2.MUTATIONS,
     *views_2c4b.MUTATIONS,
     *confidence_2c4a.MUTATIONS,
+    *reconciliation_2c4a2.MUTATIONS,
 ]
