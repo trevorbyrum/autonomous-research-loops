@@ -613,6 +613,11 @@ class StoreTestCase(unittest.TestCase):
         self.x("UPDATE invocations SET state = 'running' WHERE invocation_id = 'inv_pppppppp'")
         self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 1, ?, 1, 'eval-1', ?, ?, ?)", TOPIC, rev, h("3"), h("7"), T)
         self.receipt("op_00000001", "inv_pppppppp", kind="final_outcome", before=0)
+        self.x("INSERT INTO obligation_assessments (record_id, topic_id, obligation_id, subject, contract_revision, contract_content_hash, eligibility_protocol_version, framing_version, "
+               "disposition, state, confidence, evidence_refs, actor_kind, invocation_id, recorded_by_operation_id, created_at, reason, supersedes_id) "
+               "SELECT 'oa-fixture', topic_id, 'O-1', 'fixture obligation', revision, content_hash, 1, framing_version, 'deferred', NULL, "
+               "'{\"basis\":\"unknown\",\"reason\":\"Not assessed\"}', ?, 'primary', 'inv_pppppppp', 'op_00000001', ?, 'Access deferred', NULL "
+               "FROM contract_revisions WHERE topic_id = ? AND revision = ?", json.dumps([{"content_hash": h("7"), "size_bytes": 10, "media_type": "application/json"}]), T, TOPIC, rev)
         self.x("INSERT INTO research_ordinals VALUES (?, 1, 'inv_pppppppp', 'op_00000001')", TOPIC)
         self.x("INSERT INTO review_episodes (episode_id, topic_id, kind, opened_at, opened_by_operation_id) VALUES ('ep-1', ?, 'method_fit', ?, 'op_00000001')", TOPIC, T)
         self.x("INSERT INTO review_triggers (trigger_identity, topic_id, reason_code, signal_source, cause_ref, observed_at, episode_id, handled_at) VALUES (?, ?, 'persistent_contradiction', 'deterministic', 'CL-3', ?, 'ep-1', ?)", h("1"), TOPIC, T, T)

@@ -1,4 +1,4 @@
-"""2c-2a admission/recording, not judgment production (2e) or arithmetic.
+"""2c-2a/2d-1 admission/recording, not judgment production (2e) or arithmetic.
 
 Flow S4/S4.5, methodology §4, E-3/E-7; see ACCOUNTING.md. Runs in the
 existing commit transaction; capability, fencing, artifacts and clock belong
@@ -25,6 +25,9 @@ class Assessments:
         self._core = core
 
     def bind_evidence(self, payload: dict, bind: Callable[[dict, str], None]) -> None:
+        for record in payload.get("obligation_assessments", []):
+            for ref in record["evidence_refs"]:
+                bind(ref, f"{record['record_id']}: its evidence")
         for record in payload.get("semantic_assessments", []):
             for ref in record["evidence_refs"]:
                 bind(ref, f"{record['assessment_id']}: its evidence")
@@ -36,6 +39,7 @@ class Assessments:
                 bind(ref, f"registry {record['disposition_id']}: its evidence")
 
     def validate(self, payload: dict, inv: dict) -> None:
+        self._validate_obligations(payload, inv)
         records = payload.get("semantic_assessments", []) + payload.get("source_lifecycle", []) + payload.get("registry_dispositions", [])
         if not records:
             return
@@ -84,7 +88,10 @@ class Assessments:
             self._core._store.insert("registry_dispositions", {**record, "topic_id": inv["topic_id"], "actor_kind": "primary",
                 "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
             written.append(record["disposition_id"])
-        return {"registry_dispositions": written} if written else {}
+        result = self._write_obligations(payload, inv, operation_id, now)
+        if written:
+            result["registry_dispositions"] = written
+        return result
 
     def write(self, payload: dict, inv: dict, operation_id: str, now: str) -> list[str]:
         self.validate(payload, inv)
@@ -97,3 +104,45 @@ class Assessments:
                 self._core._store.insert("source_lineage", {"assessment_id": record["assessment_id"], **record["lineage"]})
             written.append(record["assessment_id"])
         return written
+
+    def _validate_obligations(self, payload: dict, inv: dict) -> None:
+        records = payload.get("obligation_assessments", [])
+        if not records:
+            return
+        if inv["kind"] not in PRIMARY or inv["admission_context"] != "contract/1":
+            raise Refusal("kind_not_permitted", "obligation judgments require contract-admitted primary work")
+        contract = self._core._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
+        doc = contract["document"]
+        for record in records:
+            pins = (record["contract_revision"], record["contract_content_hash"], record["framing_version"], record["eligibility_protocol_version"])
+            if pins != (inv["contract_revision"], contract["content_hash"], contract["framing_version"], doc["eligibility_protocol"]["protocol_version"]):
+                raise Refusal("payload_invalid", "obligation record differs from its invocation's exact contract pins")
+            if self._core._one("obligations", {"topic_id": inv["topic_id"], "contract_revision": inv["contract_revision"], "obligation_id": record["obligation_id"]}) is None:
+                raise Refusal("payload_invalid", "obligation does not exist in this topic's pinned contract")
+            confidence = record["confidence"]
+            if confidence["basis"] == "recorded_assessment":
+                scheme = doc.get("confidence_scheme")
+                if scheme is None or confidence["scheme"] != {"scheme_id": scheme["scheme_id"], "version": scheme["version"]} or confidence["label"] not in scheme["labels"]:
+                    raise Refusal("payload_invalid", "confidence differs from the approved contract scheme")
+            elif not confidence["reason"].strip():
+                raise Refusal("payload_invalid", "unknown confidence requires its reason")
+
+    def _write_obligations(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
+        self._validate_obligations(payload, inv)  # repeat under the writer fence
+        written = []
+        for record in payload.get("obligation_assessments", []):
+            if record["supersedes_id"] is not None:
+                prior = self._core._one("obligation_assessments", {"record_id": record["supersedes_id"]})
+                if prior is None or (prior["topic_id"], prior["obligation_id"]) != (inv["topic_id"], record["obligation_id"]):
+                    raise Refusal("payload_invalid", "obligation predecessor must exist for this topic and obligation")
+                prior_instant = utc_instant_ns(prior["created_at"])
+                if prior_instant >= utc_instant_ns(now):
+                    raise Refusal("payload_invalid", "obligation successor must be dated after its predecessor")
+            confidence = dict(record["confidence"])
+            if confidence["basis"] == "recorded_assessment":
+                confidence["assessed_by_invocation_id"] = inv["invocation_id"]
+            self._core._store.insert("obligation_assessments", {"disposition": None, "state": None, **record,
+                "confidence": confidence, "topic_id": inv["topic_id"], "actor_kind": "primary", "invocation_id": inv["invocation_id"],
+                "recorded_by_operation_id": operation_id, "created_at": now})
+            written.append(record["record_id"])
+        return {"obligation_assessments": written} if written else {}

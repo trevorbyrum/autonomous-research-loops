@@ -12,3 +12,4 @@
 05-semantic-assessments.sql
 06-source-lifecycle.sql
 07-registry-dispositions.sql
+08-obligation-assessments.sql

@@ -1,0 +1,11 @@
+{
+  "fixture": {"schema": "obligation-assessment.schema.json", "expect": "valid", "tests": "DEBT-033: an attributed-on-commit deferral preserves unknown confidence and evidence"},
+  "instance": {
+    "record_id": "oa-example", "obligation_id": "O-1", "subject": "Effect on omissions",
+    "contract_revision": 2, "contract_content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "eligibility_protocol_version": 1, "framing_version": 1,
+    "evidence_refs": [{"content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "size_bytes": 10, "media_type": "application/json"}],
+    "reason": "Required access is unavailable", "supersedes_id": null, "disposition": "deferred",
+    "confidence": {"basis": "unknown", "reason": "No confidence judgment was possible"}
+  }
+}

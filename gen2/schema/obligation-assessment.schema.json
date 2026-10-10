@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/obligation-assessment.schema.json",
+  "$comment": "flow: S7; S8 | boundaries: Router; Evidence accounting; Primary agent (per-station frontier LLM) | invariants: E-7; C-12; G-1 | note: DEBT-033 admission proposal. Attribution is supplied by the Router; no engine confidence scale. Full stored records use export-bundle/2 vocabulary.",
+  "type": "object", "additionalProperties": false,
+  "required": ["record_id", "obligation_id", "subject", "contract_revision", "contract_content_hash", "eligibility_protocol_version", "framing_version", "evidence_refs", "reason", "supersedes_id", "confidence"],
+  "properties": {
+    "record_id": {"$ref": "export-bundle-v2.schema.json#/$defs/id"},
+    "obligation_id": {"$ref": "common.schema.json#/$defs/local_id"},
+    "subject": {"$ref": "export-bundle-v2.schema.json#/$defs/text"},
+    "contract_revision": {"$ref": "common.schema.json#/$defs/revision"},
+    "contract_content_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "eligibility_protocol_version": {"$ref": "common.schema.json#/$defs/revision"},
+    "framing_version": {"$ref": "common.schema.json#/$defs/revision"},
+    "evidence_refs": {"type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/artifact_ref"}},
+    "reason": {"$ref": "export-bundle-v2.schema.json#/$defs/text"},
+    "supersedes_id": {"$ref": "export-bundle-v2.schema.json#/$defs/nullable_id"},
+    "disposition": {"enum": ["supported", "contradicted", "unresolved", "deferred"]}, "state": {"const": "open"},
+    "confidence": {"oneOf": [
+      {"$ref": "export-bundle.schema.json#/$defs/confidence/oneOf/1"},
+      {"type": "object", "additionalProperties": false, "required": ["basis", "scheme", "label"], "properties": {
+        "basis": {"const": "recorded_assessment"},
+        "scheme": {"$ref": "export-bundle.schema.json#/$defs/confidence/oneOf/0/properties/scheme"},
+        "label": {"$ref": "common.schema.json#/$defs/short_text"}
+      }}
+    ]}
+  },
+  "oneOf": [
+    {"required": ["disposition"], "properties": {"state": false}},
+    {"required": ["state"], "properties": {"disposition": false, "confidence": {"properties": {"basis": {"const": "unknown"}}}}}
+  ]
+}

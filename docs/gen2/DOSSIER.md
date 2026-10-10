@@ -1,0 +1,125 @@
+# Task 2d dossier design
+
+Design written before code, against `f8754ba` on `gen2` (2026-10-10).
+Authority: private `gen2-flow-architecture-20260924.md` S4, S7, S8 and §4.8;
+`methodology-synthesis-20260924.md`; `reviews/gen2-phase2-plan-audit-astra-20260929.md`
+F3/F7/F10; Gate D #6, “Readiness and finite follow-through for 2d”; the
+charter, BOUNDARIES, INVARIANTS, ACCOUNTING, EXPORT-API, and task 2c-4's
+operator rulings. This note schedules work; it grants no new authority.
+
+## Existing enforcement and remaining work
+
+Paths below are relative to `gen2/`. SQL numbers name ordered schema parts
+under `store/schema/`. Tests describe structural guarantees, not scientific
+validity or a qualified live workflow.
+
+| Requirement | Existing DDL, code and tests | Missing / owning slice |
+|---|---|---|
+| V-1 receipt binding | `03-evidence-and-decisions.sql`, `verification_receipts` JSON/column checks and binding trigger; `router/service.py::_validate_commit`, `router/evidence_writer.py`; `tests/test_store_ddl_evidence.py::VerificationTest`, `tests/test_router_evidence.py` | Actual verifier re-access and typed byte/span hand-off; slices 3–4, producer in 2e2. |
+| V-2 truthful tiers | SQL 03 promotion and receipt-use triggers; `router/boundary.py::TIER`, receipt schema; the same verification tests | Cross-check obtained tier against access route and source/table availability, then consume receipts in dossier gates; 4, 6. |
+| V-3 independent checking | SQL 03 receipt role/binding triggers authenticate canonical bytes and extraction lineage; `VerificationTest` tests producer-byte reuse and rejected unvalidated extraction | Runtime re-access/validated-extraction path; 4, with workflow execution in 2e2. |
+| V-4 provisional / accepted support | SQL 03 `claims_accepted_support_needs_receipt` and `verification_receipts_use_matches_claim`; `router/evidence_writer.py::_promote_and_link_claims`; `VerificationTest` sampling/partial-support promotion refusals | Required receipts must also be checked over the dossier's exact claim revisions; 6. |
+| V-5 disagreement | Typed `holds` in SQL 02 and outcome schema; Router writes holds; `tests/test_router_evidence.py` | Verification disagreement must generate an owned judgment hold; 4. Deadline scheduling/escalation belongs to 2e2. |
+| V-6 byte checks before NLI | SQL 03 `quote_checks` mismatch/alarm quarantine and receipt binding; `VerificationTest::test_nli_alarm_quarantines_the_quote`, `test_quote_check_binding` | Perform byte/span/normalization computation rather than trust supplied match labels; persist result, notify capture owner, prevent mismatch adjudication bypass; 3. |
+| V-7 tier-0 optional | Receipt schema and SQL 03 prevent alarm-based promotion; existing quote/receipt tests | Optional screen adapter, audit records with denominators and sampling probabilities, false passes/alarms and regression disposition; 5. Sampling workflow in 2e2, provider qualification in Phase 3. |
+| V-8 independent detailed checks | Receipt schema, SQL 03 receipt CHECKs and promotion reread of units/denominators/negation/qualifications; `VerificationTest` | Typed verifier production and actual unperformed/unavailable check handling; 4, 6. Code never supplies semantic judgments. |
+| V-9 three independences | SQL 03 `claim_source_links`, separate receipt invocation; SQL 05 semantic/source lineage; `tests/test_semantic_assessments.py`, `tests/test_router_workflow.py` | Carry all three independently into exact dossier/export; 6, 8. |
+| V-10 protocol admission | SQL 03 `claims_accepted_support_needs_contract_admission`; `router/evidence_writer.py` reads G-1 standing; `tests/test_router_evidence.py::ProductionAndAdoptionTest`, `tests/test_router_amendments.py` | Reuse this gate; dossier assembly must retain stale/adopted history and cannot promote fixtures; 6. |
+| G-8 exact completion approval | SQL 01 `queue_completion_needs_current_dossier_approval`; SQL 02 immutable dossiers and exact decision subjects; `router/service.py::_require_subject_hash_truth`, `_apply_decision`; `tests/test_router_ops.py`, `tests/test_store_ddl_contracts.py` | Authoritative full dossier generation/hash, material-change revalidation and fresh sufficiency-review binding; 6–7. Publication approval remains separate. |
+| P-1 atomic manifest | SQL 04 immutable `outbox_events` approved source/JSON bindings; Router validates and writes manifest in commit; `tests/test_store_ddl_export.py::ExportOutboxTest`, `tests/test_router_evidence.py` | Exact-revision assembler and /2 enablement on this same path; 8. |
+| P-2 ordered delivery | SQL 04 increasing pairs, one revision per generation, named connectors, watermarks; `ExportOutboxTest` | File destination's atomic pair/identity retention, replay, conflict, tombstones; 9. Other connectors Phase 3. |
+| P-3 local served-revision read | `freshness-envelope.schema.json`, boundary graph prohibits connector reads; `router/status.py` supplies local status | Compute a truthful envelope with approved served revision and newer unapproved disclosure; 11. |
+| P-4 independent facts | Separate dossier/outbox/receipt tables; freshness schema; `ExportOutboxTest` receipt shape/status checks | Combine completion, delivery and currency without changing one from another; 10–11. |
+| P-5 approved corrections | SQL 04 exact `publication_approval`, artifact kinds and source/hash binding; `ExportOutboxTest::test_only_approved_work_is_exported` | Assemble corrections/checkpoints through the same manifest path; 8–9. |
+| P-6 feed liveness | Freshness schema has per-feed issue reasons | Durable due time, success, cursor/coverage, result class, failure, owner and retirement evidence; 10. Poll/reopen scheduling is 2e2. |
+| P-7 unknown effects | SQL 04 receipt status/count/tombstone rules; `router/service.py::ack_delivery`; `ExportOutboxTest::test_receipt_status_rules`, `test_written_count_rules` | Actual file attempt and reconcile by resend after ambiguous application/receipt loss; 9. No destination read by engine readers. |
+| F3 real completion evidence | `accounting/stopping.py`, `tests/test_stopping.py`, `test_stopping_bindings.py`, `test_stopping_protocol.py` distinguish unknown/stale/bounds; existing admission and tier fences | Supplied GateResults are not proof. Admit actual successful challenge/competing-explanation packets, coverage provenance and fresh review, then enforce conjunctive gates; 6–7. Producers in 2e2. |
+| F7 one export path | EXPORT-API and existing manifest/outbox authority; additive /2 schema, `accounting/reconciliation.py`, `tests/test_reconciliation_operands.py`, `test_reconciliation_bundle.py` | Durable records, licence-bound approved-revision assembly and one JSONL/file connector with complete guarantees; 1, 8–9. Update EXPORT-API's obsolete Phase-3-only text then. |
+| F10 feed/read state | Status and freshness contract exist; no durable feed inventory | Persist facts and derive currency, including early failure and successful-empty; 10–11. Scheduling/health workflow remains 2e2. |
+| Gate D F1 / DEBT-035 | Rich `accounting/stopping.py` result; /2 currently inherits /1 scalar stopping shape | Add a lossless rich-result representation: context, invocation scope, window pins, G-1 standing, reasons, raw uncertainty, bounds, sentinels and gate evidence; 6. Test satisfied bound + indeterminate windows, conservative unknown and stale. Preserve /1 rules/bytes. |
+| Gate D F2 / DEBT-036 | `router/accounting.py::read_inventory` and `router/status.py` read under `_snapshot` (writer transaction); `service.py` has 89 lines of headroom; composition tests | Coherent input capture, computation outside writer lock, commit-time revision/hash revalidation and workload measurement; 6, 8. No cache/second store/query framework. |
+| DEBT-032 | Pure `accounting/views.py` BranchLink/WindowPin operands and `tests/test_research_views.py`; durable branch registry/dispositions exist | Admit attributable branch/window links; validate topic/branch/window, derive revisions from invocation/contract, keep absent provenance unknown; 2. |
+| DEBT-033 | Pure ObligationAssessment/OpenObligation and confidence checks in `accounting/reconciliation.py`; hash-locked per-plan scheme; `tests/test_confidence_contract.py` | Durable admission/retention with exact approved scheme and record attribution (1); historical approved-revision snapshot and authorized assembly (6, 8). Counts/prose/rule states never replace judgments. |
+
+## Assembly and typed hand-offs
+
+Router owns admission and commits. Private record helpers/collaborators use
+narrow core protocols and the existing fenced `commit_outcome` transaction;
+slice 1 uses private methods in the existing `Assessments` collaborator and
+adds no responsibility or import to `service.py`. Accounting
+keeps pure arithmetic. The exporter consumes approved typed artifacts, never
+queries a second research store or becomes an accounting writer.
+
+Assembly captures one coherent snapshot of topic state, approved/historical
+contracts, immutable records and artifacts, G-1 impacts, claim/receipt/quote
+revisions, challenge evidence, invocation/window provenance and registry
+history. A short transaction pins a snapshot token and copies the operands;
+the transaction ends before calculation, serialization, hashing or spool I/O.
+No successive independent inventory reads stand in for a snapshot. If the
+existing Store transaction is used to capture it, measure lock duration with
+representative topic/global inventories before accepting the path; prefer
+topic-filtered joins in the store over reading whole unrelated tables.
+
+Pure assembly outside the lock returns typed dossier/bundle bytes and a token
+identifying all material input revisions/hashes. The Router's commit rechecks
+the active approved contract, state revision, relevant input identities and
+hashes, approval subject, options revision and generation under its writer
+fence. Any change refuses/rebuilds; approval never follows a mutable object.
+Historical contracts remain available with their original schemes, while
+current G-1 standing remains a distinct operand. Missing evidence is unknown.
+No /1 scalar conversion may erase uncertainty behind a satisfied bound.
+Any exporter import-grant amendment needs the normal boundary review.
+
+## Sequential slice map
+
+Estimates include hand-written implementation, schema/DDL, tests and mutants;
+generated controls are excluded. Each later brief must refine its estimate
+and split again before exceeding about 500 lines. Documentation is additional.
+
+| Slice | Dependency | Deliverable and approximate lines |
+|---|---|---|
+| 1 (2d-1) | Existing commit/contract approval | Durable obligation assessment/open-record admission: exact scheme/pins, Router attribution, artifact evidence, predecessor and competing histories, immutable storage; paired adversarial controls. 430 (DDL 85, schema 40, admission 90, tests 150, mutants/ledger/fixtures 65). Stop here. |
+| 2 | 1 | Durable branch/window association admission and provenance-derived window pins; missing/cross-topic/forged cases. 400. |
+| 3 | Existing quote/receipt schema | Byte/span verification against exact source artifact with explicit normalization; quarantine and capture-owner notification before optional NLI. 430. |
+| 4 | 3 | Verifier typed re-access/extraction and tier/route/table checks, independent detailed check receipts and disagreement holds; fixture execution only. 450. |
+| 5 | 3–4 | Optional tier-0 screen/alarm and audit/regression records, no promotion; bounded sampling hand-off. 350. |
+| 6 | 1–4 | Coherent snapshot/read adapter and lossless rich stopping dossier persistence with actual coverage/challenge/verification gates; concurrency/workload cases. 490; split snapshot and rich representation if estimate grows. |
+| 7 | 6 | Fresh scientific-review record admission, exact dossier completion candidate/approval and material-change refusal. 400. |
+| 8 | 6–7 | Approved-revision /2 bundle assembly, full history/licence binding and manifest enablement; /1 compatibility and short-lock tests. 480. |
+| 9 | 8 | One JSONL/file export implementation, atomic pair/identity/tombstones, truthful counts, conflicts, ambiguous outcome and resend reconciliation. 490; split connector storage from delivery orchestration if needed. |
+| 10 | Existing surveillance policy | Durable feed facts, success-empty/failure/cursor/coverage/owner/retirement admission. 380. |
+| 11 | 9–10 | Local served-revision freshness envelope and independent completion/delivery/currency computation. 400. |
+| 12 | All | Fixture integration and finite debt/removal evidence, including unknown/stale/bound dossier → exact approval → bundle, correction/replay and dead-feed cases. 350. |
+
+2e2 supplies attributable scientific judgments, real challenge/review execution,
+polling/reopening and bounded audit scheduling. Phase 3 owns provider
+qualification, additional connectors and automation; Phase 4 owns real-store
+migration/canary. This dispatch exercises only new/in-memory disposable stores.
+
+## Operator decisions
+
+None blocks slice 1: vocabulary and per-plan confidence authority are settled
+by task 2c-4. There is no built-in scale. Caller evidence and judgment are
+retained without pretending they establish completion.
+
+Before optional tier-0 enablement, the operator must select a qualified checker
+and regression/sampling policy (options: leave disabled with a capability fact,
+or enable a separately qualified local checker with an approved audit policy).
+Recommendation: keep disabled until the policy and qualification exist.
+The sources require explicit quote normalization but name no algorithm/version;
+before slice 3, settle supported normalization semantics (identity bytes only,
+or an explicitly versioned transform with retained input/output provenance).
+Recommendation: identity bytes for the initial path, explicit transforms only
+by amendment; no implementation decision is taken here.
+Connector destination/options and feed cadence/ownership are operator
+configuration under the approved contract, not engine defaults. Missing
+configuration permits no delivery/current claim. No new blocking policy
+choice is inferred for the foundational admission slice.
+
+## Validation for 2d-1
+
+Run admission/DDL/schema/history tests, the full router composition module,
+every mutant family targeting an edited file, and the six requested gates.
+Record evidence in private `evidence/2d-1/`. Do not refresh the environment
+during mutants. Leave BUILD-STATE, REVIEW-LOG and DEBT-REGISTER to their owner;
+this slice alone does not discharge DEBT-033 or claim authoritative assembly.

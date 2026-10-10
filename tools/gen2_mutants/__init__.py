@@ -24,6 +24,7 @@ from . import views_2c4b
 from . import confidence_2c4a
 from . import reconciliation_2c4a2
 from . import reconciliation_2c4a3
+from . import obligations_2d1
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -68,4 +69,5 @@ MUTATIONS: list[Mutation] = [
     *confidence_2c4a.MUTATIONS,
     *reconciliation_2c4a2.MUTATIONS,
     *reconciliation_2c4a3.MUTATIONS,
+    *obligations_2d1.MUTATIONS,
 ]

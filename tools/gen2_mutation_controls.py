@@ -799,6 +799,8 @@ def _inventory():
     MANUAL.update(RECONCILIATION_CONTROLS)
     from gen2_mutants.reconciliation_2c4a3 import CONTROLS as BUNDLE_CONTROLS
     MANUAL.update(BUNDLE_CONTROLS)
+    from gen2_mutants.obligations_2d1 import CONTROLS as OBLIGATION_CONTROLS
+    MANUAL.update(OBLIGATION_CONTROLS)
     return gen2_mutations
 
 
