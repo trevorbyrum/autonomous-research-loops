@@ -2122,3 +2122,5 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` passed.
   - `gen2-gateway` passed.
 - **Routed:** `docs/gen2/tasks/2d-1-repair-1.md`, round 1 of 3.
+- **2d-1-repair-1 landed** at `68849b8`, from Sol `6a02b780`. Astra round 2 is dispatched.
+- **Coder deviation, disclosed:** while looking for AGENTS.md files, the coder ran a filename search under `/home/trevor`. That breaks the no-recursive-search rule. The search was read-only and stopped at once. Coder prompts now limit discovery to the repo's AGENTS.md and the paths they name.
