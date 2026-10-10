@@ -183,16 +183,43 @@ last, after every deletion and whitespace fold, so new composition (including
 Hangul jamo joined across a soft wrap) is completed in the first pass. The
 whitelist is closed under its own output and cannot create another soft wrap.
 
-Before normalized equality or any diagnostic alignment, the original decoded
-texts receive only these safe whitelist folds for lexical protection. Ordered
-protected fingerprints retain kind, complete spelling and lexical slot (the
-number of preceding non-whitespace lexemes, with canonical composition used
-only for slot counting). Thus numeric precision, grouping punctuation, signs,
-exponents and numeric Unicode characters retain their identity; unit expressions
-retain `/ · × ^`, superscripts and symbol spelling. Location does not depend
-on SequenceMatcher blocks or character offsets. Any fingerprint difference
-produces a plain mismatch without a diagnostic; surrounding whitespace and
-ordinary same-slot spelling changes remain eligible for diagnostic similarity.
+Repair-2 implements the conservative edit rule in
+[`2d-quote-protection-20261010.md`](research/2d-quote-protection-20261010.md),
+retained on every result as **`quote-protection/3`**. The earlier lexer lost
+structure inside compound words and used slots too coarse to retain digit
+locations. A lexical fingerprint can reject a pair but cannot establish that
+an edit is safe. The accepted extra lexical layer still compares original
+decoded text after safe whitelist folds, before normalized equality or
+diagnostic alignment. It retains complete numeric/unit spellings (precision,
+grouping, exponents, operators and symbols) and rejects changed fingerprints.
+
+A diagnostic additionally requires all four researched checks on the safely
+normalized text: (a) identical ordered protected-character skeletons with the
+exact number of intervening non-protected characters; (b) every diff edit,
+extended on both operands to its enclosing maximal non-whitespace lexeme,
+free of protected material; (c) no insertion/deletion covering a leading
+`un`, `non`, `in`, `im`, `ir`, `il` or `dis` prefix; (d) no relocated substring
+touching or crossing a protected lexeme. Replacement operands participate in
+move detection too. Prefix checks compare the actual enclosing operands as
+well as edit offsets, so diff alignment preserving the first of repeated
+prefixes (`ununiform` versus `uniform`) cannot hide prefix removal.
+A shared character at distinct edit regions is already a
+possible one-character move, conservatively rejected when its path includes
+protected material. The skeleton omits absolute leading/trailing offsets:
+ordinary text before or after an unchanged expression can still earn a hint.
+Enclosing edits reject within-lexeme digit moves even when all skeleton gaps
+coincide. Anything failing these checks is a plain quarantined mismatch.
+
+**Operator interpretation, 2026-10-10:** negation/unit tokens are whole
+letter-bounded words, including each part of a hyphen-joined form (`not-yet`
+contains `not`). Digits, signs, operators and superscripts/subscripts are
+protected at every character position. Every edit to a lexeme containing one
+is protected (`5mg` versus `5µg` is a plain mismatch). Prefix edits remain
+protected by (c). `uniform` versus `uniforms` remains a useful ordinary near
+control: the appended `s` is not a letter-bounded unit token. Unchanged
+`uniform`, `under` or `discuss` beside an edit elsewhere do not block a hint;
+`discuss` versus `cuss`, `information` versus `formation`, and `image` versus
+`age` are conservatively plain mismatches because a leading prefix is removed.
 
 Similarity is Python's [difflib SequenceMatcher ratio](https://docs.python.org/3/library/difflib.html#difflib.SequenceMatcher.ratio),
 `2*M/(len(a)+len(b))`, with `autojunk=False`; record both directions' minimum
@@ -209,21 +236,33 @@ with separately named clinical display aliases informed by
 Decimal numeric tokens use
 [Python Decimal's decimal/exponent grammar](https://docs.python.org/3/library/decimal.html#decimal.Decimal),
 validating the decimal core and retaining spelling so changed precision does not disappear.
-Repair-1 records `decimal-expression/2`, `english-negation/2` and
+Repair-2 records `decimal-expression/2`, `english-negation/3` and
 `si9-2022+clinical/2`. Decimal validates the grouped token's decimal core;
 the complete original spelling, including grouping and powers, is the comparison
 identity. Other Unicode numeric characters retain their original character.
-English prefix families `non`, `un`, `in/im/ir/il`, and `dis` are negations
-only for the versioned negative-word list or when the other operand contains
-the shared stem (optionally separated by a retained hyphen). `n't` is also
-protected. Merely beginning with a prefix does not classify ordinary words
-such as uniform, under or discuss. Named unit display words include time units.
+The versioned English negative-word list and `n't` remain protected;
+the other operand's vocabulary no longer changes a word's classification.
+The separate local prefix-edit check replaces shared-stem inference. Named
+unit display words include time units.
 These lists are lexical guards, not scientific or multilingual verification.
 
-Repair-1 literal tests cover Astra A1–A4 and both Hangul C1 regressions;
-generated laws compose the normalization rules and insert, remove or relocate
-protected tokens in generated ordinary text. Paired mutants cover each repaired
-guard. A full-result near control and a separate full-result below-threshold
+Repair-2 retains all 66 Astra round-1/round-2 probe rows as literal operands
+with their original padding, both directions, plus input and normalization
+probes. The three lookalike stem removals use the amended plain verdict.
+Hypothesis laws compose normalization, then insert, delete, replace and move
+protected material at every generated character position, including inside
+lexemes and across hard hyphens. Negation/unit packets provide explicit
+letter boundaries at each position under the operator interpretation; numeric,
+sign, operator and super/subscript edits need no boundaries. Every effective
+move destination is exercised, with both whitespace and hyphen word boundaries;
+whitespace-only relocations yielding identical independently folded operands
+are equivalent typography, rather than protected-material changes. Generated
+contexts include Unicode letters/numerics/punctuation/symbols/marks, whitespace,
+and existing protected compounds.
+A utility property combines ordinary letter
+insertions/deletions/replacements with whitespace and quotation typography.
+Paired mutants cover (a)–(d), skeleton gaps and the retained extra lexical
+layer. A full-result near control and a separate full-result below-threshold
 control prevent mutations from passing through partial assertions. The
 49-character plus two-insertion fixture gives difflib exactly 0.98 while
 normalized Levenshtein would be 49/51, documenting the diagnostic measure.

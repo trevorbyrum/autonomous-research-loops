@@ -25,9 +25,9 @@ guard("curly-quotes", "test_normalization_rules", 'dict.fromkeys("‘’‚‛",
 guard("dashes", "test_normalization_rules", 'dict.fromkeys("‐‑‒–—―", "-")', "{}")
 guard("dehyphenation", "test_normalization_rules", 'text = DEHYPHEN.sub("", text)', "text = text")
 guard("whitespace", "test_normalization_rules", 'return " ".join(text.split())', "return text")
-guard("number", "test_number_change", 'tokens.append(("number", m.start(), m.group()))', "pass", "test_normalized_control")
-guard("negation", "test_negation_change", 'word in NEGATIONS or word.endswith("n\'t") or word in NEGATIVE_WORDS', "False", "test_normalized_control")
-guard("unit", "test_unit_change", 'tokens = [("unit", m.start(), m.group()) for m in units]', "tokens = []", "test_normalized_control")
+guard("number", "test_lexical_layer", 'tokens.append(("number", m.start(), m.group()))', "pass", "test_normalized_control")
+guard("negation", "test_lexical_layer", 'word in NEGATIONS or word.endswith("n\'t") or word in NEGATIVE_WORDS', "False", "test_normalized_control")
+guard("unit", "test_lexical_layer", 'tokens = [("unit", m.start(), m.group()) for m in units]', "tokens = []", "test_normalized_control")
 guard("protected-position", "test_aligned_relocation", 'len(LEXEME.findall(unicodedata.normalize("NFC", text[:offset])))', "0", "test_near_control")
 guard("normalized", "test_normalized_control", "if a == b:", "if False:", "test_near_control")
 guard("critical-refusal", "test_negation_change", "if critical is not None:", "if False:", "test_near_control")
@@ -56,17 +56,24 @@ guard("original-protection", "test_original_protection", '_protected_difference(
 guard("lossless-protection", "test_compatibility_preserved", 'a, b = safe_typography(a), safe_typography(b)',
       'a, b = safe_typography(unicodedata.normalize("NFKC", a)), safe_typography(unicodedata.normalize("NFKC", b))', "test_near_control")
 guard("grouped-number", "test_complete_numbers", r"(?:[.,;' ]\d+)*", "", "test_near_control")
-guard("numeric-powers", "test_compatibility_preserved", 'm.group()))\n    # Standalone',
+guard("numeric-powers", "test_lexical_layer", 'm.group()))\n    # Standalone',
       're.sub(rf"[{POWERS}]", "", m.group())))\n    # Standalone', "test_near_control")
-guard("numeric-characters", "test_complete_numbers", 'unicodedata.category(char).startswith("N")', "False", "test_near_control")
+guard("numeric-characters", "test_lexical_layer", 'if unicodedata.category(char).startswith("N") and', "if False and", "test_near_control")
 guard("unit-structure", "test_unit_expressions", 'm.group()) for m in units]',
       're.sub(r"[/·×^²]", "", m.group())) for m in units]', "test_near_control")
-guard("unit-words", "test_unit_expressions", 'second seconds minute minutes hour hours day days percent', "", "test_near_control")
+guard("unit-words", "test_lexical_layer", 'second seconds minute minutes hour hours day days percent', "", "test_near_control")
 guard("unit-operators", "test_hard_hyphen_and_minus", 're.finditer(r"[−/·×^]", text)',
       're.finditer(r"(?!)", text)', "test_near_control")
 guard("listed-prefix", "test_negative_prefixes", 'or word in NEGATIVE_WORDS', "", "test_near_control")
-guard("shared-stem", "test_negative_prefixes", 'word[len(prefix):].lstrip("-") in other_words', "False", "test_near_control")
-guard("prefix-not-enough", "test_prefix_positive_control", 'word[len(prefix):].lstrip("-") in other_words', "True", "test_near_control")
+guard("prefix-not-enough", "test_prefix_positive_control", 'return False\n\n\ndef protected',
+      'return any(word.startswith(prefix) for prefix in NEGATIVE_PREFIXES)\n\n\ndef protected', "test_near_control")
 guard("ordered-sequence", "test_complete_numbers", 'if left != right:', "if False:", "test_near_control")
 guard("diagnostic-after-protection", "test_protection_before_diagnostic", 'critical = _protected_difference(original_a, original_b)',
       'SequenceMatcher(None, a, b, autojunk=False)\n    critical = _protected_difference(original_a, original_b)', "test_near_control")
+
+# Repair-2: each of the researched rules (a)-(d) has a killer and control.
+guard("protected-skeleton", "test_skeleton", 'if skeleton(a) != skeleton(b):', "if False:", "test_near_control")
+guard("skeleton-gaps", "test_skeleton", 'i - positions[n - 1][0] - 1 if n else 0', "0", "test_near_control")
+guard("safe-edit-regions", "test_safe_edit_regions", 'if not safe_edits(a, b, differences):', "if False:", "test_near_control")
+guard("prefix-edits", "test_prefix_edit_regions", 'if prefix_changes(a, b, differences):', "if False:", "test_near_control")
+guard("no-relocation", "test_relocation_regions", 'if relocation(a, b, differences):', "if False:", "test_near_control")

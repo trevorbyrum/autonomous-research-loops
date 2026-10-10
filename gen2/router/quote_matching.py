@@ -15,7 +15,8 @@ from difflib import SequenceMatcher
 
 NORMALIZATION = ("quote-nfc-safe", "2+ucd" + unicodedata.unidata_version)
 SIMILARITY = ("difflib.SequenceMatcher.ratio/min-bidirectional/autojunk=False", sys.version.split()[0])
-NEGATION_VERSION = "english-negation/2"
+NEGATION_VERSION = "english-negation/3"
+PROTECTION_VERSION = "quote-protection/3"
 NUMBER_VERSION = "decimal-expression/2"
 NEGATIONS = frozenset("no not never none nobody nothing nowhere neither nor cannot without hardly scarcely barely seldom".split())
 NEGATIVE_WORDS = frozenset("unavailable unable uncertain unclear unlikely unknown ineffective incorrect incomplete impossible improbable irregular irrelevant illegal illogical dishonest dissimilar disagree disadvantage non-effective".split())
@@ -34,6 +35,9 @@ WORD = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+|-\s*[^\W\d_]+)*")
 UNIT_ATOM = "(?:" + "|".join(re.escape(u) for u in sorted(UNITS, key=lambda u: (-len(u), u))) + ")" + rf"(?:{EXPONENT}|[-+−]?\d+)?"
 UNIT = re.compile(rf"(?<![^\W\d_]){UNIT_ATOM}(?:\s*[/·×]\s*{UNIT_ATOM})*(?!\w)")
 LEXEME = re.compile(r"\w+(?:['-]\w+)*|[^\w\s]")
+LETTER_WORD = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)*")
+ENCLOSING_LEXEME = re.compile(r"\S+")
+OPERATORS = frozenset("+-−±×·/^%‰=<>≤≥⁄")
 
 
 def safe_typography(text: str) -> str:
@@ -48,21 +52,20 @@ def normalize(text: str) -> str:
     return unicodedata.normalize("NFC", safe_typography(text))
 
 
-def negative(word: str, other_words: frozenset[str]) -> bool:
-    """Versioned words or a demonstrably shared stem, never prefix alone."""
+def negative(word: str) -> bool:
+    """Whole listed words/contractions; prefix edits are checked separately."""
     word = word.casefold().replace("- ", "-")
     if word in NEGATIONS or word.endswith("n't") or word in NEGATIVE_WORDS:
         return True
-    return any(word.startswith(prefix) and word[len(prefix):].lstrip("-") in other_words
-               for prefix in NEGATIVE_PREFIXES)
+    return False
 
 
-def protected(text: str, other_words: frozenset[str]) -> tuple[tuple[str, int, str], ...]:
+def protected(text: str) -> tuple[tuple[str, int, str], ...]:
     """Original safe-folded spellings, sorted in text order with lexical slots.
 
-    Slots count preceding non-whitespace lexemes, not characters or matcher
-    blocks. This detects relocation independently of diagnostic alignment and
-    leaves surrounding whitespace and same-slot ordinary typos harmless.
+    This extra lexical layer retains complete expression spellings before
+    normalization/equality. Slots alone cannot authorize diagnostics: the
+    independent skeleton and enclosing-edit checks below must also pass.
     """
     units = tuple(UNIT.finditer(text))
     tokens = [("unit", m.start(), m.group()) for m in units]
@@ -80,7 +83,7 @@ def protected(text: str, other_words: frozenset[str]) -> tuple[tuple[str, int, s
                   if unicodedata.category(char).startswith("N") and not any(m.start() <= i < m.end() for m in covered))
     for m in WORD.finditer(text):
         word = m.group()
-        if negative(word, other_words):
+        if negative(word):
             tokens.append(("negation", m.start(), word))
     # Operators outside a recognized expression still retain their identity.
     tokens.extend(("unit", m.start(), m.group()) for m in re.finditer(r"[−/·×^]", text)
@@ -120,6 +123,7 @@ class QuoteMatch:
     diagnostic: NearMatch | None = None
     normalization: tuple[str, str] = NORMALIZATION
     token_versions: tuple[str, str, str] = (NUMBER_VERSION, NEGATION_VERSION, UNIT_VERSION)
+    protection: str = PROTECTION_VERSION
 
     @property
     def quote_quarantined(self) -> bool:
@@ -128,12 +132,97 @@ class QuoteMatch:
 
 def _protected_difference(a: str, b: str) -> str | None:
     a, b = safe_typography(a), safe_typography(b)
-    left = protected(a, frozenset(m.group().casefold() for m in WORD.finditer(b)))
-    right = protected(b, frozenset(m.group().casefold() for m in WORD.finditer(a)))
+    left = protected(a)
+    right = protected(b)
     if left != right:
         for kind in ("number", "negation", "unit"):
             if [t for t in left if t[0] == kind] != [t for t in right if t[0] == kind]:
                 return kind
+    return None
+
+
+def protected_character(char: str) -> bool:
+    return (char in OPERATORS or unicodedata.category(char).startswith("N") or
+            unicodedata.decomposition(char).startswith(("<super>", "<sub>")))
+
+
+def skeleton(text: str) -> tuple[tuple[str, int], ...]:
+    """Ordered protected characters and exact gaps BETWEEN them, not offsets."""
+    positions = [(i, char) for i, char in enumerate(text) if protected_character(char)]
+    return tuple((char, i - positions[n - 1][0] - 1 if n else 0)
+                 for n, (i, char) in enumerate(positions))
+
+
+def enclosing(text: str, start: int, end: int) -> tuple[re.Match, ...]:
+    """Extend both nonempty edits and insertion points to adjacent lexemes."""
+    return tuple(m for m in ENCLOSING_LEXEME.finditer(text)
+                 if m.start() <= end and start <= m.end())
+
+
+def material(lexeme: str) -> bool:
+    """Letter boundaries split hyphens, digits and punctuation, never letters."""
+    return (any(protected_character(char) for char in lexeme) or
+            any(negative(m.group()) or m.group() in UNITS
+                for m in LETTER_WORD.finditer(lexeme)))
+
+
+def safe_edits(a: str, b: str, differences: tuple[Difference, ...]) -> bool:
+    return not any(material(m.group()) for d in differences
+                   for text, start, end in ((a, d.quote_start, d.quote_end),
+                                            (b, d.source_start, d.source_end))
+                   for m in enclosing(text, start, end))
+
+
+def prefix_edit(text: str, start: int, end: int) -> bool:
+    return any(start == m.start() and end >= start + len(prefix) and
+               m.group().casefold().startswith(prefix)
+               for m in enclosing(text, start, end) for prefix in NEGATIVE_PREFIXES)
+
+
+def prefix_changes(a: str, b: str, differences: tuple[Difference, ...]) -> bool:
+    for d in differences:
+        if prefix_edit(a, d.quote_start, d.quote_end) or prefix_edit(b, d.source_start, d.source_end):
+            return True
+        # Alignment can preserve the first of two identical prefixes. Compare
+        # the actual enclosing operands too, never another word's shared stem.
+        left = enclosing(a, d.quote_start, d.quote_end)
+        right = enclosing(b, d.source_start, d.source_end)
+        if any(long.group().casefold() == prefix + short.group().casefold()
+               for x in left for y in right for long, short in ((x, y), (y, x))
+               for prefix in NEGATIVE_PREFIXES):
+            return True
+    return False
+
+
+def relocation(a: str, b: str, differences: tuple[Difference, ...]) -> bool:
+    """A moved substring's path must not cross or touch protected lexemes.
+
+    Include replacement operands: a move can share an opcode with another
+    edit. A one-character common substring is already a possible move.
+    """
+    for removed in differences:
+        deleted = set(a[removed.quote_start:removed.quote_end]) - set(" \t\r\n")
+        for added in differences:
+            if removed == added or not deleted.intersection(b[added.source_start:added.source_end]):
+                continue
+            corridor = Difference(min(removed.quote_start, added.quote_start),
+                                  max(removed.quote_end, added.quote_end),
+                                  min(removed.source_start, added.source_start),
+                                  max(removed.source_end, added.source_end))
+            if not safe_edits(a, b, (corridor,)):
+                return True
+    return False
+
+
+def edit_protection(a: str, b: str, differences: tuple[Difference, ...]) -> str | None:
+    if skeleton(a) != skeleton(b):
+        return "protected_character"
+    if not safe_edits(a, b, differences):
+        return "protected_edit"
+    if prefix_changes(a, b, differences):
+        return "protected_prefix"
+    if relocation(a, b, differences):
+        return "protected_relocation"
     return None
 
 
@@ -149,6 +238,9 @@ def _layers(quote: bytes, span: bytes) -> tuple[str, str | None, str, str, NearM
         return "match_normalized", None, a, b, None
     matcher = SequenceMatcher(None, a, b, autojunk=False)
     differences = tuple(Difference(i, j, k, l) for tag, i, j, k, l in matcher.get_opcodes() if tag != "equal")
+    critical_edit = edit_protection(a, b, differences)
+    if critical_edit is not None:
+        return "mismatch", critical_edit, a, b, None
     score = min(matcher.ratio(), SequenceMatcher(None, b, a, autojunk=False).ratio())
     if score >= 0.98:
         return "mismatch", "near_match", a, b, NearMatch(score, differences)
