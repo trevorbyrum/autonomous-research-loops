@@ -2107,3 +2107,18 @@ The post-2q Gate D is renumbered #5.
 - **Ruling:** tier-0 stays disabled in Phase 2.
 - **Recorded as DEBT-037** (owner phase 3). While it is disabled, the engine must show an explicit `tier-0 disabled` capability fact, and the item can't close silently.
 - **Still open:** the quote-normalization decision. The operator asked about matching at 98% similarity or better; the orchestrator is clarifying the trade-off before slice 3.
+- **Operator ruling on quote matching:** layered.
+  - An exact match passes.
+  - A named, versioned normalization followed by an exact match passes.
+  - A match that is ≥98% similar but still differs is held for review as a "near match" and never auto-passes.
+  - Any difference in a number, a negation word or a unit always fails.
+  - Recorded in `docs/gen2/tasks/2d.md` for slice 3.
+
+## 2026-10-10: 2d-1 (DOSSIER design note; durable obligation-assessment admission): round 1 BLOCK
+- **Astra** (`4173407b`, pinned 77200eb; `private/reviews/gen2-2d-1-astra-review-20261010.md`): **A BLOCK, B PASS, C BLOCK.** DOSSIER.md is accepted, including its flagged decisions; no additional operator decision is missing.
+- **F1 (High, class d; flagged as boundary drift):** the DDL binding allows only `contract_approval`, so valid assessments are refused after an approved amendment or reframe. The fix restores conformance with the established decision family. No operator amendment is needed.
+- **N1:** raw-DDL categorical controls. Folded into the repair.
+- **Landing at 77200eb: green.**
+  - `gen2-check` passed.
+  - `gen2-gateway` passed.
+- **Routed:** `docs/gen2/tasks/2d-1-repair-1.md`, round 1 of 3.
