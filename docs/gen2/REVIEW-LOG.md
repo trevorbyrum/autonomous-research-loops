@@ -2124,3 +2124,11 @@ The post-2q Gate D is renumbered #5.
 - **Routed:** `docs/gen2/tasks/2d-1-repair-1.md`, round 1 of 3.
 - **2d-1-repair-1 landed** at `68849b8`, from Sol `6a02b780`. Astra round 2 is dispatched.
 - **Coder deviation, disclosed:** while looking for AGENTS.md files, the coder ran a filename search under `/home/trevor`. That breaks the no-recursive-search rule. The search was read-only and stopped at once. Coder prompts now limit discovery to the repo's AGENTS.md and the paths they name.
+
+## 2026-10-10: 2d-1 round 2 (2d-1-repair-1): PASS, and 2d-1 is accepted
+- **Astra** (`cc788619`, pinned 68849b8; `private/reviews/gen2-2d-1-r2-astra-review-20261010.md`): **A, B and C all PASS, ROOT-CAUSE. "2d-1 is ACCEPTED."**
+- **F1 closed.** The binding now uses the contract's own approving-decision pointer, which part 01 binds for all three approval kinds; this replaces the duplicate, narrower list.
+- **The round-1 probe** now commits under all three approval kinds, including a real reframe.
+- **N1 closed.**
+- **Landing at 68849b8:** `gen2-check` green. The gateway result is carried forward.
+- **Next:** 2d-2, DEBT-032 (branch/window association), dispatched as `docs/gen2/tasks/2d-2.md`.
