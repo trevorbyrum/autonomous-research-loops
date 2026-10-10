@@ -27,6 +27,9 @@ CREATE TABLE obligation_assessments (
       OR (json_extract(confidence, '$.basis') IS 'recorded_assessment' AND state IS NULL))
 ) STRICT;
 
+-- Part 01's contract_approval_bound_to_revision admits the whole approval
+-- family and contract_content_immutable retains that decision pointer. Use
+-- that authority here rather than maintaining a second approval-kind list.
 CREATE TRIGGER obligation_assessments_bound BEFORE INSERT ON obligation_assessments
 WHEN NOT EXISTS (
   SELECT 1 FROM invocations i JOIN operation_receipts o ON o.invocation_id = i.invocation_id
@@ -38,7 +41,7 @@ WHEN NOT EXISTS (
     AND i.contract_revision = NEW.contract_revision AND o.contract_revision = NEW.contract_revision
     AND c.content_hash = NEW.contract_content_hash AND c.framing_version = NEW.framing_version
     AND json_extract(c.document, '$.eligibility_protocol.protocol_version') IS NEW.eligibility_protocol_version
-    AND c.status IN ('approved', 'superseded') AND d.kind = 'contract_approval' AND d.disposition = 'approved'
+    AND c.status IN ('approved', 'superseded') AND d.disposition = 'approved'
     AND d.topic_id = NEW.topic_id AND d.subject_revision = c.revision AND d.subject_hash = c.content_hash)
 BEGIN
   SELECT RAISE(ABORT, 'obligation assessment needs its primary commit and exact approved contract pins');

@@ -32,3 +32,27 @@ python("schema-evidence", "test_schema", '"minItems": 1, "maxItems": 50', '"minI
 CONTROLS = {m.mid: {"controls": ["test_obligation_admission.DDLTest.test_control" if m.target == "ddl" else TEST + ("test_schema_control" if m.target == SCHEMA else "test_noop_control" if m.mid == "2D1-write" else
     "test_histories_and_conflicts" if m.mid in {"2D1-time", "2D1-unknown-reason"} else "test_control")],
     "why": "Literal accepted judgment under the approved scheme; the dated history control admits successors, the no-op control reaches write without records, and the schema control validates the complete proposal."} for m in MUTATIONS}
+
+# F1: restore the erroneous restriction, while the contract-approval path
+# remains admitted as its separate positive control.
+MUTATIONS.append(Mutation("2D1-single-approval-kind", "2d-1-repair-1 F1", "reject approved amendments and reframes",
+    ("test_obligation_admission.DDLTest.test_raw_amendment_admission", "test_obligation_admission.DDLTest.test_raw_reframe_admission"),
+    scope="obligation_assessments_bound", old="AND d.disposition = 'approved'",
+    new="AND d.kind = 'contract_approval' AND d.disposition = 'approved'"))
+CONTROLS["2D1-single-approval-kind"] = {"controls": ["test_obligation_admission.DDLTest.test_categorical_control"],
+    "why": "A categorical assessment under an exact contract_approval still enters and passes the same binding trigger."}
+
+# N1: each categorical operand has a one-field raw-DDL refusal and a
+# separate valid categorical insertion that survives removal of the guard.
+for name, predicate in (
+    ("id", "json_extract(NEW.confidence, '$.scheme.scheme_id') IS json_extract(c.document, '$.confidence_scheme.scheme_id')"),
+    ("version", "json_extract(NEW.confidence, '$.scheme.version') IS json_extract(c.document, '$.confidence_scheme.version')"),
+    ("label", "json_extract(NEW.confidence, '$.label') IS label.key"),
+    ("attribution", "json_extract(NEW.confidence, '$.assessed_by_invocation_id') IS NEW.invocation_id"),
+):
+    mid = "2D1-categorical-" + name
+    MUTATIONS.append(Mutation(mid, "2d-1-repair-1 N1", "omit categorical " + name,
+        ("test_obligation_admission.DDLTest.test_categorical_one_field_refusals",),
+        scope="obligation_assessments_scheme", old=predicate, new="1"))
+    CONTROLS[mid] = {"controls": ["test_obligation_admission.DDLTest.test_categorical_control"],
+        "why": "A literal on-scheme categorical judgment with the committing invocation is accepted through the scheme trigger."}

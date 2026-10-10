@@ -10034,6 +10034,34 @@
   ],
   "why": "Literal accepted judgment under the approved scheme; the dated history control admits successors, the no-op control reaches write without records, and the schema control validates the complete proposal."
  },
+ "2D1-categorical-attribution": {
+  "by_hand": true,
+  "controls": [
+   "test_obligation_admission.DDLTest.test_categorical_control"
+  ],
+  "why": "A literal on-scheme categorical judgment with the committing invocation is accepted through the scheme trigger."
+ },
+ "2D1-categorical-id": {
+  "by_hand": true,
+  "controls": [
+   "test_obligation_admission.DDLTest.test_categorical_control"
+  ],
+  "why": "A literal on-scheme categorical judgment with the committing invocation is accepted through the scheme trigger."
+ },
+ "2D1-categorical-label": {
+  "by_hand": true,
+  "controls": [
+   "test_obligation_admission.DDLTest.test_categorical_control"
+  ],
+  "why": "A literal on-scheme categorical judgment with the committing invocation is accepted through the scheme trigger."
+ },
+ "2D1-categorical-version": {
+  "by_hand": true,
+  "controls": [
+   "test_obligation_admission.DDLTest.test_categorical_control"
+  ],
+  "why": "A literal on-scheme categorical judgment with the committing invocation is accepted through the scheme trigger."
+ },
  "2D1-evidence": {
   "by_hand": true,
   "controls": [
@@ -10117,6 +10145,13 @@
    "test_obligation_admission.AdmissionTest.test_control"
   ],
   "why": "Literal accepted judgment under the approved scheme; the dated history control admits successors, the no-op control reaches write without records, and the schema control validates the complete proposal."
+ },
+ "2D1-single-approval-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_obligation_admission.DDLTest.test_categorical_control"
+  ],
+  "why": "A categorical assessment under an exact contract_approval still enters and passes the same binding trigger."
  },
  "2D1-subject": {
   "by_hand": true,
