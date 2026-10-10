@@ -10319,161 +10319,280 @@
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-critical-refusal": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_near_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-curly-quotes": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-dashes": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-dehyphenation": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
- "2D3-differing-spans": {
+ "2D3-diagnostic-after-protection": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_near_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-differing-spans": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_below_threshold_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-exact": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_normalized_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
- "2D3-near-is-mismatch": {
+ "2D3-final-composition": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_exact_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-grouped-number": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_near_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-listed-prefix": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-lossless-protection": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-near-is-mismatch": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_below_threshold_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-negation": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_normalized_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
- "2D3-nfkc": {
+ "2D3-nfc": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-no-compatibility-fold": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_exact_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-normalized": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_near_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-number": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_normalized_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-number-parse": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-numeric-characters": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-numeric-powers": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-ordered-sequence": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-original-protection": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-prefix-not-enough": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-protected-position": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_near_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-quarantine": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-repetition": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_normalized_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-retain-minus": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_exact_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-shared-stem": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-soft-hyphen-only": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_exact_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-span-offsets": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-span-types": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-symmetric-score": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_near_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-threshold": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_near_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-unit": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_normalized_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-unit-operators": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-unit-structure": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-unit-words": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_near_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-utf8": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2D3-whitespace": {
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
   ],
-  "why": "A separate literal checks an intact UTF-8 artifact, an accepted ligature, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },
  "2Q-baseline-digest-unchecked": {
   "controls": [

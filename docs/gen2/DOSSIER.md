@@ -170,11 +170,29 @@ The pure hand-off checks SHA-256 artifact identity and half-open **byte**
 offsets before decoding UTF-8. It retains quote/span bytes, offsets, artifact
 hash, normalized forms, rule versions and mismatch diagnostics. It accepts
 no supplied match label. An exact byte match passes; otherwise normalization
-is `quote-nfkc/1`, using [Unicode UAX #15 NFKC](https://www.unicode.org/reports/tr15/)
-with the runtime Unicode database version recorded, whitespace collapse,
-alphabetic line-break dehyphenation, curly quote folding and dash folding.
-Numeric signs and exponents must survive these transforms. Protected token
-differences are checked before normalized equality as well as similarity.
+is `quote-nfc-safe/2`, using [Unicode UAX #15 NFC](https://www.unicode.org/reports/tr15/)
+with the runtime Unicode database version recorded. Repair-1 replaces the
+lossy compatibility transform: the [W3C Character Model, §2.2.1](https://www.w3.org/TR/charmod-norm/#unicodeNormalization)
+explains that compatibility decomposition can change meaning, including
+superscripts and subscripts; §3.2.5.1 recommends NFC for content authors.
+Our explicit safe whitelist folds whitespace runs, curly quotation marks and
+U+2010–U+2015 dashes. U+2212 mathematical minus remains distinct. Only an
+explicit U+00AD soft hyphen followed by a line break permits rejoining;
+hard-hyphen wraps retain the hyphen. No compatibility folds remain. NFC runs
+last, after every deletion and whitespace fold, so new composition (including
+Hangul jamo joined across a soft wrap) is completed in the first pass. The
+whitelist is closed under its own output and cannot create another soft wrap.
+
+Before normalized equality or any diagnostic alignment, the original decoded
+texts receive only these safe whitelist folds for lexical protection. Ordered
+protected fingerprints retain kind, complete spelling and lexical slot (the
+number of preceding non-whitespace lexemes, with canonical composition used
+only for slot counting). Thus numeric precision, grouping punctuation, signs,
+exponents and numeric Unicode characters retain their identity; unit expressions
+retain `/ · × ^`, superscripts and symbol spelling. Location does not depend
+on SequenceMatcher blocks or character offsets. Any fingerprint difference
+produces a plain mismatch without a diagnostic; surrounding whitespace and
+ordinary same-slot spelling changes remain eligible for diagnostic similarity.
 
 Similarity is Python's [difflib SequenceMatcher ratio](https://docs.python.org/3/library/difflib.html#difflib.SequenceMatcher.ratio),
 `2*M/(len(a)+len(b))`, with `autojunk=False`; record both directions' minimum
@@ -190,8 +208,25 @@ with separately named clinical display aliases informed by
 [UCUM 2.2's clinical units](https://ucum.org/ucum) (no UCUM conformance claim).
 Decimal numeric tokens use
 [Python Decimal's decimal/exponent grammar](https://docs.python.org/3/library/decimal.html#decimal.Decimal),
-retaining spelling as well as value so changed precision does not disappear.
+validating the decimal core and retaining spelling so changed precision does not disappear.
+Repair-1 records `decimal-expression/2`, `english-negation/2` and
+`si9-2022+clinical/2`. Decimal validates the grouped token's decimal core;
+the complete original spelling, including grouping and powers, is the comparison
+identity. Other Unicode numeric characters retain their original character.
+English prefix families `non`, `un`, `in/im/ir/il`, and `dis` are negations
+only for the versioned negative-word list or when the other operand contains
+the shared stem (optionally separated by a retained hyphen). `n't` is also
+protected. Merely beginning with a prefix does not classify ordinary words
+such as uniform, under or discuss. Named unit display words include time units.
 These lists are lexical guards, not scientific or multilingual verification.
+
+Repair-1 literal tests cover Astra A1–A4 and both Hangul C1 regressions;
+generated laws compose the normalization rules and insert, remove or relocate
+protected tokens in generated ordinary text. Paired mutants cover each repaired
+guard. A full-result near control and a separate full-result below-threshold
+control prevent mutations from passing through partial assertions. The
+49-character plus two-insertion fixture gives difflib exactly 0.98 while
+normalized Levenshtein would be 49/51, documenting the diagnostic measure.
 
 3b must derive the expected artifact identity from the exact work/source
 version and the owner from the capturing invocation under the existing
