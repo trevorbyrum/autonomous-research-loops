@@ -145,6 +145,7 @@ FILE_TARGETS = {
     "gen2/router/accounting.py": ("module", "gen2.router.accounting", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/router/assessments.py": ("module", "gen2.router.assessments", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/schema/obligation-assessment.schema.json": ("attr", "test_obligation_admission", "SCHEMA_PATH"),
+    "gen2/schema/branch-window.schema.json": ("attr", "test_branch_windows", "SCHEMA_PATH"),
     "gen2/schema/outcome-document.schema.json": ("attr", "test_semantic_assessments", "OUTCOME_SCHEMA"),
     "gen2/importer/dry_run.py": ("module", "gen2.importer.dry_run"),
     "gen2/importer/__main__.py": ("disk",),  # `python -m gen2.importer` runs it; only children do

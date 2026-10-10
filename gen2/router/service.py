@@ -53,7 +53,7 @@ from typing import Callable, Mapping
 
 from gen2 import accounting
 from gen2.core import canonical, instants, pagination
-from gen2.router.accounting import read_inventory
+from gen2.router.accounting import CoverageSnapshot, read_coverage_snapshot, read_inventory
 from gen2.router.assessments import Assessments
 from gen2.router import boundary
 from gen2.router.amendments import AMENDMENT_COMMANDS, COMPATIBLE, Amendments, brief_compatibility, contract_compatibility, stopping_defect
@@ -259,6 +259,15 @@ class Router:
             if self._one("queue_entries", {"topic_id": topic_id}) is None:
                 raise Refusal("unknown_topic", topic_id)
             return read_inventory(self._store, topic_id, history)
+
+    def coverage_snapshot(self, topic_id: str, *, history: accounting.History) -> CoverageSnapshot:
+        """Capture admitted links and invocation-derived pins; compute views after returning."""
+        if history not in ("native", "legacy_unknown"):
+            raise ValueError("history must be native or legacy_unknown")
+        with self._snapshot():
+            if self._one("queue_entries", {"topic_id": topic_id}) is None:
+                raise Refusal("unknown_topic", topic_id)
+            return read_coverage_snapshot(self._store, topic_id, history)
 
     def record_gateway_facts(self, request: Mapping) -> dict:
         return self._capabilities.record_gateway_facts(request)

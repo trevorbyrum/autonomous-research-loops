@@ -640,6 +640,10 @@ class StoreTestCase(unittest.TestCase):
         self.x("INSERT INTO registry_dispositions SELECT 'rdp_fixture1', topic_id, 'contradiction', 'C-1', 'Conflicting findings', 'unresolved', "
                "contract_revision, eligibility_protocol_version, framing_version, NULL, 'disagreement', evidence_refs, actor_kind, invocation_id, recorded_by_operation_id, created_at "
                "FROM semantic_assessments WHERE assessment_id = 'sem1'")
+        self.x("INSERT INTO registry_dispositions SELECT 'rdp_branch1', topic_id, 'branch', 'B-1', 'Research branch', 'promote', "
+               "contract_revision, eligibility_protocol_version, framing_version, NULL, 'probe', evidence_refs, actor_kind, invocation_id, recorded_by_operation_id, created_at "
+               "FROM semantic_assessments WHERE assessment_id = 'sem1'")
+        self.x("INSERT INTO branch_windows VALUES ('bw-fixture', ?, 'B-1', 'rdp_branch1', 'inv_pppppppp', 'primary', 'inv_pppppppp', 'op_00000001', ?)", TOPIC, T)
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
         self.x("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, evidence_origin_lineage, created_at) "
                "VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, ?, 'O-1', '[]', 'answer', 'study-1', ?)", TOPIC, rev, T)

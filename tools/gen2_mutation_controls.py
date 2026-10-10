@@ -801,6 +801,8 @@ def _inventory():
     MANUAL.update(BUNDLE_CONTROLS)
     from gen2_mutants.obligations_2d1 import CONTROLS as OBLIGATION_CONTROLS
     MANUAL.update(OBLIGATION_CONTROLS)
+    from gen2_mutants.branch_windows_2d2 import CONTROLS as BRANCH_WINDOW_CONTROLS
+    MANUAL.update(BRANCH_WINDOW_CONTROLS)
     return gen2_mutations
 
 

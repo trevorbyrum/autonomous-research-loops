@@ -1,0 +1,13 @@
+{
+  "fixture": {
+    "schema": "branch-window.schema.json",
+    "expect": "valid",
+    "tests": "2d-2: association proposal contains identities only; attribution and revisions are Router-owned"
+  },
+  "instance": {
+    "association_id": "bw-first",
+    "registry_id": "B-1",
+    "branch_disposition_id": "rdp_history00",
+    "window_invocation_id": "inv_window0001"
+  }
+}

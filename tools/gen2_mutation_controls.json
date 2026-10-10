@@ -10181,6 +10181,139 @@
   ],
   "why": "Literal accepted judgment under the approved scheme; the dated history control admits successors, the no-op control reaches write without records, and the schema control validates the complete proposal."
  },
+ "2D2-actor": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-branch": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-branch_windows_branch": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.DDLTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-branch_windows_commit": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.DDLTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-branch_windows_immutable_d": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.DDLTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-branch_windows_immutable_u": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.DDLTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-branch_windows_window": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.DDLTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-contract": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-historical-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-pin-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-read-branch": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-read-commit": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-read-contract": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-schema-attribution": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_schema_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-schema-subjects": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_schema_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-snapshot-history": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-snapshot-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-window": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
+ "2D2-write": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_noop_control"
+  ],
+  "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

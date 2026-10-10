@@ -39,6 +39,7 @@ class Assessments:
                 bind(ref, f"registry {record['disposition_id']}: its evidence")
 
     def validate(self, payload: dict, inv: dict) -> None:
+        self._validate_branch_windows(payload, inv)
         self._validate_obligations(payload, inv)
         records = payload.get("semantic_assessments", []) + payload.get("source_lifecycle", []) + payload.get("registry_dispositions", [])
         if not records:
@@ -89,6 +90,13 @@ class Assessments:
                 "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
             written.append(record["disposition_id"])
         result = self._write_obligations(payload, inv, operation_id, now)
+        associations = []
+        for record in payload.get("branch_windows", []):
+            self._core._store.insert("branch_windows", {**record, "topic_id": inv["topic_id"], "actor_kind": "primary",
+                "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
+            associations.append(record["association_id"])
+        if associations:
+            result["branch_windows"] = associations
         if written:
             result["registry_dispositions"] = written
         return result
@@ -104,6 +112,23 @@ class Assessments:
                 self._core._store.insert("source_lineage", {"assessment_id": record["assessment_id"], **record["lineage"]})
             written.append(record["assessment_id"])
         return written
+
+    def _validate_branch_windows(self, payload: dict, inv: dict) -> None:
+        records = payload.get("branch_windows", [])
+        if not records:
+            return
+        if inv["kind"] not in PRIMARY or inv["admission_context"] != "contract/1":
+            raise Refusal("kind_not_permitted", "branch/window associations require contract-admitted primary work")
+        for record in records:
+            branch = self._core._one("registry_dispositions", {"disposition_id": record["branch_disposition_id"]})
+            if branch is None or (branch["topic_id"], branch["registry_kind"], branch["registry_id"]) != (inv["topic_id"], "branch", record["registry_id"]):
+                raise Refusal("payload_invalid", "association differs from its same-topic registered branch identity")
+            window = self._core._one("invocations", {"invocation_id": record["window_invocation_id"]})
+            if window is None or (window["topic_id"], window["kind"], window["admission_context"]) != (inv["topic_id"], "research_pass", "contract/1"):
+                raise Refusal("payload_invalid", "association needs a same-topic contract-admitted research window")
+            contract = self._core._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": window["contract_revision"]})
+            if contract is None or contract["status"] not in ("approved", "superseded") or contract["approved_by_decision_id"] is None:
+                raise Refusal("payload_invalid", "research window's exact approved contract provenance is missing")
 
     def _validate_obligations(self, payload: dict, inv: dict) -> None:
         records = payload.get("obligation_assessments", [])

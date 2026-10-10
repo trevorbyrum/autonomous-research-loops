@@ -121,7 +121,7 @@ class RegistryDDLTest(StoreTestCase):
     def test_control_insert(self):
         self.append(disposition="resolved", supersedes_id="rdp_fixture1")
         self.append(disposition_id="rdp_fixture3", registry_kind="branch", disposition="park")
-        self.assertEqual(self.rows("SELECT disposition FROM registry_dispositions ORDER BY disposition_id"), [("unresolved",), ("resolved",), ("park",)])
+        self.assertEqual(self.rows("SELECT disposition FROM registry_dispositions ORDER BY disposition_id"), [("promote",), ("unresolved",), ("resolved",), ("park",)])
 
     def test_binding_and_predecessor(self):
         for changes in ({"framing_version": 2}, {"supersedes_id": "rdp_fixture1", "registry_id": "C-2"},
@@ -136,7 +136,8 @@ class RegistryDDLTest(StoreTestCase):
                 self.append(**changes)
 
     def test_immutable(self):
-        for sql in ("UPDATE registry_dispositions SET disposition = 'resolved'", "DELETE FROM registry_dispositions"):
+        for sql in ("UPDATE registry_dispositions SET disposition = 'resolved' WHERE disposition_id = 'rdp_fixture1'",
+                    "DELETE FROM registry_dispositions WHERE disposition_id = 'rdp_fixture1'"):
             with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
                 self.x(sql)
 

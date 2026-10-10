@@ -1,11 +1,49 @@
 """Minimal read adapter; called inside the Router's snapshot, no arithmetic."""
+from dataclasses import dataclass
 from typing import Mapping, Protocol
 
 from gen2 import accounting as a
+from gen2.accounting import views as v
 
 
 class Rows(Protocol):
     def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
+
+
+@dataclass(frozen=True)
+class CoverageSnapshot:
+    inventory: a.Inventory
+    window_pins: tuple[v.WindowPin, ...]
+    branch_links: tuple[v.BranchLink, ...]
+
+
+def read_coverage_snapshot(rows: Rows, topic_id: str, history: a.History) -> CoverageSnapshot:
+    inventory = read_inventory(rows, topic_id, history)
+    pins = read_window_pins(rows, topic_id)
+    windows = {p.invocation_id for p in pins}
+    branches = {r.disposition_id: r for r in inventory.registry_dispositions if r.registry_kind == "branch"}
+    links = set()
+    for record in rows.select("branch_windows", {"topic_id": topic_id}):
+        branch = branches.get(record["branch_disposition_id"])
+        if branch is None or branch.registry_id != record["registry_id"] or record["window_invocation_id"] not in windows:
+            continue  # unverified branch/window provenance supplies no authority
+        receipts = rows.select("operation_receipts", {"operation_id": record["recorded_by_operation_id"]})
+        if not receipts or (receipts[0]["topic_id"], receipts[0]["invocation_id"]) != (topic_id, record["invocation_id"]):
+            continue
+        links.add((branch.registry_id, record["window_invocation_id"]))
+    return CoverageSnapshot(inventory, pins, tuple(v.BranchLink(*link) for link in sorted(links)))
+
+
+def read_window_pins(rows: Rows, topic_id: str) -> tuple[v.WindowPin, ...]:
+    pins = []
+    for window in rows.select("invocations", {"topic_id": topic_id, "kind": "research_pass", "admission_context": "contract/1"}):
+        contracts = rows.select("contract_revisions", {"topic_id": topic_id, "revision": window["contract_revision"]})
+        if not contracts or contracts[0]["status"] not in ("approved", "superseded") or contracts[0]["approved_by_decision_id"] is None:
+            continue
+        # The exact revision's document retains protocol/framing; never use
+        # the current contract or a consumer-supplied revision for this pin.
+        pins.append(v.WindowPin(window["invocation_id"], contracts[0]["revision"]))
+    return tuple(pins)
 
 
 def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory:

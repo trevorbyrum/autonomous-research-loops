@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/branch-window.schema.json",
+  "$comment": "flow: S4; S7 | boundaries: Router; Evidence accounting; Primary agent (per-station frontier LLM) | invariants: E-7; C-12; G-1 | note: 2d-2 / DEBT-032. Attribution and window revisions are derived by the Router, never supplied by consumers.",
+  "type": "object", "additionalProperties": false,
+  "required": ["association_id", "registry_id", "branch_disposition_id", "window_invocation_id"],
+  "properties": {
+    "association_id": {"$ref": "common.schema.json#/$defs/local_id"},
+    "registry_id": {"$ref": "common.schema.json#/$defs/local_id"},
+    "branch_disposition_id": {"$ref": "common.schema.json#/$defs/local_id"},
+    "window_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"}
+  }
+}

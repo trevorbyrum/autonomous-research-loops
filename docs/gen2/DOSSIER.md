@@ -123,3 +123,31 @@ every mutant family targeting an edited file, and the six requested gates.
 Record evidence in private `evidence/2d-1/`. Do not refresh the environment
 during mutants. Leave BUILD-STATE, REVIEW-LOG and DEBT-REGISTER to their owner;
 this slice alone does not discharge DEBT-033 or claim authoritative assembly.
+
+## 2d-2: durable branch/window provenance
+
+Design against `aa0bbb1` on gen2. Extend the existing `Assessments` governed
+outcome path with branch/window associations, retaining Router invocation,
+operation and date attribution. A new ordered-DDL append-only table binds
+each association to a same-topic registered branch, a contract-admitted
+research-pass window and the recording primary commit. Caller attribution
+and revision fields are forbidden; pins are read from the window's immutable
+invocation and exact approved/historical contract, including its protocol.
+Admission validates these subjects under the existing writer fence; equal
+operation replay uses the existing receipt mechanism and conflicting records
+roll back. No live database migration is involved.
+
+A thin Router coverage-snapshot method captures the inventory, admitted
+`BranchLink` operands and derived `WindowPin` operands in one existing
+snapshot. View computation remains outside that transaction. Missing or
+unverified provenance supplies no link or pin and stays unknown. Pure view
+operands remain useful for fixtures; caller-supplied links/pins confer no
+authority for dossier assembly. This supplies DEBT-032's hand-off to 2e2,
+without implementing dossier completion or changing registry judgments.
+
+Estimate: **480 hand-written lines**, including DDL/schema (85), admission
+and snapshot adapter/thin wiring (95), tests (205), paired mutants (65), and
+fixture/ledger integration (30); generated controls and documentation excluded.
+Run literal-oracle admission, replay, raw-DDL and unknown-provenance tests,
+the full composition module, every mutant family touching edited files and
+the six gates. Evidence belongs in private `evidence/2d-2/`.

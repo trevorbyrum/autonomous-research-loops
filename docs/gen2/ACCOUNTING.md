@@ -697,3 +697,17 @@ Both functions live in `gen2/accounting/views.py` and consume the existing
 API/wiring, clock, writes, provider calls, sufficiency predicate or export
 authority is added. Hand-written positive/negative oracles, isolated Hypothesis
 laws, read-only/topic-isolation fixtures and paired controls cover the guards.
+
+**2d-2 authoritative provenance hand-off:** `Router.coverage_snapshot` now
+captures the same inventory beside admitted `BranchLink` and derived
+`WindowPin` operands. The optional outcome/1 `branch_windows` section names an
+existing branch disposition, its registry identity and a research invocation;
+`Assessments` validates topic/kind/identity and exact contract provenance,
+then supplies invocation, operation and date attribution under the writer
+fence. Ordered DDL retains associations without caller revision fields.
+Pins use the window's exact durable contract revision, whose retained document
+defines the protocol/framing, including after a newer contract is approved.
+Unverified associations and missing contract provenance supply no credit;
+absent branch links stay unknown. View calculation remains outside the
+snapshot. Direct caller-supplied pure operands remain fixtures and confer no
+authority for dossier assembly. Workflow record production remains 2e2.

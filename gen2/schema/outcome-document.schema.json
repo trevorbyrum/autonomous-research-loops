@@ -26,6 +26,11 @@
     "exports"
   ],
   "properties": {
+    "branch_windows": {
+      "description": "2d-2: proposed registered branch/window associations. Attribution and window pins are derived by the Router; supplied revisions or roles are forbidden.",
+      "type": "array", "maxItems": 256,
+      "items": {"$ref": "branch-window.schema.json"}
+    },
     "obligation_assessments": {"type": "array", "maxItems": 256, "items": {"$ref": "obligation-assessment.schema.json"}},
     "outcome_version": {"const": "outcome/1"},
     "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
