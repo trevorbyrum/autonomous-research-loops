@@ -2143,3 +2143,17 @@ The post-2q Gate D is renumbered #5.
 - **Orchestrator:** DEBT-032 is closed.
 - **Next:** 2d-3 is dispatched (`docs/gen2/tasks/2d-3.md`, quote verification under the layered-matching ruling).
   - **Mapping to V-6:** a near match counts as a mismatch. It is quarantined and comes with a diagnostic to help re-capture. It is never passed and never adjudicated.
+
+## 2026-10-10: 2d-3a (pure layered quote matcher): round 1 BLOCK
+- **Astra** (`84267797`, pinned 0a8238e; `private/reviews/gen2-2d-3a-astra-review-20261010.md`): **A BLOCK, B PASS, C BLOCK. ROOT-CAUSE repair required.**
+- **A1:** NFKC auto-passes `10²`→`102` and `m²`→`m2`.
+- **A2:** the dehyphenation fold deletes the minus sign (U+2212), and a hard line-break hyphen merges `re-sign` into `resign`.
+- **A3:** the lexical guards miss negation prefixes (`non-`, `un-`), grouped numbers (`1;000`), compound-unit operators and time units. These get forbidden near-match diagnostics.
+- **A4:** protection depends on alignment, so a relocated negation still gets a diagnostic.
+- **C1:** the idempotence law is false (Hangul composition after dehyphenation).
+- **Accepted:** input checks, the difflib diagnostic and its 0.98 boundary, citations, the split and placement.
+- **Landing at 0a8238e:** `gen2-check` green (2,776 of 2,776 mutants). The probes still fail.
+- **Routed:** `docs/gen2/tasks/2d-3a-repair-1.md`, round 1 of 3.
+  - NFC plus a safe whitelist (W3C charmod-norm), not NFKC.
+  - Soft-hyphen-only dehyphenation, failing closed.
+  - Ordered protected-token comparison on the original text, independent of alignment.
