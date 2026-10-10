@@ -17,7 +17,7 @@
     "2b": {"phase": "2", "state": "closed"},
     "2q": {"phase": "2", "state": "closed"},
     "2c": {"phase": "2", "state": "closed"},
-    "2d": {"phase": "2", "state": "pending"},
+    "2d": {"phase": "2", "state": "open"},
     "2e1": {"phase": "2", "state": "pending"},
     "2e2": {"phase": "2", "state": "pending"},
     "2f": {"phase": "2", "state": "pending"}

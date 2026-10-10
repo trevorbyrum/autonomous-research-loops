@@ -2088,3 +2088,16 @@ The post-2q Gate D is renumbered #5.
   - **Task 2c set to `closed` in phase-status.json.**
   - Open follow-ons, correctly owned: DEBT-032 and DEBT-033 (2d), DEBT-034 (2e2).
 - **Next:** Gate D #6 (fresh session) must pass before 2d starts.
+
+## 2026-10-10: Gate D #6 (whole system after 2c): PASS
+- **Astra, fresh session** (`2444ac7a`, pinned 6a5b712; `private/reviews/gen2-gate-d-6-astra-review.md`): **PASS. "Task 2d may start. No prerequisite repair is required before it starts."** No new defect in any blocking class.
+- **DEBT-030 closure confirmed.**
+- **Fresh checks:**
+  - metrics, hotspots, boundaries, debt, locators and size;
+  - 214 targeted accounting tests and 108 transaction tests;
+  - the coverage oracle reproduced.
+- **F1 (Medium):** the rich stopping result still needs a durable and export representation. Registered as **DEBT-035**, owned by 2d.
+- **F2 (Medium):** Router headroom (89 lines) and inventory reads held under the `BEGIN IMMEDIATE` writer lock. Registered as **DEBT-036**, owned by 2d.
+- **F3 (Low):** stale progress text. Folded into **DEBT-031**; 2d handles the EXPORT-API split.
+- **Readiness for 2d:** a finite follow-through list (DEBT-032 and DEBT-033, dossier/verification, one export path, feed state). These are prerequisites for *enabling* the authoritative paths, not for starting.
+- **Next:** task 2d opened. Brief at `docs/gen2/tasks/2d.md`. 2d-1 (design note `DOSSIER.md` plus the first slice) dispatched to Sol.

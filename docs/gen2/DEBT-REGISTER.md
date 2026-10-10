@@ -337,6 +337,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - reconcile current summaries: BOUNDARIES still calls the 2q-t4b review pending and the DEBT-023 seam disposition open, and the BUILD-STATE debt and metrics summary is stale (15 entries, SOURCE-CONTRACT v1);
   - carry or dispose of 2q-b11's NB1 (the signature and binding review reminder, to go in the next extraction brief) and NB2 (the test-module introduction overstates the interim tests' write-order coverage).
 - source: private/reviews/gen2-gate-d-5-astra-review.md (F2)
+  - Gate D #6 F3 (2026-10-10, private/reviews/gen2-gate-d-6-astra-review.md): BOUNDARIES still calls the 2q-t4b review pending and DEBT-023 open, and several intermediate 2c paragraphs read as current; the BUILD-STATE debt/SOURCE-CONTRACT summary is stale. The EXPORT-API Phase 2/3 split is updated in task 2d.
 - removal: the summaries are reconciled and b11 NB1 and NB2 are disposed of in a phase 2 maintenance slice, alongside DEBT-029.
 
 ### DEBT-032 - 2c-4b N1: durable branch/window association before dossier assembly (task 2d)
@@ -377,3 +378,19 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: the real workflow must produce attributable obligation-assessment judgments (disposition plus a confidence label under the plan's approved scheme, or unknown with a reason) through the governed admission path from DEBT-033.
 - source: private/reviews/gen2-2c-4a1-astra-review-20261009.md (N1)
 - removal: the 2e2 workflow produces and exercises these records end to end through 2d's admission and export path.
+
+### DEBT-035 - Gate D #6 F1: durable and export representation of the rich stopping result (task 2d)
+- kind: obligation
+- status: open
+- owner: task 2d
+- what: `gen2/accounting/stopping.py` keeps a lot of detail for each stopping result: contexts, invocation scope, window pins, G-1 standing, reasons, certain-answer bounds, sentinel identities and gate evidence. `export-bundle/2` reuses `/1`'s `stopping_dossier`, which has only scalar `observed_count`s, numeric thresholds and gate identity/status. It also bans any unknown operand in a satisfied rule. Before the dossier or export is used authoritatively, 2d must define and test a mapping, or an additive representation, that keeps the evaluation context, scope, raw uncertainty, lower/upper bounds and evidence provenance. A satisfied bound must never turn an indeterminate window into completed evidence. The serializer must not erase the record behind a bound or silently weaken `/1`.
+- source: private/reviews/gen2-gate-d-6-astra-review.md (F1)
+- removal: a persisted dossier → approved bundle path handles three cases: a rule satisfied while some windows are still indeterminate; a conservative unknown; and a stale result.
+
+### DEBT-036 - Gate D #6 F2: Router headroom and inventory reads under the writer lock (task 2d)
+- kind: obligation
+- status: open
+- owner: task 2d
+- what: `service.py` has 89 lines of headroom left and a fan-out of 16. `read_inventory()` reads whole tables inside `_snapshot()`, which is `BEGIN IMMEDIATE`, and `candidate_units()` does its arithmetic inside that transaction. 2d assembly must keep new responsibilities out of the Router core and capture one coherent authoritative input snapshot. It must do the dossier and bundle computation outside the writer transaction, then revalidate the revision and hash at commit. That follows the short-transaction export contract. Assess the snapshot read at the intended workload. Don't add speculative caching, a second store or a query framework.
+- source: private/reviews/gen2-gate-d-6-astra-review.md (F2)
+- removal: the 2d assembly path demonstrates these boundaries and stays inside the file and metrics limits.
