@@ -2101,3 +2101,9 @@ The post-2q Gate D is renumbered #5.
 - **F3 (Low):** stale progress text. Folded into **DEBT-031**; 2d handles the EXPORT-API split.
 - **Readiness for 2d:** a finite follow-through list (DEBT-032 and DEBT-033, dossier/verification, one export path, feed state). These are prerequisites for *enabling* the authoritative paths, not for starting.
 - **Next:** task 2d opened. Brief at `docs/gen2/tasks/2d.md`. 2d-1 (design note `DOSSIER.md` plus the first slice) dispatched to Sol.
+
+## 2026-10-10: operator ruling on tier-0 (decision flagged in DOSSIER.md)
+- **Trevor:** "Keep it off for now, but I don't want to get it up and running and months later come back and say it was left off."
+- **Ruling:** tier-0 stays disabled in Phase 2.
+- **Recorded as DEBT-037** (owner phase 3). While it is disabled, the engine must show an explicit `tier-0 disabled` capability fact, and the item can't close silently.
+- **Still open:** the quote-normalization decision. The operator asked about matching at 98% similarity or better; the orchestrator is clarifying the trade-off before slice 3.

@@ -394,3 +394,14 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: `service.py` has 89 lines of headroom left and a fan-out of 16. `read_inventory()` reads whole tables inside `_snapshot()`, which is `BEGIN IMMEDIATE`, and `candidate_units()` does its arithmetic inside that transaction. 2d assembly must keep new responsibilities out of the Router core and capture one coherent authoritative input snapshot. It must do the dossier and bundle computation outside the writer transaction, then revalidate the revision and hash at commit. That follows the short-transaction export contract. Assess the snapshot read at the intended workload. Don't add speculative caching, a second store or a query framework.
 - source: private/reviews/gen2-gate-d-6-astra-review.md (F2)
 - removal: the 2d assembly path demonstrates these boundaries and stays inside the file and metrics limits.
+
+### DEBT-037 - tier-0 checker left disabled by operator choice; must not be forgotten (phase 3)
+- kind: obligation
+- status: open
+- owner: phase 3
+- what: Trevor, 2026-10-10: "Keep it off for now, but I don't want to get it up and running and months later come back and say it was left off."
+  - The optional tier-0 claim checker (V-7) stays disabled in Phase 2. It screens and alarms only, and never promotes.
+  - While it is off, the engine must record it as an explicit capability fact, `tier-0 disabled`, and show that in status. Its absence must never read as a pass.
+  - Turning it on needs two things: a selected and qualified checker, and an operator-approved policy for regression and sampling audits.
+- source: operator ruling 2026-10-10 (this conversation); docs/gen2/DOSSIER.md "Operator decisions"
+- removal: the operator has approved a qualified tier-0 checker and its audit policy, and the checker is enabled through the normal approval path. Alternatively, the operator explicitly records a decision to leave it off permanently.
