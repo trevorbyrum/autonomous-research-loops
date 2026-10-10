@@ -380,3 +380,39 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - target: engine|reach|gen2/accounting/reconciliation.py->gen2/core/instants.py
 - reason: Reusing the accounting record module inherits its existing pure UTC parser dependency; the new confidence check reads no clock.
 - task: 2c-4a2
+
+### ML-0057
+- action: admit
+- target: engine|edge|gen2/router/accounting.py->gen2/accounting/views.py
+- reason: The Router snapshot adapter constructs the existing pure BranchLink and WindowPin operands from admitted durable provenance without computing views.
+- task: 2d-2
+
+### ML-0058
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/accounting/views.py
+- reason: The engine inherits the Router's typed coverage snapshot hand-off; it acquires no direct store or provider authority.
+- task: 2d-2
+
+### ML-0059
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/accounting/views.py
+- reason: Station composition reaches the existing pure operand types through the Router adapter, without new scientific judgment or write authority.
+- task: 2d-2
+
+### ML-0060
+- action: admit
+- target: engine|reach|gen2/router/accounting.py->gen2/accounting/stopping.py
+- reason: The views module exposes the accepted WindowPin type from stopping; this is a typed snapshot dependency and invokes no stopping evaluator under the lock.
+- task: 2d-2
+
+### ML-0061
+- action: admit
+- target: engine|reach|gen2/router/accounting.py->gen2/accounting/views.py
+- reason: Durable branch/window associations are converted to the existing fixture operand types with derived revisions and conservative unknown handling.
+- task: 2d-2
+
+### ML-0062
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/accounting/views.py
+- reason: Thin coverage snapshot wiring reaches pure types through the existing read adapter; view arithmetic runs only after the snapshot returns.
+- task: 2d-2
