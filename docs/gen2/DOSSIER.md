@@ -151,3 +151,52 @@ fixture/ledger integration (30); generated controls and documentation excluded.
 Run literal-oracle admission, replay, raw-DDL and unknown-provenance tests,
 the full composition module, every mutant family touching edited files and
 the six gates. Evidence belongs in private `evidence/2d-2/`.
+
+## 2d-3: layered quote matching (design before code)
+
+Design against `20ffba7` on gen2; task 2d ruling 2 and V-6 govern. The
+existing evidence writer accepts verification receipts but has no quote-check
+admission section. SQL 03 retains immutable checks and permits adjudication
+only for an NLI alarm on matched bytes. The full slice is estimated at **760
+hand-written lines**: matching 150, admission/notifications 100, ordered
+DDL/schema 100, tests 250, mutants/integration/metrics 160. Split before code:
+**2d-3a (this dispatch), about 390 lines**, supplies the pure matcher, literal
+oracles, properties and paired mutants; **2d-3b, about 370 lines**, admits its
+results through the governed writer, persists diagnostics/original bytes,
+notifies the capture owner and tests disposition/adjudication refusal. Stop
+after 3a; 2d-3 remains incomplete until 3b is accepted.
+
+The pure hand-off checks SHA-256 artifact identity and half-open **byte**
+offsets before decoding UTF-8. It retains quote/span bytes, offsets, artifact
+hash, normalized forms, rule versions and mismatch diagnostics. It accepts
+no supplied match label. An exact byte match passes; otherwise normalization
+is `quote-nfkc/1`, using [Unicode UAX #15 NFKC](https://www.unicode.org/reports/tr15/)
+with the runtime Unicode database version recorded, whitespace collapse,
+alphabetic line-break dehyphenation, curly quote folding and dash folding.
+Numeric signs and exponents must survive these transforms. Protected token
+differences are checked before normalized equality as well as similarity.
+
+Similarity is Python's [difflib SequenceMatcher ratio](https://docs.python.org/3/library/difflib.html#difflib.SequenceMatcher.ratio),
+`2*M/(len(a)+len(b))`, with `autojunk=False`; record both directions' minimum
+to avoid order-dependent optimism and the Python implementation version.
+Its matching-block rather than edit-distance semantics are adequate for
+review diagnostics because **no similarity score grants support**. At >=0.98
+only an ordinary-text difference receives `near_match` and normalized
+character-offset differing spans; every difference still quarantines. No
+dependency is added. Explicit versioned English negative tokens follow
+[Cambridge English Grammar Today](https://dictionary.cambridge.org/grammar/british-grammar/negation);
+SI unit/prefix symbols follow the [BIPM SI Brochure, 9th edition](https://www.bipm.org/en/publications/si-brochure),
+with separately named clinical display aliases informed by
+[UCUM 2.2's clinical units](https://ucum.org/ucum) (no UCUM conformance claim).
+Decimal numeric tokens use
+[Python Decimal's decimal/exponent grammar](https://docs.python.org/3/library/decimal.html#decimal.Decimal),
+retaining spelling as well as value so changed precision does not disappear.
+These lists are lexical guards, not scientific or multilingual verification.
+
+3b must derive the expected artifact identity from the exact work/source
+version and the owner from the capturing invocation under the existing
+fence; pure operands alone confer no authority. Map `match` and
+`match_normalized` to SQL's `matched`, everything else to `mismatch`. Preserve
+the no-byte-mismatch-adjudication rule for every supporting disposition.
+Run the matcher and existing V-6 tests, full composition module, affected
+mutant families and six gates; evidence belongs in private `evidence/2d-3/`.

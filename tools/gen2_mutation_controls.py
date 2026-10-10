@@ -803,6 +803,8 @@ def _inventory():
     MANUAL.update(OBLIGATION_CONTROLS)
     from gen2_mutants.branch_windows_2d2 import CONTROLS as BRANCH_WINDOW_CONTROLS
     MANUAL.update(BRANCH_WINDOW_CONTROLS)
+    from gen2_mutants.quote_matching_2d3 import CONTROLS as QUOTE_MATCHING_CONTROLS
+    MANUAL.update(QUOTE_MATCHING_CONTROLS)
     return gen2_mutations
 
 
