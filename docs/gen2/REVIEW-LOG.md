@@ -2157,3 +2157,16 @@ The post-2q Gate D is renumbered #5.
   - NFC plus a safe whitelist (W3C charmod-norm), not NFKC.
   - Soft-hyphen-only dehyphenation, failing closed.
   - Ordered protected-token comparison on the original text, independent of alignment.
+
+## 2026-10-10: 2d-3a round 2 (2d-3a-repair-1): BLOCK; A1, A2 and C1 closed
+- **Astra** (`c1bc907d`, pinned 040373d; review at `private/reviews/gen2-2d-3a-r2-astra-review-20261010.md`): **A BLOCK, B PASS, C BLOCK.**
+  - A1, A2 and C1 are closed at the root cause.
+  - A3 and A4 remain open and are classed as MITIGATION.
+- **R2-1:** these all still earn diagnostics: hyphenated negations (`not-yet`), spaced signs (`- 5` vs `+ 5`), and the overreaching negative prefix (`discuss` vs `cuss`).
+- **R2-2:** the lexical-slot fingerprint loses positions inside a word, so a number moved inside one lexeme (`abc1def` vs `abcde1f`) earns a diagnostic.
+- **Landing at 040373d:** green, 2,793 of 2,793 mutants killed.
+- **Recurring family**, so research came before the re-brief: `docs/gen2/research/2d-quote-protection-20261010.md`.
+  - **The approach:** use sound, conservative approximation, as in 2c-3a, and classify the edit regions rather than the tokens (Myers 1986 / difflib opcodes).
+  - **The rule:** a diagnostic is allowed only if the protected-character skeletons are equal, the edit regions are safe, there is no relocation, and no negative prefix was edited.
+  - **Brief amendment:** over-protecting the lookalikes is accepted by design.
+- **Routed to** `docs/gen2/tasks/2d-3a-repair-2.md`, **round 3 of 3 (the cap)**.
