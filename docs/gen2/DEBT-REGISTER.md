@@ -322,11 +322,12 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 
 ### DEBT-030 - Gate D #5 F1: keep 2c arithmetic out of the Router (2c)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2c
 - what: Gate D #5 F1 (Medium, non-blocking). `gen2/router/service.py` is 1,381 of 1,500 lines, `_validate_commit` is 45/65 and the Router package is 4,244 lines. 2c must put the new arithmetic in the accounting component (`gen2/accounting`, with typed operands and results and the imports BOUNDARIES allows), and keep commit authorisation and transactions in the Router. If 2c does need more Router validation, review that responsibility and its size in the slice concerned. No speculative extraction before 2c.
 - source: private/reviews/gen2-gate-d-5-astra-review.md (F1)
 - removal: 2c demonstrates that separation and stays within the ratchet and file limits, confirmed by the 2c reviews.
+- closed by: 2026-10-10. The removal condition was met across task 2c: the four accounting modules own all of 2c's arithmetic, and the Router keeps only snapshot reads and governed admission. `service.py` is 1,411 of 1,500 lines, and the ratchet, boundary and size checks are green (private/reviews/gen2-2c-4a3-astra-review-20261010.md, task-2c close-out).
 
 ### DEBT-031 - Gate D #5 F2: summaries and b11 follow-ups (phase 2)
 - kind: obligation

@@ -2072,3 +2072,19 @@ The post-2q Gate D is renumbered #5.
   - The limit "fixture operands only, not provenance" is stated honestly. That is safe while DEBT-033 is open.
 - **Landing at 86132e7:** `gen2-check` green. The gateway result is carried forward.
 - **Next:** slice 2 dispatched (`docs/gen2/tasks/2c-4a3.md`).
+
+## 2026-10-10: 2c-4a3 (lossless mapper and inverse, `export-bundle/2`, end-to-end unresolved-contradiction fixture): PASS on first review. TASK 2c CLOSED
+- **Astra** (`5d57a84c`, pinned c4a3574; `private/reviews/gen2-2c-4a3-astra-review-20261010.md`): **PASS on A, B and C, all ROOT-CAUSE. "2c-4a3 is ACCEPTED; task 2c is complete. DEBT-030 is closable."**
+- **Losslessness:** 100 expanded adversarial cases (permutations, repetitions, subsets, competing records, two historical schemes). Order and both directions of the round trip held.
+- **Disposition distinctions:** the five stay distinct.
+- **G-9 outcomes:** survive under both completion states.
+- **`/1`:** unchanged.
+- **Landing at c4a3574 (green):**
+  - `gen2-check`: 2,658 tests; 2,712 of 2,712 mutants killed.
+  - `gen2-gateway`: 1,540 tests run twice; 413 of 413 mutants killed.
+- **N1 (stale BOUNDARIES progress text):** fixed by the orchestrator in this commit.
+- **Orchestrator:**
+  - **DEBT-030 CLOSED.**
+  - **Task 2c set to `closed` in phase-status.json.**
+  - Open follow-ons, correctly owned: DEBT-032 and DEBT-033 (2d), DEBT-034 (2e2).
+- **Next:** Gate D #6 (fresh session) must pass before 2d starts.
