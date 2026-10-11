@@ -356,13 +356,15 @@ class AuthorityTest(CommitCase):
         env = self.envelope(verifier, "op_verify0001", own)
         before, audits = self.snapshot()
         self.assertRejected(self.router.commit_outcome(env), "payload_missing", before, audits, "canonical bytes are not staged")
-        self.assertEqual(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired]))["status"], "committed")
+        before, audits = self.snapshot()
+        self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired])),
+                            "payload_invalid", before, audits, "must consume its admitted acquisition")
 
     def test_canonical_bytes_recorded_only_for_another_topic_are_not_this_topics(self) -> None:
         """Astra 1c review A6: the same receipt path, the obtained bytes
         recorded only by another topic's commit. Content identity is not
         topic authorization: refused as not staged here, nothing written;
-        staged with this commit (in this topic's spool) they are accepted."""
+        staged with this commit they still need an admitted acquisition."""
         text = self.artifact(b"a load-bearing claim")
         outcome = empty_outcome("inv_research01", "interim_transition")
         outcome["claims"] = [{"claim_id": "clm_00000001", "revision": 1, "text_ref": text, "load_bearing": True, "required_access_tier": "full_text"}]
@@ -381,8 +383,10 @@ class AuthorityTest(CommitCase):
         before, audits = self.snapshot()
         self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own)), "payload_missing", before, audits, "canonical bytes are not staged")
         self.spool.put(raw, media_type="application/pdf", topic=TOPIC)
-        self.assertEqual(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired]))["status"], "committed")
-        self.assertEqual(self.rows("SELECT topic_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", acquired["content_hash"]), [(TOPIC,), (OTHER,)])
+        before, audits = self.snapshot()
+        self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired])),
+                            "payload_invalid", before, audits, "must consume its admitted acquisition")
+        self.assertEqual(self.rows("SELECT topic_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", acquired["content_hash"]), [(OTHER,)])
 
     def verification_receipt(self, verifier: dict) -> dict:
         return {"receipt_version": "verification-receipt/1", "verification_receipt_id": "ver_000000000001", "topic_id": TOPIC,

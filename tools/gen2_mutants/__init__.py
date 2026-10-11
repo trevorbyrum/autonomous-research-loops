@@ -33,6 +33,7 @@ from . import quote_attention_2d3b4
 from . import verification_attention_2d4
 from . import reaccess_2d4b
 from . import acquisitions_2d4b2
+from . import canonical_receipts_2d4b3
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -86,4 +87,5 @@ MUTATIONS: list[Mutation] = [
     *verification_attention_2d4.MUTATIONS,
     *reaccess_2d4b.MUTATIONS,
     *acquisitions_2d4b2.MUTATIONS,
+    *canonical_receipts_2d4b3.MUTATIONS,
 ]

@@ -11753,6 +11753,97 @@
   ],
   "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
  },
+ "2D4B3-acquirer": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-admission": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-call": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-existence": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-method": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-missing-artifact-diagnostic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-missing-call-diagnostic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-route": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-time": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-verifier": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-version": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
+ "2D4B3-work": {
+  "by_hand": true,
+  "controls": [
+   "test_store_canonical_receipts.CanonicalDDLTest.test_canonical_control"
+  ],
+  "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

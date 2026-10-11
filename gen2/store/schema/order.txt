@@ -19,3 +19,4 @@
 12-capture-bound-support.sql
 13-quote-adjudication.sql
 14-source-acquisitions.sql
+15-canonical-receipt-acquisitions.sql

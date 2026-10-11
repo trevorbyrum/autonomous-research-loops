@@ -662,3 +662,50 @@ this admission. Existing receipt paths are unchanged until the next part makes
 them consume it. Tests and evidence must not claim otherwise. Run targeted tests,
 the full composition module, every affected mutant family and the six gates.
 Evidence belongs in private `evidence/2d-4b2/`.
+
+### 2d-4b3: consume canonical acquisitions first (design before code)
+
+Re-estimate against `9f30fb6`: **about 1,050 hand-written lines** remain:
+canonical receipt consumption 350, recorded content/table tiers 300, and
+durable extraction validation plus extracted-receipt consumption 400.
+Tests, predicate mutants and integration are included; documentation and
+generated controls are additional. Split before code and stop after the
+first part. The complete 2d-4b3 and unsplit 2d-4b2 remain incomplete.
+
+**This dispatch, about 350 lines:** consume SQL 14's admitted acquisitions
+on the existing `canonical_bytes` receipt path. Ordered DDL 15 adds a
+consuming trigger inside the existing Router commit transaction. An acquisition
+must match topic, work, source version, verifier, obtained hash, acquiring
+invocation, gateway call, retrieval time and route (`gateway:` plus the
+recorded lane). These existing receipt fields select the retained acquisition;
+no second acquisition identity or agent-supplied admission label is added.
+Producer-acquired canonical octets remain permitted. A staged artifact or
+call reference alone no longer authorizes a canonical receipt. Service adds
+no code: its existing evidence writer already inserts receipts under the
+writer fence. SQL 14 remains the sole admission and capture authority.
+
+The new trigger explicitly orders itself after SQL 03's artifact-existence
+and non-null-call checks, preserving their established refusal diagnostics
+and isolated mutant controls regardless of SQLite trigger order. It checks
+each relationship independently through paired raw-DDL predicates; Router
+tests use the literal trusted exchange from 2d-4b2 and assert durable receipt
+readback, producer and other-acquirer reuse, rejection, replay and rollback.
+Existing tests that equated staging with authenticated acquisition are
+updated to assert the stronger refusal, with new accepted Router controls.
+No migration is run against a real database.
+
+**Next part, about 300 lines:** derive content tiers from admitted response
+records (actual text versus abstracts or links), bind every cited table to
+recorded availability, and refuse inflated claims. Route names, record kinds
+and media types alone never grant content or reproduction authority.
+**Following part, about 400 lines:** retain validated extraction input,
+output and verifier attribution, require those records on both existing
+extraction receipt paths, and bind each to its admitted acquisition. These
+parts must be re-estimated before code. This first part grants no new tier,
+table, extraction-validation or workflow authority; current noncanonical
+receipt paths and their provenance gap remain scheduled for the extraction
+part, not claimed as enforced. Workflow execution remains 2e2.
+
+Run targeted receipt/acquisition/legacy verification tests, full Router
+composition, every mutant family targeting changed files, and the eight
+requested Make gates. Evidence belongs in private `evidence/2d-4b3/`.
