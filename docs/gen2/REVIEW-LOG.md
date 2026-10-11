@@ -2355,3 +2355,18 @@ The post-2q Gate D is renumbered #5.
   - R1: nonblank rule `recorded-nonblank/1+ucd17.0.0`.
   - R2: non-authority fence for pending extraction, SQL 17.
 - **Next:** 2d-4b3c dispatched (`docs/gen2/tasks/2d-4b3c.md`). It binds both extraction methods to their admitted acquisition and recorded-content ceiling.
+
+## 2026-10-11: 2d-4b3c part 1 (extraction receipts bound to acquisitions): round 1 BLOCK on C1 (landing gate)
+- **Astra** (`b344ab9b`, pinned ead2779; `private/reviews/gen2-2d-4b3c-astra-review-20261011.md`): **A PASS, B PASS, C BLOCK. ROOT-CAUSE binding.**
+- **Gate A:** SQL 18 requires one admitted SQL 14 row matching all seven operands, for both methods and every verdict. It is additive, AFTER INSERT, with its trace marker and no DML. 84/84 bypass probes were refused.
+- **The topic implication holds.** It follows from the SQL 14 and SQL 03 verifier-topic bindings.
+- **The producer-acquired, verifier-extracted case is correct** and isn't a loophole.
+- **Split coherence:** bound but inflated declarations stay non-authoritative under SQL 17 and SQL 12, and `_require_quote_support`.
+- **C1 (MEDIUM):** `test_governed_quotes.py` `AdmissionTest.test_support_control` builds a `verifier_extraction` receipt from the schema example, with no admitted acquisition.
+  - The new guard correctly rejects it, so the landing `gen2-check` exits 2 (3,129 tests, 1 failure).
+  - The coder's targeted selection matched method names; this test reaches the method through the schema example file, so it was missed.
+- **Coverage:** 287 targeted tests and 29/29 targeted mutants independently re-run. The sweep accounting (40 families, 2,439 mutants) reproduces exactly.
+- **Landing at ead2779:** `gen2-check` exit 2 (C1). `gen2-gateway` was still running at routing time.
+- **Report note:** the session was archived before it wrote its final file, because the landing failure meant review after repair. The report is Astra's draft, copied verbatim apart from the landing paragraph.
+- **Routed:** `docs/gen2/tasks/2d-4b3c-repair-1.md`, round 2 of 3.
+- **New process rule:** the coder's targeted test selection also includes every test that loads a schema example document whose content the change constrains.
