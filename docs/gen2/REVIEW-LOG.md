@@ -2195,3 +2195,14 @@ The post-2q Gate D is renumbered #5.
 - **B1-1:** Sol added a relaxation for whitespace at word endpoints, to avoid over-protecting a possessive such as `trial's`. Deleting that whitespace erases a protected word's boundary (`alpha'not early` vs `alpha'notearly`), and the case still gets a diagnostic. Astra's probes fail on 480 of 480 cases.
 - **Landing at f722a39:** green, with 2,799 of 2,799 mutants killed.
 - **Routed:** `docs/gen2/tasks/2d-3b1-repair-1.md`, round 1 of 3. The fix **removes** the relaxation, which is the conservative choice under the adopted research principle. The `trial's` utility case becomes a plain mismatch, by design; this is an orchestrator amendment.
+
+## 2026-10-11: 2d-3b part 1 round 2 (2d-3b1-repair-1): PASS. DEBT-038 closed
+- **Astra** (`59191d74`, pinned dba8f35; `private/reviews/gen2-2d-3b1-r2-astra-review-20261011.md`): **A, B and C all PASS, ROOT-CAUSE. "2d-3b part 1 is ACCEPTED; DEBT-038 is closable."**
+- **B1-1 closed:** the endpoint exception is removed, so inclusive protection now applies to both operands. The conservative `trial's` result is accepted.
+- **Probes:**
+  - endpoint: 480 of 480 cases;
+  - boundary: 120 of 120 cases;
+  - regression literals: all 66 intact.
+- **The mutant** restores the defect and gets 128 assertion kills.
+- **Landing at dba8f35:** `gen2-check` green.
+- **Orchestrator:** DEBT-038 closed. 2d-3b part 2 (governed V-6) dispatched; see `docs/gen2/tasks/2d-3b2.md`.

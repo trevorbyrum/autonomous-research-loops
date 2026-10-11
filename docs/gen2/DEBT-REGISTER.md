@@ -409,7 +409,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 
 ### DEBT-038 - 2d-3a R3-1: apostrophe-joined lexemes hide negation and unit edits from the near-match gate (task 2d)
 - kind: obligation
-- status: open
+- status: closed
 - owner: task 2d
 - what: Astra's round-3 review of 2d-3a found that the quote matcher treats an apostrophe-joined sequence as one lexeme, so negations and units inside it are not recognised.
   - Example: `say'not'now` vs `say'now`. A move of `mg` within `alpha'mg'omega'delta` is missed the same way.
@@ -422,5 +422,6 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - literals for insertion, deletion, replacement and movement of a negation, and for movement of a unit;
   - a generated boundary law that includes apostrophe wrappers;
   - a paired guard and control.
+- closed by: 2026-10-11. Task 2d-3b part 1 is `f722a39`; its endpoint repair is `dba8f35` (`quote-protection/5`). Astra's round-2 review (private/reviews/gen2-2d-3b1-r2-astra-review-20261011.md) passed the apostrophe literals, the boundary laws, the paired guard and control, and the boundary probes (120 of 120) and endpoint probes (480 of 480).
 
   Astra's boundary probe and boundary property scripts (private/evidence/astra-2d-3a-r3/) must pass.
