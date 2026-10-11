@@ -15,25 +15,25 @@ def change(name, old, new, killer, control="lower_tier_control", scope=SCOPE):
 
 change("method", "NEW.extraction_method = 'canonical_bytes'", "0", "verdicts")
 change("comparison", ") > coalesce((", ") >= coalesce((", "full_text_control")
-change("record", "= a.provider_record_id", "IS NOT NULL", "record_identity")
-change("observation", "USING (observation_id)", "ON 1 = 1", "availability")
-change("availability", "o.coverage_state = 'searched_ok'", "1 = 1", "availability")
-change("kind", "json_extract(r.value, '$.kind') = 'full_text'", "1 = 1", "kind")
+change("record", "= a.provider_record_id;", "IS NOT NULL;", "record_identity", scope=None)
+change("observation", "source_acquisitions a JOIN search_observations o USING (observation_id)", "source_acquisitions a JOIN search_observations o ON 1 = 1", "availability", scope=None)
+change("availability", "o.coverage_state = 'searched_ok'", "1 = 1", "availability", scope=None)
+change("kind", "json_extract(r.value, '$.kind') = 'full_text'", "1 = 1", "kind", scope=None)
 for field in ("text", "abstract"):
-    change(field + "-type", f"json_type(r.value, '$.{field}') = 'text'", "1 = 1", "shapes")
+    change(field + "-type", f"json_type(r.value, '$.{field}') = 'text'", "1 = 1", "shapes", scope=None)
     expression = f"json_extract(r.value, '$.{field}') GLOB (SELECT pattern FROM recorded_nonblank_v1)"
-    change(field + "-nonblank", expression, "1 = 1", "shapes")
-    change(field + "-whitespace", expression, f"length(json_extract(r.value, '$.{field}')) > 0", "shapes")
-change("full-text-ceiling", "recorded_nonblank_v1) THEN 3", "recorded_nonblank_v1) THEN 4", "reproduction")
-change("abstract-ceiling", "recorded_nonblank_v1) THEN 2", "recorded_nonblank_v1) THEN 3", "verdicts")
-change("bibliographic-ceiling", "ELSE 1 END)", "ELSE 3 END)", "kind")
+    change(field + "-nonblank", expression, "1 = 1", "shapes", scope=None)
+    change(field + "-whitespace", expression, f"length(json_extract(r.value, '$.{field}')) > 0", "shapes", scope=None)
+change("full-text-ceiling", "recorded_nonblank_v1) THEN 3", "recorded_nonblank_v1) THEN 4", "reproduction", scope=None)
+change("abstract-ceiling", "recorded_nonblank_v1) THEN 2", "recorded_nonblank_v1) THEN 3", "verdicts", scope=None)
+change("bibliographic-ceiling", "ELSE 1 END AS recorded_tier_rank", "ELSE 3 END AS recorded_tier_rank", "kind", scope=None)
 change("bibliographic-rank", "WHEN 'bibliographic' THEN 1", "WHEN 'bibliographic' THEN 4", "bibliographic_control", "full_text_control")
 for name, old, new, killer in (("abstract", "2", "0", "shapes"),
         ("full_text", "3", "0", "kind"), ("reproduced", "4", "0", "reproduction")):
     change(name + "-rank", f"WHEN '{name}' THEN {old}", f"WHEN '{name}' THEN {new}", killer)
 for name, expression in (("json", "json_valid(CAST(a.response_bytes AS TEXT))"),
         ("array", "json_type(CAST(a.response_bytes AS TEXT), '$.records') = 'array'"), ("object", "r.type = 'object'")):
-    change(name, expression, "0", "full_text_control", "bibliographic_control")
+    change(name, expression, "0", "full_text_control", "bibliographic_control", scope=None)
 for name, expression in (("work", "a.work_id = NEW.work_id"), ("version", "a.source_version = NEW.source_version"),
         ("verifier", "a.verifier_invocation_id = NEW.verifier_invocation_id"),
         ("acquirer", "a.acquired_by_invocation_id = NEW.extraction_invocation_id"),

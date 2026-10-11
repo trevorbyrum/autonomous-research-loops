@@ -36,6 +36,7 @@ from . import acquisitions_2d4b2
 from . import canonical_receipts_2d4b3
 from . import content_tiers_2d4b3b
 from . import extraction_acquisitions_2d4b3c
+from . import extraction_content_2d4b3c2
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -92,4 +93,5 @@ MUTATIONS: list[Mutation] = [
     *canonical_receipts_2d4b3.MUTATIONS,
     *content_tiers_2d4b3b.MUTATIONS,
     *extraction_acquisitions_2d4b3c.MUTATIONS,
+    *extraction_content_2d4b3c2.MUTATIONS,
 ]

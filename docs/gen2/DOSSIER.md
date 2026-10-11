@@ -835,3 +835,37 @@ behavior stay intact. Acquisition binding alone does not cap declarations or
 grant extraction/validation/reproduction authority; those guarantees remain
 scheduled. Trace: flow S4 step 8; BOUNDARIES Router/Verifier; V-1/V-2/V-3.
 Evidence: `evidence/2d-4b3c/`.
+
+### 2d-4b3c2: extraction declaration content ceilings (design before code)
+
+Re-estimate against `7c66231` (SQL 18 accepted at `7b5aaae`): **about 490
+hand-written lines** (shared SQL
+rule/ordered consumer 55, Router/raw-DDL tests 240, receipt-fixture repairs 70,
+predicate mutants/integration 85, documentation 40). The earlier 290-line
+estimate omitted the complete receipt-fixture audit and transitive mutant
+controls. This dispatch completes only the declaration ceiling part of
+2d-4b3c; recorded table availability and durable extraction/validation remain
+later slices. Split and stop after the first part if implementation exceeds
+the approximately 500-line scope.
+
+Factor SQL 16's existing record selection, coverage and named nonblank rule
+into one shared acquisition-content view. Canonical receipts retain their
+existing selectors and diagnostic. Ordered SQL 19 caps both extraction
+methods using SQL 18's consumed acquisition, without confusing extractor and
+acquirer identities. Include the obtained-hash selector even on invalid
+receipts to preserve SQL 18's diagnostic; verifier identity implies topic. Missing acquisitions
+remain SQL 18's refusal. Recorded content never establishes reproduction.
+No Python production/API change or real database migration is needed.
+
+Independently isolate each inflated declaration, Unicode blank/near-blank
+body, unrelated record, route and acquisition selector, with accepted literal
+controls, durable readback, replay/conflict and rollback. Truthful insufficient
+access still creates the existing missing-content hold. SQL 17 continues to
+fence pending extraction support, including validated declarations without a
+durable validation record. Audit every receipt-example/helper/raw-verify user;
+repair recorded content or tier while retaining its original assertions.
+Run targeted tests, full Router composition, all edited-target/shared-fixture
+mutant families (including transitive imports), and the eight required Make
+gates. Before each mutant run wait for no active `gen2-landing-*` user unit;
+never modify those units/clones or refresh the venv during mutation runs.
+Evidence: `evidence/2d-4b3c2/`.

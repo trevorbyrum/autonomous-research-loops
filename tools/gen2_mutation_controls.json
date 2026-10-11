@@ -12184,6 +12184,268 @@
   ],
   "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
  },
+ "2D4B3C2-abstract-rank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-bibliographic-rank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_full_text_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_full_text_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-call": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-comparison": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-full_text-rank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-missing-diagnostic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-reproduced-rank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-route": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-shared-abstract-ceiling": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-abstract-nonblank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-abstract-type": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-abstract-whitespace": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-array": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_bibliographic_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_bibliographic_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-availability": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-bibliographic-ceiling": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-full-text-ceiling": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-json": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_bibliographic_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_bibliographic_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-object": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_bibliographic_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_bibliographic_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-observation": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-record": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-text-nonblank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-text-type": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-text-whitespace": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-unicode-ignorable-set": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-shared-unicode-space-set": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "The shared SQL 16 content predicate is consumed by independently accepted receipts of each extraction method."
+ },
+ "2D4B3C2-time": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-validated_extraction": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-verifier": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-verifier_extraction": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-version": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
+ "2D4B3C2-work": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_content_tiers.ExtractionContentDDLTest.test_lower_tier_control",
+   "test_store_extraction_content_tiers.ValidatedContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

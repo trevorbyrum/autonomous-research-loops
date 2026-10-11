@@ -41,15 +41,18 @@ SQL 14 retains exact operands/lineage with verifier attribution; equal replay
 adds nothing and conflicts roll back. SQL binds recorded relationships and size;
 the Router authenticates and hashes bytes. This record supplies no tier, table,
 extraction-validation or support authority. Canonical-byte receipts consume it
-(SQL 15, task 2d-4b3 slice 1); content/table tiers and durable extraction
+(SQL 15, task 2d-4b3 slice 1); table tiers and durable extraction
 validation are the remaining 2d-4b3 slices; trusted workflow capture execution
 remains 2e2.
 
-SQL 16 (2d-4b3b, first part) caps every canonical receipt verdict at its
+SQL 16 and SQL 19 (2d-4b3c2) cap every receipt method/verdict at its
 consumed acquisition's recorded content: the selected record's nonblank abstract
 or full-text body, with `metadata_only` unable to certify full text. Links,
 record-kind labels and availability flags alone grant bibliographic access;
-canonical content supplies no reproduction evidence. This check runs in the
+recorded content supplies no reproduction evidence. Both consumers reuse
+SQL 16's `source_acquisition_content_tiers` selected-record rule. SQL 18 binds
+both extraction methods to admitted input, independently of extractor identity.
+This check runs in the
 existing receipt insert transaction, including raw inserts. Nonblank means
 `recorded-nonblank/1+ucd17.0.0`: a text field with a code point outside Unicode
 17.0.0 White_Space and Default_Ignorable_Code_Point (DOSSIER repair-1 cites
@@ -61,10 +64,10 @@ pending receipts cannot qualify promotion or preserve previously accepted
 support when a later governed capture lacks a matching canonical receipt.
 An unbound supporting declaration creates the existing missing-content
 remediation hold through Verification, using the producer's owner/deadline;
-later canonical support does not clear it. Extraction declarations are retained
-as submitted and their tier ceilings are the next repair part. Tables and durable
-extraction/validation storage remain the subsequent 2d-4b3 slices. No enforcement
-of those deferred receipt-admission properties is claimed by this first part.
+later canonical support does not clear it. Truthful insufficient-access receipts
+remain admissible and create the missing-content hold; inflated declarations are
+refused. Tables and durable extraction/validation storage remain the subsequent
+2d-4b3 slices.
 
 ## Station supervisor
 

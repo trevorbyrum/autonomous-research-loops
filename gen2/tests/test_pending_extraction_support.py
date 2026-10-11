@@ -41,8 +41,8 @@ class PendingRouterTest(unittest.TestCase):
 
     def test_pending_methods(self):
         for method in METHODS:
-            for tier in ("full_text", "reproduced"):
-                with self.subTest(method=method, tier=tier), fixture({"identity": IDENTITY, "abstract": "Only an abstract"}) as case:
+            for tier in ("abstract", "full_text"):
+                with self.subTest(method=method, tier=tier), fixture({**FULL, "abstract": "Recorded abstract"}) as case:
                     load_claim(case, tier)
                     doc = support_document(case, method, tier)
                     out = case.send(doc)
@@ -97,9 +97,9 @@ class PendingDDLTest(ContentDDLTest):
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 2")
 
     def test_pending_methods(self):
-        self.acquired({"identity": "rec-1", "abstract": "Only an abstract"})
+        self.acquired({"identity": "rec-1", "kind": "full_text", "text": "Recorded text", "abstract": "Recorded abstract"})
         for method in METHODS:
-            for tier in ("full_text", "reproduced"):
+            for tier in ("abstract", "full_text"):
                 with self.subTest(method=method, tier=tier):
                     self.x("SAVEPOINT pending")
                     try:
