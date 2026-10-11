@@ -10634,7 +10634,7 @@
   "controls": [
    "test_quote_matching.MatchingTest.test_apostrophe_near_control"
   ],
-  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+  "why": "The endpoint literals reject disappearing/created protected-word letter boundaries; the separate full-result ordinary apostrophe suffix-edit control still receives its near diagnostic when the unsound endpoint relaxation is restored."
  },
  "2Q-baseline-digest-unchecked": {
   "controls": [

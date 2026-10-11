@@ -84,5 +84,24 @@ guard("apostrophe-boundaries", "test_apostrophe_boundaries", r'LETTER_WORD = re.
 CONTROLS["2D3-apostrophe-boundaries"]["why"] = (
     "The full-result ordinary apostrophe suffix-edit literal exercises material()'s LETTER_WORD lookup; "
     "its near diagnostic survives contraction grouping, while protected apostrophe edits lose their guard.")
-guard("whitespace-endpoint", "test_apostrophe_whitespace_control",
-      'm.end() == start and fragment[:1].isspace()', 'False', "test_apostrophe_near_control")
+# B1-1: restore the entire unsound endpoint relaxation, with safety literals
+# as the killer and the unchanged ordinary apostrophe typo as its control.
+guard("whitespace-endpoint", "test_protected_endpoint_boundaries",
+      '''        for text, start, end in ((a, d.quote_start, d.quote_end),
+                                (b, d.source_start, d.source_end)):
+            for m in enclosing(text, start, end):
+                # Endpoint contact is protected too: removed whitespace
+                # cannot establish that the resulting words stay separated.
+                if material(m.group()):''',
+      '''        for text, start, end, other in ((a, d.quote_start, d.quote_end, b[d.source_start:d.source_end]),
+                                        (b, d.source_start, d.source_end, a[d.quote_start:d.quote_end])):
+            fragment = text[start:end] or other
+            for m in enclosing(text, start, end):
+                if (m.end() == start and fragment[:1].isspace() or
+                        m.start() == end and fragment[-1:].isspace()):
+                    continue
+                if material(m.group()):''', "test_apostrophe_near_control")
+CONTROLS["2D3-whitespace-endpoint"]["why"] = (
+    "The endpoint literals reject disappearing/created protected-word letter boundaries; "
+    "the separate full-result ordinary apostrophe suffix-edit control still receives its near diagnostic "
+    "when the unsound endpoint relaxation is restored.")

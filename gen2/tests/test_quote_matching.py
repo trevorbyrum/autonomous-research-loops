@@ -22,7 +22,7 @@ class MatchingTest(unittest.TestCase):
         self.assertEqual(result.normalization[0], "quote-nfc-safe")
         self.assertTrue(result.normalization[1].startswith("2+ucd"))
         self.assertEqual(result.token_versions, ("decimal-expression/2", "english-negation/3", "si9-2022+clinical/2"))
-        self.assertEqual(result.protection, "quote-protection/4")
+        self.assertEqual(result.protection, "quote-protection/5")
 
     def test_normalized_control(self):
         result = check("office trial", "office\ttrial")
@@ -235,8 +235,42 @@ class MatchingTest(unittest.TestCase):
         digest = "sha256:" + hashlib.sha256(source.encode()).hexdigest()
         self.assertEqual(check(quote, source),
                          QuoteMatch(quote.encode(), source.encode(), digest, digest, 0, 210,
-                                    "mismatch", "near_match", quote, source,
-                                    NearMatch(208 / 209, (Difference(208, 208, 208, 210),))))
+                                    "mismatch", "protected_edit", quote, source))
+        # Conservative endpoint contact with the possessive's unit-like s.
+        self.assert_plain(source, quote, "protected_edit")
+
+    def test_protected_endpoint_boundaries(self):
+        # Deletion/insertion and replacement erase/create either letter
+        # boundary. Operands and verdicts are literal, independent oracles.
+        cases = (
+            ("alpha'not early", "alpha'notearly"),
+            ("early not'alpha", "earlynot'alpha"),
+            ("alpha’not early", "alpha’notearly"),
+            ("early not’alpha", "earlynot’alpha"),
+            ("alpha'not early", "alpha'notqearly"),
+            ("early not'alpha", "earlyqnot'alpha"),
+            ("alpha’not early", "alpha’notqearly"),
+            ("early not’alpha", "earlyqnot’alpha"),
+            ("alpha'not xyz early", "alpha'notearly"),
+            ("early xyz not'alpha", "earlynot'alpha"),
+            ("alpha’not xyz early", "alpha’notearly"),
+            ("early xyz not’alpha", "earlynot’alpha"),
+            ("alpha'not xyz early", "alpha'notqearly"),
+            ("early xyz not'alpha", "earlyqnot'alpha"),
+            ("alpha’not xyz early", "alpha’notqearly"),
+            ("early xyz not’alpha", "earlyqnot’alpha"),
+        )
+        pad = "The trial report describes the observations and their limitations. " * 10
+        for quote, source in cases:
+            for whitespace in (" ", "\t", "\n", "\u00a0"):
+                spaced = quote.replace(" ", whitespace)
+                for left, right in ((spaced, source), (source, spaced)):
+                    with self.subTest(quote=left, source=right, whitespace=whitespace):
+                        self.assert_plain(pad + left, pad + right, "protected_edit")
+
+    def test_protected_endpoint_law(self):
+        result = children.python(["-c", ENDPOINT_PROPERTY], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_prefix_edit_regions(self):
         for prefix in ("un", "non", "in", "im", "ir", "il", "dis"):
@@ -516,8 +550,40 @@ def utility(text, whitespace, apostrophe):
         for changed in variants:
             quote = pad + whitespace + "trial" + apostrophe + "s" + whitespace + changed
             result = check(quote, source)
+            if not changed:
+                # Removing the entire word also removes the normalized
+                # endpoint space beside trial's: plain by the repair brief.
+                assert (result.status, result.reason, result.quote_quarantined, result.diagnostic) == ("mismatch", "protected_edit", True, None)
+                continue
             assert (result.status, result.reason, result.quote_quarantined) == ("mismatch", "near_match", True)
             assert result.diagnostic is not None and result.diagnostic.similarity >= 0.98
 
 idempotent(); negation_never_passes(); composed_rules(); protected_edits(); soundness(); utility()
+'''
+
+
+ENDPOINT_PROPERTY = '''
+import re
+from hypothesis import given, settings, strategies as st
+from gen2.tests.test_quote_matching import check
+@settings(max_examples=150, derandomize=True, database=None, deadline=None)
+@given(st.sampled_from("no not never none nobody nothing nowhere neither nor cannot without hardly scarcely barely seldom mg seconds".split()),
+       st.sampled_from(["'", "’"]), st.sampled_from([" ", chr(9), chr(10), chr(160)]),
+       st.text(alphabet="abcxyz", min_size=1, max_size=10),
+       st.sampled_from(["", "q"]), st.booleans(), st.booleans(), st.booleans())
+def endpoint_soundness(token, apostrophe, whitespace, word, replacement, before, reverse, remove_word):
+    gap = whitespace + "xyz" + whitespace if remove_word else whitespace
+    separated = (word + gap + token + apostrophe + "alpha" if before
+                 else "alpha" + apostrophe + token + gap + word)
+    joined = (word + replacement + token + apostrophe + "alpha" if before
+              else "alpha" + apostrophe + token + replacement + word)
+    # Independent ASCII letter-boundary oracle establishes the edit's
+    # semantic category, without using the matcher's protection inventory.
+    oracle = re.compile(r"(?<![A-Za-z])" + token + r"(?![A-Za-z])")
+    assert oracle.search(separated) and not oracle.search(joined)
+    left, right = (joined, separated) if reverse else (separated, joined)
+    pad = "The trial report describes the observations and their limitations. " * 10
+    result = check(pad + left, pad + right)
+    assert result.status == "mismatch" and result.quote_quarantined and result.diagnostic is None, (left, right, result)
+endpoint_soundness()
 '''

@@ -16,7 +16,7 @@ from difflib import SequenceMatcher
 NORMALIZATION = ("quote-nfc-safe", "2+ucd" + unicodedata.unidata_version)
 SIMILARITY = ("difflib.SequenceMatcher.ratio/min-bidirectional/autojunk=False", sys.version.split()[0])
 NEGATION_VERSION = "english-negation/3"
-PROTECTION_VERSION = "quote-protection/4"
+PROTECTION_VERSION = "quote-protection/5"
 NUMBER_VERSION = "decimal-expression/2"
 NEGATIONS = frozenset("no not never none nobody nothing nowhere neither nor cannot without hardly scarcely barely seldom".split())
 NEGATIVE_WORDS = frozenset("unavailable unable uncertain unclear unlikely unknown ineffective incorrect incomplete impossible improbable irregular irrelevant illegal illogical dishonest dissimilar disagree disadvantage non-effective".split())
@@ -169,14 +169,11 @@ def material(lexeme: str) -> bool:
 
 def safe_edits(a: str, b: str, differences: tuple[Difference, ...]) -> bool:
     for d in differences:
-        for text, start, end, other in ((a, d.quote_start, d.quote_end, b[d.source_start:d.source_end]),
-                                        (b, d.source_start, d.source_end, a[d.quote_start:d.quote_end])):
-            fragment = text[start:end] or other
+        for text, start, end in ((a, d.quote_start, d.quote_end),
+                                (b, d.source_start, d.source_end)):
             for m in enclosing(text, start, end):
-                # Whitespace separates an endpoint contact from the edit.
-                if (m.end() == start and fragment[:1].isspace() or
-                        m.start() == end and fragment[-1:].isspace()):
-                    continue
+                # Endpoint contact is protected too: removed whitespace
+                # cannot establish that the resulting words stay separated.
                 if material(m.group()):
                     return False
     return True
