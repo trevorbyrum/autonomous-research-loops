@@ -2370,3 +2370,14 @@ The post-2q Gate D is renumbered #5.
 - **Report note:** the session was archived before it wrote its final file, because the landing failure meant review after repair. The report is Astra's draft, copied verbatim apart from the landing paragraph.
 - **Routed:** `docs/gen2/tasks/2d-4b3c-repair-1.md`, round 2 of 3.
 - **New process rule:** the coder's targeted test selection also includes every test that loads a schema example document whose content the change constrains.
+
+## 2026-10-11: 2d-4b3c part 1, round 2 (2d-4b3c-repair-1): PASS. Part 1 accepted
+- **Astra** (`ed7558de`, pinned 7b5aaae; `private/reviews/gen2-2d-4b3c-r2-astra-review-20261011.md`): **A, B and C all PASS. "2d-4b3c part 1 is ACCEPTED."** There are no blocking or non-blocking findings.
+- **C1 closed (root cause).** The support control now commits through admitted input that matches all seven SQL 18 operands. Its original assertions are intact, and every other method in the file is unchanged (AST-verified). SQL 18 is untouched.
+- **The receipt audit was independently corroborated:** no other positive control lacks admitted input.
+- **Landing at 7b5aaae:** `gen2-check` green.
+  - 3,129 tests;
+  - 215 triggers in reverse order;
+  - 3,037/3,037 mutants killed, 3,020 with paired controls; 17 keep their disclosed classifications.
+  - `gen2-gateway` carried forward from ead2779 (exit 0).
+- **Next:** 2d-4b3c part 2 (`docs/gen2/tasks/2d-4b3c2.md`), which applies SQL 16's recorded-content ceiling to extraction declarations.
