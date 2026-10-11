@@ -2345,3 +2345,13 @@ The post-2q Gate D is renumbered #5.
   - `gen2-gateway` green.
 - **Routed:** `docs/gen2/tasks/2d-4b3b-repair-2.md`, round 3 of 3 (the cap).
 - **New process rule:** when a shared test fixture is edited, the coder runs every mutant family whose paired controls use it.
+
+## 2026-10-11: 2d-4b3b repair part 1, round 3 (2d-4b3b-repair-2): PASS. Repair part 1 accepted
+- **Astra** (`8a8db486`, pinned 23b39a6; `private/reviews/gen2-2d-4b3b-r3-astra-review-20261011.md`): **A, B and C all PASS. "2d-4b3b repair part 1 is ACCEPTED."**
+- **R3 closed (root cause):** D28 now has an independent accepted control, and its producer-reuse killer is intact. The shared fixture and the history assertions are byte-identical.
+- **Coverage:** the sweep audit confirms all 521 affected pairings.
+- **Landing at 23b39a6:** `gen2-check` green. Gateway result carried forward from 1323cf6.
+- **What this part closed:**
+  - R1: nonblank rule `recorded-nonblank/1+ucd17.0.0`.
+  - R2: non-authority fence for pending extraction, SQL 17.
+- **Next:** 2d-4b3c dispatched (`docs/gen2/tasks/2d-4b3c.md`). It binds both extraction methods to their admitted acquisition and recorded-content ceiling.
