@@ -10314,6 +10314,13 @@
   ],
   "why": "A literal admitted branch/window under its exact contract remains accepted; the no-record write and complete schema controls exercise their respective boundaries."
  },
+ "2D3-apostrophe-boundaries": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_apostrophe_near_control"
+  ],
+  "why": "The full-result ordinary apostrophe suffix-edit literal exercises material()'s LETTER_WORD lookup; its near diagnostic survives contraction grouping, while protected apostrophe edits lose their guard."
+ },
  "2D3-artifact-version": {
   "by_hand": true,
   "controls": [
@@ -10619,6 +10626,13 @@
   "by_hand": true,
   "controls": [
    "test_quote_matching.MatchingTest.test_exact_control"
+  ],
+  "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
+ },
+ "2D3-whitespace-endpoint": {
+  "by_hand": true,
+  "controls": [
+   "test_quote_matching.MatchingTest.test_apostrophe_near_control"
   ],
   "why": "A separate full-result literal checks an intact UTF-8 artifact, permitted whitespace, an ordinary difference below threshold, or unchanged protected tokens beside a near-match typo; its checked behavior survives this mutation."
  },

@@ -77,3 +77,12 @@ guard("skeleton-gaps", "test_skeleton", 'i - positions[n - 1][0] - 1 if n else 0
 guard("safe-edit-regions", "test_safe_edit_regions", 'if not safe_edits(a, b, differences):', "if False:", "test_near_control")
 guard("prefix-edits", "test_prefix_edit_regions", 'if prefix_changes(a, b, differences):', "if False:", "test_near_control")
 guard("no-relocation", "test_relocation_regions", 'if relocation(a, b, differences):', "if False:", "test_near_control")
+
+# DEBT-038: restoring contraction grouping must lose the protected-word guard.
+guard("apostrophe-boundaries", "test_apostrophe_boundaries", r'LETTER_WORD = re.compile(r"[^\W\d_]+")',
+      r'''LETTER_WORD = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)*")''', "test_apostrophe_near_control")
+CONTROLS["2D3-apostrophe-boundaries"]["why"] = (
+    "The full-result ordinary apostrophe suffix-edit literal exercises material()'s LETTER_WORD lookup; "
+    "its near diagnostic survives contraction grouping, while protected apostrophe edits lose their guard.")
+guard("whitespace-endpoint", "test_apostrophe_whitespace_control",
+      'm.end() == start and fragment[:1].isspace()', 'False', "test_apostrophe_near_control")

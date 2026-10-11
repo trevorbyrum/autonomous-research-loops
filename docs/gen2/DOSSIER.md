@@ -274,3 +274,44 @@ fence; pure operands alone confer no authority. Map `match` and
 the no-byte-mismatch-adjudication rule for every supporting disposition.
 Run the matcher and existing V-6 tests, full composition module, affected
 mutant families and six gates; evidence belongs in private `evidence/2d-3/`.
+
+## 2d-3b: apostrophe boundaries first (design before code)
+
+Design against `a3a1534` on gen2. The refined full estimate is **620
+hand-written lines**: DEBT-038 about 100 (recognition/version 10, literal and
+generated tests 65, paired mutant/control integration 25), then governed
+admission about 520 (collaborator/thin wiring 120, ordered DDL/schema 110,
+Router tests 215, mutants/integration 75). Documentation and generated control
+JSON are additional. Split at the task's roughly 500-line guide: **this first
+part implements only DEBT-038, then stops**. V-6 admission and its end-to-end
+tests remain the next part, before any authoritative use of the matcher.
+
+The researched conservative edit rule and the operator's letter-boundary
+interpretation govern. Separate protection word recognition from the extra
+lexical layer's contraction grouping: apostrophes, like hyphens and other
+nonletters, separate the words inspected by `material()`. Both the enclosing
+edit and relocation gates use that shared recognition. Preserve normalization,
+numeric skeleton/relocation rules, negative prefixes and the extra lexical
+fingerprint; bump only the protection rule to **`quote-protection/4`**.
+Add independently specified straight/curly apostrophe literals for negation
+insertion, deletion, replacement and movement, unit/unit-word movement and
+`not'early` versus `early`. Extend the existing all-position soundness law
+with both apostrophe wrappers, and pair a boundary-regression mutant with an
+ordinary apostrophe letter-edit control that still earns a near diagnostic.
+
+The preserved utility law also exercises deleting an ordinary word after
+`trial's`: the unchanged letter-bounded `s` is now recognized as a unit.
+At an edit endpoint, exclude an adjacent lexeme when the changed fragment
+starts/ends with whitespace on that side; the edit cannot join that lexeme.
+Keep overlapping lexemes and non-whitespace insertion contacts protected.
+This refines only endpoint contact in safe edits, leaving the numeric
+skeleton, relocation algorithm and normalization unchanged. Add a literal
+utility oracle and a paired mutant for that endpoint condition.
+
+Run Astra's two boundary scripts against this working tree using evidence
+copies with only their checkout binding adapted; retain original script
+hashes and the adaptation. Their expectations remain independent reference
+evidence. Run targeted matcher/V-6 tests, full Router composition, every
+mutant family targeting an edited file and the six gates. Evidence and the
+completion report belong in private `evidence/2d-3b/`; the debt register stays
+with its owner, and this part does not claim governed admission is complete.

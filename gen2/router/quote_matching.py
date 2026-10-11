@@ -16,7 +16,7 @@ from difflib import SequenceMatcher
 NORMALIZATION = ("quote-nfc-safe", "2+ucd" + unicodedata.unidata_version)
 SIMILARITY = ("difflib.SequenceMatcher.ratio/min-bidirectional/autojunk=False", sys.version.split()[0])
 NEGATION_VERSION = "english-negation/3"
-PROTECTION_VERSION = "quote-protection/3"
+PROTECTION_VERSION = "quote-protection/4"
 NUMBER_VERSION = "decimal-expression/2"
 NEGATIONS = frozenset("no not never none nobody nothing nowhere neither nor cannot without hardly scarcely barely seldom".split())
 NEGATIVE_WORDS = frozenset("unavailable unable uncertain unclear unlikely unknown ineffective incorrect incomplete impossible improbable irregular irrelevant illegal illogical dishonest dissimilar disagree disadvantage non-effective".split())
@@ -35,7 +35,8 @@ WORD = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+|-\s*[^\W\d_]+)*")
 UNIT_ATOM = "(?:" + "|".join(re.escape(u) for u in sorted(UNITS, key=lambda u: (-len(u), u))) + ")" + rf"(?:{EXPONENT}|[-+−]?\d+)?"
 UNIT = re.compile(rf"(?<![^\W\d_]){UNIT_ATOM}(?:\s*[/·×]\s*{UNIT_ATOM})*(?!\w)")
 LEXEME = re.compile(r"\w+(?:['-]\w+)*|[^\w\s]")
-LETTER_WORD = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)*")
+# Protection uses letter boundaries, independently of WORD's contractions.
+LETTER_WORD = re.compile(r"[^\W\d_]+")
 ENCLOSING_LEXEME = re.compile(r"\S+")
 OPERATORS = frozenset("+-−±×·/^%‰=<>≤≥⁄")
 
@@ -167,10 +168,18 @@ def material(lexeme: str) -> bool:
 
 
 def safe_edits(a: str, b: str, differences: tuple[Difference, ...]) -> bool:
-    return not any(material(m.group()) for d in differences
-                   for text, start, end in ((a, d.quote_start, d.quote_end),
-                                            (b, d.source_start, d.source_end))
-                   for m in enclosing(text, start, end))
+    for d in differences:
+        for text, start, end, other in ((a, d.quote_start, d.quote_end, b[d.source_start:d.source_end]),
+                                        (b, d.source_start, d.source_end, a[d.quote_start:d.quote_end])):
+            fragment = text[start:end] or other
+            for m in enclosing(text, start, end):
+                # Whitespace separates an endpoint contact from the edit.
+                if (m.end() == start and fragment[:1].isspace() or
+                        m.start() == end and fragment[-1:].isspace()):
+                    continue
+                if material(m.group()):
+                    return False
+    return True
 
 
 def prefix_edit(text: str, start: int, end: int) -> bool:

@@ -22,7 +22,7 @@ class MatchingTest(unittest.TestCase):
         self.assertEqual(result.normalization[0], "quote-nfc-safe")
         self.assertTrue(result.normalization[1].startswith("2+ucd"))
         self.assertEqual(result.token_versions, ("decimal-expression/2", "english-negation/3", "si9-2022+clinical/2"))
-        self.assertEqual(result.protection, "quote-protection/3")
+        self.assertEqual(result.protection, "quote-protection/4")
 
     def test_normalized_control(self):
         result = check("office trial", "office\ttrial")
@@ -195,6 +195,48 @@ class MatchingTest(unittest.TestCase):
             with self.subTest(quote=quote):
                 self.assert_plain("a" * 500 + " " + quote, "a" * 500 + " " + source, "protected_edit")
         self.assert_plain("a" * 500 + " 5mg", "a" * 500 + " 5µg", "protected_unit")
+
+    def test_apostrophe_boundaries(self):
+        # Literal protected-word edits, independently specified in both forms.
+        cases = (
+            ("insert", "say'now", "say'not'now"),
+            ("delete", "say'not'now", "say'now"),
+            ("replace", "say'no'now", "say'yes'now"),
+            ("move", "alpha'not'omega'delta", "alpha'omega'not'delta"),
+            ("unit move", "alpha'mg'omega'delta", "alpha'omega'mg'delta"),
+            ("unit-word move", "alpha'seconds'omega'delta", "alpha'omega'seconds'delta"),
+            ("start delete", "not'early", "early"),
+            ("curly insert", "say’now", "say’not’now"),
+            ("curly delete", "say’not’now", "say’now"),
+            ("curly replace", "say’no’now", "say’yes’now"),
+            ("curly move", "alpha’not’omega’delta", "alpha’omega’not’delta"),
+            ("curly unit move", "alpha’mg’omega’delta", "alpha’omega’mg’delta"),
+            ("curly unit-word move", "alpha’seconds’omega’delta", "alpha’omega’seconds’delta"),
+            ("curly start delete", "not’early", "early"),
+        )
+        pad = "The trial report describes the observations and their limitations. " * 10
+        for name, quote, source in cases:
+            for left, right in ((quote, source), (source, quote)):
+                with self.subTest(edit=name, quote=left):
+                    self.assert_plain(pad + left, pad + right, "protected_edit")
+
+    def test_apostrophe_near_control(self):
+        quote = "a" * 200 + " alpha'trial'omega"
+        source = "a" * 200 + " alpha'trials'omega"
+        digest = "sha256:" + hashlib.sha256(source.encode()).hexdigest()
+        self.assertEqual(check(quote, source),
+                         QuoteMatch(quote.encode(), source.encode(), digest, digest, 0, 219,
+                                    "mismatch", "near_match", quote, source,
+                                    NearMatch(436 / 437, (Difference(212, 212, 212, 213),))))
+
+    def test_apostrophe_whitespace_control(self):
+        quote = "a" * 200 + " trial's"
+        source = "a" * 200 + " trial's a"
+        digest = "sha256:" + hashlib.sha256(source.encode()).hexdigest()
+        self.assertEqual(check(quote, source),
+                         QuoteMatch(quote.encode(), source.encode(), digest, digest, 0, 210,
+                                    "mismatch", "near_match", quote, source,
+                                    NearMatch(208 / 209, (Difference(208, 208, 208, 210),))))
 
     def test_prefix_edit_regions(self):
         for prefix in ("un", "non", "in", "im", "ir", "il", "dis"):
@@ -438,10 +480,10 @@ def protected_edits(words, token, data):
     ("%", "‰"), ("=", "<"), (">", "≤"), ("≥", "⁄"), ("²", "³"), ("₁", "₂"),
     ("ⁱ", "ⁿ"), ("ₐ", "ₓ"), ("½", "⅓"), ("①", "②"),
     ("-not-", "-never-"), ("-no-", "-cannot-"), ("-can't-", "-without-"),
-    ("-mg-", "-µg-"), ("-s-", "-kg-"), ("-seconds-", "-minutes-")]), st.sampled_from([" ", "-"]))
+    ("-mg-", "-µg-"), ("-s-", "-kg-"), ("-seconds-", "-minutes-")]), st.sampled_from([" ", "-", "'", "’"]))
 def soundness(text, tokens, boundary):
     # Word packets create letter boundaries at EVERY character position,
-    # including inside a lexeme and either side of existing hard hyphens.
+    # including inside a lexeme, across hyphens and apostrophe-joined words.
     # Character material needs no boundary. All four edit kinds are exercised.
     token, replacement = tokens
     if token.startswith("-") and token.endswith("-") and len(token) > 2:
