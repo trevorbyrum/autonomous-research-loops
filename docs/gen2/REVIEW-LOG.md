@@ -2206,3 +2206,12 @@ The post-2q Gate D is renumbered #5.
 - **The mutant** restores the defect and gets 128 assertion kills.
 - **Landing at dba8f35:** `gen2-check` green.
 - **Orchestrator:** DEBT-038 closed. 2d-3b part 2 (governed V-6) dispatched; see `docs/gen2/tasks/2d-3b2.md`.
+
+## 2026-10-11: 2d-3b2 slice 1 (immutable source-artifact identity bindings): PASS on first review
+- **Astra** (`245fa7a8`, pinned 53e7e47; review at `private/reviews/gen2-2d-3b2a-astra-review-20261011.md`): **A, B and C all PASS. ROOT-CAUSE. "2d-3b2 slice 1 is ACCEPTED."** No blocking or non-blocking findings.
+- **Admission:** Router admission is enforced at the existing commit boundary.
+- **DDL immutability:** these attempts were all refused: a changed-hash INSERT, an UPDATE, an UPSERT, and both REPLACE forms.
+- **Rollback and replay:** both were probed under faults.
+- **`service.py`:** now 1,421 lines.
+- **Landing at 53e7e47:** green, for both `gen2-check` and `gen2-gateway`.
+- **Next:** slice 2 (governed V-6 matching and enforcement) is dispatched, per `docs/gen2/tasks/2d-3b3.md`.
