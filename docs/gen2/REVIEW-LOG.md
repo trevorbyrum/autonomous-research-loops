@@ -2301,3 +2301,12 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` exit 2 (DDL trace);
   - `gen2-gateway` green.
 - **Routed:** `docs/gen2/tasks/2d-4b2a-repair-1.md`, round 1 of 3.
+
+## 2026-10-11: 2d-4b2 slice 1, round 2 (2d-4b2a-repair-1): PASS, and 2d-4b2 slice 1 is accepted
+- **Astra** (`eba152d2`, pinned 3e826f3; `private/reviews/gen2-2d-4b2a-r2-astra-review-20261011.md`): **A, B and C all PASS. "2d-4b2 slice 1 is ACCEPTED."**
+- **F1 closed:** the DDL trace marker is in place.
+- **F2 closed:** 17 SQL mutants and 5 admission-conjunct mutants are each killed in isolation, and the three original counterexamples are now caught.
+- **Landing at 3e826f3, all green:**
+  - `gen2-check`: 3,044 tests; 2,969 of 2,969 mutants killed.
+  - `gen2-gateway`: 413 of 413 mutants killed.
+- **Next:** 2d-4b3 dispatched (`docs/gen2/tasks/2d-4b3.md`): receipt consumption, V-2 tiers and tables, and V-3 extraction validation.
