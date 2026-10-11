@@ -2259,3 +2259,14 @@ The post-2q Gate D is renumbered #5.
 - **Still with 2e2:** automatic deadline escalation.
 - **Landing at 129d202:** green on both `gen2-check` and `gen2-gateway`.
 - **Next:** 2d-4 dispatched (`docs/gen2/tasks/2d-4.md`), DOSSIER slice 4, covering V-2, V-3, V-5 and V-8.
+
+## 2026-10-11: 2d-4 part 1 (adverse verification verdicts → owned holds): round 1 BLOCK on C1 only
+- **Astra** (`7864934f`, pinned d16613d; review at `private/reviews/gen2-2d-4a-astra-review-20261011.md`): **A PASS (ROOT-CAUSE), B PASS, C BLOCK.**
+- **What passed:** the runtime change is accepted. Verdicts map to judgment holds; `cannot_assess` maps to a judgment hold with a missing-content cause, owned by the producer.
+- **C1:** the new open-creation negative test is masked by a table CHECK. The existing test still detects removal of the guard, but the new test claims to be independent and isn't.
+- **Non-blocking:**
+  - **NB1:** documentation wording. Folded into the repair.
+  - **NB2:** retained-disagreement consumption. Recorded as a slice-6 follow-through in `tasks/2d.md`.
+  - **NB3:** Router headroom of 72 lines. Continues under DEBT-036.
+- **Landing at d16613d:** green, with 2,885 of 2,885 mutants killed.
+- **Routed:** `docs/gen2/tasks/2d-4a-repair-1.md`, a test-only fix (round 1 of 3).
