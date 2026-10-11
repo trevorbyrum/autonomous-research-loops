@@ -2227,3 +2227,16 @@ The post-2q Gate D is renumbered #5.
   - **NB2:** SQL checks selected fields only. Clarify the split between the Router and SQL at the 2d storage closeout.
 - **Landing at 4eba3c6:** green. The probes still reproduce.
 - **Routed:** `docs/gen2/tasks/2d-3b3-repair-1.md` (round 1 of 3). The F1 binding and the F2 capture-eligibility fence land together.
+
+## 2026-10-11: 2d-3b3 part 1 round 2 (2d-3b3-repair-1): BLOCK; F1/F2 closed, F3 new
+- **Astra** (`a2749534`, pinned 20f209c; `private/reviews/gen2-2d-3b3-r2-astra-review-20261011.md`): **A BLOCK, B PASS, C BLOCK.**
+- **F1 and F2 closed at root cause:**
+  - substitution refusals;
+  - the null-reference bypass is closed;
+  - re-capture is sound.
+- **F3 (new):** the per-row trigger `quote_checks_refence_capture` re-quarantines accepted claims *before* the same commit's valid receipt is written. A valid verification commit therefore leaves the claim permanently `quarantined`.
+- **DDL 12 install-time DML:** this is migration-like if applied by hand to a populated store. It is unreachable on normal open, because the exact-schema gate refuses old stores. It is not a separate blocker.
+- **Landing at 20f209c:** green.
+- **Routed:** `docs/gen2/tasks/2d-3b3-repair-2.md`, **round 3 of 3 (the cap)**.
+  - Reconcile at the commit boundary, after all writes.
+  - Remove the install-time DML.
