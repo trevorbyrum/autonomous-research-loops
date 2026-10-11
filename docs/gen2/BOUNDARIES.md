@@ -40,8 +40,10 @@ revalidates operands, verifier authority, live state, lease, pins and topic paus
 SQL 14 retains exact operands/lineage with verifier attribution; equal replay
 adds nothing and conflicts roll back. SQL binds recorded relationships and size;
 the Router authenticates and hashes bytes. This record supplies no tier, table,
-extraction-validation or support authority. Receipt consumption remains the next
-2d-4b part; trusted workflow capture execution remains 2e2.
+extraction-validation or support authority. Canonical-byte receipts consume it
+(SQL 15, task 2d-4b3 slice 1); content/table tiers and durable extraction
+validation are the remaining 2d-4b3 slices; trusted workflow capture execution
+remains 2e2.
 
 ## Station supervisor
 

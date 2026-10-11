@@ -2310,3 +2310,14 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check`: 3,044 tests; 2,969 of 2,969 mutants killed.
   - `gen2-gateway`: 413 of 413 mutants killed.
 - **Next:** 2d-4b3 dispatched (`docs/gen2/tasks/2d-4b3.md`): receipt consumption, V-2 tiers and tables, and V-3 extraction validation.
+
+## 2026-10-11: 2d-4b3 slice 1 (canonical-byte receipts consume admitted acquisitions): PASS on first review
+- **Astra** (`ea3c1645`, pinned 7106c36; review at `private/reviews/gen2-2d-4b3a-astra-review-20261011.md`): **A, B and C all PASS. ROOT-CAUSE. "2d-4b3 slice 1 is ACCEPTED."**
+- **What was accepted:**
+  - DDL 15 binds all eight operands.
+  - Topic equality follows soundly from the verifier identity.
+  - There is no migration-like DML.
+  - The non-canonical methods keep their gaps, but those gaps are explicitly scheduled.
+- **N1 (documentation lag):** fixed by the orchestrator in this commit. The BOUNDARIES text and the INVARIANTS V-3 locator now name SQL 14/15.
+- **Landing at 7106c36:** green on both `gen2-check` and `gen2-gateway`.
+- **Next:** 2d-4b3 slice 2 (V-2 content/table tiers) is dispatched (`docs/gen2/tasks/2d-4b3b.md`).
