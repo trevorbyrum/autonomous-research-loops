@@ -352,3 +352,45 @@ immutable version identity, attribution and replay, and pair each new guard
 with an accepted control. Run the targeted tests, full composition module,
 every affected mutant family and the six gates; evidence goes to private
 `evidence/2d-3b2/`. Stop after this first part.
+
+## 2d-3b3: governed computation and persistence first
+
+Design before code against `4b119be` on gen2. Flow S4 step 4 and §6.7,
+BOUNDARIES.md Router/Verifier, V-6, and task 2d's operator rulings govern.
+The refined estimate is **680 hand-written lines**: computed admission and
+persistence 100, ordered DDL/schema 100, quarantine/notification/adjudication
+consumers 110, Router and DDL tests 260, mutants/integration/metrics 110.
+Split before implementation: **this part, about 440 lines**, implements
+governed computation, append-only persistence and its quarantine support
+fence; **the next part, about 240 lines**, completes owner notification,
+NLI adjudication refusal/allowance, all disposition consumers and re-capture
+tests. Stop after the first part; the whole task remains incomplete.
+
+Use the existing registered EvidenceWriter, with thin service wiring. A
+verification outcome may propose quote-check operands: recorded claim
+revision, work/source version, topic-authorized source artifact reference,
+half-open byte span, and quote text. The engine derives the expected hash
+from the immutable source binding, authenticates the referenced bytes and
+calls the accepted `quote-protection/5` matcher outside the writer lock.
+The claim revision identifies the capturing pass; no supplied producer or
+match label confers authority (an optional match label is ignored). This
+part records NLI as `not_run`, respecting the disabled Phase-2 checker.
+
+Ordered DDL extends `quote_checks` with a canonical JSON result containing
+lossless hexadecimal original/span bytes, normalized forms, offsets, both
+artifact hashes, every matcher/version identity and near-match diagnostics.
+Additional columns bind the result to topic/work/source version and the
+actual verification invocation/operation. Historical rows remain retained;
+new governed records revalidate the immutable source and claim bindings in
+the transaction. SQL compares summary columns with the computed document.
+Equal-operation replay writes no second check; conflicting check IDs refuse
+atomically. A new supporting receipt cannot consume a governed quarantined
+check, including via `partially_supports`. No source is quarantined.
+
+Tests use literal expected results through Router commits and raw SQL,
+covering exact/normalized/near/protected outcomes, source version/hash,
+topic and invocation authority, ignored labels, result persistence, replay,
+conflicts, immutability and the support fence. Pair the new guards with
+mutants and accepted controls. Run targeted tests, full composition,
+affected mutant families and the six gates; evidence belongs in private
+`evidence/2d-3b3/`. Never migrate a real store.

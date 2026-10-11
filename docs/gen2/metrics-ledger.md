@@ -422,3 +422,41 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - target: engine|file|gen2/router/quote_matching.py
 - reason: Task 2d-3a adds the planned pure V-6 matcher with retained byte/span and normalization operands; it has no internal dependencies or I/O and grants no admission authority.
 - task: 2d-3a
+
+### ML-0064
+- action: admit
+- target: engine|edge|gen2/router/evidence_writer.py->gen2/router/quote_matching.py
+- reason: The existing evidence collaborator computes V-6 results with the accepted pure matcher during validation, outside the writer transaction.
+- task: 2d-3b3
+
+### ML-0065
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/quote_matching.py
+- reason: Existing engine composition reaches the pure matcher through Router validation; no provider or additional writer is introduced.
+- task: 2d-3b3
+
+### ML-0066
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/quote_matching.py
+- reason: Existing station commits reach the pure matcher through the governed Router path; the station supplies operands without match authority.
+- task: 2d-3b3
+
+### ML-0067
+- action: admit
+- target: engine|reach|gen2/router/evidence_writer.py->gen2/router/quote_matching.py
+- reason: The registered collaborator uses the pure match result as its persistence operand, retaining all bytes and rule identities.
+- task: 2d-3b3
+
+### ML-0068
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/quote_matching.py
+- reason: One thin validation call reaches the matcher through EvidenceWriter rather than adding matching responsibility to service.py.
+- task: 2d-3b3
+
+### ML-0069
+- action: budget
+- metric: fan_out
+- location: engine:gen2/router/evidence_writer.py
+- limit: 3
+- reason: The collaborator adds the accepted pure matcher to its existing core and boundary dependencies; transaction ownership remains with Router.
+- task: 2d-3b3
