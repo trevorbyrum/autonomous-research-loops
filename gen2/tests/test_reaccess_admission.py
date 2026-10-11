@@ -26,16 +26,18 @@ def raw_acquisition(case, **changes):
 class AcquisitionCase(Workflow):
     ACQUIRER = "inv_capture001"
     EVENT_ID = "rev_capture001"
+    RESPONSE = RAW
+    COVERAGE = "searched_ok"
 
     def setUp(self):
         super().setUp()
         self.approved()
         self.producer = self.started("inv_capture001")
         self.acquirer = self.producer if self.ACQUIRER == "inv_capture001" else self.started(self.ACQUIRER, "checkpoint")
-        self.raw = RAW.replace(b"inv_capture001", self.ACQUIRER.encode())
+        self.raw = self.RESPONSE.replace(b"inv_capture001", self.ACQUIRER.encode())
         obs = {"observation_id": "obs_capture001", "request": json.loads(REQUEST), "request_identity": digest(REQUEST),
             "attempt": 1, "lane": "crossref", "obligation_ids": ["O-1"], "started_at": STAMP, "ended_at": STAMP,
-            "coverage_state": "searched_ok", "result_count": 1, "completeness": "complete", "error_class": None,
+            "coverage_state": self.COVERAGE, "result_count": 1, "completeness": "complete", "error_class": None,
             "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None, "gateway_call_ref": "gw-call:101",
             "page_outcome": "end_unknown", "continuation": None}
         event = {"event_id": self.EVENT_ID, "provider_record_id": "doi:10.1/fixture", "rank": 1, "captured_at": STAMP}

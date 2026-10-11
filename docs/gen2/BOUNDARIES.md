@@ -45,6 +45,15 @@ extraction-validation or support authority. Canonical-byte receipts consume it
 validation are the remaining 2d-4b3 slices; trusted workflow capture execution
 remains 2e2.
 
+SQL 16 (2d-4b3b, first part) caps every canonical receipt verdict at its
+consumed acquisition's recorded content: the selected record's nonblank abstract
+or full-text body, with `metadata_only` unable to certify full text. Links,
+record-kind labels and availability flags alone grant bibliographic access;
+canonical content supplies no reproduction evidence. This check runs in the
+existing receipt insert transaction, including raw inserts. Tables and the
+two extraction-method ceilings remain the next part of the split 2d-4b3b brief,
+dependent on durable extraction consumption; no enforcement is claimed yet.
+
 ## Station supervisor
 
 - **Definition:** the one lifecycle implementation for every execution kind (research pass, discovery, delegate, verification, checkpoint); code.

@@ -115,7 +115,7 @@ class VerificationTest(StoreTestCase):
         self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
         self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_acquire01', ?)", TOPIC, h("7"), T)
         self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{}        ', T)
-        self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp")  # producer-acquired canonical bytes
+        self.verify("ver_00000001", tier="bibliographic", required="bibliographic", use="sampled", method="canonical_bytes", extraction="inv_pppppppp")  # producer-acquired canonical bytes; fixture records no content
         self.verify("ver_00000002", method="validated_extraction", extraction="inv_pppppppp", validation="validation-7")
 
     def test_supports_cannot_exceed_obtained_tier(self) -> None:

@@ -11844,6 +11844,216 @@
   ],
   "why": "A separately accepted raw canonical receipt consumes exact recorded source/version/hash/acquirer/verifier/call/time/route operands; no transport authenticity is inferred from raw SQL."
  },
+ "2D4B3B-abstract-ceiling": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-abstract-nonblank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-abstract-rank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-abstract-type": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-abstract-whitespace": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-acquirer": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-array": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_bibliographic_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-availability": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-bibliographic-ceiling": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-bibliographic-rank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_full_text_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-call": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-comparison": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-full-text-ceiling": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-full_text-rank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-json": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_bibliographic_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-method": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-missing-admission-diagnostic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-object": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_bibliographic_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-observation": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-record": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-reproduced-rank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-route": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-text-nonblank": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-text-type": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-text-whitespace": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-time": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-verifier": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-version": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
+ "2D4B3B-work": {
+  "by_hand": true,
+  "controls": [
+   "test_store_content_tiers.ContentDDLTest.test_lower_tier_control"
+  ],
+  "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

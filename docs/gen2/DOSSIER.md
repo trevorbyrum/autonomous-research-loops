@@ -709,3 +709,45 @@ part, not claimed as enforced. Workflow execution remains 2e2.
 Run targeted receipt/acquisition/legacy verification tests, full Router
 composition, every mutant family targeting changed files, and the eight
 requested Make gates. Evidence belongs in private `evidence/2d-4b3/`.
+
+### 2d-4b3b: recorded canonical content tiers (design before code)
+
+Re-estimate against `7742d84`: **about 850 hand-written lines** for the
+complete content/table brief, including independent Router/raw-DDL cases,
+predicate mutants, fixture updates and documentation. Split before code:
+**this dispatch, about 450 lines**, establishes canonical content ceilings;
+**next part, about 400 lines**, needs recorded table availability and ceilings
+on both extraction paths, in dependency order with durable extraction
+validation (the following 2d-4b3 part). Stop after the first part. The whole
+2d-4b3b brief remains incomplete; no table/extraction guarantee is claimed.
+
+SQL 16 derives the ceiling directly from SQL 14's immutable response bytes,
+selecting the record by the admitted provider-record identity, and consuming
+SQL 15's acquisition operands. Its work/version selectors and SQL 14's source
+binding imply the same immutable content hash; verifier identity implies topic,
+so these two redundant equalities are not repeated. A record with real nonblank
+`abstract` text supports abstract; a `full_text` record with real nonblank
+`text` supports full text only on a recorded `searched_ok` route. A
+`metadata_only` route cannot certify full text. Links, kind labels, availability
+flags, media types, raw provider metadata and other records in the response
+grant no content tier. Everything else supports bibliographic access only.
+Canonical acquisition alone supplies no reproduction evidence, so even actual
+full text refuses `reproduced`; its accepted control belongs to the durable
+reproduction/extraction work, not a fabricated capture flag. The trigger applies
+to every verdict, with SQL 15 retaining the missing-acquisition diagnosis.
+No derived authority table, Router API, Python production change or migration
+is added. Flow S4 step 8 and BOUNDARIES Router/Verifier remain the authorities.
+
+Literal trusted Router fixtures cover the three obtainable tiers, inflation,
+link-only records, metadata-only routes, unrelated records, refusal isolation,
+replay/conflict and rollback. Isolated raw-DDL predicate pairs cover record
+selection, content shape/nonblankness, route availability, tier ordering and
+each acquisition selector, including same-response distractor acquisitions.
+New mutants each have a separately accepted control. Existing canonical raw
+controls declare bibliographic access, the tier their empty fixtures actually
+record; their acquisition-lineage negatives remain unchanged.
+Both noncanonical methods still have their pre-existing tier/provenance gap;
+the next part must close it with durable acquisition/extraction consumption,
+and bind every cited table to retained acquired content. Trusted workflow
+execution remains 2e2. Run targeted tests, full Router composition, all affected
+mutant families and the eight requested gates; evidence is `evidence/2d-4b3b/`.

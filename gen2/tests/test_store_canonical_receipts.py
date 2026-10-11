@@ -15,7 +15,7 @@ class CanonicalDDLTest(relationships.RelationshipTest):
         acq = {"route": "gateway:crossref", "retrieved_at": T, "gateway_call_ref": "gw-call:1", "cache_reuse": True}
         acq.update(changes.pop("acquisition", {}))
         version = changes.pop("version", "v2")
-        self.verify("ver_canonical1", method="canonical_bytes", extraction=changes.pop("extraction", "inv_pppppppp"), use="sampled", quote=("not_applicable", None),
+        self.verify("ver_canonical1", tier="bibliographic", required="bibliographic", method="canonical_bytes", extraction=changes.pop("extraction", "inv_pppppppp"), use="sampled", quote=("not_applicable", None),
             gateway=acq["gateway_call_ref"], receipt_overrides={"source": {"work_id": changes.get("work", "wrk_00000001"), "source_version": version}, "acquisition": acq},
             column_overrides={"source_version": version, "acquisition": json.dumps(acq)}, **changes)
 
