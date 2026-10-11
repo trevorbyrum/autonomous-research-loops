@@ -2270,3 +2270,10 @@ The post-2q Gate D is renumbered #5.
   - **NB3:** Router headroom of 72 lines. Continues under DEBT-036.
 - **Landing at d16613d:** green, with 2,885 of 2,885 mutants killed.
 - **Routed:** `docs/gen2/tasks/2d-4a-repair-1.md`, a test-only fix (round 1 of 3).
+
+## 2026-10-11: 2d-4 part 1, round 2 (2d-4a-repair-1): PASS. 2d-4 part 1 accepted
+- **Astra** (`95b2b6c6`, pinned b2a69b9; `private/reviews/gen2-2d-4a-r2-astra-review-20261011.md`): **A, B and C all PASS. "2d-4 part 1 is ACCEPTED."**
+- **C1 closed:** the open-creation test now fails on its own when the guard is removed. Its counterfactual fails with the trigger removed, and the control still passes. The test is paired with `A2-holds-created-open`.
+- **NB1 confirmed.**
+- **Landing at b2a69b9:** `gen2-check` green.
+- **Next:** 2d-4 part 2 (V-2 tier/route, V-3 re-access/extraction) dispatched as `docs/gen2/tasks/2d-4b.md`.
