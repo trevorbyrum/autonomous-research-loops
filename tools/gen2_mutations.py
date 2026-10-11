@@ -148,6 +148,7 @@ FILE_TARGETS = {
     "gen2/schema/obligation-assessment.schema.json": ("attr", "test_obligation_admission", "SCHEMA_PATH"),
     "gen2/schema/branch-window.schema.json": ("attr", "test_branch_windows", "SCHEMA_PATH"),
     "gen2/schema/source-artifact.schema.json": ("attr", "test_source_artifacts", "SCHEMA_PATH"),
+    "gen2/schema/quote-check.schema.json": ("attr", "test_governed_quotes", "SCHEMA_PATH"),
     "gen2/schema/outcome-document.schema.json": ("attr", "test_semantic_assessments", "OUTCOME_SCHEMA"),
     "gen2/importer/dry_run.py": ("module", "gen2.importer.dry_run"),
     "gen2/importer/__main__.py": ("disk",),  # `python -m gen2.importer` runs it; only children do

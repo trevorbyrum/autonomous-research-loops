@@ -1,0 +1,18 @@
+{
+  "fixture": {"schema": "quote-check.schema.json", "expect": "valid", "tests": "V-6 computed operands, with no supplied attribution or result"},
+  "instance": {
+    "check_id": "qck_quote00001",
+    "claim_id": "clm_quote00001",
+    "claim_revision": 1,
+    "work_id": "wrk_quote00001",
+    "source_version": "v1",
+    "artifact_ref": {
+      "content_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "size_bytes": 5,
+      "media_type": "text/plain"
+    },
+    "quoted_text": "trial",
+    "span_start": 0,
+    "span_end": 5
+  }
+}

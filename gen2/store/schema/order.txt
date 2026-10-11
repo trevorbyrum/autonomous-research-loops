@@ -15,3 +15,4 @@
 08-obligation-assessments.sql
 09-branch-windows.sql
 10-source-artifacts.sql
+11-governed-quote-checks.sql

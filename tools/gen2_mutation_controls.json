@@ -10741,6 +10741,102 @@
   ],
   "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
  },
+ "2D3B3-artifact-reference": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_exact_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-authenticated-bytes": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_exact_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-authority": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_exact_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-claim": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_exact_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-ddl-binding": {
+  "controls": [
+   "test_store_governed_quotes.DDLTest.test_control"
+  ],
+  "why": "A matching governed quote with its exact source and authenticated verification commit can supply support."
+ },
+ "2D3B3-ddl-quarantine": {
+  "controls": [
+   "test_store_governed_quotes.DDLTest.test_control"
+  ],
+  "why": "A matching governed quote with its exact source and authenticated verification commit can supply support."
+ },
+ "2D3B3-ddl-status-required": {
+  "controls": [
+   "test_store_governed_quotes.DDLTest.test_control"
+  ],
+  "why": "A complete computed result has an explicit status."
+ },
+ "2D3B3-ddl-summary": {
+  "controls": [
+   "test_store_governed_quotes.DDLTest.test_control"
+  ],
+  "why": "A governed matching result has truthful summary columns."
+ },
+ "2D3B3-derived-hash": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_exact_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-diagnostic": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_exact_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-label": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_exact_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-original-bytes": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_wrong_hash"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-persistence": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_noop_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-schema": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_schema_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-version": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_exact_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
+ "2D3B3-wiring": {
+  "controls": [
+   "test_governed_quotes.AdmissionTest.test_noop_control"
+  ],
+  "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

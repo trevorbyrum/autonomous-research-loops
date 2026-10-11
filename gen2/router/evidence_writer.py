@@ -1,16 +1,19 @@
 """The evidence and governance rows of one commit: `_write_evidence` and the five helpers task 2q-b9 split out of it, moved here by task 2q-b10. A collaborator of
-service.Router ("Router composition", BOUNDARIES.md). It runs inside the transaction `_commit_in_transaction` already holds (the core's `_guarded`: BEGIN IMMEDIATE, the
+service.Router ("Router composition", BOUNDARIES.md). Its writes run inside the transaction `_commit_in_transaction` already holds (the core's `_guarded`: BEGIN IMMEDIATE, the
 clock read once the lock is held, rollback and refusal as before) and opens no transaction and reads no clock of its own: the instant, the committing invocation and
-operation, the checked payload and the commit's new triggers and outbox events are passed in.
+operation, the checked payload and the commit's new triggers and outbox events are passed in. Validation helpers run before that transaction; `check_quotes` reads
+authenticated source bytes and computes the pure matcher result outside the writer lock (V-6, C-8).
 
 Trace: BOUNDARIES.md Router ("write through any path other than its own transactions"); INVARIANTS V-10, RG-5, G-12 (producer, verifier, recorder and signal source are
 the committing invocation and operation, never a document field), and the ones the moved code's own comments name.
 """
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Callable, Mapping, Protocol
 
 from gen2.core import canonical
+from gen2.router import boundary, quote_matching
 from gen2.router.boundary import Refusal
 
 
@@ -25,6 +28,7 @@ class EvidenceCore(Protocol):
     """What the evidence writer takes of the router core, and nothing else; service.Router implements it without inheriting it. Every member is the core's own
     (service.py; `_pin_status` is its delegate to amendments.py), so no comment names another owner."""
     _store: Rows
+    _spool: object
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
     def _pin_status(self, inv: dict) -> str: ...
     def _work_of_topic(self, work_id: str, topic_id: str) -> bool: ...
@@ -33,6 +37,42 @@ class EvidenceCore(Protocol):
 class EvidenceWriter:
     def __init__(self, core: EvidenceCore) -> None:
         self._core = core
+
+    def check_quotes(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> list[dict]:
+        """V-6 computation outside the lock; labels and attribution are not operands."""
+        records = payload.get("quote_checks", [])
+        if records and (inv["kind"] != "verification" or inv["admission_context"] != "contract/1"):
+            raise Refusal("kind_not_permitted", "quote checks require contract-admitted verification")
+        checked = []
+        for record in records:
+            claim = self._core._one("claims", {"claim_id": record["claim_id"], "revision": record["claim_revision"]})
+            if claim is None or claim["topic_id"] != inv["topic_id"]:
+                raise Refusal("payload_invalid", "quote check needs a recorded claim revision of this topic")
+            source = self._core._one("source_artifacts", {"topic_id": inv["topic_id"], "work_id": record["work_id"], "source_version": record["source_version"]})
+            if source is None:
+                raise Refusal("payload_invalid", "quote check needs a recorded work/source version")
+            ref = record["artifact_ref"]
+            bind(ref, "quote source")
+            artifact = boundary.staged(self._core._spool, ref["content_hash"], ref["size_bytes"], topic_id=inv["topic_id"], media_type=ref["media_type"])
+            result = quote_matching.check_quote(record["quoted_text"].encode("utf-8"), artifact,
+                record["span_start"], record["span_end"], source["content_hash"])
+            document = asdict(result)
+            document["quoted_bytes_hex"] = document.pop("quoted_bytes").hex()
+            document["source_span_bytes_hex"] = document.pop("source_span_bytes").hex()
+            checked.append({**{k: record[k] for k in ("check_id", "claim_id", "claim_revision", "work_id", "source_version")},
+                "topic_id": inv["topic_id"], "source_artifact_hash": source["content_hash"],
+                "span_start": result.span_start, "span_end": result.span_end,
+                "normalization_version": "/".join(result.normalization),
+                "exact_match": "mismatch" if result.quote_quarantined else "matched", "quote_quarantined": result.quote_quarantined,
+                "nli_signal": "not_run", "match_result": document})
+        return checked
+
+    def _write_quote_checks(self, checked: dict, inv: dict, op_id: str, now: str) -> dict:
+        records = checked["quote_checks"]
+        for record in records:
+            self._core._store.insert("quote_checks", {**record, "verifier_invocation_id": inv["invocation_id"],
+                "recorded_by_operation_id": op_id, "checked_at": now})
+        return {"quote_checks": [r["check_id"] for r in records]} if records else {}
 
     def bind_source_artifacts(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> None:
         records = payload.get("source_artifacts", [])
@@ -65,6 +105,7 @@ class EvidenceWriter:
         payload, op_id, topic_id = checked["payload"], env["operation_id"], inv["topic_id"]
         sources = self._write_source_artifacts(payload, inv, op_id, now)
         claims = self._write_claims(payload, topic_id, inv, now)
+        quotes = self._write_quote_checks(checked, inv, op_id, now)
         for hold in payload["holds"]:
             self._core._store.insert("holds", {**hold, "topic_id": topic_id, "created_at": now, "created_by_operation_id": op_id})
         for doc in payload["verification_receipts"]:
@@ -113,7 +154,7 @@ class EvidenceWriter:
                 "source_revision": manifest["source"]["revision"], "source_content_hash": manifest["source"]["content_hash"],
                 "approval_decision_id": manifest["approval"]["operator_decision_id"], "bundle_content_hash": manifest["bundle"]["content_hash"],
                 "expected_connectors": manifest["expected_connectors"], "manifest": manifest, "committed_by_operation_id": op_id, "created_at": now})
-        return {**sources, "claims": claims, "claim_promotions": promotions, "claim_source_links": links,
+        return {**sources, **quotes, "claims": claims, "claim_promotions": promotions, "claim_source_links": links,
                 "scoping_reports": [[r["report_id"], r["version"]] for r in payload["scoping_reports"]],
                 "source_proposals": [p["proposal_id"] for p in payload["source_proposals"]],
                 "review_closures": [c["episode_id"] for c in payload["review_closures"]],

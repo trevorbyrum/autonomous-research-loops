@@ -26,6 +26,10 @@
     "exports"
   ],
   "properties": {
+    "quote_checks": {
+      "description": "V-6 operands for engine-computed checks; a supplied match label is ignored.",
+      "type": "array", "maxItems": 64, "items": {"$ref": "quote-check.schema.json"}
+    },
     "source_artifacts": {
       "description": "V-6 source-version byte identity, recorded by contract-admitted primary work. The Router derives capture attribution.",
       "type": "array", "maxItems": 64, "items": {"$ref": "source-artifact.schema.json"}

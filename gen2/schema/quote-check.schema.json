@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/quote-check.schema.json",
+  "$comment": "flow: S4 step 4; §6.7 | boundaries: Router; Verifier | invariants: V-6; C-9; C-11; RG-5",
+  "type": "object", "additionalProperties": false,
+  "required": ["check_id", "claim_id", "claim_revision", "work_id", "source_version", "artifact_ref", "quoted_text", "span_start", "span_end"],
+  "properties": {
+    "check_id": {"type": "string", "pattern": "^qck_[A-Za-z0-9_-]{8,64}$"},
+    "claim_id": {"$ref": "common.schema.json#/$defs/claim_id"},
+    "claim_revision": {"$ref": "common.schema.json#/$defs/revision"},
+    "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
+    "source_version": {"$ref": "common.schema.json#/$defs/short_text"},
+    "artifact_ref": {"$ref": "common.schema.json#/$defs/artifact_ref"},
+    "quoted_text": {"type": "string", "minLength": 1, "maxLength": 65536},
+    "span_start": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "span_end": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "exact_match": {"enum": ["matched", "mismatch"]}
+  }
+}

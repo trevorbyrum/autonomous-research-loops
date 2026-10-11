@@ -955,6 +955,7 @@ class Router:
             bind(claim["text_ref"], f"{claim['claim_id']}: its text")
         self._assessments.bind_evidence(payload, bind)
         self._evidence_writer.bind_source_artifacts(payload, inv, bind)
+        quote_checks = self._evidence_writer.check_quotes(payload, inv, bind)
         for report in payload["scoping_reports"]:  # task 2a: flow S2's hand-off, by the work whose admission it names (C-12)
             if report["topic_id"] != inv["topic_id"]:
                 raise Refusal("cross_topic", f"{report['report_id']} is about topic {report['topic_id']}")
@@ -1011,7 +1012,7 @@ class Router:
             if fact is not None and self._one("capability_facts", {"fact_id": fact}) is None:
                 raise Refusal("payload_invalid", f"{hold['hold_id']}: capability fact {fact} is not recorded")
         validated = list(dict.fromkeys([env["payload_digest"], *(ref["content_hash"] for ref in env["result_refs"])]))
-        return {"invocation": inv, "payload": payload, "artifacts": artifacts, "manifests": manifests, "protocol": protocol,
+        return {"invocation": inv, "payload": payload, "artifacts": artifacts, "manifests": manifests, "protocol": protocol, "quote_checks": quote_checks,
                 "validation": {"validator_version": VALIDATOR_VERSION, "policy_version": f"config-bundle/{bundle['version']}", "validated_hashes": validated}}
 
     def _commit_in_transaction(self, env: dict, fingerprint: str, checked: dict, now: str) -> tuple[str, dict]:
