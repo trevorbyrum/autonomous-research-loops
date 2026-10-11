@@ -2215,3 +2215,15 @@ The post-2q Gate D is renumbered #5.
 - **`service.py`:** now 1,421 lines.
 - **Landing at 53e7e47:** green, for both `gen2-check` and `gen2-gateway`.
 - **Next:** slice 2 (governed V-6 matching and enforcement) is dispatched, per `docs/gen2/tasks/2d-3b3.md`.
+
+## 2026-10-11: 2d-3b3 part 1 (governed quote computation and persistence): round 1 BLOCK
+- **Astra** (`637cb598`, pinned 4eba3c6, design d859c29; `private/reviews/gen2-2d-3b3a-astra-review-20261011.md`): **A BLOCK, B PASS, C BLOCK.**
+- **Accepted:** computation, authentication, validation outside the writer transaction (no time-of-check/time-of-use gap), lossless persistence and DDL 11 compatibility.
+- **F1 (HIGH, false-support class (a)):** a receipt naming a matching check can cite a different span, source version, work, hash or normalization. Reproduced through to load-bearing `accepted_support`.
+- **F2 (HIGH):** a receipt marked `not_applicable` with a null check reference skips the quarantine fence, so a quarantined load-bearing capture is promoted. A non-load-bearing quarantined capture is promoted without any receipt.
+- **Family cause:** authority is attached to a freely chosen check reference, not to the captured evidence that is actually consumed.
+- **Non-blocking:**
+  - **NB1:** adjudication and notification. Already scoped to part 2.
+  - **NB2:** SQL checks selected fields only. Clarify the split between the Router and SQL at the 2d storage closeout.
+- **Landing at 4eba3c6:** green. The probes still reproduce.
+- **Routed:** `docs/gen2/tasks/2d-3b3-repair-1.md` (round 1 of 3). The F1 binding and the F2 capture-eligibility fence land together.
