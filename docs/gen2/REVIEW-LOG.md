@@ -2170,3 +2170,17 @@ The post-2q Gate D is renumbered #5.
   - **The rule:** a diagnostic is allowed only if the protected-character skeletons are equal, the edit regions are safe, there is no relocation, and no negative prefix was edited.
   - **Brief amendment:** over-protecting the lookalikes is accepted by design.
 - **Routed to** `docs/gen2/tasks/2d-3a-repair-2.md`, **round 3 of 3 (the cap)**.
+
+## 2026-10-11: 2d-3a round 3 (2d-3a-repair-2): BLOCK at the round cap, waiting for an operator decision
+- **Astra** (`4d873899`, pinned ce6dfaa; `private/reviews/gen2-2d-3a-r3-astra-review-20261010.md`): **Gate A BLOCK, Gate B PASS, Gate C BLOCK. The round cap is reached.**
+- **Closed at the root cause:**
+  - R2-2 (numbers moved within a lexeme);
+  - the original R2-1 cases;
+  - all 66 regression literals;
+  - the utility controls.
+- **R3-1 is the only remaining defect.** Apostrophe-joined sequences are grouped as a single lexeme, so negations and units inside them are missed.
+  - Failing cases: `say'not'now` vs `say'now`, and a move of `mg` within `alpha'mg'omega'delta`. Both still get a near-match diagnostic instead of a plain mismatch.
+  - The quote is still quarantined in every case, so only the diagnostic is wrong.
+  - Astra found 30 failures out of 120 in a boundary matrix. All 30 involve straight or curly apostrophes.
+- **Landing at ce6dfaa:** green, 2,797 of 2,797 mutants killed.
+- **Under the charter's round-cap rule, the orchestrator has stopped dispatching.** Recommendation to the operator: accept R3-1 as tracked debt, owned by 2d-3b and fixed before the matcher is wired into the governed path. The alternative is a 4th round, which needs a fresh Gate D first.
