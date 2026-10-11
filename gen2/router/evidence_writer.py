@@ -72,7 +72,40 @@ class EvidenceWriter:
         for record in records:
             self._core._store.insert("quote_checks", {**record, "verifier_invocation_id": inv["invocation_id"],
                 "recorded_by_operation_id": op_id, "checked_at": now})
-        return {"quote_checks": [r["check_id"] for r in records]} if records else {}
+            if record["quote_quarantined"]:
+                self._notify_capture_owner(record, op_id, now)
+        return {"quote_checks": [r["check_id"] for r in records], "quote_holds": self.quote_hold_ids(checked)} if records else {}
+
+    def quote_hold_ids(self, checked: dict) -> list[str]:
+        return ["hold_quote_" + q["check_id"] for q in checked["quote_checks"] if q["quote_quarantined"]]
+
+    def _notify_capture_owner(self, check: dict, op_id: str, now: str) -> None:
+        """V-6 attention uses the existing owned holds and status projection."""
+        claim = self._core._one("claims", {"claim_id": check["claim_id"], "revision": check["claim_revision"]})
+        producer = self._core._one("invocations", {"invocation_id": claim["producer_invocation_id"]})
+        lease = self._core._one("leases", {"lease_id": producer["lease_id"]})
+        self._core._store.insert("holds", {
+            "hold_id": "hold_quote_" + check["check_id"], "topic_id": check["topic_id"], "subject_ref": "quote:" + check["check_id"],
+            "hold_class": "judgment", "cause": "quote quarantine: " + check["match_result"]["reason"],
+            "recoverability": "needs_remediation", "required_authority": "primary", "owner": "primary:" + lease["station_id"],
+            "deadline_at": producer["deadline_at"], "clears_when": "matching re-capture as a new claim revision; the old capture remains quarantined",
+            "created_at": now, "created_by_operation_id": op_id})
+
+    def _require_quote_adjudication(self, doc: dict) -> None:
+        if doc.get("adjudication") is not None and (doc["checks"]["exact_quote"]["status"] == "mismatch" or any(
+                q["quote_quarantined"] and (q["exact_match"] != "matched" or q["nli_signal"] != "alarm")
+                and (q["match_result"] is not None or q["check_id"] == doc["quote_check_id"])
+                for q in self._core._store.select("quote_checks", {
+                    "claim_id": doc["claim"]["claim_id"], "claim_revision": doc["claim"]["claim_revision"]}))):
+            raise Refusal("payload_invalid", "byte-mismatch quarantine cannot be adjudicated (V-6)")
+
+    def require_quote_hold_clearance(self, decision: dict) -> None:
+        if decision["kind"] == "hold_clearance" and decision["disposition"] == "approved":
+            hold = self._core._one("holds", {"hold_id": decision["subject_ref"]})
+            if hold is not None and hold["subject_ref"].startswith("quote:"):
+                check = self._core._one("quote_checks", {"check_id": hold["subject_ref"][6:]})
+                if check is not None and check["quote_quarantined"] and (check["exact_match"] != "matched" or check["nli_signal"] != "alarm"):
+                    raise Refusal("decision_refused", "byte-mismatch quarantine cannot be adjudicated (V-6)")
 
     def _capture_checks(self, claim_id: str, revision: int) -> list[dict]:
         """A claim revision is a capture; re-capture never replaces its checks."""
@@ -140,6 +173,7 @@ class EvidenceWriter:
         for hold in payload["holds"]:
             self._core._store.insert("holds", {**hold, "topic_id": topic_id, "created_at": now, "created_by_operation_id": op_id})
         for doc in payload["verification_receipts"]:
+            self._require_quote_adjudication(doc)
             if not self._quote_receipt_valid(doc):
                 raise Refusal("payload_invalid", "receipt is detached from its governed capture; governed quarantined quote cannot supply support (V-1, V-6)")
             self._core._store.insert("verification_receipts", {

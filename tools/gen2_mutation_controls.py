@@ -809,6 +809,8 @@ def _inventory():
     MANUAL.update(SOURCE_ARTIFACT_CONTROLS)
     from gen2_mutants.governed_quotes_2d3b3 import CONTROLS as GOVERNED_QUOTE_CONTROLS
     MANUAL.update(GOVERNED_QUOTE_CONTROLS)
+    from gen2_mutants.quote_attention_2d3b4 import CONTROLS as QUOTE_ATTENTION_CONTROLS
+    MANUAL.update(QUOTE_ATTENTION_CONTROLS)
     return gen2_mutations
 
 

@@ -449,3 +449,51 @@ mutants cover intermediate disposition, operation scope and status scope.
 Run targeted tests, full composition, affected mutant families and six gates.
 Evidence belongs in private `evidence/2d-3b3-repair-2/`; owner notification and
 adjudication remain in part 2.
+
+## 2d-3b4: capture-owner attention and byte-mismatch refusal
+
+Design before code against `43ebb5a`. Estimate: **about 450 hand-written
+lines** (collaborator/thin wiring 65, ordered DDL 45, Router/raw-DDL tests
+245, paired mutants/integration/metrics 95), plus documentation and generated
+control JSON. This completes the remaining V-6 consequences in one slice.
+
+Use existing `holds`, exposed by the existing status reader, for durable
+attention. Each quarantined governed check creates a deterministic
+`hold_quote_<check_id>` with subject `quote:<check_id>`, class `judgment`,
+primary authority and remediation recovery. Resolve the capture's producer
+from its immutable claim revision, then the owner from that producer's lease
+(`primary:<station_id>`); retain its existing invocation deadline. Attribute
+the hold to the verification commit and instant. Replay uses the existing
+operation receipt and writes nothing. The hold names matching re-capture as
+its remediation; the old capture/check remains quarantined. Deadline
+escalation belongs to the existing workflow follow-through in 2e2.
+
+Reject receipt adjudication whenever its byte status, referenced check or any
+governed check of that capture is a mismatch, including near matches and
+omitted references. Historical checks retain their original per-check binding.
+Quarantines without matched bytes and an actual NLI alarm cannot be adjudicated.
+Reject approved clearance decisions for byte-mismatch quote holds, and raw
+updates attempting to clear them. Implement independent Router and ordered
+DDL guards. Preserve explicit adjudication of matched-byte NLI alarms and
+existing non-quote V-8 adjudication; no NLI checker or provider runs here.
+
+NB2 responsibility split: the Router authenticates source bytes, invokes the
+accepted matcher, constructs and persists the complete result (original and
+span byte hex, normalized forms, offsets, artifact identities, status/reason,
+normalization/protection/token versions and diagnostic score/differing spans).
+DDL 11 checks valid JSON, expected hash, offsets, recognized status, its
+agreement with the match summary, and normalization identity. Its binding
+trigger checks topic/claim/source version, expected source hash, obtained
+artifact authorization, verifier kind/admission, operation/contract pins and
+`nli_signal = not_run`. SQL does not compute matching or validate the entire
+result shape, byte hex, normalized text, protection/token identities or
+diagnostic contents. SQL 03 enforces quarantine for mismatch/alarm; DDL 12
+enforces capture-bound admission/support and commit reconciliation.
+
+Raw-path boundary: DDL 12 reconciliation relies on the single Router writer
+protocol: the declared `commit_outcome` audit is the last evidence boundary
+inside its transaction. Arbitrary raw DML can omit that audit or write checks
+after it, leaving an existing disposition unreconciled. The blocked view and
+promotion fence still detect the capture; this is not a SQLite-wide deferred
+constraint guarantee. Raw-DDL reconciliation tests follow the writer protocol.
+Document this accepted boundary only; do not change its implementation.

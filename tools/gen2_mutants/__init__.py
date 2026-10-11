@@ -29,6 +29,7 @@ from . import branch_windows_2d2
 from . import quote_matching_2d3
 from . import source_artifacts_2d3b2
 from . import governed_quotes_2d3b3
+from . import quote_attention_2d3b4
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -78,4 +79,5 @@ MUTATIONS: list[Mutation] = [
     *quote_matching_2d3.MUTATIONS,
     *source_artifacts_2d3b2.MUTATIONS,
     *governed_quotes_2d3b3.MUTATIONS,
+    *quote_attention_2d3b4.MUTATIONS,
 ]

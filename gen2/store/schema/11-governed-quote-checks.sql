@@ -1,6 +1,13 @@
 -- trace: flow S4 step 4 / §6.7; BOUNDARIES.md Router/Verifier; V-6, C-11, RG-5.
 -- Historical checks stay immutable. Governed checks retain the entire computed
 -- result, including lossless byte hex, normalization, versions and diagnostics.
+-- Responsibility split (NB2): Router authenticates bytes, runs the matcher and
+-- constructs the full document. SQL below checks JSON validity, expected hash,
+-- offsets, recognized status/summary agreement and normalization identity.
+-- The binding trigger checks topic/claim/source/hash, obtained artifact topic
+-- authorization, verification admission, operation/contract and not_run NLI.
+-- SQL does not compute matching or validate byte hex, normalized text,
+-- protection/token identities, diagnostic shape/score/spans or the full shape.
 ALTER TABLE quote_checks ADD COLUMN topic_id TEXT REFERENCES queue_entries (topic_id);
 ALTER TABLE quote_checks ADD COLUMN work_id TEXT REFERENCES works (work_id);
 ALTER TABLE quote_checks ADD COLUMN source_version TEXT;

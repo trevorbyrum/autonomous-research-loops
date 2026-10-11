@@ -176,12 +176,13 @@ class CaptureTest(CaptureCase):
         self.assertEqual(phases, [("in_transaction:receipt", "accepted_support"),
             ("in_transaction:evidence", "accepted_support"), ("in_transaction:end", "quarantined")])
         self.assertEqual(self.value("SELECT status FROM claims WHERE revision = 2"), "quarantined")
-        self.late_store(before, "quarantined", checks=1, receipts=0)
+        self.late_store(before, "quarantined", checks=1, receipts=0, holds=1)
 
-    def late_store(self, before, status, checks=1, receipts=1):
+    def late_store(self, before, status, checks=1, receipts=1, holds=0):
         """Every table: only the disposition, topic revision and commit appends change."""
         after = self.state(exclude=())
         for table, count in (("quote_checks", checks), ("verification_receipts", receipts),
+                ("holds", holds),
                 ("artifacts", 1), ("artifact_topics", 1), ("operation_receipts", 1), ("audit_events", 1)):
             self.assertEqual(after[table][:len(before[table])], before[table], table)
             self.assertEqual(len(after[table]), len(before[table]) + count, table)

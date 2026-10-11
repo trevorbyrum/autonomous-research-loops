@@ -1129,7 +1129,7 @@ class Router:
             "admission": admission, "committed_at": now, "state_revision_before": topic["state_revision"], "state_revision_after": after,
             "validation": checked["validation"],
             "effects": {"evidence_revision": None, "research_ordinal": ordinal, "queue_transition": queue_transition, "lease_release": lease_release,
-                        "holds_created": [h["hold_id"] for h in payload["holds"]], "retry_intent": None,
+                        "holds_created": [h["hold_id"] for h in payload["holds"]] + self._evidence_writer.quote_hold_ids(checked), "retry_intent": None,
                         "trigger_identities": [identity for identity, _ in new_triggers], "outbox_event_ids": [o[0] for o in outbox],
                         "decision_receipt_ids": [d["decision_receipt_id"] for d in payload["decision_receipts"]], "audit_event_id": audit_id}},
             "payload_invalid")
@@ -1192,6 +1192,7 @@ class Router:
                 raise Refusal("decision_id_conflict", f"{req['decision_id']} was recorded with different content")
             return {"status": "replayed", "decision_id": req["decision_id"], "effects": None}
         self._require_subject_hash_truth(row)
+        self._evidence_writer.require_quote_hold_clearance(row)
         self._store.insert("operator_decisions", row)
         effects = self._apply_decision(row, now) if row["disposition"] == "approved" else self._rework(row, now)
         self._audit("operator_decision", now, {"kind": row["kind"], "disposition": row["disposition"], "effects": effects}, topic_id=row["topic_id"])
