@@ -16,13 +16,13 @@ validity or a qualified live workflow.
 | Requirement | Existing DDL, code and tests | Missing / owning slice |
 |---|---|---|
 | V-1 receipt binding | `03-evidence-and-decisions.sql`, `verification_receipts` JSON/column checks and binding trigger; `router/service.py::_validate_commit`, `router/evidence_writer.py`; `tests/test_store_ddl_evidence.py::VerificationTest`, `tests/test_router_evidence.py` | Actual verifier re-access and typed byte/span hand-off; slices 3–4, producer in 2e2. |
-| V-2 truthful tiers | SQL 03 promotion and receipt-use triggers; `router/boundary.py::TIER`, receipt schema; the same verification tests | Cross-check obtained tier against access route and source/table availability, then consume receipts in dossier gates; 4, 6. |
-| V-3 independent checking | SQL 03 receipt role/binding triggers authenticate canonical bytes and extraction lineage; `VerificationTest` tests producer-byte reuse and rejected unvalidated extraction | Runtime re-access/validated-extraction path; 4, with workflow execution in 2e2. |
+| V-2 truthful tiers | SQL 03 promotion and receipt-use triggers; `router/boundary.py::TIER`, receipt schema; the same verification tests. `router/verification.py`, `tests/test_verification_attention.py` route missing-content verdicts to owned holds (2d-4 part 1). | Cross-check obtained tier against access route and source/table availability; 2d-4 part 2. Consume receipts in dossier gates; 6. |
+| V-3 independent checking | SQL 03 receipt role/binding triggers authenticate canonical bytes and extraction lineage; `VerificationTest` tests producer-byte reuse and rejected unvalidated extraction | Runtime re-access/validated-extraction path; 2d-4 part 2, with workflow execution in 2e2. |
 | V-4 provisional / accepted support | SQL 03 `claims_accepted_support_needs_receipt` and `verification_receipts_use_matches_claim`; `router/evidence_writer.py::_promote_and_link_claims`; `VerificationTest` sampling/partial-support promotion refusals | Required receipts must also be checked over the dossier's exact claim revisions; 6. |
-| V-5 disagreement | Typed `holds` in SQL 02 and outcome schema; Router writes holds; `tests/test_router_evidence.py` | Verification disagreement must generate an owned judgment hold; 4. Deadline scheduling/escalation belongs to 2e2. |
+| V-5 disagreement | Typed `holds` in SQL 02 and outcome schema; Router writes holds; `tests/test_router_evidence.py`. `router/verification.py`, thin service/evidence-writer wiring and `tests/test_verification_attention.py` implement owned adverse-verdict holds, receipt/audit/status effects, replay and rollback (2d-4 part 1). | Runtime attention implemented. Deadline scheduling/escalation belongs to 2e2. |
 | V-6 byte checks before NLI | SQL 03 `quote_checks` mismatch/alarm quarantine and receipt binding; `VerificationTest::test_nli_alarm_quarantines_the_quote`, `test_quote_check_binding` | Perform byte/span/normalization computation rather than trust supplied match labels; persist result, notify capture owner, prevent mismatch adjudication bypass; 3. |
 | V-7 tier-0 optional | Receipt schema and SQL 03 prevent alarm-based promotion; existing quote/receipt tests | Optional screen adapter, audit records with denominators and sampling probabilities, false passes/alarms and regression disposition; 5. Sampling workflow in 2e2, provider qualification in Phase 3. |
-| V-8 independent detailed checks | Receipt schema, SQL 03 receipt CHECKs and promotion reread of units/denominators/negation/qualifications; `VerificationTest` | Typed verifier production and actual unperformed/unavailable check handling; 4, 6. Code never supplies semantic judgments. |
+| V-8 independent detailed checks | Receipt schema, SQL 03 receipt CHECKs and promotion reread of units/denominators/negation/qualifications; `VerificationTest`. Part 1's attention tests retain unsuccessful receipts' unperformed/unavailable summary labels unchanged. | Typed detailed verifier production and actual unperformed/unavailable check handling; 2d-4 part 3, with dossier consumption in 6. Code never supplies semantic judgments. |
 | V-9 three independences | SQL 03 `claim_source_links`, separate receipt invocation; SQL 05 semantic/source lineage; `tests/test_semantic_assessments.py`, `tests/test_router_workflow.py` | Carry all three independently into exact dossier/export; 6, 8. |
 | V-10 protocol admission | SQL 03 `claims_accepted_support_needs_contract_admission`; `router/evidence_writer.py` reads G-1 standing; `tests/test_router_evidence.py::ProductionAndAdoptionTest`, `tests/test_router_amendments.py` | Reuse this gate; dossier assembly must retain stale/adopted history and cannot promote fixtures; 6. |
 | G-8 exact completion approval | SQL 01 `queue_completion_needs_current_dossier_approval`; SQL 02 immutable dossiers and exact decision subjects; `router/service.py::_require_subject_hash_truth`, `_apply_decision`; `tests/test_router_ops.py`, `tests/test_store_ddl_contracts.py` | Authoritative full dossier generation/hash, material-change revalidation and fresh sufficiency-review binding; 6–7. Publication approval remains separate. |
@@ -497,3 +497,60 @@ after it, leaving an existing disposition unreconciled. The blocked view and
 promotion fence still detect the capture; this is not a SQLite-wide deferred
 constraint guarantee. Raw-DDL reconciliation tests follow the writer protocol.
 Document this accepted boundary only; do not change its implementation.
+
+## 2d-4: verification admission and owned attention (design before code)
+
+Design against `bf866f05` on gen2. The refined estimate is **about 1,050
+hand-written lines**, including tests, paired mutants and integration, with
+documentation and generated controls additional. Split before code:
+**part 1 (this dispatch), about 350 lines**, implements V-5 disagreement
+and V-2 missing-content attention; **part 2, about 400 lines**, validates
+fixture re-access/extraction lineage and obtained tiers against recorded
+routes/source/table availability; **part 3, about 300 lines**, admits
+attributed detailed V-8 check receipts. Re-estimate each subsequent brief.
+Stop after part 1; 2d-4 remains incomplete.
+
+Part 1 uses the existing immutable verification verdict, without adding a
+second disagreement flag or computing semantic judgments. `partially_supports`
+and `does_not_support` create judgment/adjudication holds;
+`cannot_assess_at_required_tier` creates a missing-content judgment hold.
+`supports` creates none. A new registered `Verification` collaborator derives
+one deterministic `hold_<sha256>` per adverse receipt (the canonical logical
+hash of `{"verification_receipt_id": <id>}`, keeping the hold ID within its
+existing length limit). It
+resolves the actual claim revision's producer and that producer's lease,
+uses `primary:<station_id>` as owner, retains the producer's deadline, and
+attributes creation to the verification commit's operation and instant.
+The subject names the immutable receipt. Primary adjudication is required;
+missing content instead requires independent verification with the required
+content. Deadline scheduling and escalation remain 2e2. Holds remain visible
+in the existing status reader; no queue transition or scientific disposition
+is inferred. Later supportive receipts do not clear an earlier disagreement.
+
+The collaborator takes only narrow core protocols and writes inside the
+existing writer fence. Service adds composition and thin delegation/wiring
+only. Commit receipts and audit effects name every generated hold, and the
+existing replay boundary prevents duplicate writes. Failed hold persistence
+or a conflicting deterministic identity rolls back the entire commit. SQL 02
+continues to enforce hold shape, open creation, immutable identity and
+attributed clearance; SQL 03 enforces receipt identity/roles. As with the
+accepted V-6 owner notification, deriving a hold from a verifier verdict is
+the Router's responsibility, not a new SQLite-wide constraint. Raw-DDL tests
+exercise the existing hold constraints; they do not claim automatic verdict
+routing on arbitrary raw inserts.
+
+Literal Router tests cover all four verdicts, actual capture ownership with
+a different verifier station/deadline, unavailable/unperformed check labels
+on unsuccessful verdicts, receipt/audit/status readback, replay, competing
+receipts, collision and transaction rollback. Pair routing, ownership,
+deadline, write wiring and receipt effects with accepted-path mutants.
+Run targeted tests, the full composition module, every mutant family targeting
+an edited file and the six gates. Evidence belongs in private `evidence/2d-4/`.
+No provider calls, real-store migration or workflow execution is involved.
+
+Inventory refinement: V-5's runtime attention lands in part 1; V-2's actual
+tier/route/table admission remains part 2, beyond its missing-content holds.
+V-3's canonical-byte reuse and validated extraction runtime path also remain
+part 2. V-8 currently retains summary labels under SQL 03; attributed detailed
+check production and unavailable/unperformed handling remain part 3. Exact
+dossier consumption remains slice 6; producers/scheduling remain 2e2.

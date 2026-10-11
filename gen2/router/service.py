@@ -65,6 +65,7 @@ from gen2.router.registries import REGISTRY_COMMANDS, Registries
 from gen2.router.scheduling import SCHEDULING_COMMANDS, Scheduling
 from gen2.router.schemas import SchemaSet
 from gen2.router.status import STATUS_COMMANDS, Status
+from gen2.router.verification import Verification
 from gen2.store import api
 
 VALIDATOR_VERSION = "router-boundary/1"
@@ -223,6 +224,7 @@ class Router:
         self._scheduling = Scheduling(self)
         self._amendments = Amendments(self)
         self._evidence_writer = EvidenceWriter(self)
+        self._verification = Verification(self)
         self._assessments = Assessments(self)
 
     @classmethod
@@ -1129,7 +1131,7 @@ class Router:
             "admission": admission, "committed_at": now, "state_revision_before": topic["state_revision"], "state_revision_after": after,
             "validation": checked["validation"],
             "effects": {"evidence_revision": None, "research_ordinal": ordinal, "queue_transition": queue_transition, "lease_release": lease_release,
-                        "holds_created": [h["hold_id"] for h in payload["holds"]] + self._evidence_writer.quote_hold_ids(checked), "retry_intent": None,
+                        "holds_created": [h["hold_id"] for h in payload["holds"]] + self._evidence_writer.quote_hold_ids(checked) + self._verification.hold_ids(payload), "retry_intent": None,
                         "trigger_identities": [identity for identity, _ in new_triggers], "outbox_event_ids": [o[0] for o in outbox],
                         "decision_receipt_ids": [d["decision_receipt_id"] for d in payload["decision_receipts"]], "audit_event_id": audit_id}},
             "payload_invalid")
@@ -1161,6 +1163,9 @@ class Router:
         if final:
             self._store.update("invocations", {"invocation_id": inv["invocation_id"]}, {"state": "committed", "state_changed_at": now})
             self._transition_row(inv["invocation_id"], "result_ready", "committed", now, "commit_outcome")
+
+    def _write_verification_holds(self, payload: dict, op_id: str, now: str) -> dict:
+        return self._verification.write_holds(payload, op_id, now)
 
     def _write_evidence(self, env: dict, inv: dict, checked: dict, now: str, new_triggers: list, outbox: list) -> dict:
         written = self._evidence_writer._write_evidence(env, inv, checked, now, new_triggers, outbox)

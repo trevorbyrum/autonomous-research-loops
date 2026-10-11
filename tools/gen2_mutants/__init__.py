@@ -30,6 +30,7 @@ from . import quote_matching_2d3
 from . import source_artifacts_2d3b2
 from . import governed_quotes_2d3b3
 from . import quote_attention_2d3b4
+from . import verification_attention_2d4
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -80,4 +81,5 @@ MUTATIONS: list[Mutation] = [
     *source_artifacts_2d3b2.MUTATIONS,
     *governed_quotes_2d3b3.MUTATIONS,
     *quote_attention_2d3b4.MUTATIONS,
+    *verification_attention_2d4.MUTATIONS,
 ]

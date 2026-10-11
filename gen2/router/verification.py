@@ -1,0 +1,46 @@
+"""V-5/V-2 attention for attributed verifier verdicts (flow S4 step 8).
+
+Router collaborator: no semantic judgments, clock or transaction of its own.
+Writes run in the commit's existing writer fence; 2e2 owns deadline escalation.
+"""
+from typing import Mapping, Protocol
+
+from gen2.core import canonical
+
+
+class Rows(Protocol):
+    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
+
+
+class VerificationCore(Protocol):
+    _store: Rows
+    def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
+
+
+class Verification:
+    def __init__(self, core: VerificationCore) -> None:
+        self._core = core
+
+    def hold_ids(self, payload: dict) -> list[str]:
+        return [self._hold_id(doc) for doc in payload["verification_receipts"] if doc["verdict"] != "supports"]
+
+    def _hold_id(self, doc: dict) -> str:
+        return "hold_" + canonical.logical_hash({"verification_receipt_id": doc["verification_receipt_id"]})[7:]
+
+    def write_holds(self, payload: dict, op_id: str, now: str) -> dict:
+        for doc in payload["verification_receipts"]:
+            if doc["verdict"] == "supports":
+                continue
+            # Receipts have already passed SQL 03's claim/topic/producer binding.
+            claim = self._core._one("claims", {"claim_id": doc["claim"]["claim_id"], "revision": doc["claim"]["claim_revision"]})
+            producer = self._core._one("invocations", {"invocation_id": claim["producer_invocation_id"]})
+            lease = self._core._one("leases", {"lease_id": producer["lease_id"]})
+            missing = doc["verdict"] == "cannot_assess_at_required_tier"
+            self._core._store.insert("holds", {
+                "hold_id": self._hold_id(doc), "topic_id": doc["topic_id"], "subject_ref": "verification:" + doc["verification_receipt_id"],
+                "hold_class": "judgment", "cause": ("verification missing content: " if missing else "verification disagreement: ") + doc["verdict"],
+                "recoverability": "needs_remediation" if missing else "needs_decision", "required_authority": "primary",
+                "owner": "primary:" + lease["station_id"], "deadline_at": producer["deadline_at"],
+                "clears_when": "independent verification with the required content" if missing else "primary adjudication of this verification disagreement",
+                "created_at": now, "created_by_operation_id": op_id})
+        return {"verification_holds": self.hold_ids(payload)} if payload["verification_receipts"] else {}

@@ -32,6 +32,7 @@ class EvidenceCore(Protocol):
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
     def _pin_status(self, inv: dict) -> str: ...
     def _work_of_topic(self, work_id: str, topic_id: str) -> bool: ...
+    def _write_verification_holds(self, payload: dict, op_id: str, now: str) -> dict: ...  # delegate to Verification
 
 
 class EvidenceWriter:
@@ -185,6 +186,7 @@ class EvidenceWriter:
                 "extraction_validation_ref": doc["extraction"]["validation_ref"], "producer_invocation_id": doc["producer_invocation_id"],
                 "verifier_invocation_id": doc["verifier_invocation_id"], "quote_check_id": doc["quote_check_id"], "verdict": doc["verdict"],
                 "receipt": doc, "verified_at": doc["verified_at"]})
+        verification = self._core._write_verification_holds(payload, op_id, now)
         for doc in payload["decision_receipts"]:
             response, outcome = doc["provider_response"], doc["outcome"]
             self._core._store.insert("decision_receipts", {
@@ -221,7 +223,7 @@ class EvidenceWriter:
                 "source_revision": manifest["source"]["revision"], "source_content_hash": manifest["source"]["content_hash"],
                 "approval_decision_id": manifest["approval"]["operator_decision_id"], "bundle_content_hash": manifest["bundle"]["content_hash"],
                 "expected_connectors": manifest["expected_connectors"], "manifest": manifest, "committed_by_operation_id": op_id, "created_at": now})
-        return {**sources, **quotes, "claims": claims, "claim_promotions": promotions, "claim_source_links": links,
+        return {**sources, **quotes, **verification, "claims": claims, "claim_promotions": promotions, "claim_source_links": links,
                 "scoping_reports": [[r["report_id"], r["version"]] for r in payload["scoping_reports"]],
                 "source_proposals": [p["proposal_id"] for p in payload["source_proposals"]],
                 "review_closures": [c["episode_id"] for c in payload["review_closures"]],

@@ -115,9 +115,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_out
 - location: engine:gen2/router/service.py
-- limit: 16
-- reason: Fan-out 13 to 16 is exactly the 2c-1 pure accounting component and row adapter plus the 2c-2a assessment collaborator, all within existing Router grants; no other fan-out growth authorized.
-- task: 2c-2a
+- limit: 17
+- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core.
+- task: 2d-4
 
 ### ML-0014
 - action: admit
@@ -460,3 +460,53 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - limit: 3
 - reason: The collaborator adds the accepted pure matcher to its existing core and boundary dependencies; transaction ownership remains with Router.
 - task: 2d-3b3
+
+### ML-0070
+- action: admit
+- target: engine|edge|gen2/router/service.py->gen2/router/verification.py
+- reason: Thin Router composition delegates adverse-verdict hold production to a narrow collaborator inside the existing writer fence.
+- task: 2d-4
+
+### ML-0071
+- action: admit
+- target: engine|edge|gen2/router/verification.py->gen2/core/canonical.py
+- reason: Existing canonical logical hashing derives bounded deterministic hold IDs from immutable receipt identities; no new hashing contract is introduced.
+- task: 2d-4
+
+### ML-0072
+- action: admit
+- target: engine|file|gen2/router/verification.py
+- reason: V-5 and V-2 attention uses the existing hold mechanism without adding verdict routing responsibility to service.py or a second writer.
+- task: 2d-4
+
+### ML-0073
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/verification.py
+- reason: Existing engine composition reaches owned verification holds through Router commits; no new application surface or provider authority is added.
+- task: 2d-4
+
+### ML-0074
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/verification.py
+- reason: Station outcomes enter the existing Router fence, which now retains adverse verifier verdicts as owned holds.
+- task: 2d-4
+
+### ML-0075
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/verification.py
+- reason: The core composes the verification collaborator and delegates hold writing and receipt identity reporting; it adds no verification semantics.
+- task: 2d-4
+
+### ML-0076
+- action: admit
+- target: engine|reach|gen2/router/verification.py->gen2/core/canonical.py
+- reason: The collaborator reuses the engine's existing canonical hash to bind each generated hold to one exact verification receipt.
+- task: 2d-4
+
+### ML-0077
+- action: budget
+- metric: fan_in
+- location: engine:gen2/core/canonical.py
+- limit: 15
+- reason: One additional Router collaborator consumes the shared hash implementation for deterministic hold identity, preserving one canonical hashing authority.
+- task: 2d-4

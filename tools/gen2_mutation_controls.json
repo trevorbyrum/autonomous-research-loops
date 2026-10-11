@@ -11126,6 +11126,72 @@
   ],
   "why": "Literal accepted NLI, matched bytes or a shared-owner mismatch crosses the changed boundary and retains its independently specified result."
  },
+ "2D4-deadline": {
+  "controls": [
+   "test_verification_attention.SharedOwnerTest.test_control"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
+ "2D4-delegate": {
+  "controls": [
+   "test_verification_attention.AttentionTest.test_support_control"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
+ "2D4-disagreement-omitted": {
+  "controls": [
+   "test_verification_attention.AttentionTest.test_partial_disagreement"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
+ "2D4-effects": {
+  "controls": [
+   "test_verification_attention.AttentionTest.test_support_control"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
+ "2D4-effects-support": {
+  "controls": [
+   "test_verification_attention.AttentionTest.test_disagreement"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
+ "2D4-missing-classification": {
+  "controls": [
+   "test_verification_attention.AttentionTest.test_disagreement"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
+ "2D4-missing-omitted": {
+  "controls": [
+   "test_verification_attention.AttentionTest.test_disagreement"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
+ "2D4-owner": {
+  "controls": [
+   "test_verification_attention.SharedOwnerTest.test_control"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
+ "2D4-partial-omitted": {
+  "controls": [
+   "test_verification_attention.AttentionTest.test_disagreement"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
+ "2D4-support-routed": {
+  "controls": [
+   "test_verification_attention.AttentionTest.test_disagreement"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
+ "2D4-write-wiring": {
+  "controls": [
+   "test_verification_attention.AttentionTest.test_support_control"
+  ],
+  "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"
