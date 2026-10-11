@@ -2249,3 +2249,13 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check`: 2,868 tests; 2,855 of 2,855 mutants killed.
   - `gen2-gateway`: 413 of 413 mutants killed.
 - **Next:** 2d-3b4 dispatched (`docs/gen2/tasks/2d-3b4.md`): owner notification, refusal to adjudicate byte mismatches, NB2, and the raw-path documentation.
+
+## 2026-10-11: 2d-3b4 (capture-owner notification; byte-mismatch adjudication refused): PASS on first review. DOSSIER slice 3 (V-6) complete
+- **Astra** (`a011a8d3`, pinned 129d202; `private/reviews/gen2-2d-3b4-astra-review-20261011.md`): **A, B and C all PASS. ROOT-CAUSE. "2d-3b4 is ACCEPTED; DOSSIER slice 3 (V-6) is complete."** No findings.
+- **Quote holds:** owned by the capture's producer station and its deadline, and scoped to the quote rather than the whole source.
+- **Byte-mismatch protection holds even past the deadline:** an operator clearance of a byte-mismatch hold is refused, and the Router and DDL 13 both refuse adjudication of byte mismatches.
+- **Still allowed:** NLI holds remain distinguishable and can be adjudicated.
+- **Closed:** NB1, NB2 and the raw-path documentation.
+- **Still with 2e2:** automatic deadline escalation.
+- **Landing at 129d202:** green on both `gen2-check` and `gen2-gateway`.
+- **Next:** 2d-4 dispatched (`docs/gen2/tasks/2d-4.md`), DOSSIER slice 4, covering V-2, V-3, V-5 and V-8.
