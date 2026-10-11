@@ -2286,3 +2286,18 @@ The post-2q Gate D is renumbered #5.
 - **Disclosed limit:** it checks that the request is internally consistent, but it doesn't authenticate the gateway exchange. The next part has to bind the result to the trusted capture before admitting it.
 - **Landing at 73c4e1b:** `gen2-check` green.
 - **Next:** 2d-4b part 2 dispatched (`docs/gen2/tasks/2d-4b2.md`).
+
+## 2026-10-11: 2d-4b2 slice 1 (trusted acquisition admission): round 1 BLOCK
+- **Astra** (`6aa75bd1`, pinned 708b528; `private/reviews/gen2-2d-4b2a-astra-review-20261011.md`): **A BLOCK, B PASS, C BLOCK.** The family is ROOT-CAUSE; there is no boundary drift.
+- **What Astra confirmed:**
+  - The `CaptureReader` protocol is injected by trusted construction code. There is no direct read of station storage, and the import graph is unchanged.
+  - The rehash gap is closed against a trusted capture. The trust limit (a counterfeit trusted reader) is documented and owned by 2e2.
+- **F1:** the landing `gen2-check` failed in 14 seconds, because DDL 14 is missing its `-- trace:` marker. The coder's six pre-commit gates don't include `gen2-ddl`.
+- **F2:** three SQL predicates have no paired coverage: artifact hash, work, and verifier topic. Each survives an individual mutant.
+- **Orchestrator lesson:**
+  - Check the landing exit code before dispatching a review. I dispatched in parallel and missed a 14-second failure.
+  - Add `gen2-ddl` and `gen2-schemas` to the coder's pre-commit gates.
+- **Landing at 708b528:**
+  - `gen2-check` exit 2 (DDL trace);
+  - `gen2-gateway` green.
+- **Routed:** `docs/gen2/tasks/2d-4b2a-repair-1.md`, round 1 of 3.
