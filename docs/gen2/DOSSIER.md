@@ -608,3 +608,57 @@ live gateway/provider/database access occurs in this part.
 Run the new literal validators, existing V-1/V-3 tests, the full composition
 module, every affected mutant family and all six gates. Evidence and
 COMPLETION.md belong in private `evidence/2d-4b/`.
+
+### 2d-4b2: trusted acquisition admission (design before code)
+
+Re-estimate against `52655aa`: **about 1,050 hand-written lines** remain,
+including independent tests and paired mutants. The earlier 470-line estimate
+did not account for authenticating the attempted request at the station boundary,
+durable capture operands, or isolated raw-DDL and fencing controls. Split again:
+**this dispatch, about 490 lines** (adapter/protocol/wiring 150, ordered DDL 65,
+Router/raw-DDL tests 190, mutants and integration 85), lands trusted fixture
+acquisition admission only. **Next part, about 560 lines**, must be re-estimated
+and, if necessary, split: receipt consumption and recorded content/table tiers,
+then durable extraction input/output/validation attribution. Stop after this
+first part; 2d-4b and the unsplit 2d-4b2 obligations remain incomplete.
+
+The Router receives a station-owned retained-exchange reader at construction,
+like its trusted spool. This is a fixture adapter seam, not agent input or a new
+RPC capture command; absent a reader, admission refuses. Workflow construction
+of that reader and gateway execution remain 2e2. A frozen core hand-off contains
+topic, acquiring invocation, attempt, call reference, exact attempted-request
+document bytes (lane/page/sent request) and exact response bytes. The Router
+selects the lookup key from recorded source/event/observation/work-link rows;
+the caller supplies only its capability and source/event identities. It compares
+the retained request itself to the recorded observation, closing Astra's coherent
+request-rehash probe. The call reference alone supplies no authentication.
+
+An `AcquisitionAdmission` collaborator reads the operands in one snapshot,
+performs retained capture lookup and the accepted pure validator outside the
+writer lock, then revalidates the operands and live verifier capability, lease,
+topic, cancellation and running state under the Router's existing writer fence.
+Only contract-admitted verification may admit this record. The acquiring
+invocation may be the producer or another acquirer; producer summaries are never
+substituted for retained response bytes. Thin service wiring preserves DEBT-036.
+
+Ordered DDL 14 stores the validated acquisition and exact retained request and
+response bytes, with verifier attribution and admission time. Its natural key is
+topic/work/source version/event/verifier. Equal replay preserves the original
+row and audit; changed captured operands conflict and roll back. DDL binds source,
+artifact, event, work link, observation request and acquiring invocation, and
+contract-admitted verifier role/topic, and forbids update/delete. SQL can enforce
+these recorded relationships and response size; it cannot authenticate a gateway
+or compute the byte digest. Capture authentication and rehashing are Router
+responsibilities, as quote computation is in the accepted quote adapter.
+
+Literal Router controls will assert exact retained bytes and hand-written lineage,
+producer-byte reuse, another acquirer, durable readback, replay, audit, cancellation
+and stale-lease fencing, conflicts and rollback. Isolated negatives include absent
+trusted capture, coherent request forgery, wrong capture attribution, forged source
+bytes and producer summary. Raw-DDL counterparts exercise each new recorded-row
+binding and append-only guard; paired mutants cover the new guards and wiring.
+No receipt tier, table, extraction-validation or support authority is granted by
+this admission. Existing receipt paths are unchanged until the next part makes
+them consume it. Tests and evidence must not claim otherwise. Run targeted tests,
+the full composition module, every affected mutant family and the six gates.
+Evidence belongs in private `evidence/2d-4b2/`.

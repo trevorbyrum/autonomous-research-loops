@@ -31,9 +31,11 @@ class DDLTest(StoreTestCase):
                 self.raw(**changes)
 
     def test_update(self):
+        self.raw()  # v2 has no acquisition dependent; the FK cannot mask the guard.
         with self.assertRaises(sqlite3.IntegrityError):
-            self.x("UPDATE source_artifacts SET source_version = 'changed'")
+            self.x("UPDATE source_artifacts SET source_version = 'changed' WHERE source_version = 'v2'")
 
     def test_delete(self):
+        self.raw()
         with self.assertRaises(sqlite3.IntegrityError):
-            self.x("DELETE FROM source_artifacts")
+            self.x("DELETE FROM source_artifacts WHERE source_version = 'v2'")

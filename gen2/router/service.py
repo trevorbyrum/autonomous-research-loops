@@ -55,6 +55,7 @@ from gen2 import accounting
 from gen2.core import canonical, instants, pagination
 from gen2.router.accounting import CoverageSnapshot, read_coverage_snapshot, read_inventory
 from gen2.router.assessments import Assessments
+from gen2.router.acquisitions import ACQUISITION_COMMANDS, AcquisitionAdmission
 from gen2.router import boundary
 from gen2.router.amendments import AMENDMENT_COMMANDS, COMPATIBLE, Amendments, brief_compatibility, contract_compatibility, stopping_defect
 from gen2.router.boundary import Refusal, instant
@@ -207,7 +208,7 @@ class Router:
     none qualified (INVARIANTS §13)."""
 
     def __init__(self, store: api.Store, spool, *, clock: Callable[[], str] = utc_now, new_id: Callable[[str], str] = random_id,
-                 extensions=None, fault: Callable[[str], None] | None = None, schemas: SchemaSet | None = None) -> None:
+                 extensions=None, fault: Callable[[str], None] | None = None, schemas: SchemaSet | None = None, gateway_captures=None) -> None:
         self._store = store
         self._spool = spool
         self._clock = clock
@@ -216,7 +217,7 @@ class Router:
         self._fault = fault or (lambda point: None)
         self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {
             **COMMANDS["$defs"], **LIFECYCLE_COMMANDS, **REGISTRY_COMMANDS, **AMENDMENT_COMMANDS, **SCHEDULING_COMMANDS,
-            **STATUS_COMMANDS, **CAPABILITY_COMMANDS}}})
+            **STATUS_COMMANDS, **CAPABILITY_COMMANDS, **ACQUISITION_COMMANDS}}})
         self._status = Status(self)
         self._capabilities = Capabilities(self)
         self._registries = Registries(self)
@@ -226,6 +227,8 @@ class Router:
         self._evidence_writer = EvidenceWriter(self)
         self._verification = Verification(self)
         self._assessments = Assessments(self)
+        self._gateway_captures = gateway_captures
+        self._acquisitions = AcquisitionAdmission(self)
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
@@ -273,6 +276,9 @@ class Router:
 
     def record_gateway_facts(self, request: Mapping) -> dict:
         return self._capabilities.record_gateway_facts(request)
+
+    def admit_reaccess(self, request: Mapping) -> dict:
+        return self._acquisitions.admit(request)
 
     # -- the registries' public routes and the members the rest of the Router reads (registries.py) -----
     def activate_config_bundle(self, document: Mapping) -> dict:

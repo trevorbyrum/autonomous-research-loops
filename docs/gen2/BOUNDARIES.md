@@ -30,6 +30,19 @@ existing hold shape/open creation/identity/clearance; verdict routing is a
 Router responsibility. Re-access, tier/route/table admission and detailed
 check receipts remain later 2d-4 parts; deadline escalation remains 2e2.
 
+`AcquisitionAdmission` in `acquisitions.py` (2d-4b2) admits fixture re-access
+through `Router.admit_reaccess`. Its narrow core protocol includes the existing
+snapshot/writer fence and a station-owned retained-exchange reader injected at
+construction, never supplied in an agent request. It selects capture identity
+from recorded rows, binds the actual attempted request and retained response
+octets, and runs the pure validator outside the writer lock. Under the lock it
+revalidates operands, verifier authority, live state, lease, pins and topic pause.
+SQL 14 retains exact operands/lineage with verifier attribution; equal replay
+adds nothing and conflicts roll back. SQL binds recorded relationships and size;
+the Router authenticates and hashes bytes. This record supplies no tier, table,
+extraction-validation or support authority. Receipt consumption remains the next
+2d-4b part; trusted workflow capture execution remains 2e2.
+
 ## Station supervisor
 
 - **Definition:** the one lifecycle implementation for every execution kind (research pass, discovery, delegate, verification, checkpoint); code.

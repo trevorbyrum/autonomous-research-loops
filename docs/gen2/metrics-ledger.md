@@ -115,9 +115,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_out
 - location: engine:gen2/router/service.py
-- limit: 17
-- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core.
-- task: 2d-4
+- limit: 18
+- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core. Task 2d-4b2 adds one acquisition admission collaborator (17 to 18) and only constructor/schema/public-delegate wiring.
+- task: 2d-4b2
 
 ### ML-0014
 - action: admit
@@ -183,9 +183,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/router/boundary.py
-- limit: 9
-- reason: Boundary fan-in grows by one for the new assessment collaborator using the single existing primary authority vocabulary.
-- task: 2c-2a
+- limit: 10
+- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority.
+- task: 2d-4b2
 
 ### ML-0025
 - action: budget
@@ -507,9 +507,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/core/canonical.py
-- limit: 16
-- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity. Task 2d-4b adds one pure acquisition validator (15 to 16), reusing byte/request hashes and strict JSON rather than a second hashing or parser implementation.
-- task: 2d-4b
+- limit: 17
+- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity, and 2d-4b added the pure acquisition validator (15 to 16). Task 2d-4b2 adds the admission adapter (16 to 17), comparing trusted attempted-request octets with the existing canonical serializer; no second hashing or serialization mechanism.
+- task: 2d-4b2
 
 ### ML-0078
 - action: admit
@@ -528,3 +528,135 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - target: engine|reach|gen2/router/reaccess.py->gen2/core/canonical.py
 - reason: Acquisition consistency needs only the shared canonical primitives, preserving a single hash and JSON implementation.
 - task: 2d-4b
+
+### ML-0081
+- action: admit
+- target: engine|edge|gen2/router/acquisitions.py->gen2/core/canonical.py
+- reason: Acquisition admission shares canonical attempted-request serialization with recorded observations and the accepted validator, rather than trusting a recomputed caller hash or adding another serializer.
+- task: 2d-4b2
+
+### ML-0082
+- action: admit
+- target: engine|edge|gen2/router/acquisitions.py->gen2/core/gateway_capture.py
+- reason: A frozen pure core hand-off and reader protocol let trusted station construction supply retained request/response octets without granting Router imports or writes to the capture adapter.
+- task: 2d-4b2
+
+### ML-0083
+- action: admit
+- target: engine|edge|gen2/router/acquisitions.py->gen2/router/boundary.py
+- reason: Acquisition admission reuses Router request normalization, schema validation and typed refusal reporting under the existing boundary grant.
+- task: 2d-4b2
+
+### ML-0084
+- action: admit
+- target: engine|edge|gen2/router/acquisitions.py->gen2/router/reaccess.py
+- reason: Authoritative fixture admission consumes the already accepted pure acquisition validator, so digest, identity, capture acknowledgement and retrieved-record checks have one implementation; app reach remains through Router.
+- task: 2d-4b2
+
+### ML-0085
+- action: admit
+- target: engine|edge|gen2/router/service.py->gen2/router/acquisitions.py
+- reason: The Router composes the acquisition admission collaborator, keeping trusted capture reads and validation outside its writer fence and new provenance logic outside service.py; existing app composition reaches it only through Router.
+- task: 2d-4b2
+
+### ML-0086
+- action: admit
+- target: engine|file|gen2/core/gateway_capture.py
+- reason: A frozen pure core hand-off and reader protocol let trusted station construction supply retained request/response octets without granting Router imports or writes to the capture adapter.
+- task: 2d-4b2
+
+### ML-0087
+- action: admit
+- target: engine|file|gen2/router/acquisitions.py
+- reason: The Router composes the acquisition admission collaborator, keeping trusted capture reads and validation outside its writer fence and new provenance logic outside service.py; existing app composition reaches it only through Router.
+- task: 2d-4b2
+
+### ML-0088
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/core/gateway_capture.py
+- reason: A frozen pure core hand-off and reader protocol let trusted station construction supply retained request/response octets without granting Router imports or writes to the capture adapter.
+- task: 2d-4b2
+
+### ML-0089
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/acquisitions.py
+- reason: The Router composes the acquisition admission collaborator, keeping trusted capture reads and validation outside its writer fence and new provenance logic outside service.py; existing app composition reaches it only through Router.
+- task: 2d-4b2
+
+### ML-0090
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/reaccess.py
+- reason: Authoritative fixture admission consumes the already accepted pure acquisition validator, so digest, identity, capture acknowledgement and retrieved-record checks have one implementation; app reach remains through Router.
+- task: 2d-4b2
+
+### ML-0091
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/core/gateway_capture.py
+- reason: A frozen pure core hand-off and reader protocol let trusted station construction supply retained request/response octets without granting Router imports or writes to the capture adapter.
+- task: 2d-4b2
+
+### ML-0092
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/acquisitions.py
+- reason: The Router composes the acquisition admission collaborator, keeping trusted capture reads and validation outside its writer fence and new provenance logic outside service.py; existing app composition reaches it only through Router.
+- task: 2d-4b2
+
+### ML-0093
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/reaccess.py
+- reason: Authoritative fixture admission consumes the already accepted pure acquisition validator, so digest, identity, capture acknowledgement and retrieved-record checks have one implementation; app reach remains through Router.
+- task: 2d-4b2
+
+### ML-0094
+- action: admit
+- target: engine|reach|gen2/router/acquisitions.py->gen2/core/canonical.py
+- reason: Acquisition admission shares canonical attempted-request serialization with recorded observations and the accepted validator, rather than trusting a recomputed caller hash or adding another serializer.
+- task: 2d-4b2
+
+### ML-0095
+- action: admit
+- target: engine|reach|gen2/router/acquisitions.py->gen2/core/gateway_capture.py
+- reason: A frozen pure core hand-off and reader protocol let trusted station construction supply retained request/response octets without granting Router imports or writes to the capture adapter.
+- task: 2d-4b2
+
+### ML-0096
+- action: admit
+- target: engine|reach|gen2/router/acquisitions.py->gen2/core/instants.py
+- reason: The new acquisition adapter reaches existing instant and pagination helpers transitively through boundary/reaccess; it adds no direct clock, network or pagination authority.
+- task: 2d-4b2
+
+### ML-0097
+- action: admit
+- target: engine|reach|gen2/router/acquisitions.py->gen2/core/pagination.py
+- reason: The new acquisition adapter reaches existing instant and pagination helpers transitively through boundary/reaccess; it adds no direct clock, network or pagination authority.
+- task: 2d-4b2
+
+### ML-0098
+- action: admit
+- target: engine|reach|gen2/router/acquisitions.py->gen2/router/boundary.py
+- reason: Acquisition admission reuses Router request normalization, schema validation and typed refusal reporting under the existing boundary grant.
+- task: 2d-4b2
+
+### ML-0099
+- action: admit
+- target: engine|reach|gen2/router/acquisitions.py->gen2/router/reaccess.py
+- reason: Authoritative fixture admission consumes the already accepted pure acquisition validator, so digest, identity, capture acknowledgement and retrieved-record checks have one implementation; app reach remains through Router.
+- task: 2d-4b2
+
+### ML-0100
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/core/gateway_capture.py
+- reason: A frozen pure core hand-off and reader protocol let trusted station construction supply retained request/response octets without granting Router imports or writes to the capture adapter.
+- task: 2d-4b2
+
+### ML-0101
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/acquisitions.py
+- reason: The Router composes the acquisition admission collaborator, keeping trusted capture reads and validation outside its writer fence and new provenance logic outside service.py; existing app composition reaches it only through Router.
+- task: 2d-4b2
+
+### ML-0102
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/reaccess.py
+- reason: Authoritative fixture admission consumes the already accepted pure acquisition validator, so digest, identity, capture acknowledgement and retrieved-record checks have one implementation; app reach remains through Router.
+- task: 2d-4b2

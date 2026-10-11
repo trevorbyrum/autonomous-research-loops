@@ -11354,6 +11354,251 @@
   ],
   "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
  },
+ "2D4B2-attempt": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-capture": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-conflict": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-ddl-binding": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-field-acquired_by_invocation_id": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-field-attempt": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-field-gateway_call_ref": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-field-lane": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-field-provider_record_id": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-field-request_bytes": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-field-request_identity": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-field-request_type": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-field-response_bytes": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-field-retrieved_at": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-immutable_d": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-immutable_u": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-verifier": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-gateway_call_ref": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-invocation_id": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-lease": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-live": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-operand": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-operands": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-paused": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-pins": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-reader": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-request": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-request-type": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-response-type": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-role": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-state": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-topic_id": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-validator": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-wiring": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.OtherAcquirerTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-write": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.OtherAcquirerTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

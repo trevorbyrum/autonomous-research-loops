@@ -8,7 +8,7 @@ import inspect
 import unittest
 from pathlib import Path
 
-from gen2.router import amendments, assessments, capabilities, evidence_writer, lifecycle, registries, scheduling, service, status, verification
+from gen2.router import acquisitions, amendments, assessments, capabilities, evidence_writer, lifecycle, registries, scheduling, service, status, verification
 from gen2.tests.router_fixtures import RouterTestCase
 
 COLLABORATORS = ((status, status.Status, status.StatusCore, "_status"), (capabilities, capabilities.Capabilities, capabilities.CapabilityCore, "_capabilities"),
@@ -16,9 +16,10 @@ COLLABORATORS = ((status, status.Status, status.StatusCore, "_status"), (capabil
                  (scheduling, scheduling.Scheduling, scheduling.SchedulingCore, "_scheduling"), (amendments, amendments.Amendments, amendments.AmendmentsCore, "_amendments"),
                  (evidence_writer, evidence_writer.EvidenceWriter, evidence_writer.EvidenceCore, "_evidence_writer"),
                  (assessments, assessments.Assessments, assessments.AssessmentCore, "_assessments"),
-                 (verification, verification.Verification, verification.VerificationCore, "_verification"))
+                 (verification, verification.Verification, verification.VerificationCore, "_verification"),
+                 (acquisitions, acquisitions.AcquisitionAdmission, acquisitions.AcquisitionCore, "_acquisitions"))
 PUBLIC_API = {  # Router's public methods at be5b2f1 plus intentional additions (evidence_inventory, task 2c-2a)
-    "ack_delivery", "activate_config_bundle", "apply_operator_decision", "claim", "close", "close_brief", "commit_outcome", "config_bundle", "create_topic", "draft_contract",
+    "ack_delivery", "activate_config_bundle", "admit_reaccess", "apply_operator_decision", "claim", "close", "close_brief", "commit_outcome", "config_bundle", "create_topic", "draft_contract",
     "candidate_units", "coverage_snapshot", "evidence_inventory", "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",
     "receipt", "reconcile", "record_capability_probe", "record_gateway_facts", "record_observation", "record_qualification", "record_transition", "register_works",
     "request_cancel", "requeue", "restore_config_bundle", "revoke_qualification", "status", "version_brief"}
@@ -66,12 +67,12 @@ class CollaboratorInterfaceTest(RouterTestCase):
                 stray = [n.lineno for n in ast.walk(tree(module)) if isinstance(n, ast.Attribute) and ((n.attr == "_store" and not is_core(n.value)) or n.attr == "transaction")]
                 self.assertEqual(stray, [], f"{module.__name__} reaches the store, or a transaction, other than as self._core._store (lines {stray})")
 
-    def test_only_the_status_read_takes_the_core_snapshot(self):
-        """A direct-member/module-use check and no more: among the collaborator modules only `status` names the core's `_snapshot` (the Store's own writable transaction, so nothing at run
-        time keeps a write out of it). It does not show which status methods use it, that their bodies write nothing, or how the rest of the Router uses it: those bodies are reviewed by hand."""
+    def test_only_read_adapters_take_the_core_snapshot(self):
+        """Status and acquisition operand reads name the core snapshot. Body purity
+        remains reviewed separately; capture reads must finish before the writer fence."""
         for module, _, _, _ in COLLABORATORS:
             with self.subTest(module=module.__name__):
-                self.assertEqual("_snapshot" in used(module), module is status)
+                self.assertEqual("_snapshot" in used(module), module in (status, acquisitions))
 
     def test_the_router_composes_its_collaborators_and_keeps_its_public_methods(self):
         self.assertFalse(isinstance(self.router, (status.Status, capabilities.Capabilities, registries.Registries, lifecycle.Lifecycle, scheduling.Scheduling, amendments.Amendments, evidence_writer.EvidenceWriter, assessments.Assessments)))

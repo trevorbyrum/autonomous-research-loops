@@ -18,3 +18,4 @@
 11-governed-quote-checks.sql
 12-capture-bound-support.sql
 13-quote-adjudication.sql
+14-source-acquisitions.sql

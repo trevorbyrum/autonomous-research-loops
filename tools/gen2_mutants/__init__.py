@@ -32,6 +32,7 @@ from . import governed_quotes_2d3b3
 from . import quote_attention_2d3b4
 from . import verification_attention_2d4
 from . import reaccess_2d4b
+from . import acquisitions_2d4b2
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -84,4 +85,5 @@ MUTATIONS: list[Mutation] = [
     *quote_attention_2d3b4.MUTATIONS,
     *verification_attention_2d4.MUTATIONS,
     *reaccess_2d4b.MUTATIONS,
+    *acquisitions_2d4b2.MUTATIONS,
 ]

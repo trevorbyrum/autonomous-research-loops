@@ -10,7 +10,7 @@ from __future__ import annotations
 from .base import Mutation
 from .router_composition_2qb2 import CI, HOLDS_ONLY_CORE, USED_DECLARED
 
-SNAPSHOT_ONLY_STATUS = CI + "test_only_the_status_read_takes_the_core_snapshot"
+SNAPSHOT_ONLY_STATUS = CI + "test_only_read_adapters_take_the_core_snapshot"
 REGISTRIES = "gen2/router/registries.py"
 RESTORE = "        with self._core._transaction():\n            active = self._active_bundle()"
 TRANSACTION_DECLARATION = "    def _transaction(self) -> AbstractContextManager: ...  # the two writes that are not _guarded's: see the note on Registries\n"

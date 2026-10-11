@@ -650,6 +650,10 @@ class StoreTestCase(unittest.TestCase):
                "VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, ?, 'O-1', '[]', 'answer', 'study-1', ?)", TOPIC, rev, T)
         self.lease("lease_vvvvvvvv", 2, scope="verification")
         self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
+        # Raw-row sweep fixture, not authenticated gateway acquisition evidence.
+        if "source_acquisitions" in self.tables():  # legacy-DDL installation tests stop before SQL 14
+            self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call:1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)",
+                   TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{}        ', T)
         self.quote_check("qc-1")
         self.verify("ver_00000001")
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1")
