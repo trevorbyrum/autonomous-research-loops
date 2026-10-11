@@ -17172,10 +17172,11 @@
   "why": "a statement that succeeds enters trigger invocations_unknown_needs_reconciliation"
  },
  "A6-D28-old-over-restriction": {
+  "by_hand": true,
   "controls": [
-   "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
+   "test_store_ddl_evidence.VerificationTest.test_canonical_bytes_from_separate_acquirer"
   ],
-  "why": "a statement that succeeds inserts a row into verification_receipts"
+  "why": "Canonical full-text receipt consumes an admitted acquisition by a separate research pass; extraction differs from the producer with no validation reference, so D28's deliberate over-restriction still accepts it."
  },
  "A6-D32-byte-mismatch": {
   "controls": [

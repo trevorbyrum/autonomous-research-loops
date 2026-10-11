@@ -132,6 +132,25 @@ class VerificationTest(StoreTestCase):
         self.verify("ver_00000001", tier="bibliographic", required="bibliographic", use="sampled", method="canonical_bytes", extraction="inv_pppppppp")  # producer-acquired canonical bytes; fixture records no content
         self.verify("ver_00000002", method="validated_extraction", extraction="inv_pppppppp", validation="validation-7")
 
+    def test_canonical_bytes_from_separate_acquirer(self) -> None:
+        """D28's accepted control: canonical reuse with a non-producer acquirer.
+
+        Keep this independent of the all-table fixture and the producer-reuse
+        killer. Raw admitted operands do not authenticate gateway transport.
+        """
+        self.second_research_pass()
+        self.receipt("op_acquire01", "inv_qqqqqqqq", lease="lease_bbbbbbbb", gen=3)
+        self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_qqqqqqqq', ?)", h("7"), TOPIC, T)
+        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_qqqqqqqq', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
+        self.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
+        self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
+        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_qqqqqqqq', 'op_acquire01', ?)", TOPIC, h("7"), T)
+        self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_qqqqqqqq', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+        self.verify("ver_00000001", method="canonical_bytes", extraction="inv_qqqqqqqq")
+        self.assertEqual(self.rows("SELECT acquired_by_invocation_id FROM source_acquisitions"), [("inv_qqqqqqqq",)])
+        self.assertEqual(self.rows("SELECT extraction_method, extraction_invocation_id, producer_invocation_id, verifier_invocation_id, extraction_validation_ref, access_tier FROM verification_receipts"),
+                         [("canonical_bytes", "inv_qqqqqqqq", "inv_pppppppp", "inv_vvvvvvvv", None, "full_text")])
+
     def test_supports_cannot_exceed_obtained_tier(self) -> None:
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.verify("ver_00000001", tier="abstract", required="full_text")
