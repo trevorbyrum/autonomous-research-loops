@@ -169,8 +169,15 @@ class AdmissionTest(QuotesCase):
         self.rejected(self.record(quoted_text="changed"), "payload_invalid")
 
     def test_support_control(self):
-        self.accepted(verification_receipts=[self.receipt_document()])
-        self.assertEqual(self.rows("SELECT verdict FROM verification_receipts"), [("supports",)])
+        # Local import: the admitted-input fixture itself inherits QuotesCase.
+        from gen2.tests.canonical_quotes_fixtures import CanonicalQuotesCase
+        case = CanonicalQuotesCase()
+        case.setUp()
+        self.addCleanup(case.tearDown)
+        doc = case.receipt_document()
+        doc["extraction"].update(method="verifier_extraction", produced_by_invocation_id="inv_verify0001")
+        case.accepted(verification_receipts=[doc])
+        self.assertEqual(case.rows("SELECT verdict FROM verification_receipts"), [("supports",)])
 
     def test_partial_support_blocked(self):
         self.rejected(self.record(quoted_text="wrong"), "payload_invalid",
