@@ -15703,10 +15703,11 @@
   "why": "a statement that succeeds enters trigger holds_clearance_bound_to_hold"
  },
  "A2-holds-created-open": {
+  "by_hand": true,
   "controls": [
-   "test_store_supervision.UnknownHoldTest.test_the_episode_record_clears_its_hold"
+   "test_verification_attention.HoldDDLTest.test_open_control"
   ],
-  "why": "a statement that succeeds enters trigger holds_created_open"
+  "why": "inserts an ordinary open judgment hold through holds_created_open; still succeeds when the trigger is removed (2d-4a-repair-1 C1)"
  },
  "A2-manifest-binds-approval-id": {
   "controls": [

@@ -513,14 +513,14 @@ Stop after part 1; 2d-4 remains incomplete.
 Part 1 uses the existing immutable verification verdict, without adding a
 second disagreement flag or computing semantic judgments. `partially_supports`
 and `does_not_support` create judgment/adjudication holds;
-`cannot_assess_at_required_tier` creates a missing-content judgment hold.
+`cannot_assess_at_required_tier` records a missing-content cause on a judgment hold.
 `supports` creates none. A new registered `Verification` collaborator derives
 one deterministic `hold_<sha256>` per adverse receipt (the canonical logical
 hash of `{"verification_receipt_id": <id>}`, keeping the hold ID within its
-existing length limit). It
-resolves the actual claim revision's producer and that producer's lease,
-uses `primary:<station_id>` as owner, retains the producer's deadline, and
-attributes creation to the verification commit's operation and instant.
+existing length limit). It resolves the actual claim revision's producer and
+that producer's lease: owner from producer lease (`primary:<station_id>`),
+deadline from producer invocation (`deadline_at`). Creation is attributed to
+the verification commit's operation and instant.
 The subject names the immutable receipt. Primary adjudication is required;
 missing content instead requires independent verification with the required
 content. Deadline scheduling and escalation remain 2e2. Holds remain visible
@@ -549,7 +549,8 @@ an edited file and the six gates. Evidence belongs in private `evidence/2d-4/`.
 No provider calls, real-store migration or workflow execution is involved.
 
 Inventory refinement: V-5's runtime attention lands in part 1; V-2's actual
-tier/route/table admission remains part 2, beyond its missing-content holds.
+tier/route/table admission remains part 2, beyond its missing-content cause
+on a judgment hold.
 V-3's canonical-byte reuse and validated extraction runtime path also remain
 part 2. V-8 currently retains summary labels under SQL 03; attributed detailed
 check production and unavailable/unperformed handling remain part 3. Exact

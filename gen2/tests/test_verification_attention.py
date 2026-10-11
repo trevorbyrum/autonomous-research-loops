@@ -172,12 +172,21 @@ class HoldDDLTest(StoreTestCase):
         self.assertEqual(self.rows("SELECT hold_class, owner, deadline_at, cleared_at FROM holds"),
             [("judgment", "primary:station-1", "2026-09-27T11:00:00Z", None)])
 
-    def test_shape_and_open_creation(self):
-        for change in ({"owner": ""}, {"deadline_at": None}, {"hold_class": "agreement"}, {"cleared_at": T}):
+    def test_shape(self):
+        for change in ({"owner": ""}, {"deadline_at": None}, {"hold_class": "agreement"}):
             with self.subTest(change=change), self.assertRaises(sqlite3.IntegrityError):
                 self.record(**change)
             self.assertEqual(self.rows("SELECT * FROM holds"), [])
         self.record()
+
+    def test_created_open(self):
+        self.lease("lease_aaaaaaaa", 1)
+        self.invocation("inv_clear0001")
+        self.receipt("op_clear00001", "inv_clear0001", kind="interim_transition")
+        # The clearance CHECK and foreign key are satisfied; only open creation refuses.
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "created open"):
+            self.record(cleared_at=T, cleared_by_operation_id="op_clear00001")
+        self.assertEqual(self.rows("SELECT * FROM holds"), [])
 
     def test_identity_and_clearance(self):
         self.record()

@@ -158,6 +158,8 @@ _ROUTER_GRAPH = ("test_check_boundaries.BoundaryCheckerTest.test_store_writes_ar
 _ORDER = "the tool's own test; no other test calls compare()"
 _COMPOSITION = "test_router_composition.CollaboratorInterfaceTest."
 MANUAL: dict[str, dict] = {
+    "A2-holds-created-open": {"controls": ["test_verification_attention.HoldDDLTest.test_open_control"],
+        "why": "inserts an ordinary open judgment hold through holds_created_open; still succeeds when the trigger is removed (2d-4a-repair-1 C1)"},
     # task 2q-b2: the composition test reads the collaborators' sources (a module target's `__file__` is the mutant's copy), so the other direction's test, which is
     # static and passes under the mutant, is each paired control
     "2QB2-status-core-omits-a-member": {"controls": [_COMPOSITION + "test_control_every_declared_member_is_one_the_router_has"],
