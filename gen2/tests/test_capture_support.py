@@ -1,5 +1,6 @@
 """Capture-bound receipt admission and promotion, using literal Router operands."""
 import json
+from unittest.mock import patch
 
 from gen2.tests.test_governed_quotes import QuotesCase
 
@@ -165,8 +166,87 @@ class CaptureTest(CaptureCase):
 
     def test_late_check(self):
         self.test_non_quote_control()
-        self.accepted(self.record(claim_revision=2, quoted_text="effect NOT observed"))
+        before = self.state(exclude=())
+        phases = []
+        def observe(point):
+            if point in ("in_transaction:receipt", "in_transaction:evidence", "in_transaction:end"):
+                phases.append((point, self.value("SELECT status FROM claims WHERE revision = 2")))
+        with patch.object(self.router, "_fault", side_effect=observe):
+            self.accepted(self.record(claim_revision=2, quoted_text="effect NOT observed"))
+        self.assertEqual(phases, [("in_transaction:receipt", "accepted_support"),
+            ("in_transaction:evidence", "accepted_support"), ("in_transaction:end", "quarantined")])
         self.assertEqual(self.value("SELECT status FROM claims WHERE revision = 2"), "quarantined")
+        self.late_store(before, "quarantined", checks=1, receipts=0)
+
+    def late_store(self, before, status, checks=1, receipts=1):
+        """Every table: only the disposition, topic revision and commit appends change."""
+        after = self.state(exclude=())
+        for table, count in (("quote_checks", checks), ("verification_receipts", receipts),
+                ("artifacts", 1), ("artifact_topics", 1), ("operation_receipts", 1), ("audit_events", 1)):
+            self.assertEqual(after[table][:len(before[table])], before[table], table)
+            self.assertEqual(len(after[table]), len(before[table]) + count, table)
+            after[table] = before[table]
+        expected_claims = [tuple(status if i == 7 and row[1] == 2 else v for i, v in enumerate(row)) for row in before["claims"]]
+        self.assertEqual(after["claims"], expected_claims)
+        after["claims"] = before["claims"]
+        at = self.value("SELECT committed_at FROM operation_receipts WHERE operation_id = ?", self.env["operation_id"])
+        expected_topics = [tuple((v + 1 if i == 5 else at if i == 9 else v) if row[0] == self.grant["topic_id"] else v
+            for i, v in enumerate(row)) for row in before["queue_entries"]]
+        self.assertEqual(after["queue_entries"], expected_topics)
+        after["queue_entries"] = before["queue_entries"]
+        self.assertEqual(after, before)
+
+    def late_valid(self, multiple=False, accepted=True):
+        if accepted:
+            self.test_non_quote_control()
+        record, doc = self.operands()
+        doc["verification_receipt_id"] = "ver_latebound01"
+        records = [record]
+        if multiple:
+            records.append(self.record(claim_revision=2, check_id="qck_second0001", quoted_text="<", span_start=0, span_end=1))
+            doc["cited_spans"].append({"start": 0, "end": 1, "locator": {"kind": "section", "value": "Results"}})
+        before = self.state(exclude=())
+        self.assertEqual(self.send(records, verification_receipts=[doc])["status"], "committed")
+        self.assertEqual(self.rows("SELECT * FROM governed_captures_blocked"), [])
+        self.assertEqual(self.rows("SELECT exact_match, quote_quarantined FROM quote_checks"), [("matched", 0)] * len(records))
+        self.late_store(before, "accepted_support" if accepted else "provisional", checks=len(records))
+        before = self.state(exclude=())
+        self.assertEqual(self.router.commit_outcome(self.env)["status"], "replayed")
+        self.assertEqual(self.state(exclude=()), before)
+        if not accepted:
+            self.promote()
+
+    def test_late_valid_control(self):
+        self.late_valid()
+
+    def test_late_multi_control(self):
+        self.late_valid(multiple=True)
+
+    def test_late_provisional_control(self):
+        self.late_valid(multiple=True, accepted=False)
+
+    def test_late_missing_receipt(self):
+        self.test_non_quote_control()
+        before = self.state(exclude=())
+        self.accepted(self.record(claim_revision=2))
+        self.assertEqual(self.rows("SELECT * FROM governed_captures_blocked"), [("clm_quote00001", 2)])
+        self.late_store(before, "quarantined", receipts=0)
+
+    def test_late_invalid_receipt(self):
+        self.test_non_quote_control()
+        record, doc = self.operands()
+        doc["verification_receipt_id"] = "ver_latebound01"
+        doc["cited_spans"][0].update(start=0, end=1)
+        self.refuse([record], doc, revision=None)
+        self.assertEqual(self.value("SELECT status FROM claims WHERE revision = 2"), "accepted_support")
+
+    def test_late_boundary_rollback(self):
+        self.test_non_quote_control()
+        before = self.state(exclude=())
+        self.faults["in_transaction:end"] = RuntimeError("after reconciliation")
+        with self.assertRaisesRegex(RuntimeError, "after reconciliation"):
+            self.send([self.record(claim_revision=2, quoted_text="effect NOT observed")])
+        self.assertEqual(self.state(exclude=()), before)
 
 
 class RouterGuardTest(CaptureTest):

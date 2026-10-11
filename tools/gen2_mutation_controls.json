@@ -10879,10 +10879,17 @@
   ],
   "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
  },
+ "2D3B3R1-ddl-intermediate-disposition": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_late_provisional_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
  "2D3B3R1-ddl-late-check": {
   "by_hand": true,
   "controls": [
-   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+   "test_store_capture_support.CaptureDDLTest.test_late_multi_control"
   ],
   "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
  },
@@ -10897,6 +10904,20 @@
   "by_hand": true,
   "controls": [
    "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-reconciliation-operation": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_late_multi_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-reconciliation-status": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_late_multi_control"
   ],
   "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
  },

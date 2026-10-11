@@ -91,8 +91,27 @@ capture_guard("ddl-each-span", "test_multi_unchecked", "OR EXISTS (SELECT 1 FROM
 capture_guard("ddl-promotion", "test_non_load_bearing", target="ddl", trigger="claims_accepted_support_needs_capture", control="test_capture_control")
 capture_guard("ddl-existing-receipt", "test_existing_receipt_matching", "AND NOT EXISTS (SELECT 1 FROM governed_receipt_failures f WHERE f.verification_receipt_id = v.verification_receipt_id)",
     target="ddl", control="test_capture_control")
-capture_guard("ddl-late-check", "test_late_check", target="ddl", trigger="quote_checks_refence_capture", control="test_capture_control")
+capture_guard("ddl-late-check", "test_late_check", target="ddl", trigger="commit_outcome_refence_captures", control="test_late_multi_control")
 capture_guard("ddl-capture-quarantine", "test_same_capture_cannot_clear", "(v.verdict IN ('supports', 'partially_supports') AND EXISTS (",
     "(0 AND EXISTS (", target="ddl", control="test_capture_control")
-capture_guard("ddl-installation", "test_upgrade_quarantine", "UPDATE claims SET status = 'quarantined'\nWHERE status = 'accepted_support' AND EXISTS (",
-    "UPDATE claims SET status = 'quarantined'\nWHERE 0 AND EXISTS (", target="ddl", control="test_upgrade_control")
+# Retain the installation mutant's identity, now guarding the required absence
+# of install-time DML rather than requiring that obsolete rewrite.
+capture_guard("ddl-installation", "test_installation_no_dml", "CREATE TRIGGER claims_accepted_support_needs_capture",
+    "UPDATE claims SET status = 'quarantined' WHERE status = 'accepted_support' AND EXISTS ("
+    "SELECT 1 FROM governed_captures_blocked b WHERE b.claim_id = claims.claim_id AND b.revision = claims.revision);\n"
+    "CREATE TRIGGER claims_accepted_support_needs_capture", target="ddl", control="test_upgrade_control")
+
+capture_guard("ddl-intermediate-disposition", "test_late_multi_control",
+    "CREATE TRIGGER commit_outcome_refence_captures AFTER INSERT ON audit_events",
+    "CREATE TRIGGER quote_checks_refence_capture AFTER INSERT ON quote_checks WHEN NEW.match_result IS NOT NULL\n"
+    "BEGIN\n  UPDATE claims SET status = 'quarantined' WHERE claim_id = NEW.claim_id AND revision = NEW.claim_revision\n"
+    "    AND status = 'accepted_support' AND EXISTS (SELECT 1 FROM governed_captures_blocked b\n"
+    "      WHERE b.claim_id = NEW.claim_id AND b.revision = NEW.claim_revision);\nEND;\n"
+    "CREATE TRIGGER commit_outcome_refence_captures AFTER INSERT ON audit_events",
+    target="ddl", control="test_late_provisional_control")
+capture_guard("ddl-reconciliation-operation", "test_late_unaffected_capture",
+    "q.recorded_by_operation_id = NEW.operation_id\n      AND ", "", target="ddl", control="test_late_multi_control")
+capture_guard("ddl-reconciliation-status", "test_late_provisional_mismatch",
+    "UPDATE claims SET status = 'quarantined' WHERE status = 'accepted_support'",
+    "UPDATE claims SET status = 'quarantined' WHERE status IN ('accepted_support', 'provisional', 'contested')",
+    target="ddl", control="test_late_multi_control")

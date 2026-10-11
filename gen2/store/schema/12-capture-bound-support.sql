@@ -44,11 +44,6 @@ BEGIN
   SELECT RAISE(ABORT, 'receipt must bind every span to its governed capture (V-1, V-6)');
 END;
 
--- Re-fence persisted support when this ordered part is installed, too.
-UPDATE claims SET status = 'quarantined'
-WHERE status = 'accepted_support' AND EXISTS (
-  SELECT 1 FROM governed_captures_blocked b WHERE b.claim_id = claims.claim_id AND b.revision = claims.revision);
-
 CREATE TRIGGER claims_accepted_support_needs_capture BEFORE UPDATE OF status ON claims
 WHEN NEW.status = 'accepted_support' AND EXISTS (
   SELECT 1 FROM governed_captures_blocked b WHERE b.claim_id = NEW.claim_id AND b.revision = NEW.revision)
@@ -56,11 +51,18 @@ BEGIN
   SELECT RAISE(ABORT, 'governed capture cannot supply accepted support (V-1, V-6)');
 END;
 
--- Checks arriving after a receipt or promotion cannot leave false support live.
-CREATE TRIGGER quote_checks_refence_capture AFTER INSERT ON quote_checks
-WHEN NEW.match_result IS NOT NULL
+-- Router._commit_in_transaction writes this audit row last, after all evidence
+-- and its receipts, inside the writer transaction. The operation receipt is
+-- written BEFORE evidence and cannot settle this cross-row relationship.
+-- Reconcile once at that boundary; never freeze an intermediate missing receipt.
+CREATE TRIGGER commit_outcome_refence_captures AFTER INSERT ON audit_events
+WHEN NEW.kind = 'commit_outcome' AND EXISTS (
+  SELECT 1 FROM operation_receipts o WHERE o.operation_id = NEW.operation_id
+    AND o.topic_id = NEW.topic_id AND o.invocation_id = NEW.invocation_id
+    AND json_extract(o.receipt, '$.effects.audit_event_id') = NEW.audit_event_id)
 BEGIN
-  UPDATE claims SET status = 'quarantined' WHERE claim_id = NEW.claim_id AND revision = NEW.claim_revision
-    AND status = 'accepted_support' AND EXISTS (
-      SELECT 1 FROM governed_captures_blocked b WHERE b.claim_id = NEW.claim_id AND b.revision = NEW.claim_revision);
+  UPDATE claims SET status = 'quarantined' WHERE status = 'accepted_support'
+    AND EXISTS (SELECT 1 FROM quote_checks q WHERE q.recorded_by_operation_id = NEW.operation_id
+      AND q.match_result IS NOT NULL AND q.claim_id = claims.claim_id AND q.claim_revision = claims.revision)
+    AND EXISTS (SELECT 1 FROM governed_captures_blocked b WHERE b.claim_id = claims.claim_id AND b.revision = claims.revision);
 END;

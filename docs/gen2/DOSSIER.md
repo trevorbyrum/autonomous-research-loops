@@ -420,3 +420,32 @@ accepted support, as does installation of the ordered DDL over existing rows.
 Quarantine remains scoped to the claim revision, not its source.
 Literal Router/raw-DDL substitutions, promotion, rollback, multiple spans,
 existing receipts and matching re-capture controls exercise both layers.
+
+## 2d-3b3-repair-2: reconcile completed evidence
+
+Round 3 of 3, brief against `9c2351f`. The capture relationship, admission
+binding and promotion consumers remain as accepted in round 2. Its per-check
+disposition and installation rewrite above are superseded: installation
+declares schema only, and the completed commit settles affected captures.
+
+The operation receipt precedes evidence because evidence records bind to it.
+`Router._commit_in_transaction` writes the `commit_outcome` audit row last,
+after `_write_evidence` has written all checks and receipts and the assessment
+collaborator has returned, inside the same writer transaction. Ordered DDL 12
+uses that existing row as its reconciliation boundary, bound to the operation
+receipt's declared audit identity, topic and invocation. One update quarantines
+only already accepted captures checked by that operation and blocked by the
+completed relationship. Other dispositions and immutable evidence stay intact.
+No new writer, transaction, public interface or service responsibility is added.
+
+About 300 hand-written lines including tests and mutants. Router phase probes
+verify the write ordering; literal Router/raw-DDL tests cover accepted single
+and multiple-span late verification, provisional controls, mismatches, missing
+and invalid receipts, whole-store changes/rollback, and operation scoping.
+Retain all 22 repair mutant identities: late-check removal now drops the final
+reconciliation trigger, and installation mutation now reintroduces the forbidden
+DML. Pair reconciliation with valid already accepted evidence; additional
+mutants cover intermediate disposition, operation scope and status scope.
+Run targeted tests, full composition, affected mutant families and six gates.
+Evidence belongs in private `evidence/2d-3b3-repair-2/`; owner notification and
+adjudication remain in part 2.
