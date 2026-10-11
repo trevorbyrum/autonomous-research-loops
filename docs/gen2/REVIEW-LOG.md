@@ -2240,3 +2240,12 @@ The post-2q Gate D is renumbered #5.
 - **Routed:** `docs/gen2/tasks/2d-3b3-repair-2.md`, **round 3 of 3 (the cap)**.
   - Reconcile at the commit boundary, after all writes.
   - Remove the install-time DML.
+
+## 2026-10-11: 2d-3b3 part 1, round 3 (2d-3b3-repair-2): PASS. Governed V-6 computation and capture-bound support accepted
+- **Astra** (`6f926638`, pinned 7766759; `private/reviews/gen2-2d-3b3-r3-astra-review-20261011.md`): **A, B and C all PASS, ROOT-CAUSE. "2d-3b3 part 1 is ACCEPTED."**
+- **F3 closed:** reconciliation now runs on the final `commit_outcome` audit row, after all evidence is written. The install-time DML has been removed. F1 and F2 still pass.
+- **Documented limit:** arbitrary raw SQL that skips the final audit can bypass reconciliation. The view and the promotion guard still detect and refuse it. Acceptance rests on the single Router writer protocol, which goes into the docs in 2d-3b4.
+- **Landing at 7766759, all green:**
+  - `gen2-check`: 2,868 tests; 2,855 of 2,855 mutants killed.
+  - `gen2-gateway`: 413 of 413 mutants killed.
+- **Next:** 2d-3b4 dispatched (`docs/gen2/tasks/2d-3b4.md`): owner notification, refusal to adjudicate byte mismatches, NB2, and the raw-path documentation.
