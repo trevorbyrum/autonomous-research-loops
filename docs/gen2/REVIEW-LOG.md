@@ -2331,3 +2331,17 @@ The post-2q Gate D is renumbered #5.
 - **Routed:** `docs/gen2/tasks/2d-4b3b-repair-1.md`, round 1 of 3.
   - R1 fix: a named, versioned nonblank rule, cited (Unicode `White_Space`).
   - R2 fix: every tier-bearing method consumes a recorded basis, and unbound methods don't authorize support.
+
+## 2026-10-11: 2d-4b3b repair part 1, round 2: R1 and R2 closed; BLOCK on R3 (landing gate)
+- **Astra** (`7c7d1d20`, pinned 1323cf6; `private/reviews/gen2-2d-4b3b-r2-astra-review-20261011.md`): **A PASS, B PASS, C BLOCK.**
+- **R1 closed at root cause:** the nonblank rule is UCD 17 White_Space plus Default_Ignorable_Code_Point. Astra verified all 4,245 code-point checks against the cited UCD files, and the rule doesn't over-block non-Latin scripts.
+- **R2 closed for this split:**
+  - Pending extraction methods can't qualify support. Their inflated declarations raise missing-content holds instead.
+  - The declaration-admission gap stays in part 2, as disclosed.
+- **R3 (new, MEDIUM):** the landing `gen2-check` exited 2 with `A6-D28-old-over-restriction` INVALID.
+  - **Cause:** a shared-fixture change broke that mutant's paired control. The coder's targeted `--only` sweep didn't include A6.
+- **Landing at 1323cf6:**
+  - `gen2-check` exit 2, one mutant INVALID;
+  - `gen2-gateway` green.
+- **Routed:** `docs/gen2/tasks/2d-4b3b-repair-2.md`, round 3 of 3 (the cap).
+- **New process rule:** when a shared test fixture is edited, the coder runs every mutant family whose paired controls use it.
