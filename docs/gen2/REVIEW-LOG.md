@@ -2277,3 +2277,12 @@ The post-2q Gate D is renumbered #5.
 - **NB1 confirmed.**
 - **Landing at b2a69b9:** `gen2-check` green.
 - **Next:** 2d-4 part 2 (V-2 tier/route, V-3 re-access/extraction) dispatched as `docs/gen2/tasks/2d-4b.md`.
+
+## 2026-10-11: 2d-4b part 1 (pure acquisition-lineage validator): PASS on first review
+- **Astra** (`fafbbe58`, pinned 73c4e1b; `private/reviews/gen2-2d-4b1-astra-review-20261011.md`): **A, B and C all PASS, ROOT-CAUSE. "2d-4b part 1 is ACCEPTED."** No findings.
+- **What was confirmed:**
+  - It applies V-3 canonical-byte reuse correctly: bytes from the producer and from other acquirers are both allowed.
+  - It stays honest about partial retrieval.
+- **Disclosed limit:** it checks that the request is internally consistent, but it doesn't authenticate the gateway exchange. The next part has to bind the result to the trusted capture before admitting it.
+- **Landing at 73c4e1b:** `gen2-check` green.
+- **Next:** 2d-4b part 2 dispatched (`docs/gen2/tasks/2d-4b2.md`).
