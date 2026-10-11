@@ -416,6 +416,23 @@ class StoreTestCase(unittest.TestCase):
                op, rid, kind, inv, tid, h("f"), h(digest), lease, gen, context if admission is None else admission[0], contract_rev, brief_hash, h("c"),
                before, before + 1, json.dumps(body), T)
 
+    def recorded_verification_basis(self, verifier: str = "inv_vvvvvvvv") -> None:
+        """Explicit raw admitted full-text operands, independent of receipt edits.
+
+        Never called by verify; raw SQL does not authenticate transport.
+        Additional verifiers consume the same independently recorded capture.
+        """
+        if not self.rows("SELECT 1 FROM source_artifacts WHERE source_version = 'v1'"):
+            lease, generation = self.rows("SELECT i.lease_id, l.generation FROM invocations i JOIN leases l USING (lease_id) WHERE i.invocation_id = 'inv_pppppppp'")[0]
+            self.receipt("op_content001", "inv_pppppppp", lease=lease, gen=generation)
+            self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", h("7"), TOPIC, T)
+            self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
+            self.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
+            self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
+            self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_content001', ?)", TOPIC, h("7"), T)
+        if not self.rows("SELECT 1 FROM source_acquisitions WHERE source_version = 'v1' AND verifier_invocation_id = ?", verifier):
+            self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, ?, ?, ?, ?, ?)", TOPIC, h("7"), T, verifier, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+
     CHECKS_OK = {"numeric_units": "checked_ok", "denominators": "checked_ok", "negation": "checked_ok", "qualifications": "checked_ok"}
 
     def verify(self, rid: str, *, claim: tuple = ("clm_00000001", 1), work: str = "wrk_00000001", tier: str = "full_text", required: str = "full_text",

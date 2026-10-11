@@ -185,7 +185,7 @@ class AdjudicationDDLTest(CaptureDDLTest):
     def test_declared_mismatch_adjudication(self):
         self.quote_check("qc-alarm", nli="alarm")
         self.x("DROP TRIGGER verification_receipts_bindings")  # isolate DDL 13's declared-byte guard
-        self.refused(lambda: self.verify("ver_mismatch01", verdict="does_not_support", quote=("mismatch", "qc-alarm"), adjudication=ADJ))
+        self.refused(lambda: self.verify("ver_mismatch01", gateway="gw-call:1", verdict="does_not_support", quote=("mismatch", "qc-alarm"), adjudication=ADJ))
 
     def test_capture_adjudication(self):
         self.raw("mismatch")
@@ -194,12 +194,12 @@ class AdjudicationDDLTest(CaptureDDLTest):
 
     def test_nli_control(self):
         self.quote_check("qc-alarm", nli="alarm")
-        self.verify("ver_alarm00001", quote=("matched", "qc-alarm"), adjudication=ADJ)
+        self.verify("ver_alarm00001", gateway="gw-call:1", quote=("matched", "qc-alarm"), adjudication=ADJ)
         self.assertEqual(self.rows("SELECT verdict FROM verification_receipts WHERE verification_receipt_id = 'ver_alarm00001'"), [("supports",)])
 
     def test_non_nli_quarantine(self):
         self.quote_check("qc-held", quarantined=1)
-        self.refused(lambda: self.verify("ver_held000001", verdict="does_not_support", quote=("matched", "qc-held"), adjudication=ADJ))
+        self.refused(lambda: self.verify("ver_held000001", gateway="gw-call:1", verdict="does_not_support", quote=("matched", "qc-held"), adjudication=ADJ))
 
     def quote_hold(self, check="qck_governed001"):
         self.x("INSERT INTO holds (hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, owner, "

@@ -169,10 +169,10 @@ class ContractWorld(RouterTestCase):
         assert self.router.record_observation({"capability_id": grant["capability_id"], "invocation_id": inv, "observation": observation, "retrieval_events": []})["status"] == "recorded"
         return grant
 
-    def verify(self, canonical_producer=None) -> dict:
+    def verify(self, canonical_producer=None, acquisition_producer=None) -> dict:
         verifier = self.started("inv_verify01", "verification")
         doc = test_router_commit.AuthorityTest.verification_receipt(self, verifier)
-        if canonical_producer is not None:
+        if canonical_producer is not None or acquisition_producer is not None:
             # Raw admitted fixture operands for the amendment control. This
             # test exercises pin compatibility, not capture authentication.
             raw = b'{"records":[{"identity":"rec-full","kind":"full_text","text":"Fixture full text"}]}'
@@ -182,12 +182,13 @@ class ContractWorld(RouterTestCase):
             self.x("INSERT INTO record_work_links VALUES ('rev_support001', 'wrk_00000001', 'dedup-1', '2026-09-27T10:00:00Z')")
             payload = {**empty_outcome("inv_research01", "interim_transition"), "source_artifacts": [
                 {"work_id": "wrk_00000001", "source_version": "canonical-v1", "artifact_ref": ref}]}
-            self.assertEqual(self.router.commit_outcome(self.envelope(canonical_producer, "op_support001", payload, refs=[ref]))["status"], "committed")
+            self.assertEqual(self.router.commit_outcome(self.envelope(canonical_producer or acquisition_producer, "op_support001", payload, refs=[ref]))["status"], "committed")
             request, identity = self.rows("SELECT request, request_identity FROM search_observations WHERE observation_id = 'obs_support001'")[0]
             self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'canonical-v1', ?, 'obs_support001', 'rev_support001', 'call-1', 'inv_research01', 2, 'crossref', 'find', 'rec-full', '2026-09-27T10:00:00Z', 'inv_verify01', ?, ?, ?, '2026-09-27T10:00:00Z')", TOPIC, ref["content_hash"], identity, request.encode(), raw)
             doc["source"]["source_version"] = "canonical-v1"
             doc["obtained_content_hash"] = doc["checks"]["exact_quote"]["source_artifact_hash"] = ref["content_hash"]
-            doc["extraction"].update(method="canonical_bytes", produced_by_invocation_id="inv_research01")
+            if canonical_producer is not None:
+                doc["extraction"].update(method="canonical_bytes", produced_by_invocation_id="inv_research01")
         own = {**empty_outcome("inv_verify01", "interim_transition"), "verification_receipts": [doc]}
         assert self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own))["status"] == "committed"
         return verifier
@@ -359,7 +360,7 @@ class ImpactTest(ContractWorld):
         requested, admitted work is cancelled at once (nothing was spawned),
         and a staged result is refused at commit and stays retained."""
         grant = self.research()
-        self.verify()
+        self.verify(acquisition_producer=grant)
         ready = self.started("inv_disco001", "discovery")
         checkpoint = self.claim("inv_checkpt01", "checkpoint")  # admitted, never launched
         self.started("inv_deleg001", "delegate", parent=grant)

@@ -797,3 +797,41 @@ retaining their original refusal assertions. Work/version/hash capture negatives
 use pending methods to isolate capture binding from canonical acquisition guards;
 their accepted controls remain admitted canonical receipts. Predicate mutants pair each guard
 with a separately accepted control. Evidence: `evidence/2d-4b3b-repair-1/`.
+
+### 2d-4b3c: extraction acquisition binding (design before code)
+
+Re-estimate against `4eefd5c`: **about 750 hand-written lines**, including
+independent Router/raw-DDL predicates, accepted controls, legacy fixture
+dependencies and paired mutants. The 300-line estimate omitted the existing
+extraction controls without acquisitions and capture-predicate isolation.
+Split before code: **first part, about 460 lines** (ordered DDL 30, tests 180,
+fixture/control repairs 140, mutants/integration 75, documentation 35), binds
+both extraction methods to SQL 14 acquisitions. **Next part, about 290 lines**,
+applies SQL 16's recorded-content ceiling to their declarations, with tier,
+Unicode/record-selection controls and counterfactuals; re-estimate at dispatch.
+Stop after the first part; 2d-4b3c and the complete repair remain incomplete.
+
+Ordered SQL 18 adds one extraction receipt consumer, using SQL 15's work,
+source-version, verifier, obtained-hash, gateway-call, retrieval-time and route
+operands. SQL 14/03's verifier bindings imply topic equality. Extraction's
+`produced_by_invocation_id` names the extractor, so it cannot also select the
+acquirer: a verifier may extract producer-acquired bytes. Canonical receipts
+retain SQL 15's existing acquirer selector. No new agent-supplied acquisition
+identity, API, authority representation or production Python change is needed.
+An AFTER INSERT guard preserves the existing BEFORE/row-CHECK diagnostics;
+its ABORT rolls back the receipt and enclosing Router commit. This is ordered
+DDL on disposable fixture stores only, never a real database migration.
+
+New tests isolate each selector for both methods, with literal admitted raw
+operands and trusted Router exchange controls, independent extraction/acquirer
+identities, durable readback, replay and rollback. Legacy verification tests
+receive explicit raw acquisition setup, never auto-admission inside `verify`.
+Capture-only counterfactuals remove the independent acquisition consumer so
+that their original capture guards remain the tested refusal. Shared fixtures
+keep every-table/history/installation assertions and D28's separate-acquirer
+control; sweep every family targeting edited DDL or using edited fixtures in
+paired controls. SQL 17, canonical support consumers and missing-content hold
+behavior stay intact. Acquisition binding alone does not cap declarations or
+grant extraction/validation/reproduction authority; those guarantees remain
+scheduled. Trace: flow S4 step 8; BOUNDARIES Router/Verifier; V-1/V-2/V-3.
+Evidence: `evidence/2d-4b3c/`.

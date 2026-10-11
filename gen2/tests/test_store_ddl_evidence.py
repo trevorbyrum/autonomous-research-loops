@@ -57,6 +57,7 @@ class VerificationTest(StoreTestCase):
         self.invocation("inv_qqqqqqqq", lease="lease_bbbbbbbb")
 
     def test_producer_cannot_verify_itself(self) -> None:
+        self.recorded_verification_basis()
         # Realistic case: the research-pass producer names itself as verifier (the role trigger fires first).
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.verify("ver_00000001", verifier="inv_pppppppp", extraction="inv_pppppppp")
@@ -74,6 +75,7 @@ class VerificationTest(StoreTestCase):
         rejection with the control/causal distinction. A verifier can never have
         a controlling parent (so the producer cannot launch or control it); a
         verifier *requested by* the producing pass is legitimate."""
+        self.recorded_verification_basis()
         self.second_research_pass()  # a second research_pass, not a verifier
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.verify("ver_00000001", verifier="inv_qqqqqqqq", extraction="inv_qqqqqqqq")
@@ -84,6 +86,7 @@ class VerificationTest(StoreTestCase):
         self.rejects("CHECK constraint failed", *self.raw_invocation(invocation_id="inv_childver", kind="verification", lease_id="lease_wwwwwwww", parent_invocation_id="inv_pppppppp"))
         # causal request by the producer: admitted, and its receipt is accepted
         self.invocation("inv_reqdver1", kind="verification", lease="lease_wwwwwwww", requested_by="inv_pppppppp")
+        self.recorded_verification_basis("inv_reqdver1")
         self.verify("ver_00000002", verifier="inv_reqdver1", extraction="inv_reqdver1")
 
     def test_requested_by_is_same_topic_and_never_self(self) -> None:
@@ -96,6 +99,7 @@ class VerificationTest(StoreTestCase):
         self.invocation("inv_reqdver1", kind="verification", lease="lease_wwwwwwww", requested_by="inv_pppppppp")
 
     def test_receipt_must_name_the_claims_real_producer(self) -> None:
+        self.recorded_verification_basis()
         self.second_research_pass()
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.verify("ver_00000001", producer="inv_qqqqqqqq")
@@ -152,6 +156,7 @@ class VerificationTest(StoreTestCase):
                          [("canonical_bytes", "inv_qqqqqqqq", "inv_pppppppp", "inv_vvvvvvvv", None, "full_text")])
 
     def test_supports_cannot_exceed_obtained_tier(self) -> None:
+        self.recorded_verification_basis()
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.verify("ver_00000001", tier="abstract", required="full_text")
         self.assertIn("CHECK constraint failed", str(ctx.exception))
@@ -164,6 +169,7 @@ class VerificationTest(StoreTestCase):
         return self.rows("SELECT status FROM claims WHERE claim_id = 'clm_00000001' AND revision = 1")
 
     def test_accepted_support_needs_receipt_at_required_tier(self) -> None:
+        self.recorded_verification_basis()
         self.rejects(self.PROMOTION_REFUSED, self.ACCEPT)  # no receipt at all
         self.verify("ver_00000001", use="sampled", tier="abstract", required="abstract")  # supports, but a sample, and only at abstract
         self.rejects(self.PROMOTION_REFUSED, self.ACCEPT)
@@ -181,6 +187,7 @@ class VerificationTest(StoreTestCase):
         qualify either. Only a load-bearing-use 'supports' receipt with every
         check performed promotes; the claim reads back provisional after each
         refusal."""
+        self.recorded_verification_basis()
         unperformed = {name: "not_checked" for name in self.CHECKS_OK}
         adjudicated = {"adjudication_ref": "adj-1", "resolved_at": T, "resolution": "sampled; not re-checked"}
         self.verify("ver_sample01", use="sampled", checks=unperformed, adjudication=adjudicated)
@@ -200,6 +207,7 @@ class VerificationTest(StoreTestCase):
         re-describe the subject it certifies. A sampled receipt may audit any
         claim at any tier. (clm_00000002 is not load-bearing but does carry a
         full-text tier, so the load-bearing conjunct alone refuses it.)"""
+        self.recorded_verification_basis()
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000002', 1, ?, ?, 'inv_pppppppp', 0, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
         self.quote_check("qc-2", claim=("clm_00000002", 1))
         refused = "that claim's own required tier"
@@ -216,11 +224,13 @@ class VerificationTest(StoreTestCase):
         self.verify("ver_00000003")  # the claim's own designation
 
     def test_claims_start_provisional(self) -> None:
+        self.recorded_verification_basis()
         self.rejects("claims are captured provisional", "INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000002', 1, ?, ?, 'inv_pppppppp', 0, NULL, 'accepted_support', ?)", TOPIC, h("7"), T)
 
     def test_nli_alarm_quarantines_the_quote(self) -> None:
         """D32 + the byte-mismatch test the review found missing: an NLI alarm
         and an exact-byte mismatch each quarantine the quote."""
+        self.recorded_verification_basis()
         insert = "INSERT INTO quote_checks (check_id, claim_id, claim_revision, source_artifact_hash, span_start, span_end, normalization_version, exact_match, nli_checker, nli_checker_version, nli_signal, quote_quarantined, checked_at) VALUES (?, 'clm_00000001', 1, ?, 0, 5, 'n1', ?, 'minicheck', '1', ?, ?, ?)"
         self.rejects("CHECK constraint failed", insert, "qc-2", h("7"), "matched", "alarm", 0, T)
         self.x(insert, "qc-2", h("7"), "matched", "alarm", 1, T)
@@ -231,6 +241,7 @@ class VerificationTest(StoreTestCase):
         """A6: 'supports' with an adverse or unperformed check, or a tier-0 alarm,
         is refused unless an explicit adjudication resolves it; a mismatched
         quote can never support."""
+        self.recorded_verification_basis()
         adjudicated = {"adjudication_ref": "adj-1", "resolved_at": T, "resolution": "operator ruled the qualification immaterial"}
         n = 0
         for name in ("numeric_units", "denominators", "negation", "qualifications"):
@@ -255,6 +266,7 @@ class VerificationTest(StoreTestCase):
         """SQLite passes a CHECK that evaluates to NULL, so an absent JSON key must
         fail closed: 'supports' with an adverse check and NO adjudication key, or
         with no exact-quote status, is refused like an explicit null."""
+        self.recorded_verification_basis()
         with self.assertRaises(sqlite3.IntegrityError):
             self.verify("ver_00000001", checks=dict(self.CHECKS_OK, numeric_units="checked_problem"), drop=("adjudication",))
         with self.assertRaises(sqlite3.IntegrityError):
@@ -265,6 +277,7 @@ class VerificationTest(StoreTestCase):
         """A6 (the over-restriction): a load-bearing cannot_assess or
         does_not_support receipt may truthfully report not_checked/unavailable;
         a load-bearing partial-support verdict may not."""
+        self.recorded_verification_basis()
         unperformed = {"numeric_units": "not_checked", "denominators": "unavailable", "negation": "not_checked", "qualifications": "unavailable"}
         self.verify("ver_00000001", tier="abstract", verdict="cannot_assess_at_required_tier", checks=unperformed, quote=("not_applicable", None))
         self.verify("ver_00000002", verdict="does_not_support", checks=unperformed)
@@ -276,6 +289,7 @@ class VerificationTest(StoreTestCase):
         """A6/A10: the receipt's quote check is of this claim revision, against the
         receipt's source artifact, with the receipt's match status; support never
         rests on a quarantined quote without adjudication."""
+        self.recorded_verification_basis()
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 2, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'text/plain', ?)", h("8"), T)
         self.quote_check("qc-rev2", claim=("clm_00000001", 2))
@@ -303,6 +317,7 @@ class VerificationTest(StoreTestCase):
         capability triggers pass) and changes only the JSON field, so only the
         binding CHECK can refuse it — including the review's probe (JSON
         does_not_support while the column says supports)."""
+        self.recorded_verification_basis()
         spans = [{"start": 0, "end": 9, "locator": {"kind": "page", "value": "3"}}]
         acq = {"route": "gateway:other", "retrieved_at": T, "gateway_call_ref": "gw-call-1", "cache_reuse": False}
         ext = {"method": "verifier_extraction", "extractor": "x-1", "produced_by_invocation_id": "inv_other000", "validation_ref": None}
@@ -324,6 +339,7 @@ class VerificationTest(StoreTestCase):
         self.verify("ver_00000001")
 
     def test_receipt_names_the_verifiers_own_capability(self) -> None:
+        self.recorded_verification_basis()
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
             self.verify("ver_00000001", capability="cap_pppppppp")
         self.assertIn("verifier capability", str(ctx.exception))

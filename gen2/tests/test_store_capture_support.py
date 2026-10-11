@@ -53,15 +53,18 @@ class CaptureDDLTest(DDLTest):
         self.refused(self.promote)
 
     def test_version(self):
+        self.x("DROP TRIGGER verification_receipts_admitted_extraction")  # isolate capture selector
         self.raw()
         self.refused(lambda: self.bound(method="verifier_extraction", source={"work_id": "wrk_00000001", "source_version": "missing"}))
 
     def test_work(self):
+        self.x("DROP TRIGGER verification_receipts_admitted_extraction")  # isolate capture selector
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000002', 'doi', '10.1/other', '2026-09-27T10:00:00Z')")
         self.raw()
         self.refused(lambda: self.bound(method="verifier_extraction", source={"work_id": "wrk_00000002", "source_version": "v1"}))
 
     def test_hash(self):
+        self.x("DROP TRIGGER verification_receipts_admitted_extraction")  # isolate capture selector
         self.raw()
         self.refused(lambda: self.bound(method="verifier_extraction", obtained_content_hash=h("8")))
 
@@ -88,7 +91,7 @@ class CaptureDDLTest(DDLTest):
         # The sweep's canonical receipt predates this governed capture. Its
         # old check/normalization cannot certify the newly checked capture.
         self.raw()
-        self.verify("ver_pending01", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
+        self.verify("ver_pending01", gateway="gw-call:1", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
             **self.CHECKS_OK, "exact_quote": {"status": "matched", "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}}})
         with self.assertRaisesRegex(sqlite3.IntegrityError, "unbound extraction|governed capture"):
             self.promote()
@@ -97,7 +100,7 @@ class CaptureDDLTest(DDLTest):
     def test_late_pending_cannot_preserve_support(self):
         self.promote()
         self.raw()
-        self.verify("ver_pending01", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
+        self.verify("ver_pending01", gateway="gw-call:1", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
             **self.CHECKS_OK, "exact_quote": {"status": "matched", "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}}})
         self.finish()
         self.assertEqual(self.rows("SELECT status FROM claims"), [("quarantined",)])

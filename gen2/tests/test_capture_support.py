@@ -280,3 +280,4 @@ class RouterGuardTest(CaptureTest):
         super().setUp()
         self.x("DROP TRIGGER verification_receipts_capture_binding")
         self.x("DROP TRIGGER claims_accepted_support_needs_capture")
+        self.x("DROP TRIGGER verification_receipts_admitted_extraction")

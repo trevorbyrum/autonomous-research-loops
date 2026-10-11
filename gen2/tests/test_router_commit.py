@@ -322,6 +322,18 @@ class AuthorityTest(CommitCase):
         self.assertEqual(self.router.commit_outcome(self.envelope(self.grant, "op_capture0001", outcome, refs=[text]))["status"], "committed")
         verifier = self.started("inv_verify01", "verification")
         receipt = self.verification_receipt(verifier)
+        # Recorded input for this authority test; trusted transport has separate
+        # Router tests. Keep identity refusals independent of acquisition refusal.
+        from gen2.tests.test_router_workflow import Workflow
+        event = Workflow.observe(self, self.grant, "obs_authority01", ("rec-1",))[0]
+        self.x("INSERT INTO record_work_links VALUES (?, 'wrk_00000001', 'dedup-1', '2026-09-27T10:00:00Z')", event)
+        source = self.artifact(b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}', "application/json")
+        out = self.router.commit_outcome(self.envelope(self.grant, "op_basis001",
+            {**empty_outcome("inv_research01", "interim_transition"), "source_artifacts": [{"work_id": "wrk_00000001", "source_version": "v1", "artifact_ref": source}]}, refs=[source]))
+        self.assertEqual(out["status"], "committed", out)
+        self.x("INSERT INTO source_acquisitions SELECT s.topic_id, s.work_id, s.source_version, s.content_hash, o.observation_id, e.event_id, o.gateway_call_ref, o.invocation_id, o.attempt, o.lane, 'find', e.provider_record_id, e.captured_at, 'inv_verify01', o.request_identity, CAST(o.request AS BLOB), ?, e.captured_at FROM source_artifacts s, search_observations o JOIN retrieval_events e USING (observation_id) WHERE o.observation_id = 'obs_authority01'", self.spool.blobs[source["content_hash"]])
+        receipt["obtained_content_hash"] = source["content_hash"]
+        receipt["checks"]["exact_quote"]["source_artifact_hash"] = source["content_hash"]
         cases = (
             ("the producer commits it", self.grant, receipt, "kind_not_permitted"),
             ("the verifier names another verifier", verifier, {**receipt, "verifier_invocation_id": "inv_research01"}, "capability_invocation_mismatch"),

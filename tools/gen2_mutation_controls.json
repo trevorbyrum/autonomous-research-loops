@@ -12114,6 +12114,76 @@
   ],
   "why": "A separate raw canonical receipt is accepted at a literal recorded ceiling or below it; raw SQL proves relationships/content shape, not byte authentication."
  },
+ "2D4B3C-call": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_acquisitions.ExtractionDDLTest.test_control"
+  ],
+  "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
+ },
+ "2D4B3C-existence": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_acquisitions.ExtractionDDLTest.test_control"
+  ],
+  "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
+ },
+ "2D4B3C-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_acquisitions.ExtractionDDLTest.test_control"
+  ],
+  "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
+ },
+ "2D4B3C-route": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_acquisitions.ExtractionDDLTest.test_control"
+  ],
+  "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
+ },
+ "2D4B3C-time": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_acquisitions.ExtractionDDLTest.test_control"
+  ],
+  "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
+ },
+ "2D4B3C-validated-method": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_acquisitions.ExtractionDDLTest.test_control"
+  ],
+  "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
+ },
+ "2D4B3C-verifier": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_acquisitions.ExtractionDDLTest.test_control"
+  ],
+  "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
+ },
+ "2D4B3C-verifier-method": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_acquisitions.ExtractionDDLTest.test_control"
+  ],
+  "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
+ },
+ "2D4B3C-version": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_acquisitions.ExtractionDDLTest.test_control"
+  ],
+  "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
+ },
+ "2D4B3C-work": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_acquisitions.ExtractionDDLTest.test_control"
+  ],
+  "why": "Separate accepted receipts of both extraction methods consume literal admitted work/version/verifier/hash/call/time/route operands; the extractor may differ from the acquirer. Raw SQL proves lineage only."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

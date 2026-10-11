@@ -26,7 +26,7 @@ class DDLTest(StoreTestCase):
 
     def test_control(self):
         self.raw()
-        self.verify("ver_governed001", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
+        self.verify("ver_governed001", gateway="gw-call:1", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
             **self.CHECKS_OK, "exact_quote": {"status": "matched", "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}}})
         self.assertEqual(self.rows("SELECT exact_match, quote_quarantined FROM quote_checks WHERE check_id = 'qck_governed001'"), [("matched", 0)])
 
@@ -50,7 +50,7 @@ class DDLTest(StoreTestCase):
         self.raw("mismatch")
         self.x("DROP TRIGGER verification_receipts_capture_binding")  # isolate DDL 11's independent guard
         with self.assertRaisesRegex(sqlite3.IntegrityError, "governed quarantined quote"):
-            self.verify("ver_governed001", quote=("mismatch", "qck_governed001"), verdict="partially_supports")
+            self.verify("ver_governed001", gateway="gw-call:1", quote=("mismatch", "qck_governed001"), verdict="partially_supports")
 
     def test_immutable(self):
         self.raw()
