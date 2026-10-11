@@ -11192,6 +11192,168 @@
   ],
   "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
  },
+ "2D4B-acquirer": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Equal acquisition attribution is a literal accepted control for the substituted acquirer."
+ },
+ "2D4B-attempt": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-availability": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-bytes-digest": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-bytes-size": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-call-binding": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-call-type": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-canonical-record": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-capture": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-envelope": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-identity": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-invocation": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-json": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "A canonical response without duplicate keys traverses both parsers and retains the exact expected lineage."
+ },
+ "2D4B-lane": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-media": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-observation": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-request-identity": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-request-lane": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-request-type": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-response-lists": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-route": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-source-identity": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-summary": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-topic": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-unobserved": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-work": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
+ "2D4B-work-link": {
+  "controls": [
+   "test_reaccess.ReaccessTest.test_producer_bytes_control"
+  ],
+  "why": "Literal producer-acquired canonical response traverses this binding and keeps its exact immutable acquisition lineage."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

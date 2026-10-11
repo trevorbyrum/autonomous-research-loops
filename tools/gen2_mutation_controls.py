@@ -815,6 +815,8 @@ def _inventory():
     MANUAL.update(QUOTE_ATTENTION_CONTROLS)
     from gen2_mutants.verification_attention_2d4 import CONTROLS as VERIFICATION_ATTENTION_CONTROLS
     MANUAL.update(VERIFICATION_ATTENTION_CONTROLS)
+    from gen2_mutants.reaccess_2d4b import CONTROLS as REACCESS_CONTROLS
+    MANUAL.update(REACCESS_CONTROLS)
     return gen2_mutations
 
 

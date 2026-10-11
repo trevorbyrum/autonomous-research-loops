@@ -127,6 +127,7 @@ from gen2_mutants import MUTATIONS, SECOND_LAYER, SECOND_LAYER_TRIGGERS, Mutatio
 # ("disk",): a file only children run (a script started by path); the
 # mutant exists only in the child tree.
 FILE_TARGETS = {
+    "gen2/router/reaccess.py": ("module", "gen2.router.reaccess"),
     "gen2/router/quote_matching.py": ("module", "gen2.router.quote_matching"),
     "gen2/accounting/views.py": ("module", "gen2.accounting.views"),
     "gen2/accounting/stopping.py": ("module", "gen2.accounting.stopping", "gen2.router.amendments", "gen2.router.service", "gen2.tests.router_fixtures"),

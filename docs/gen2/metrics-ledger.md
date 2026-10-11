@@ -507,6 +507,24 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/core/canonical.py
-- limit: 15
-- reason: One additional Router collaborator consumes the shared hash implementation for deterministic hold identity, preserving one canonical hashing authority.
-- task: 2d-4
+- limit: 16
+- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity. Task 2d-4b adds one pure acquisition validator (15 to 16), reusing byte/request hashes and strict JSON rather than a second hashing or parser implementation.
+- task: 2d-4b
+
+### ML-0078
+- action: admit
+- target: engine|edge|gen2/router/reaccess.py->gen2/core/canonical.py
+- reason: Pure fixture acquisition validation reuses the existing byte digest, strict JSON parser and attempted-request hash authority.
+- task: 2d-4b
+
+### ML-0079
+- action: admit
+- target: engine|file|gen2/router/reaccess.py
+- reason: The foundational V-3 hand-off validates retained fixture response lineage without I/O, state writes, semantic judgments or admission authority; Router integration remains the next split.
+- task: 2d-4b
+
+### ML-0080
+- action: admit
+- target: engine|reach|gen2/router/reaccess.py->gen2/core/canonical.py
+- reason: Acquisition consistency needs only the shared canonical primitives, preserving a single hash and JSON implementation.
+- task: 2d-4b

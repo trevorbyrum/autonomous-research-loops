@@ -555,3 +555,56 @@ V-3's canonical-byte reuse and validated extraction runtime path also remain
 part 2. V-8 currently retains summary labels under SQL 03; attributed detailed
 check production and unavailable/unperformed handling remain part 3. Exact
 dossier consumption remains slice 6; producers/scheduling remain 2e2.
+
+### 2d-4b: authenticate retained fixture acquisition first
+
+Design before code against `712f2c2` on gen2. Inspection refines part 2 to
+**about 850 hand-written lines**: canonical acquisition computation 110,
+Router admission/wiring and extraction validation 150, ordered DDL/schema
+120, Router/raw-DDL/literal tests 330, mutants/integration/metrics 140.
+Documentation and generated controls are additional. Split before code:
+**this first part, about 380 lines**, implements the pure canonical
+acquisition validator, literal fixture oracles and paired mutants; **the next
+part, about 470 lines**, integrates it with the fenced Router, durable
+extraction validation, recorded tier/table checks, replay and raw-DDL tests.
+Re-estimate that next part before code. Stop after this first part; 2d-4b is
+incomplete until admission and its end-to-end tests land.
+
+SQL 03 currently authenticates canonical reuse with a non-null gateway-call
+reference and an artifact hash. `search_observations` retains the attempted
+request, lane, invocation, attempt and capture acknowledgement, but explicitly
+does not retain response bytes. SQL 10 supplies immutable source-version bytes,
+without distinguishing transport content from an extraction. Gateway canonical
+records also include link-only `full_text` records (Semantic Scholar), whereas
+CORE can return actual `text`; neither a route name nor a media type alone
+establishes full text or table availability. A caller's validation reference
+likewise identifies no existing validation authority. Reusing these labels
+would reproduce the provenance gap rather than enforce V-2/V-3.
+
+The foundational pure hand-off consumes existing source/artifact/observation,
+retrieval-event and work-link rows plus **retained fixture gateway response
+bytes**. It rehashes those bytes, requires the recorded JSON media type, binds
+the exact topic/work/source version and retrieval identity, and checks the
+response's captured call, invocation and attempt against the recorded
+observation. It requires that the selected lane actually retrieved that
+identity and that the response contains its canonical record. It returns
+immutable acquisition lineage, including the recorded lane/request type,
+artifact identity and actual acquiring invocation. Producer-acquired bytes
+are allowed; selected summaries and unauthenticated response shapes refuse.
+No caller receipt route/tier/extractor label is an input. It performs no I/O,
+semantic judgment, extraction or state write and grants no support authority.
+As with the accepted pure quote matcher, only the later Router adapter can
+select authenticated operands and persist admission under its writer fence.
+
+The next part must bind retained response bytes at the trusted station capture
+boundary; an observation's call reference alone cannot invent that binding.
+It must distinguish actual content from links/abstracts, bind each cited table
+to recorded availability, retain validated extraction input/output and verifier
+attribution, and refuse invented validation references. Workflow execution
+remains 2e2. Pure fixtures in this part prove structural consistency, not that
+an arbitrary agent-supplied JSON document came from a gateway. No new DDL or
+live gateway/provider/database access occurs in this part.
+
+Run the new literal validators, existing V-1/V-3 tests, the full composition
+module, every affected mutant family and all six gates. Evidence and
+COMPLETION.md belong in private `evidence/2d-4b/`.
