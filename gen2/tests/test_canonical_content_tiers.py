@@ -100,3 +100,17 @@ class ContentRouterTest(unittest.TestCase):
             out = case.send(document(case, "reproduced"))
             self.assertEqual((out["status"], out.get("reason")), ("rejected", "operation_id_conflict"))
             self.assertEqual(case.state(), before)
+
+    def test_unicode_blank(self):
+        # Literal Unicode separators/ignorables, selected independently of SQL.
+        for value in ("\v", "\f\u00a0", "\u0085", "\u1680", "\u2007", "\u2028", "\u2029",
+                "\u202f", "\u205f", "\u3000", "\u200b", "\ufeff", "\U000e0100"):
+            for field, tier in (("abstract", "abstract"), ("text", "full_text")):
+                with self.subTest(value=repr(value), field=field), fixture({"identity": IDENTITY, "kind": "full_text", field: value}) as case:
+                    self.refuse(case, tier, "bibliographic")
+
+    def test_unicode_text_controls(self):
+        for value in ("\f\u00a0Results\u2028", "\u200bFindings\ufeff", "\u200d文\U000e0100", "."):
+            for field, tier in (("abstract", "abstract"), ("text", "full_text")):
+                with self.subTest(value=value, field=field), fixture({"identity": IDENTITY, "kind": "full_text", field: value}) as case:
+                    self.assertEqual(case.send(document(case, tier))["status"], "committed")

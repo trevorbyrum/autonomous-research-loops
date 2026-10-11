@@ -1,3 +1,20 @@
+-- trace: flow S4 step 8; BOUNDARIES.md Router/Verifier; INVARIANTS V-2.
+-- recorded-nonblank/1+ucd17.0.0: at least one character outside White_Space
+-- (PropList.txt) and Default_Ignorable_Code_Point (DerivedCoreProperties.txt).
+-- https://www.unicode.org/Public/17.0.0/ucd/ ; complete sets, merged ranges.
+-- GLOB ranges compare Unicode code points; formatting is preserved in text.
+CREATE VIEW recorded_nonblank_v1 AS
+SELECT '*[^' || char(9) || '-' || char(13) || char(32,133,160,5760)
+  || char(8192) || '-' || char(8202) || char(8232,8233,8239,8287,12288)
+  || char(173,847,1564) || char(4447) || '-' || char(4448)
+  || char(6068) || '-' || char(6069) || char(6155) || '-' || char(6159)
+  || char(8203) || '-' || char(8207) || char(8234) || '-' || char(8238)
+  || char(8288) || '-' || char(8303) || char(12644)
+  || char(65024) || '-' || char(65039) || char(65279,65440)
+  || char(65520) || '-' || char(65528) || char(113824) || '-' || char(113827)
+  || char(119155) || '-' || char(119162) || char(917504) || '-' || char(921599)
+  || ']*' AS pattern;
+
 -- trace: flow S4 step 8; BOUNDARIES.md Router/Verifier; INVARIANTS V-1/V-2.
 -- Ceiling comes from the consumed record, never the receipt's tier label.
 -- SQL 14/15 and the immutable source key imply content-hash/topic equality.
@@ -11,9 +28,9 @@ WHEN NEW.extraction_method = 'canonical_bytes'
       WHEN o.coverage_state = 'searched_ok'
         AND json_extract(r.value, '$.kind') = 'full_text'
         AND json_type(r.value, '$.text') = 'text'
-        AND length(trim(json_extract(r.value, '$.text'), char(9,10,13,32))) > 0 THEN 3
+        AND json_extract(r.value, '$.text') GLOB (SELECT pattern FROM recorded_nonblank_v1) THEN 3
       WHEN json_type(r.value, '$.abstract') = 'text'
-        AND length(trim(json_extract(r.value, '$.abstract'), char(9,10,13,32))) > 0 THEN 2
+        AND json_extract(r.value, '$.abstract') GLOB (SELECT pattern FROM recorded_nonblank_v1) THEN 2
       ELSE 1 END)
     FROM source_acquisitions a JOIN search_observations o USING (observation_id)
     LEFT JOIN json_each(CASE WHEN json_valid(CAST(a.response_bytes AS TEXT))

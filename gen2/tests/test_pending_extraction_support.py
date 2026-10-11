@@ -1,0 +1,137 @@
+"""Pending declarations are retained but never qualify load-bearing support."""
+import sqlite3
+import unittest
+
+from gen2.tests.router_fixtures import empty_outcome
+from gen2.tests.test_canonical_content_tiers import IDENTITY, FULL, fixture, document
+from gen2.tests.test_store_content_tiers import ContentDDLTest
+
+METHODS = ("verifier_extraction", "validated_extraction")
+
+
+def load_claim(case, tier):
+    ref = case.artifact(b"Independent load-bearing claim")
+    out = case.router.commit_outcome(case.envelope(case.producer, "op_loadclaim1",
+        {**empty_outcome("inv_capture001", "interim_transition"), "claims": [{"claim_id": "clm_loadbear1", "revision": 1,
+            "text_ref": ref, "load_bearing": True, "required_access_tier": tier}]}, refs=[ref]))
+    case.assertEqual(out["status"], "committed", out)
+
+
+def support_document(case, method, tier):
+    doc = document(case, tier)
+    doc["claim"]["claim_id"] = "clm_loadbear1"
+    doc["requested_for"]["use"] = "load_bearing"
+    doc["extraction"].update(method=method)
+    if method == "verifier_extraction":
+        doc["extraction"]["produced_by_invocation_id"] = "inv_verify0001"
+    if method == "validated_extraction":
+        doc["extraction"]["validation_ref"] = "validation_unrecorded"
+    return doc
+
+
+class PendingRouterTest(unittest.TestCase):
+    def promote(self, case, expected):
+        before = case.state()
+        out = case.router.commit_outcome(case.envelope(case.producer, "op_promote001",
+            {**empty_outcome("inv_capture001", "interim_transition"), "claim_promotions": [{"claim_id": "clm_loadbear1", "revision": 1}]}))
+        self.assertEqual(out["status"], expected, out)
+        if expected == "rejected":
+            self.assertIn("unbound extraction", out["detail"])
+            self.assertEqual(case.state(), before)
+
+    def test_pending_methods(self):
+        for method in METHODS:
+            for tier in ("full_text", "reproduced"):
+                with self.subTest(method=method, tier=tier), fixture({"identity": IDENTITY, "abstract": "Only an abstract"}) as case:
+                    load_claim(case, tier)
+                    doc = support_document(case, method, tier)
+                    out = case.send(doc)
+                    self.assertEqual(out["status"], "committed", out)
+                    self.assertEqual(case.rows("SELECT access_tier, extraction_method, verdict FROM verification_receipts"), [(tier, method, "supports")])
+                    self.assertEqual(case.rows("SELECT hold_class, recoverability, required_authority, owner, clears_when FROM holds"),
+                        [("judgment", "needs_remediation", "primary", "primary:station-1", "independent verification with the required content")])
+                    held = case.rows("SELECT hold_id FROM holds")
+                    self.assertEqual(out["receipt"]["effects"]["holds_created"], [h[0] for h in held])
+                    before = case.state(exclude=())
+                    self.assertEqual(case.router.commit_outcome(case.env)["status"], "replayed")
+                    self.assertEqual(case.state(exclude=()), before)
+                    self.promote(case, "rejected")
+
+    def test_canonical_support_control(self):
+        with fixture(FULL) as case:
+            load_claim(case, "full_text")
+            self.assertEqual(case.send(support_document(case, "validated_extraction", "full_text"))["status"], "committed")
+            held = case.rows("SELECT * FROM holds")
+            doc = support_document(case, "canonical_bytes", "full_text")
+            doc["verification_receipt_id"] = "ver_canonical1"
+            self.assertEqual(case.send(doc, op="op_canonical1")["status"], "committed")
+            self.promote(case, "committed")
+            self.assertEqual(case.rows("SELECT * FROM holds"), held)
+
+    def test_hold_rollback(self):
+        with fixture(FULL) as case:
+            load_claim(case, "full_text")
+            before = case.state(exclude=())
+            case.faults["in_transaction:end"] = RuntimeError("after pending extraction hold")
+            with self.assertRaisesRegex(RuntimeError, "after pending extraction hold"):
+                case.send(support_document(case, "verifier_extraction", "full_text"))
+            self.assertEqual(case.state(exclude=()), before)
+
+    def test_blank_cannot_promote(self):
+        with fixture({**FULL, "text": "\f\u00a0\u2029"}) as case:
+            load_claim(case, "full_text")
+            self.assertEqual(case.send(support_document(case, "canonical_bytes", "full_text"))["status"], "rejected")
+            out = case.router.commit_outcome(case.envelope(case.producer, "op_promote001",
+                {**empty_outcome("inv_capture001", "interim_transition"), "claim_promotions": [{"claim_id": "clm_loadbear1", "revision": 1}]}))
+            self.assertEqual(out["status"], "rejected", out)
+            self.assertEqual(case.rows("SELECT status FROM claims WHERE claim_id = 'clm_loadbear1'"), [("provisional",)])
+
+
+class PendingDDLTest(ContentDDLTest):
+    def pending(self, method="validated_extraction", tier="full_text"):
+        self.x("INSERT INTO claims SELECT claim_id, 2, topic_id, text_ref, producer_invocation_id, 1, ?, 'provisional', created_at FROM claims WHERE revision = 1", tier)
+        self.content_receipt(tier, method=method, claim=("clm_00000001", 2), use="load_bearing",
+            extraction="inv_vvvvvvvv" if method == "verifier_extraction" else "inv_pppppppp", validation="validation_unrecorded")
+
+    def promote(self):
+        self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 2")
+
+    def test_pending_methods(self):
+        self.acquired({"identity": "rec-1", "abstract": "Only an abstract"})
+        for method in METHODS:
+            for tier in ("full_text", "reproduced"):
+                with self.subTest(method=method, tier=tier):
+                    self.x("SAVEPOINT pending")
+                    try:
+                        self.pending(method, tier)
+                        self.assertEqual(self.rows("SELECT access_tier, extraction_method FROM verification_receipts WHERE verification_receipt_id = 'ver_content1'"), [(tier, method)])
+                        before = self.rows("SELECT * FROM claims")
+                        with self.assertRaisesRegex(sqlite3.IntegrityError, "unbound extraction"):
+                            self.promote()
+                        self.assertEqual(self.rows("SELECT * FROM claims"), before)
+                    finally:
+                        self.x("ROLLBACK TO pending")
+                        self.x("RELEASE pending")
+
+    def test_canonical_support_control(self):
+        self.acquired({"identity": "rec-1", "kind": "full_text", "text": "Recorded full text"})
+        self.pending()
+        self.content_receipt("full_text", rid="ver_canonical1", claim=("clm_00000001", 2), use="load_bearing")
+        self.promote()
+        self.assertEqual(self.rows("SELECT status FROM claims WHERE revision = 2"), [("accepted_support",)])
+
+    def test_canonical_distractors(self):
+        self.acquired({"identity": "rec-1", "kind": "full_text", "text": "Recorded full text"})
+        self.pending()
+        self.x("INSERT INTO claims SELECT 'clm_other001', revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at FROM claims WHERE revision = 2")
+        for change in ({"claim": ("clm_00000001", 1)}, {"claim": ("clm_other001", 2)}, {"use": "sampled"}, {"verdict": "does_not_support"}):
+            with self.subTest(change=change):
+                self.x("SAVEPOINT distractor")
+                try:
+                    args = {"claim": ("clm_00000001", 2), "use": "load_bearing", **change}
+                    self.content_receipt("full_text", rid="ver_distractor1", **args)
+                    with self.assertRaisesRegex(sqlite3.IntegrityError, "unbound extraction"):
+                        self.promote()
+                finally:
+                    self.x("ROLLBACK TO distractor")
+                    self.x("RELEASE distractor")

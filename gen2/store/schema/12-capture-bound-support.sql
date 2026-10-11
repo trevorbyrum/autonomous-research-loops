@@ -36,6 +36,7 @@ AND (EXISTS (SELECT 1 FROM quote_checks q WHERE q.claim_id = c.claim_id AND q.cl
   OR (c.load_bearing = 1 AND NOT EXISTS (
     SELECT 1 FROM verification_receipts v WHERE v.claim_id = c.claim_id AND v.claim_revision = c.revision
       AND v.verdict = 'supports' AND v.use = 'load_bearing'
+      AND v.extraction_method = 'canonical_bytes'
       AND NOT EXISTS (SELECT 1 FROM governed_receipt_failures f WHERE f.verification_receipt_id = v.verification_receipt_id))));
 
 CREATE TRIGGER verification_receipts_capture_binding AFTER INSERT ON verification_receipts

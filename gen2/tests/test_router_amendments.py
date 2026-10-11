@@ -169,9 +169,26 @@ class ContractWorld(RouterTestCase):
         assert self.router.record_observation({"capability_id": grant["capability_id"], "invocation_id": inv, "observation": observation, "retrieval_events": []})["status"] == "recorded"
         return grant
 
-    def verify(self) -> dict:
+    def verify(self, canonical_producer=None) -> dict:
         verifier = self.started("inv_verify01", "verification")
-        own = {**empty_outcome("inv_verify01", "interim_transition"), "verification_receipts": [test_router_commit.AuthorityTest.verification_receipt(self, verifier)]}
+        doc = test_router_commit.AuthorityTest.verification_receipt(self, verifier)
+        if canonical_producer is not None:
+            # Raw admitted fixture operands for the amendment control. This
+            # test exercises pin compatibility, not capture authentication.
+            raw = b'{"records":[{"identity":"rec-full","kind":"full_text","text":"Fixture full text"}]}'
+            ref = self.artifact(raw, "application/json")
+            self.x("INSERT INTO search_observations SELECT 'obs_support001', invocation_id, topic_id, request_identity, 2, lane, request, obligation_ids, started_at, ended_at, 'searched_ok', 1, completeness, error_class, capability_fact_id, policy_version, cost_units, gateway_call_ref, page_outcome, continuation FROM search_observations WHERE observation_id = 'obs_000000000001'")
+            self.x("INSERT INTO retrieval_events VALUES ('rev_support001', 'obs_support001', ?, 'rec-full', 1, '2026-09-27T10:00:00Z')", TOPIC)
+            self.x("INSERT INTO record_work_links VALUES ('rev_support001', 'wrk_00000001', 'dedup-1', '2026-09-27T10:00:00Z')")
+            payload = {**empty_outcome("inv_research01", "interim_transition"), "source_artifacts": [
+                {"work_id": "wrk_00000001", "source_version": "canonical-v1", "artifact_ref": ref}]}
+            self.assertEqual(self.router.commit_outcome(self.envelope(canonical_producer, "op_support001", payload, refs=[ref]))["status"], "committed")
+            request, identity = self.rows("SELECT request, request_identity FROM search_observations WHERE observation_id = 'obs_support001'")[0]
+            self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'canonical-v1', ?, 'obs_support001', 'rev_support001', 'call-1', 'inv_research01', 2, 'crossref', 'find', 'rec-full', '2026-09-27T10:00:00Z', 'inv_verify01', ?, ?, ?, '2026-09-27T10:00:00Z')", TOPIC, ref["content_hash"], identity, request.encode(), raw)
+            doc["source"]["source_version"] = "canonical-v1"
+            doc["obtained_content_hash"] = doc["checks"]["exact_quote"]["source_artifact_hash"] = ref["content_hash"]
+            doc["extraction"].update(method="canonical_bytes", produced_by_invocation_id="inv_research01")
+        own = {**empty_outcome("inv_verify01", "interim_transition"), "verification_receipts": [doc]}
         assert self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own))["status"] == "committed"
         return verifier
 
@@ -303,7 +320,7 @@ class ImpactTest(ContractWorld):
 
     def test_a_compatible_amendment_lets_admitted_work_complete_under_its_pins(self) -> None:
         grant = self.research()
-        verifier = self.verify()
+        verifier = self.verify(canonical_producer=grant)
         out = self.approve(self.propose(3, compatible))
         self.assertEqual(out.get("effects", {}).get("impact", {}).get("classification"), "compatible")
         record = self.impact("opd_amend0003")

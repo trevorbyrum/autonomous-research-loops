@@ -136,7 +136,8 @@ class EvidenceWriter:
             raise Refusal("payload_invalid", "governed quarantined quote cannot supply support (V-6)")
         if checks and claim["load_bearing"]:
             receipts = self._core._store.select("verification_receipts", {"claim_id": claim["claim_id"], "claim_revision": claim["revision"]})
-            if not any(v["verdict"] == "supports" and v["use"] == "load_bearing" and self._quote_receipt_valid(v["receipt"]) for v in receipts):
+            if not any(v["verdict"] == "supports" and v["use"] == "load_bearing" and v["extraction_method"] == "canonical_bytes"
+                    and self._quote_receipt_valid(v["receipt"]) for v in receipts):
                 raise Refusal("payload_invalid", "support needs a receipt bound to this governed capture (V-1, V-6)")
 
     def bind_source_artifacts(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> None:

@@ -598,7 +598,7 @@ class StoreTestCase(unittest.TestCase):
         and the population the history-rewrite sweep attacks. Keep one row in
         every table: test_every_table_is_populated fails if a table is added
         without extending this."""
-        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, topic_id, staged_at) VALUES (?, 10, 'application/json', ?, ?)", h("7"), TOPIC, T)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, topic_id, staged_at) VALUES (?, 512, 'application/json', ?, ?)", h("7"), TOPIC, T)
         self.confirm_brief(TOPIC)  # S1: the topic's intake brief, confirmed (intake_briefs)
         # S3: the operator rates draft revision 2; revision 3 carries the ratings and is approved
         rev = self.approved_with_obligation(TOPIC)
@@ -653,9 +653,9 @@ class StoreTestCase(unittest.TestCase):
         # Raw-row sweep fixture, not authenticated gateway acquisition evidence.
         if "source_acquisitions" in self.tables():  # legacy-DDL installation tests stop before SQL 14
             self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call:1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)",
-                   TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{}        ', T)
+                   TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
         self.quote_check("qc-1")
-        self.verify("ver_00000001")
+        self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway="gw-call:1")
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1")
         jev = self.spec()
         self.decision_receipt("dec_00000001", "inv_pppppppp", jev)

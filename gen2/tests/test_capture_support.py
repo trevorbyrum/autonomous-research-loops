@@ -2,10 +2,10 @@
 import json
 from unittest.mock import patch
 
-from gen2.tests.test_governed_quotes import QuotesCase
+from gen2.tests.canonical_quotes_fixtures import CanonicalQuotesCase
 
 
-class CaptureCase(QuotesCase):
+class CaptureCase(CanonicalQuotesCase):
     def setUp(self):
         super().setUp()
         self.new_capture(2, b"effect observed")
@@ -56,8 +56,12 @@ class CaptureTest(CaptureCase):
         self.accepted(record, verification_receipts=[doc])
         self.promote()
 
-    def substitution(self, change):
+    def substitution(self, change, pending=False):
         record, doc = self.operands()
+        if pending:
+            # Isolate capture predicates from canonical acquisition selectors;
+            # the pending declaration still must bind its cited capture.
+            doc["extraction"].update(method="verifier_extraction", produced_by_invocation_id="inv_verify0001")
         change(doc)
         self.refuse([record], doc)
 
@@ -65,17 +69,17 @@ class CaptureTest(CaptureCase):
         self.substitution(lambda d: d["cited_spans"][0].update(start=0, end=1))
 
     def test_version(self):
-        self.substitution(lambda d: d["source"].update(source_version="not-recorded"))
+        self.substitution(lambda d: d["source"].update(source_version="not-recorded"), pending=True)
 
     def test_work(self):
         events = self.observe(self.capture_grant, "obs_other00001", ("other-record",))
         work = self.register(self.capture_grant, [("doi", "10.1/other", events)])["works"][0]["work_id"]
-        self.substitution(lambda d: d["source"].update(work_id=work))
+        self.substitution(lambda d: d["source"].update(work_id=work), pending=True)
 
     def test_hash(self):
         other = self.artifact(b"other bytes")
         self.send([], grant=self.capture_grant, refs=[other])
-        self.substitution(lambda d: d.update(obtained_content_hash=other["content_hash"]))
+        self.substitution(lambda d: d.update(obtained_content_hash=other["content_hash"]), pending=True)
 
     def test_normalization(self):
         self.substitution(lambda d: d["checks"]["exact_quote"].update(normalization_version="other/1"))
@@ -99,6 +103,26 @@ class CaptureTest(CaptureCase):
         doc["checks"]["exact_quote"]["status"] = "not_applicable"
         self.assertEqual(self.send([], verification_receipts=[doc])["status"], "committed")
         self.promote()
+
+    def test_pending_cannot_borrow_historical_canonical(self):
+        _, doc = self.operands()
+        doc["quote_check_id"] = None
+        doc["checks"]["exact_quote"]["status"] = "not_applicable"
+        self.assertEqual(self.send([], verification_receipts=[doc])["status"], "committed")
+        record, doc = self.operands()
+        doc["verification_receipt_id"] = "ver_pending01"
+        doc["extraction"].update(method="verifier_extraction", produced_by_invocation_id="inv_verify0001")
+        self.accepted(record, verification_receipts=[doc])
+        self.promote(accepted=False)
+
+    def test_late_pending_cannot_preserve_support(self):
+        self.test_non_quote_control()
+        record, doc = self.operands()
+        doc["verification_receipt_id"] = "ver_pending01"
+        doc["extraction"].update(method="verifier_extraction", produced_by_invocation_id="inv_verify0001")
+        before = self.state(exclude=())
+        self.accepted(record, verification_receipts=[doc])
+        self.late_store(before, "quarantined", holds=1)
 
     def test_non_load_bearing(self):
         doc = self.receipt_document()
@@ -140,7 +164,7 @@ class CaptureTest(CaptureCase):
 
     def test_multi_control(self):
         record, doc = self.operands()
-        second = self.record(claim_revision=2, check_id="qck_second0001", quoted_text="<", span_start=0, span_end=1)
+        second = self.record(claim_revision=2, check_id="qck_second0001", quoted_text="{", span_start=0, span_end=1)
         doc["cited_spans"].append({"start": 0, "end": 1, "locator": {"kind": "section", "value": "Results"}})
         self.assertEqual(self.send([record, second], verification_receipts=[doc])["status"], "committed")
         self.promote()
@@ -204,7 +228,7 @@ class CaptureTest(CaptureCase):
         doc["verification_receipt_id"] = "ver_latebound01"
         records = [record]
         if multiple:
-            records.append(self.record(claim_revision=2, check_id="qck_second0001", quoted_text="<", span_start=0, span_end=1))
+            records.append(self.record(claim_revision=2, check_id="qck_second0001", quoted_text="{", span_start=0, span_end=1))
             doc["cited_spans"].append({"start": 0, "end": 1, "locator": {"kind": "section", "value": "Results"}})
         before = self.state(exclude=())
         self.assertEqual(self.send(records, verification_receipts=[doc])["status"], "committed")

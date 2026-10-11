@@ -22,23 +22,29 @@ class Verification:
         self._core = core
 
     def hold_ids(self, payload: dict) -> list[str]:
-        return [self._hold_id(doc) for doc in payload["verification_receipts"] if doc["verdict"] != "supports"]
+        return [self._hold_id(doc) for doc in payload["verification_receipts"] if self._needs_hold(doc)]
+
+    def _needs_hold(self, doc: dict) -> bool:
+        return doc["verdict"] != "supports" or doc["extraction"]["method"] != "canonical_bytes"
 
     def _hold_id(self, doc: dict) -> str:
         return "hold_" + canonical.logical_hash({"verification_receipt_id": doc["verification_receipt_id"]})[7:]
 
     def write_holds(self, payload: dict, op_id: str, now: str) -> dict:
         for doc in payload["verification_receipts"]:
-            if doc["verdict"] == "supports":
+            if not self._needs_hold(doc):
                 continue
             # Receipts have already passed SQL 03's claim/topic/producer binding.
             claim = self._core._one("claims", {"claim_id": doc["claim"]["claim_id"], "revision": doc["claim"]["claim_revision"]})
             producer = self._core._one("invocations", {"invocation_id": claim["producer_invocation_id"]})
             lease = self._core._one("leases", {"lease_id": producer["lease_id"]})
             missing = doc["verdict"] == "cannot_assess_at_required_tier"
+            pending = doc["verdict"] == "supports" and doc["extraction"]["method"] != "canonical_bytes"
+            missing = missing or pending
             self._core._store.insert("holds", {
                 "hold_id": self._hold_id(doc), "topic_id": doc["topic_id"], "subject_ref": "verification:" + doc["verification_receipt_id"],
-                "hold_class": "judgment", "cause": ("verification missing content: " if missing else "verification disagreement: ") + doc["verdict"],
+                "hold_class": "judgment", "cause": ("verification missing content: " if missing else "verification disagreement: ") +
+                    ("extraction evidence not durably bound" if pending else doc["verdict"]),
                 "recoverability": "needs_remediation" if missing else "needs_decision", "required_authority": "primary",
                 "owner": "primary:" + lease["station_id"], "deadline_at": producer["deadline_at"],
                 "clears_when": "independent verification with the required content" if missing else "primary adjudication of this verification disagreement",

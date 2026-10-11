@@ -21,3 +21,4 @@
 14-source-acquisitions.sql
 15-canonical-receipt-acquisitions.sql
 16-canonical-content-tiers.sql
+17-pending-extraction-support.sql

@@ -50,9 +50,21 @@ consumed acquisition's recorded content: the selected record's nonblank abstract
 or full-text body, with `metadata_only` unable to certify full text. Links,
 record-kind labels and availability flags alone grant bibliographic access;
 canonical content supplies no reproduction evidence. This check runs in the
-existing receipt insert transaction, including raw inserts. Tables and the
-two extraction-method ceilings remain the next part of the split 2d-4b3b brief,
-dependent on durable extraction consumption; no enforcement is claimed yet.
+existing receipt insert transaction, including raw inserts. Nonblank means
+`recorded-nonblank/1+ucd17.0.0`: a text field with a code point outside Unicode
+17.0.0 White_Space and Default_Ignorable_Code_Point (DOSSIER repair-1 cites
+the pinned standard). Whitespace/format-only bodies grant no content tier.
+SQL 17 (repair-1 first part) keeps both extraction methods non-authoritative
+for load-bearing support until sufficient durable extraction evidence exists.
+The SQL 12 capture consumer and EvidenceWriter apply the same method rule:
+pending receipts cannot qualify promotion or preserve previously accepted
+support when a later governed capture lacks a matching canonical receipt.
+An unbound supporting declaration creates the existing missing-content
+remediation hold through Verification, using the producer's owner/deadline;
+later canonical support does not clear it. Extraction declarations are retained
+as submitted and their tier ceilings are the next repair part. Tables and durable
+extraction/validation storage remain the subsequent 2d-4b3 slices. No enforcement
+of those deferred receipt-admission properties is claimed by this first part.
 
 ## Station supervisor
 

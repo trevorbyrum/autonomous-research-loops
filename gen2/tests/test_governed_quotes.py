@@ -15,13 +15,17 @@ SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schema/quote-check.schema.j
 
 
 class QuotesCase(Workflow):
+    SOURCE_BYTES = b"<effect observed>"
+    SOURCE_MEDIA = "text/plain"
+    SPAN = (1, 16)
+
     def setUp(self):
         super().setUp()
         self.to_queued()
         self.capture_grant = self.started("inv_capture001")
         events = self.observe(self.capture_grant, "obs_quote00001", ("quote-record",))
         self.work = self.register(self.capture_grant, [("doi", "10.1/quote", events)])["works"][0]["work_id"]
-        self.source = self.artifact(b"<effect observed>")
+        self.source = self.artifact(self.SOURCE_BYTES, self.SOURCE_MEDIA)
         self.text = self.artifact(b"effect observed")
         payload = {**empty_outcome("inv_capture001", "interim_transition"),
             "source_artifacts": [{"work_id": self.work, "source_version": "v1", "artifact_ref": self.source}],
@@ -33,7 +37,7 @@ class QuotesCase(Workflow):
     def record(self, **changes):
         return {"check_id": "qck_quote00001", "claim_id": "clm_quote00001", "claim_revision": 1,
             "work_id": self.work, "source_version": "v1", "artifact_ref": self.source,
-            "quoted_text": "effect observed", "span_start": 1, "span_end": 16, **changes}
+            "quoted_text": "effect observed", "span_start": self.SPAN[0], "span_end": self.SPAN[1], **changes}
 
     def send(self, records, grant=None, refs=(), **sections):
         grant = grant or self.grant
@@ -64,7 +68,7 @@ class QuotesCase(Workflow):
         doc = json.loads(path.read_text())["instance"]
         doc.update(verification_receipt_id="ver_quote00001", topic_id=TOPIC,
             claim={"claim_id": "clm_quote00001", "claim_revision": 1}, source={"work_id": self.work, "source_version": "v1"},
-            cited_spans=[{"start": 1, "end": 16, "locator": {"kind": "section", "value": "Results"}}],
+            cited_spans=[{"start": self.SPAN[0], "end": self.SPAN[1], "locator": {"kind": "section", "value": "Results"}}],
             obtained_content_hash=self.source["content_hash"], requested_for={"use": "sampled", "required_access_tier": "full_text"},
             producer_invocation_id="inv_capture001", verifier_invocation_id="inv_verify0001", verifier_capability_id=self.grant["capability_id"],
             quote_check_id="qck_quote00001", verdict=verdict, verified_at="2026-09-27T10:00:00Z")

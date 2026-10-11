@@ -25,6 +25,20 @@ import unittest
 from gen2.tests.store_fixtures import FIND_REQUEST, OTHER, TOPIC, StoreTestCase, T, h
 
 
+def canonical_support(case, rid, **changes):
+    """Raw recorded full-text control; SQL fixtures do not authenticate transport."""
+    if not case.rows("SELECT 1 FROM source_acquisitions WHERE source_version = 'v1'"):
+        lease, generation = case.rows("SELECT i.lease_id, l.generation FROM invocations i JOIN leases l USING (lease_id) WHERE i.invocation_id = 'inv_pppppppp'")[0]
+        case.receipt("op_content001", "inv_pppppppp", lease=lease, gen=generation)
+        case.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", h("7"), TOPIC, T)
+        case.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
+        case.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
+        case.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
+        case.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_content001', ?)", TOPIC, h("7"), T)
+        case.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+    case.verify(rid, method="canonical_bytes", extraction="inv_pppppppp", **changes)
+
+
 class VerificationTest(StoreTestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -32,7 +46,7 @@ class VerificationTest(StoreTestCase):
         self.invocation("inv_pppppppp")
         self.lease("lease_vvvvvvvv", 2, scope="verification")
         self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
-        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), T)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 512, 'application/json', ?)", h("7"), T)
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
         self.quote_check("qc-1")
@@ -114,7 +128,7 @@ class VerificationTest(StoreTestCase):
         self.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
         self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
         self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_acquire01', ?)", TOPIC, h("7"), T)
-        self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{}        ', T)
+        self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{}'.ljust(512), T)
         self.verify("ver_00000001", tier="bibliographic", required="bibliographic", use="sampled", method="canonical_bytes", extraction="inv_pppppppp")  # producer-acquired canonical bytes; fixture records no content
         self.verify("ver_00000002", method="validated_extraction", extraction="inv_pppppppp", validation="validation-7")
 
@@ -134,7 +148,7 @@ class VerificationTest(StoreTestCase):
         self.rejects(self.PROMOTION_REFUSED, self.ACCEPT)  # no receipt at all
         self.verify("ver_00000001", use="sampled", tier="abstract", required="abstract")  # supports, but a sample, and only at abstract
         self.rejects(self.PROMOTION_REFUSED, self.ACCEPT)
-        self.verify("ver_00000002", tier="full_text", required="full_text")
+        canonical_support(self, "ver_00000002", tier="full_text", required="full_text")
         self.x(self.ACCEPT)
 
     def test_sampling_never_qualifies_a_load_bearing_claim(self) -> None:
@@ -157,7 +171,7 @@ class VerificationTest(StoreTestCase):
         self.verify("ver_partial1", verdict="partially_supports")  # load-bearing use, checks performed, not support
         self.rejects(self.PROMOTION_REFUSED, self.ACCEPT)
         self.assertEqual(self.claim_status(), [("provisional",)])
-        self.verify("ver_lb000001")  # genuine load-bearing qualification
+        canonical_support(self, "ver_lb000001")  # genuine load-bearing qualification
         self.x(self.ACCEPT)
         self.assertEqual(self.claim_status(), [("accepted_support",)])
 
@@ -314,7 +328,7 @@ class ContractAdmittedSupportTest(StoreTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'text/plain', ?)", h("7"), T)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 512, 'application/json', ?)", h("7"), T)
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
         self.lease("lease_rrrrrrrr", 1)
         self.invocation(self.SCOPING, lease="lease_rrrrrrrr", pre_contract=True)
@@ -338,7 +352,7 @@ class ContractAdmittedSupportTest(StoreTestCase):
         every substantive check performed and passed, a matched quote check of
         this claim revision, verdict supports, by the separate verifier."""
         self.quote_check("qc-" + rid, claim=(cid, rev))
-        self.verify(rid, claim=(cid, rev), producer=producer, quote=("matched", "qc-" + rid))
+        canonical_support(self, rid, claim=(cid, rev), producer=producer, quote=("matched", "qc-" + rid))
 
     def status(self, cid: str, rev: int = 1) -> str:
         return self.rows("SELECT status FROM claims WHERE claim_id = ? AND revision = ?", cid, rev)[0][0]

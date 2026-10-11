@@ -751,3 +751,49 @@ the next part must close it with durable acquisition/extraction consumption,
 and bind every cited table to retained acquired content. Trusted workflow
 execution remains 2e2. Run targeted tests, full Router composition, all affected
 mutant families and the eight requested gates; evidence is `evidence/2d-4b3b/`.
+
+### 2d-4b3b-repair-1: nonblank content and pending extraction authority
+
+Re-estimate from `ee2c482`: about **800 lines** for the complete repair,
+including extraction acquisition selectors, ceiling predicates, independent
+controls and legacy fixture changes. Split: **first part, about 500 lines**,
+lands R1 and R2's non-authority fence; **next part, about 300 lines**, binds
+both extraction methods to admitted acquisition/content operands. Full durable
+extraction/validation storage remains the following 2d-4b3 slice. Stop after
+this first part; the repair and the unsplit content/table brief stay incomplete.
+
+The named rule **recorded-nonblank/1+ucd17.0.0** requires a text field containing
+at least one code point outside Unicode 17.0.0 `White_Space` and
+`Default_Ignorable_Code_Point`. Sources: [PropList.txt](https://www.unicode.org/Public/17.0.0/ucd/PropList.txt)
+and [DerivedCoreProperties.txt](https://www.unicode.org/Public/17.0.0/ucd/DerivedCoreProperties.txt).
+Default-ignorable characters, including zero-width space, joiners, variation
+selectors and formatting controls, cannot by themselves establish content.
+They are preserved inside substantive text; format characters excluded from
+the Unicode property remain outside the blank set. This is a presence rule,
+with no minimum length or completeness/semantic guarantee. SQL 16 uses a
+named pattern view containing the complete explicit Unicode code-point ranges;
+the same predicate gates Router receipt insertion and direct SQL insertion.
+
+SQL 17 fences load-bearing promotion: a qualifying receipt must be canonical
+until durable extraction evidence exists. Both extraction methods may retain
+their declarations, including an alleged reproduction tier, but these records
+are non-authoritative. Router retention of an unbound supporting declaration
+creates the existing missing-content remediation hold, bound to the producer's
+owner/deadline, and never clears earlier disagreement. No caller validation
+reference can lift this fence. The next acquisition/content part caps the
+declarations themselves; the extraction slice may admit authority only after
+recording and consuming a sufficient extraction/validation basis. Flow S4 step
+8 and BOUNDARIES Router/Verifier remain the authorities; no service core code,
+API, migration or workflow execution is added.
+
+SQL 12's governed-capture consumer and EvidenceWriter also require canonical
+support, so a pending receipt cannot preserve an older accepted claim against
+a newly governed capture whose canonical receipt no longer binds it.
+Independent Router/raw-DDL cases cover Unicode separators and ignorables,
+substantive controls, both method switches, full-text/reproduction promotion,
+claim/revision/sampled/adverse canonical distractors, missing-content holds, replay and
+rollback. Existing support controls will use recorded canonical content while
+retaining their original refusal assertions. Work/version/hash capture negatives
+use pending methods to isolate capture binding from canonical acquisition guards;
+their accepted controls remain admitted canonical receipts. Predicate mutants pair each guard
+with a separately accepted control. Evidence: `evidence/2d-4b3b-repair-1/`.

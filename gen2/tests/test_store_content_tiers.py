@@ -31,7 +31,7 @@ class ContentDDLTest(relationships.RelationshipTest):
         version = changes.pop("version", "v4")
         acq = {"route": "gateway:crossref", "retrieved_at": T, "gateway_call_ref": "gw-call:1", "cache_reuse": False}
         acq.update(changes.pop("acquisition", {}))
-        self.verify(rid, tier=tier, required=tier, use="sampled", method="canonical_bytes",
+        self.verify(rid, tier=tier, required=changes.pop("required", tier), use=changes.pop("use", "sampled"), method=changes.pop("method", "canonical_bytes"),
             extraction=changes.pop("extraction", "inv_pppppppp"), obtained=h("e"), quote=("not_applicable", None),
             gateway=acq["gateway_call_ref"], receipt_overrides={"source": {"work_id": "wrk_00000001", "source_version": version}, "acquisition": acq},
             column_overrides={"source_version": version, "acquisition": json.dumps(acq)}, **changes)
@@ -70,7 +70,10 @@ class ContentDDLTest(relationships.RelationshipTest):
 
     def test_shapes(self):
         for field, tier in (("abstract", "abstract"), ("text", "full_text")):
-            for value in (None, True, 1, [], {}, "", " \t\r\n"):
+            for value in (None, True, 1, [], {}, "", " \t\r\n", "\v", "\f\u00a0", "\u0085", "\u1680", "\u2007", "\u2028", "\u2029",
+                    "\u202f", "\u205f", "\u3000", "\u00ad", "\u034f", "\u061c", "\u115f", "\u17b4", "\u180f",
+                    "\u200b", "\u202a", "\u2065", "\u3164", "\ufe0f", "\ufeff", "\uffa0", "\ufff8",
+                    "\U0001bca3", "\U0001d17a", "\U000e0000", "\U000e0fff"):
                 with self.subTest(field=field, value=value):
                     self.x("SAVEPOINT content")
                     try:
@@ -158,3 +161,16 @@ class ContentDDLTest(relationships.RelationshipTest):
             return {"retrieved_at": "2026-09-28T00:00:00Z"}
         self.event(observation=changes.get("observation_id", "o1"))
         return changes
+
+    def test_unicode_text_controls(self):
+        for field, tier in (("abstract", "abstract"), ("text", "full_text")):
+            for value in ("\v\u1680Results\u2029", "\u200bFindings\ufeff", "\u200d文\U000e0100", "."):
+                with self.subTest(field=field, value=value):
+                    self.x("SAVEPOINT unicode_control")
+                    try:
+                        self.acquired({"identity": "rec-1", "kind": "full_text", field: value})
+                        self.content_receipt(tier)
+                        self.assertEqual(self.rows("SELECT access_tier FROM verification_receipts WHERE verification_receipt_id = 'ver_content1'"), [(tier,)])
+                    finally:
+                        self.x("ROLLBACK TO unicode_control")
+                        self.x("RELEASE unicode_control")

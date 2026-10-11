@@ -14,12 +14,17 @@ class CaptureDDLTest(DDLTest):
         self.x("UPDATE claims SET status = 'contested' WHERE claim_id = 'clm_00000001'")
 
     def bound(self, status="matched", verdict="supports", check_id="qck_governed001", **changes):
+        method = changes.pop("method", "canonical_bytes")
         exact = {"status": status, "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}
         doc = {"checks": {**self.CHECKS_OK, "exact_quote": exact}, **changes}
         columns = {k: json.dumps(v) if isinstance(v, list) else v for k, v in changes.items() if k in ("cited_spans", "obtained_content_hash")}
         if "source" in changes:
             columns.update(work_id=changes["source"]["work_id"], source_version=changes["source"]["source_version"])
-        self.verify("ver_bound00001", quote=(status, check_id), verdict=verdict, receipt_overrides=doc, column_overrides=columns)
+        self.canonical_verify("ver_bound00001", method=method, quote=(status, check_id), verdict=verdict, receipt_overrides=doc, column_overrides=columns)
+
+    def canonical_verify(self, *args, **kwargs):
+        method = kwargs.pop("method", "canonical_bytes")
+        self.verify(*args, method=method, extraction="inv_vvvvvvvv" if method == "verifier_extraction" else "inv_pppppppp", gateway="gw-call:1", **kwargs)
 
     def snapshot(self):
         return {n: self.rows(f"SELECT * FROM {n} ORDER BY rowid") for n, in self.rows("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")}
@@ -49,16 +54,16 @@ class CaptureDDLTest(DDLTest):
 
     def test_version(self):
         self.raw()
-        self.refused(lambda: self.bound(source={"work_id": "wrk_00000001", "source_version": "missing"}))
+        self.refused(lambda: self.bound(method="verifier_extraction", source={"work_id": "wrk_00000001", "source_version": "missing"}))
 
     def test_work(self):
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000002', 'doi', '10.1/other', '2026-09-27T10:00:00Z')")
         self.raw()
-        self.refused(lambda: self.bound(source={"work_id": "wrk_00000002", "source_version": "v1"}))
+        self.refused(lambda: self.bound(method="verifier_extraction", source={"work_id": "wrk_00000002", "source_version": "v1"}))
 
     def test_hash(self):
         self.raw()
-        self.refused(lambda: self.bound(obtained_content_hash=h("8")))
+        self.refused(lambda: self.bound(method="verifier_extraction", obtained_content_hash=h("8")))
 
     def test_normalization(self):
         self.raw()
@@ -67,20 +72,38 @@ class CaptureDDLTest(DDLTest):
 
     def test_null_reference(self):
         self.raw("mismatch")
-        self.refused(lambda: self.verify("ver_null000001", quote=("not_applicable", None)))
+        self.refused(lambda: self.canonical_verify("ver_null000001", quote=("not_applicable", None)))
         self.refused(self.promote)
 
     def test_partial_null(self):
         self.raw()
-        self.refused(lambda: self.verify("ver_null000001", quote=("not_applicable", None), verdict="partially_supports"))
+        self.refused(lambda: self.canonical_verify("ver_null000001", quote=("not_applicable", None), verdict="partially_supports"))
 
     def test_non_quote_control(self):
-        self.verify("ver_nonquote01", quote=("not_applicable", None))
+        self.canonical_verify("ver_nonquote01", quote=("not_applicable", None))
         self.promote()
         self.assertEqual(self.rows("SELECT status FROM claims"), [("accepted_support",)])
 
+    def test_pending_cannot_borrow_historical_canonical(self):
+        # The sweep's canonical receipt predates this governed capture. Its
+        # old check/normalization cannot certify the newly checked capture.
+        self.raw()
+        self.verify("ver_pending01", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
+            **self.CHECKS_OK, "exact_quote": {"status": "matched", "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}}})
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "unbound extraction|governed capture"):
+            self.promote()
+        self.assertEqual(self.rows("SELECT status FROM claims"), [("contested",)])
+
+    def test_late_pending_cannot_preserve_support(self):
+        self.promote()
+        self.raw()
+        self.verify("ver_pending01", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
+            **self.CHECKS_OK, "exact_quote": {"status": "matched", "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}}})
+        self.finish()
+        self.assertEqual(self.rows("SELECT status FROM claims"), [("quarantined",)])
+
     def test_existing_receipt(self):
-        self.verify("ver_nonquote01", quote=("not_applicable", None))
+        self.canonical_verify("ver_nonquote01", quote=("not_applicable", None))
         self.raw("mismatch")
         self.refused(self.promote)
 
@@ -91,14 +114,14 @@ class CaptureDDLTest(DDLTest):
     def test_non_load_bearing(self):
         self.x("INSERT INTO claims SELECT claim_id, 2, topic_id, text_ref, producer_invocation_id, 0, NULL, 'provisional', created_at FROM claims")
         self.raw("mismatch", claim_revision=2)
-        self.refused(lambda: self.verify("ver_null000002", claim=("clm_00000001", 2), use="sampled", quote=("not_applicable", None)))
+        self.refused(lambda: self.canonical_verify("ver_null000002", claim=("clm_00000001", 2), use="sampled", quote=("not_applicable", None)))
         self.refused(lambda: self.x("UPDATE claims SET status = 'accepted_support' WHERE revision = 2"))
 
     def test_recapture(self):
         self.raw("mismatch")
         self.x("INSERT INTO claims SELECT claim_id, 2, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, 'provisional', created_at FROM claims")
         self.raw(check_id="qck_recapture01", claim_revision=2)
-        self.verify("ver_recapture1", claim=("clm_00000001", 2), quote=("matched", "qck_recapture01"), receipt_overrides={"checks": {
+        self.canonical_verify("ver_recapture1", claim=("clm_00000001", 2), quote=("matched", "qck_recapture01"), receipt_overrides={"checks": {
             **self.CHECKS_OK, "exact_quote": {"status": "matched", "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}}})
         self.x("UPDATE claims SET status = 'accepted_support' WHERE revision = 2")
         self.refused(self.promote)
@@ -247,7 +270,7 @@ class CaptureDDLTest(DDLTest):
         try:
             old.raw(status)
             if status == "match":
-                old.verify("ver_upgrade001", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
+                old.verify("ver_upgrade001", method="canonical_bytes", extraction="inv_pppppppp", gateway="gw-call:1", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
                     **self.CHECKS_OK, "exact_quote": {"status": "matched", "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}}})
             self.assertEqual(old.rows("SELECT status FROM claims"), [("accepted_support",)])
             before = {n: old.rows(f"SELECT * FROM {n} ORDER BY rowid") for n, in old.rows(

@@ -9,12 +9,12 @@ from unittest.mock import patch
 
 from gen2.tests.router_fixtures import TOPIC
 from gen2.tests.store_fixtures import StoreTestCase, T
-from gen2.tests.test_governed_quotes import QuotesCase
+from gen2.tests.canonical_quotes_fixtures import CanonicalQuotesCase
 
 HOLD = "hold_6937eef24b17d742001c84e3a97f10290ae7ee206ea1a34b5f606ff2c4792dda"
 
 
-class AttentionCase(QuotesCase):
+class AttentionCase(CanonicalQuotesCase):
     verifier_station = "verifier-station"
     verifier_deadline = "2026-09-27T10:30:00Z"
 
