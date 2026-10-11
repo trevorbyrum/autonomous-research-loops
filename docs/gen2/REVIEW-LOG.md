@@ -2321,3 +2321,13 @@ The post-2q Gate D is renumbered #5.
 - **N1 (documentation lag):** fixed by the orchestrator in this commit. The BOUNDARIES text and the INVARIANTS V-3 locator now name SQL 14/15.
 - **Landing at 7106c36:** green on both `gen2-check` and `gen2-gateway`.
 - **Next:** 2d-4b3 slice 2 (V-2 content/table tiers) is dispatched (`docs/gen2/tasks/2d-4b3b.md`).
+
+## 2026-10-11: 2d-4b3 slice 2 part 1 (canonical tier ceilings): round 1 BLOCK
+- **Astra** (`e4bb4a2e`, pinned b5de4c8; `private/reviews/gen2-2d-4b3b-astra-review-20261011.md`): **A BLOCK, B PASS, C BLOCK.** Classified as a MITIGATION at the V-2 family level.
+- **What passed:** the canonical ceiling derivation. Astra checked it against the gateway source: `searched_ok` means records were returned, not that a paper was delivered, and links and `has_full_text` are correctly ignored.
+- **R1 (HIGH):** whitespace-only bodies (form feed, NBSP, em space, line separator) count as content, and one was promoted to load-bearing `accepted_support`. The gateway CORE path can reach this.
+- **R2 (HIGH):** switching to the `verifier_extraction` or `validated_extraction` method bypasses the ceiling. An abstract-only acquisition still promoted claims at full_text or reproduced.
+- **Landing at b5de4c8:** green.
+- **Routed:** `docs/gen2/tasks/2d-4b3b-repair-1.md`, round 1 of 3.
+  - R1 fix: a named, versioned nonblank rule, cited (Unicode `White_Space`).
+  - R2 fix: every tier-bearing method consumes a recorded basis, and unbound methods don't authorize support.
