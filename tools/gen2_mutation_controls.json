@@ -10837,6 +10837,160 @@
   ],
   "why": "An independently asserted accepted quote (or empty/schema-valid outcome) crosses this boundary without the defect."
  },
+ "2D3B3R1-ddl-admission": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-capture-quarantine": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-each-span": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_multi_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-existing-receipt": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-installation": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_upgrade_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-late-check": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-normalization": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-promotion": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-spans": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-version": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-ddl-work": {
+  "by_hand": true,
+  "controls": [
+   "test_store_capture_support.CaptureDDLTest.test_capture_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-python-admission": {
+  "by_hand": true,
+  "controls": [
+   "test_capture_support.RouterGuardTest.test_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-python-capture-quarantine": {
+  "by_hand": true,
+  "controls": [
+   "test_capture_support.RouterGuardTest.test_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-python-each-span": {
+  "by_hand": true,
+  "controls": [
+   "test_capture_support.RouterGuardTest.test_multi_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-python-existing-receipt": {
+  "by_hand": true,
+  "controls": [
+   "test_capture_support.RouterGuardTest.test_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-python-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_capture_support.RouterGuardTest.test_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-python-normalization_version": {
+  "by_hand": true,
+  "controls": [
+   "test_capture_support.RouterGuardTest.test_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-python-quarantine": {
+  "by_hand": true,
+  "controls": [
+   "test_capture_support.RouterGuardTest.test_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-python-source_version": {
+  "by_hand": true,
+  "controls": [
+   "test_capture_support.RouterGuardTest.test_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-python-spans": {
+  "by_hand": true,
+  "controls": [
+   "test_capture_support.RouterGuardTest.test_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
+ "2D3B3R1-python-work_id": {
+  "by_hand": true,
+  "controls": [
+   "test_capture_support.RouterGuardTest.test_control"
+  ],
+  "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

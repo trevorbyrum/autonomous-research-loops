@@ -394,3 +394,29 @@ conflicts, immutability and the support fence. Pair the new guards with
 mutants and accepted controls. Run targeted tests, full composition,
 affected mutant families and the six gates; evidence belongs in private
 `evidence/2d-3b3/`. Never migrate a real store.
+
+## 2d-3b3-repair-1: capture-bound consumption
+
+Design against `1c0f3f5`, before code. Estimate: about 490 hand-written lines
+(collaborator 65, ordered DDL 95, Router/DDL tests 220, mutants 70,
+integration/metrics 40), excluding documentation and generated controls.
+F1 binding and F2 quarantine enforcement land together. Notification and
+byte-mismatch adjudication refusal remain in 2d-3b3 part 2.
+
+The existing immutable `(claim_id, revision)` is the explicit capture identity.
+Its governed checks form its retained quotation evidence. Any quarantined
+check blocks that capture; adding a matching check cannot clear it. Re-capture
+writes a new claim revision and new checks, preserving the old revision/checks.
+No check means non-quote evidence under the existing receipt rules.
+
+A receipt consuming a governed capture must anchor its reference to one cited
+span and bind topic, work/version, obtained and expected artifact hashes,
+normalization and status. Each additional cited span must have its own check
+with these identities, matched and unquarantined for support. Admission and
+promotion use this relationship in EvidenceWriter and ordered DDL. A SQL view
+of invalid receipts reuses the same relation at both SQL consumers, including
+receipts recorded before checks existed. A later check also re-fences already
+accepted support, as does installation of the ordered DDL over existing rows.
+Quarantine remains scoped to the claim revision, not its source.
+Literal Router/raw-DDL substitutions, promotion, rollback, multiple spans,
+existing receipts and matching re-capture controls exercise both layers.

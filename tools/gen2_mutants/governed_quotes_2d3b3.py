@@ -48,3 +48,51 @@ mid = "2D3B3-ddl-status-required"
 MUTATIONS.append(Mutation(mid, "2d-3b3", "missing status fails closed", (DDL + "test_missing_status",),
     old="coalesce(json_extract(match_result, '$.status'), 'missing') IN", new="json_extract(match_result, '$.status') IN"))
 CONTROLS[mid] = {"controls": [DDL + "test_control"], "why": "A complete computed result has an explicit status."}
+
+# Capture-bound admission and consumption; Python killers remove the independent
+# SQL consumers in their fixtures, and raw-DDL killers never execute the Router.
+PY_CAPTURE = "test_capture_support.RouterGuardTest."
+SQL_CAPTURE = "test_store_capture_support.CaptureDDLTest."
+
+
+def capture_guard(name, killer, old=None, new="", target=TARGET, trigger=None, control="test_control", also=()):
+    mid = "2D3B3R1-" + name
+    prefix = SQL_CAPTURE if target == "ddl" else PY_CAPTURE
+    MUTATIONS.append(Mutation(mid, "2d-3b3-repair-1", name, (prefix + killer,), target=target,
+        old=old, new=new, drop_trigger=trigger, also=also))
+    CONTROLS[mid] = {"controls": [prefix + control], "why": "A literal matching capture and its bound load-bearing receipt promote; non-quote and multiple-span controls retain legitimate paths."}
+
+
+for field, killer, replacement in (("work_id", "test_work", 'doc["source"]["work_id"]'),
+        ("source_version", "test_version", 'doc["source"]["source_version"]'),
+        ("normalization_version", "test_normalization", 'exact["normalization_version"]')):
+    capture_guard("python-" + field, killer, 'q["' + field + '"]', replacement)
+capture_guard("python-hash", "test_hash", 'q["match_result"]["artifact_hash"]', 'doc["obtained_content_hash"]')
+capture_guard("python-admission", "test_null_reference", 'if not self._quote_receipt_valid(doc):', 'if False:')
+capture_guard("python-spans", "test_span", '(q["span_start"], q["span_end"]) in spans', 'True',
+    also=(('and spans <= {(q["span_start"], q["span_end"]) for q in bound}', 'and True'),))
+capture_guard("python-each-span", "test_multi_unchecked", 'and spans <= {(q["span_start"], q["span_end"]) for q in bound}', 'and True', control="test_multi_control")
+capture_guard("python-quarantine", "test_non_load_bearing", 'if any(q["quote_quarantined"] for q in checks):', 'if False:')
+capture_guard("python-existing-receipt", "test_existing_receipt_matching_check", 'if checks and claim["load_bearing"]:', 'if False:')
+capture_guard("python-capture-quarantine", "test_same_capture_cannot_clear", 'if support and any(q["quote_quarantined"] for q in checks):', 'if False:')
+
+for name, killer, clause in (("work", "test_work", "AND q.work_id = v.work_id"),
+        ("version", "test_version", "AND q.source_version = v.source_version"),
+        ("hash", "test_hash", "AND json_extract(q.match_result, '$.artifact_hash') IS v.obtained_content_hash"),
+        ("normalization", "test_normalization", "AND q.normalization_version IS json_extract(v.receipt, '$.checks.exact_quote.normalization_version')")):
+    capture_guard("ddl-" + name, killer, clause, target="ddl", control="test_capture_control")
+capture_guard("ddl-admission", "test_null_reference", target="ddl", trigger="verification_receipts_capture_binding", control="test_capture_control")
+capture_guard("ddl-spans", "test_span", "AND b.check_id = v.quote_check_id\n      AND b.span_start IS json_extract(s.value, '$.start') AND b.span_end IS json_extract(s.value, '$.end')",
+    "AND b.check_id = v.quote_check_id", target="ddl", control="test_capture_control", also=((
+        "WHERE b.verification_receipt_id = v.verification_receipt_id\n      AND b.span_start IS json_extract(s.value, '$.start') AND b.span_end IS json_extract(s.value, '$.end')",
+        "WHERE b.verification_receipt_id = v.verification_receipt_id"),))
+capture_guard("ddl-each-span", "test_multi_unchecked", "OR EXISTS (SELECT 1 FROM json_each(v.cited_spans) s WHERE NOT EXISTS (",
+    "OR 0 AND EXISTS (SELECT 1 FROM json_each(v.cited_spans) s WHERE NOT EXISTS (", target="ddl", control="test_multi_control")
+capture_guard("ddl-promotion", "test_non_load_bearing", target="ddl", trigger="claims_accepted_support_needs_capture", control="test_capture_control")
+capture_guard("ddl-existing-receipt", "test_existing_receipt_matching", "AND NOT EXISTS (SELECT 1 FROM governed_receipt_failures f WHERE f.verification_receipt_id = v.verification_receipt_id)",
+    target="ddl", control="test_capture_control")
+capture_guard("ddl-late-check", "test_late_check", target="ddl", trigger="quote_checks_refence_capture", control="test_capture_control")
+capture_guard("ddl-capture-quarantine", "test_same_capture_cannot_clear", "(v.verdict IN ('supports', 'partially_supports') AND EXISTS (",
+    "(0 AND EXISTS (", target="ddl", control="test_capture_control")
+capture_guard("ddl-installation", "test_upgrade_quarantine", "UPDATE claims SET status = 'quarantined'\nWHERE status = 'accepted_support' AND EXISTS (",
+    "UPDATE claims SET status = 'quarantined'\nWHERE 0 AND EXISTS (", target="ddl", control="test_upgrade_control")

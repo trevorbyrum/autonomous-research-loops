@@ -74,6 +74,37 @@ class EvidenceWriter:
                 "recorded_by_operation_id": op_id, "checked_at": now})
         return {"quote_checks": [r["check_id"] for r in records]} if records else {}
 
+    def _capture_checks(self, claim_id: str, revision: int) -> list[dict]:
+        """A claim revision is a capture; re-capture never replaces its checks."""
+        return [q for q in self._core._store.select("quote_checks", {"claim_id": claim_id, "claim_revision": revision})
+                if q["match_result"] is not None]
+
+    def _quote_receipt_valid(self, doc: dict) -> bool:
+        checks = self._capture_checks(doc["claim"]["claim_id"], doc["claim"]["claim_revision"])
+        if not checks:
+            return True
+        support = doc["verdict"] in ("supports", "partially_supports")
+        if support and any(q["quote_quarantined"] for q in checks):
+            return False
+        exact = doc["checks"]["exact_quote"]
+        bound = [q for q in checks if (q["topic_id"], q["work_id"], q["source_version"], q["source_artifact_hash"],
+            q["match_result"]["artifact_hash"], q["normalization_version"], q["exact_match"]) ==
+            (doc["topic_id"], doc["source"]["work_id"], doc["source"]["source_version"], exact["source_artifact_hash"],
+             doc["obtained_content_hash"], exact["normalization_version"], exact["status"])
+            and (not support or (q["exact_match"] == "matched" and not q["quote_quarantined"]))]
+        spans = {(s["start"], s["end"]) for s in doc["cited_spans"]}
+        return (any(q["check_id"] == doc["quote_check_id"] and (q["span_start"], q["span_end"]) in spans for q in bound)
+                and spans <= {(q["span_start"], q["span_end"]) for q in bound})
+
+    def _require_quote_support(self, claim: dict) -> None:
+        checks = self._capture_checks(claim["claim_id"], claim["revision"])
+        if any(q["quote_quarantined"] for q in checks):
+            raise Refusal("payload_invalid", "governed quarantined quote cannot supply support (V-6)")
+        if checks and claim["load_bearing"]:
+            receipts = self._core._store.select("verification_receipts", {"claim_id": claim["claim_id"], "claim_revision": claim["revision"]})
+            if not any(v["verdict"] == "supports" and v["use"] == "load_bearing" and self._quote_receipt_valid(v["receipt"]) for v in receipts):
+                raise Refusal("payload_invalid", "support needs a receipt bound to this governed capture (V-1, V-6)")
+
     def bind_source_artifacts(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> None:
         records = payload.get("source_artifacts", [])
         if records and (inv["kind"] not in ("research_pass", "checkpoint") or inv["admission_context"] != "contract/1"):
@@ -109,6 +140,8 @@ class EvidenceWriter:
         for hold in payload["holds"]:
             self._core._store.insert("holds", {**hold, "topic_id": topic_id, "created_at": now, "created_by_operation_id": op_id})
         for doc in payload["verification_receipts"]:
+            if not self._quote_receipt_valid(doc):
+                raise Refusal("payload_invalid", "receipt is detached from its governed capture; governed quarantined quote cannot supply support (V-1, V-6)")
             self._core._store.insert("verification_receipts", {
                 "verification_receipt_id": doc["verification_receipt_id"], "topic_id": doc["topic_id"], "claim_id": doc["claim"]["claim_id"],
                 "claim_revision": doc["claim"]["claim_revision"], "work_id": doc["source"]["work_id"], "source_version": doc["source"]["source_version"],
@@ -191,6 +224,7 @@ class EvidenceWriter:
             if producer["admission_context"] == "contract/1" and self._core._pin_status(producer) not in ("current", "compatible"):
                 raise Refusal("amendment_pending", f"{promotion['claim_id']} revision {promotion['revision']} was produced under a revision an amendment made "
                                                    "incompatible; contract-admitted work adopts it as a new revision (V-10, G-1)")
+            self._require_quote_support(row)
             self._core._store.update("claims", {"claim_id": promotion["claim_id"], "revision": promotion["revision"]}, {"status": "accepted_support"})
             promotions.append([promotion["claim_id"], promotion["revision"]])
         links = []

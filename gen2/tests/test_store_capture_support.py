@@ -1,0 +1,160 @@
+"""Independent raw-DDL identity substitutions and authoritative consumers."""
+import json
+import sqlite3
+from unittest.mock import patch
+
+from gen2.tests import store_fixtures
+from gen2.tests.store_fixtures import h
+from gen2.tests.test_store_governed_quotes import DDLTest
+
+
+class CaptureDDLTest(DDLTest):
+    def setUp(self):
+        super().setUp()
+        self.x("UPDATE claims SET status = 'contested' WHERE claim_id = 'clm_00000001'")
+
+    def bound(self, status="matched", verdict="supports", check_id="qck_governed001", **changes):
+        exact = {"status": status, "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}
+        doc = {"checks": {**self.CHECKS_OK, "exact_quote": exact}, **changes}
+        columns = {k: json.dumps(v) if isinstance(v, list) else v for k, v in changes.items() if k in ("cited_spans", "obtained_content_hash")}
+        if "source" in changes:
+            columns.update(work_id=changes["source"]["work_id"], source_version=changes["source"]["source_version"])
+        self.verify("ver_bound00001", quote=(status, check_id), verdict=verdict, receipt_overrides=doc, column_overrides=columns)
+
+    def snapshot(self):
+        return {n: self.rows(f"SELECT * FROM {n} ORDER BY rowid") for n, in self.rows("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")}
+
+    def refused(self, action):
+        before = self.snapshot()
+        self.x("SAVEPOINT refusal")
+        with self.assertRaises(sqlite3.IntegrityError):
+            action()
+        self.x("ROLLBACK TO refusal")
+        self.x("RELEASE refusal")
+        self.assertEqual(self.snapshot(), before)
+
+    def promote(self):
+        self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1")
+
+    def test_capture_control(self):
+        self.raw()
+        self.bound()
+        self.promote()
+        self.assertEqual(self.rows("SELECT status FROM claims"), [("accepted_support",)])
+
+    def test_span(self):
+        self.raw()
+        self.refused(lambda: self.bound(cited_spans=[{"start": 5, "end": 10, "locator": {"kind": "page", "value": "3"}}]))
+        self.refused(self.promote)
+
+    def test_version(self):
+        self.raw()
+        self.refused(lambda: self.bound(source={"work_id": "wrk_00000001", "source_version": "missing"}))
+
+    def test_work(self):
+        self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000002', 'doi', '10.1/other', '2026-09-27T10:00:00Z')")
+        self.raw()
+        self.refused(lambda: self.bound(source={"work_id": "wrk_00000002", "source_version": "v1"}))
+
+    def test_hash(self):
+        self.raw()
+        self.refused(lambda: self.bound(obtained_content_hash=h("8")))
+
+    def test_normalization(self):
+        self.raw()
+        self.refused(lambda: self.bound(checks={**self.CHECKS_OK, "exact_quote": {
+            "status": "matched", "normalization_version": "other/1", "source_artifact_hash": h("7")}}))
+
+    def test_null_reference(self):
+        self.raw("mismatch")
+        self.refused(lambda: self.verify("ver_null000001", quote=("not_applicable", None)))
+        self.refused(self.promote)
+
+    def test_partial_null(self):
+        self.raw()
+        self.refused(lambda: self.verify("ver_null000001", quote=("not_applicable", None), verdict="partially_supports"))
+
+    def test_non_quote_control(self):
+        self.verify("ver_nonquote01", quote=("not_applicable", None))
+        self.promote()
+        self.assertEqual(self.rows("SELECT status FROM claims"), [("accepted_support",)])
+
+    def test_existing_receipt(self):
+        self.verify("ver_nonquote01", quote=("not_applicable", None))
+        self.raw("mismatch")
+        self.refused(self.promote)
+
+    def test_existing_receipt_matching(self):
+        self.raw()
+        self.refused(self.promote)
+
+    def test_non_load_bearing(self):
+        self.x("INSERT INTO claims SELECT claim_id, 2, topic_id, text_ref, producer_invocation_id, 0, NULL, 'provisional', created_at FROM claims")
+        self.raw("mismatch", claim_revision=2)
+        self.refused(lambda: self.verify("ver_null000002", claim=("clm_00000001", 2), use="sampled", quote=("not_applicable", None)))
+        self.refused(lambda: self.x("UPDATE claims SET status = 'accepted_support' WHERE revision = 2"))
+
+    def test_recapture(self):
+        self.raw("mismatch")
+        self.x("INSERT INTO claims SELECT claim_id, 2, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, 'provisional', created_at FROM claims")
+        self.raw(check_id="qck_recapture01", claim_revision=2)
+        self.verify("ver_recapture1", claim=("clm_00000001", 2), quote=("matched", "qck_recapture01"), receipt_overrides={"checks": {
+            **self.CHECKS_OK, "exact_quote": {"status": "matched", "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}}})
+        self.x("UPDATE claims SET status = 'accepted_support' WHERE revision = 2")
+        self.refused(self.promote)
+        self.assertEqual(self.rows("SELECT revision, status FROM claims ORDER BY revision"), [(1, "contested"), (2, "accepted_support")])
+        self.assertEqual(self.rows("SELECT claim_revision, quote_quarantined FROM quote_checks WHERE match_result IS NOT NULL ORDER BY claim_revision"), [(1, 1), (2, 0)])
+
+    def test_multi_unchecked(self):
+        self.raw()
+        self.refused(lambda: self.bound(cited_spans=[{"start": 0, "end": 5}, {"start": 5, "end": 10}]))
+
+    def test_multi_control(self):
+        self.raw()
+        doc = {"expected_artifact_hash": h("7"), "artifact_hash": h("7"), "span_start": 5, "span_end": 10,
+            "status": "match", "normalization": ["quote-nfc-safe", "2+ucd15.0.0"]}
+        self.raw(check_id="qck_second0001", span_start=5, span_end=10, match_result=json.dumps(doc))
+        self.bound(cited_spans=[{"start": 0, "end": 5}, {"start": 5, "end": 10}])
+        self.promote()
+
+    def test_negative_control(self):
+        self.raw("mismatch")
+        self.bound("mismatch", "does_not_support")
+        self.assertEqual(self.rows("SELECT verdict FROM verification_receipts WHERE verification_receipt_id = 'ver_bound00001'"), [("does_not_support",)])
+        self.refused(self.promote)
+
+    def test_late_check(self):
+        self.promote()
+        self.raw("mismatch")
+        self.assertEqual(self.rows("SELECT status FROM claims"), [("quarantined",)])
+
+    def test_same_capture_cannot_clear(self):
+        self.raw("mismatch")
+        self.raw(check_id="qck_relabel001")
+        self.refused(lambda: self.bound(check_id="qck_relabel001"))
+
+    def upgrade(self, status):
+        start = store_fixtures.DDL_TEXT.index("CREATE VIEW governed_receipt_checks AS")
+        repair = store_fixtures.DDL_TEXT[start:]
+        old = DDLTest()
+        with patch.object(store_fixtures, "DDL_TEXT", store_fixtures.DDL_TEXT[:start]):
+            old.setUp()
+        try:
+            old.raw(status)
+            if status == "match":
+                old.verify("ver_upgrade001", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
+                    **self.CHECKS_OK, "exact_quote": {"status": "matched", "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": h("7")}}})
+            self.assertEqual(old.rows("SELECT status FROM claims"), [("accepted_support",)])
+            quotes = old.rows("SELECT * FROM quote_checks")
+            old.db.executescript(repair)  # disposable in-memory store only
+            self.assertEqual(old.rows("SELECT * FROM quote_checks"), quotes)
+            self.assertEqual(old.rows("PRAGMA foreign_key_check"), [])
+            return old.rows("SELECT status FROM claims")
+        finally:
+            old.tearDown()
+
+    def test_upgrade_control(self):
+        self.assertEqual(self.upgrade("match"), [("accepted_support",)])
+
+    def test_upgrade_quarantine(self):
+        self.assertEqual(self.upgrade("mismatch"), [("quarantined",)])
