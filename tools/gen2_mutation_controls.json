@@ -11361,6 +11361,20 @@
   ],
   "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
  },
+ "2D4B2-attempt-type": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-attempt-value": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
  "2D4B2-capture": {
   "by_hand": true,
   "controls": [
@@ -11374,6 +11388,13 @@
    "test_reaccess_admission.AdmissionTest.test_control"
   ],
   "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-ddl-attempt-upper": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
  },
  "2D4B2-ddl-binding": {
   "by_hand": true,
@@ -11466,6 +11487,118 @@
   ],
   "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
  },
+ "2D4B2-ddl-natural-key": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisitions.DDLTest.test_control"
+  ],
+  "why": "Raw literal acquisition inserts with exact source/retrieval/verifier operands under the same DDL; SQL does not authenticate transport octets."
+ },
+ "2D4B2-ddl-relation-artifact-join": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-event-join": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-event-work": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-link-join": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-media": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-observation-id": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-observation-join": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-source-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-source-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-source-version": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-source-work": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-verifier-id": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-verifier-role": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
+ "2D4B2-ddl-relation-verifier-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"
+  ],
+  "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."
+ },
  "2D4B2-ddl-verifier": {
   "by_hand": true,
   "controls": [
@@ -11495,6 +11628,20 @@
   "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
  },
  "2D4B2-live": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-live-cancel": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-live-state": {
   "by_hand": true,
   "controls": [
    "test_reaccess_admission.AdmissionTest.test_control"
@@ -11558,6 +11705,13 @@
   "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
  },
  "2D4B2-role": {
+  "by_hand": true,
+  "controls": [
+   "test_reaccess_admission.AdmissionTest.test_control"
+  ],
+  "why": "A separately asserted literal retained exchange admits, preserves exact lineage/octets, and replays without another row or audit."
+ },
+ "2D4B2-role-kind": {
   "by_hand": true,
   "controls": [
    "test_reaccess_admission.AdmissionTest.test_control"

@@ -43,6 +43,12 @@ change("wiring", "control", 'return self._acquisitions.admit(request)', 'return 
 change("write", "control", 'self._core._store.insert("source_acquisitions", {**row, "admitted_at": now})',
     'self._core._store.insert("source_acquisitions", {**row, "admitted_at": now}) if row["acquired_by_invocation_id"] != "inv_capture001" else None',
     control="test_reaccess_admission.OtherAcquirerTest.test_control")
+# Individually weaken necessary conjuncts while retaining the other condition.
+change("attempt-type", "capture_attribution", 'type(capture.attempt) is int and capture.attempt == obs["attempt"]', 'capture.attempt == obs["attempt"]')
+change("attempt-value", "capture_attribution", 'type(capture.attempt) is int and capture.attempt == obs["attempt"]', 'type(capture.attempt) is int')
+change("role-kind", "authority", 'inv["kind"] == "verification" and inv["admission_context"] == "contract/1"', 'inv["admission_context"] == "contract/1"')
+change("live-state", "state", 'inv["state"] == "running" and inv["cancel_requested_at"] is None', 'inv["cancel_requested_at"] is None')
+change("live-cancel", "cancel_fence", 'inv["state"] == "running" and inv["cancel_requested_at"] is None', 'inv["state"] == "running"')
 for suffix, killer in (("binding", "binding"), ("verifier", "verifier"), ("immutable_u", "immutable"), ("immutable_d", "immutable")):
     mid = "2D4B2-ddl-" + suffix
     MUTATIONS.append(Mutation(mid, "2d-4b2", suffix, ("test_store_acquisitions.DDLTest.test_" + killer,), drop_trigger="source_acquisitions_" + suffix))
@@ -56,3 +62,46 @@ for expression in ("o.gateway_call_ref = NEW.gateway_call_ref", "o.attempt = NEW
     MUTATIONS.append(Mutation(mid, "2d-4b2", expression, ("test_store_acquisitions.DDLTest.test_binding",),
         old=" AND " + expression, new="", scope="source_acquisitions_binding"))
     CONTROLS[mid] = CONTROLS["2D4B2-ddl-binding"]
+
+# Inventory the individual relational selectors too: a composite FK guarantees
+# existence, but cannot prevent the trigger from selecting a different source.
+for name, expression, scope in (
+        ("source-hash", "s.content_hash = NEW.content_hash", "binding"),
+        ("source-topic", "s.topic_id = NEW.topic_id", "binding"),
+        ("source-work", "s.work_id = NEW.work_id", "binding"),
+        ("source-version", "s.source_version = NEW.source_version", "binding"),
+        ("artifact-join", "a.content_hash = s.content_hash", "binding"),
+        ("event-join", "e.event_id = NEW.event_id", "binding"),
+        ("link-join", "w.event_id = e.event_id", "binding"),
+        ("observation-join", "o.observation_id = e.observation_id", "binding"),
+        ("event-work", "w.work_id = NEW.work_id", "binding"),
+        ("observation-id", "o.observation_id = NEW.observation_id", "binding"),
+        ("media", "a.media_type = 'application/json'", "binding"),
+        ("verifier-id", "v.invocation_id = NEW.verifier_invocation_id", "verifier"),
+        ("verifier-topic", "v.topic_id = NEW.topic_id", "verifier"),
+        ("verifier-role", "v.kind = 'verification'", "verifier")):
+    mid = "2D4B2-ddl-relation-" + name
+    MUTATIONS.append(Mutation(mid, "2d-4b2", expression,
+        ("test_store_acquisition_relationships.RelationshipTest.test_relationships",),
+        old=expression, new="1 = 1", scope="source_acquisitions_" + scope))
+    CONTROLS[mid] = {"controls": ["test_store_acquisition_relationships.RelationshipTest.test_relationship_controls"],
+        "why": "Separately accepted literal acquisitions use the same fully constrained supporting rows, and assert durable source/event/observation/verifier/hash/octet readback."}
+
+# Event and observation topics imply one another through SQL 03. Remove both
+# equalities to test the one acquisition-to-retrieval topic relationship.
+mid = "2D4B2-ddl-relation-topic"
+MUTATIONS.append(Mutation(mid, "2d-4b2", "acquisition-to-retrieval topic",
+    ("test_store_acquisition_relationships.RelationshipTest.test_relationships",),
+    old="e.topic_id = NEW.topic_id AND o.topic_id = NEW.topic_id", new="1 = 1", scope="source_acquisitions_binding"))
+CONTROLS[mid] = CONTROLS["2D4B2-ddl-relation-source-hash"]
+mid = "2D4B2-ddl-natural-key"
+MUTATIONS.append(Mutation(mid, "2d-4b2", "admission time does not create a new acquisition identity",
+    ("test_store_acquisition_relationships.RelationshipTest.test_natural_key",),
+    old="PRIMARY KEY (topic_id, work_id, source_version, event_id, verifier_invocation_id)",
+    new="PRIMARY KEY (topic_id, work_id, source_version, event_id, verifier_invocation_id, admitted_at)", scope="source_acquisitions"))
+CONTROLS[mid] = CONTROLS["2D4B2-ddl-binding"]
+mid = "2D4B2-ddl-attempt-upper"
+MUTATIONS.append(Mutation(mid, "2d-4b2", "safe-integer capture attempt upper bound",
+    ("test_store_acquisition_relationships.RelationshipTest.test_relationships",),
+    old="attempt BETWEEN 1 AND 9007199254740991", new="attempt >= 1", scope="source_acquisitions"))
+CONTROLS[mid] = CONTROLS["2D4B2-ddl-relation-source-hash"]

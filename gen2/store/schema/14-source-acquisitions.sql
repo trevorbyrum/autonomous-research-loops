@@ -1,4 +1,4 @@
--- V-1/V-3; flow S4 step 8; Router-owned trusted capture authentication.
+-- trace: flow S4 step 8; BOUNDARIES.md Router; INVARIANTS V-1/V-3/C-8.
 -- SQL binds recorded rows/size; Router authenticates and hashes retained octets.
 CREATE TABLE source_acquisitions (
   topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
