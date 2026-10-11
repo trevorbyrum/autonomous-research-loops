@@ -805,6 +805,8 @@ def _inventory():
     MANUAL.update(BRANCH_WINDOW_CONTROLS)
     from gen2_mutants.quote_matching_2d3 import CONTROLS as QUOTE_MATCHING_CONTROLS
     MANUAL.update(QUOTE_MATCHING_CONTROLS)
+    from gen2_mutants.source_artifacts_2d3b2 import CONTROLS as SOURCE_ARTIFACT_CONTROLS
+    MANUAL.update(SOURCE_ARTIFACT_CONTROLS)
     return gen2_mutations
 
 

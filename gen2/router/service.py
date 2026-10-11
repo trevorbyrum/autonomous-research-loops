@@ -954,6 +954,7 @@ class Router:
         for claim in payload["claims"]:
             bind(claim["text_ref"], f"{claim['claim_id']}: its text")
         self._assessments.bind_evidence(payload, bind)
+        self._evidence_writer.bind_source_artifacts(payload, inv, bind)
         for report in payload["scoping_reports"]:  # task 2a: flow S2's hand-off, by the work whose admission it names (C-12)
             if report["topic_id"] != inv["topic_id"]:
                 raise Refusal("cross_topic", f"{report['report_id']} is about topic {report['topic_id']}")

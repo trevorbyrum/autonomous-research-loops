@@ -315,3 +315,40 @@ evidence. Run targeted matcher/V-6 tests, full Router composition, every
 mutant family targeting an edited file and the six gates. Evidence and the
 completion report belong in private `evidence/2d-3b/`; the debt register stays
 with its owner, and this part does not claim governed admission is complete.
+
+## 2d-3b2: source artifact identity before governed matching
+
+Design against `815f9c8` on gen2, before code. V-6 and tasks 2d/2d-3b
+remain binding. Inspection finds no immutable work/source-version-to-artifact
+mapping: `works` records bibliographic identity; semantic assessments and
+source lifecycle records retain arrays of evidence, without identifying the
+source bytes. Selecting one of those references would invent provenance.
+
+Refined estimate: **750 hand-written lines** (identity admission 310,
+computed checks/DDL 160, notification and support/adjudication gates 100,
+remaining Router tests and paired mutants 180). Split before implementation:
+**this first part, about 310 lines**, adds a typed `source_artifacts` outcome
+section, an ordered-DDL immutable association, and admission/recording in the
+existing registered `EvidenceWriter`. Only contract-admitted primary work can
+record an association for a topic-retrieved work and a topic-authorized,
+hash-checked artifact. The association retains the actual committing
+invocation/operation/time. Its key is (topic, work, source version); changed
+bytes require a new source version. Equal operation replay uses the existing
+receipt path; a conflicting association rolls back rather than overwriting.
+No supplied attribution is accepted. Repeated equal associations may be
+referenced without replacing their original capture provenance.
+
+The next part (about 440 lines, re-estimate before code) derives the expected
+hash from this association, calls `quote_matching.check_quote` outside the
+writer lock, persists its complete result with commit-time binding checks,
+creates an owned quote hold through existing records, and enforces every
+support/adjudication consequence, including re-capture and replay. This first
+part grants no quote support and does not claim V-6 matching is complete.
+The quote's capture owner comes from the claim revision's producing pass and
+its lease, independently of this source association's original recorder.
+Tests use literal bytes and raw SQL read-back through Router commits, cover
+authentication, missing/forged/cross-topic artifacts, primary authority,
+immutable version identity, attribution and replay, and pair each new guard
+with an accepted control. Run the targeted tests, full composition module,
+every affected mutant family and the six gates; evidence goes to private
+`evidence/2d-3b2/`. Stop after this first part.

@@ -8,7 +8,7 @@ the committing invocation and operation, never a document field), and the ones t
 """
 from __future__ import annotations
 
-from typing import Mapping, Protocol
+from typing import Callable, Mapping, Protocol
 
 from gen2.core import canonical
 from gen2.router.boundary import Refusal
@@ -34,11 +34,36 @@ class EvidenceWriter:
     def __init__(self, core: EvidenceCore) -> None:
         self._core = core
 
+    def bind_source_artifacts(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> None:
+        records = payload.get("source_artifacts", [])
+        if records and (inv["kind"] not in ("research_pass", "checkpoint") or inv["admission_context"] != "contract/1"):
+            raise Refusal("kind_not_permitted", "source artifacts require contract-admitted primary work")
+        for record in records:
+            if not self._core._work_of_topic(record["work_id"], inv["topic_id"]):
+                raise Refusal("cross_topic", "source artifact work was not retrieved by this topic")
+            bind(record["artifact_ref"], "source artifact")
+
+    def _write_source_artifacts(self, payload: dict, inv: dict, op_id: str, now: str) -> dict:
+        recorded = []
+        for record in payload.get("source_artifacts", []):
+            key = {"topic_id": inv["topic_id"], "work_id": record["work_id"], "source_version": record["source_version"]}
+            prior = self._core._one("source_artifacts", key)
+            content_hash = record["artifact_ref"]["content_hash"]
+            if prior is not None:
+                if prior["content_hash"] != content_hash:
+                    raise Refusal("payload_invalid", "source version already identifies different bytes; record a new version")
+            else:
+                self._core._store.insert("source_artifacts", {**key, "content_hash": content_hash, "invocation_id": inv["invocation_id"],
+                    "recorded_by_operation_id": op_id, "created_at": now})
+            recorded.append([record["work_id"], record["source_version"], content_hash])
+        return {"source_artifacts": recorded} if recorded else {}
+
     def _write_evidence(self, env: dict, inv: dict, checked: dict, now: str, new_triggers: list, outbox: list) -> dict:
         """The evidence and governance rows of one commit. Producer, verifier,
         recorder and signal source are the committing invocation and
         operation — never a document field (V-10, RG-5, G-12)."""
         payload, op_id, topic_id = checked["payload"], env["operation_id"], inv["topic_id"]
+        sources = self._write_source_artifacts(payload, inv, op_id, now)
         claims = self._write_claims(payload, topic_id, inv, now)
         for hold in payload["holds"]:
             self._core._store.insert("holds", {**hold, "topic_id": topic_id, "created_at": now, "created_by_operation_id": op_id})
@@ -88,7 +113,7 @@ class EvidenceWriter:
                 "source_revision": manifest["source"]["revision"], "source_content_hash": manifest["source"]["content_hash"],
                 "approval_decision_id": manifest["approval"]["operator_decision_id"], "bundle_content_hash": manifest["bundle"]["content_hash"],
                 "expected_connectors": manifest["expected_connectors"], "manifest": manifest, "committed_by_operation_id": op_id, "created_at": now})
-        return {"claims": claims, "claim_promotions": promotions, "claim_source_links": links,
+        return {**sources, "claims": claims, "claim_promotions": promotions, "claim_source_links": links,
                 "scoping_reports": [[r["report_id"], r["version"]] for r in payload["scoping_reports"]],
                 "source_proposals": [p["proposal_id"] for p in payload["source_proposals"]],
                 "review_closures": [c["episode_id"] for c in payload["review_closures"]],

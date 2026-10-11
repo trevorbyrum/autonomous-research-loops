@@ -1,0 +1,7 @@
+{
+  "fixture": {"schema": "source-artifact.schema.json", "expect": "valid", "tests": "V-6: a source-version proposal names retrieved work and raw artifact identity; RG-5 attribution is Router-owned"},
+  "instance": {
+    "work_id": "wrk_00000001", "source_version": "edition-1",
+    "artifact_ref": {"content_hash": "sha256:80e67e8fdbbe3a4997519947f7f57f9758903b01d49271c9d6aa3262e15271b9", "size_bytes": 22, "media_type": "text/plain"}
+  }
+}

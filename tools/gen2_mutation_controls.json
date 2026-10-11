@@ -10636,6 +10636,111 @@
   ],
   "why": "The endpoint literals reject disappearing/created protected-word letter boundaries; the separate full-result ordinary apostrophe suffix-edit control still receives its near diagnostic when the unsound endpoint relaxation is restored."
  },
+ "2D3B2-artifact-binding": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
+ "2D3B2-attribution-schema": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_schema_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
+ "2D3B2-contract": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
+ "2D3B2-ddl-commit": {
+  "by_hand": true,
+  "controls": [
+   "test_store_source_artifacts.DDLTest.test_control"
+  ],
+  "why": "An authenticated, topic-retrieved source artifact inserts under the same DDL trigger with immutable capture provenance."
+ },
+ "2D3B2-ddl-immutable_d": {
+  "by_hand": true,
+  "controls": [
+   "test_store_source_artifacts.DDLTest.test_control"
+  ],
+  "why": "An authenticated, topic-retrieved source artifact inserts under the same DDL trigger with immutable capture provenance."
+ },
+ "2D3B2-ddl-immutable_u": {
+  "by_hand": true,
+  "controls": [
+   "test_store_source_artifacts.DDLTest.test_control"
+  ],
+  "why": "An authenticated, topic-retrieved source artifact inserts under the same DDL trigger with immutable capture provenance."
+ },
+ "2D3B2-ddl-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_source_artifacts.DDLTest.test_control"
+  ],
+  "why": "An authenticated, topic-retrieved source artifact inserts under the same DDL trigger with immutable capture provenance."
+ },
+ "2D3B2-primary": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
+ "2D3B2-required-artifact_ref": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_schema_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
+ "2D3B2-required-source_version": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_schema_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
+ "2D3B2-required-work_id": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_schema_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
+ "2D3B2-retrieved-work": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
+ "2D3B2-version-conflict": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
+ "2D3B2-wiring": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
+ "2D3B2-write": {
+  "by_hand": true,
+  "controls": [
+   "test_source_artifacts.AdmissionTest.test_noop_control"
+  ],
+  "why": "A separate accepted source association (or a complete schema/no-record outcome) crosses the edited boundary and retains literal byte identity and actual capture attribution."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

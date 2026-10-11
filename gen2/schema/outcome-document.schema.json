@@ -26,6 +26,10 @@
     "exports"
   ],
   "properties": {
+    "source_artifacts": {
+      "description": "V-6 source-version byte identity, recorded by contract-admitted primary work. The Router derives capture attribution.",
+      "type": "array", "maxItems": 64, "items": {"$ref": "source-artifact.schema.json"}
+    },
     "branch_windows": {
       "description": "2d-2: proposed registered branch/window associations. Attribution and window pins are derived by the Router; supplied revisions or roles are forbidden.",
       "type": "array", "maxItems": 256,

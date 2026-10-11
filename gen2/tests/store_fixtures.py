@@ -644,6 +644,7 @@ class StoreTestCase(unittest.TestCase):
                "contract_revision, eligibility_protocol_version, framing_version, NULL, 'probe', evidence_refs, actor_kind, invocation_id, recorded_by_operation_id, created_at "
                "FROM semantic_assessments WHERE assessment_id = 'sem1'")
         self.x("INSERT INTO branch_windows VALUES ('bw-fixture', ?, 'B-1', 'rdp_branch1', 'inv_pppppppp', 'primary', 'inv_pppppppp', 'op_00000001', ?)", TOPIC, T)
+        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_00000001', ?)", TOPIC, h("7"), T)
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
         self.x("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, evidence_origin_lineage, created_at) "
                "VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, ?, 'O-1', '[]', 'answer', 'study-1', ?)", TOPIC, rev, T)

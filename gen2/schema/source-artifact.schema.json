@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/source-artifact.schema.json",
+  "$comment": "flow: S4 step 4 | boundaries: Router | invariants: V-6; C-9; C-11; RG-5 | note: 2d-3b2 immutable source bytes, attributed by the governed commit",
+  "type": "object", "additionalProperties": false,
+  "required": ["work_id", "source_version", "artifact_ref"],
+  "properties": {
+    "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
+    "source_version": {"$ref": "common.schema.json#/$defs/short_text"},
+    "artifact_ref": {"$ref": "common.schema.json#/$defs/artifact_ref"}
+  }
+}
