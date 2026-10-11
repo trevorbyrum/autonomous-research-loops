@@ -406,3 +406,21 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - Turning it on needs two things: a selected and qualified checker, and an operator-approved policy for regression and sampling audits.
 - source: operator ruling 2026-10-10 (this conversation); docs/gen2/DOSSIER.md "Operator decisions"
 - removal: the operator has approved a qualified tier-0 checker and its audit policy, and the checker is enabled through the normal approval path. Alternatively, the operator explicitly records a decision to leave it off permanently.
+
+### DEBT-038 - 2d-3a R3-1: apostrophe-joined lexemes hide negation and unit edits from the near-match gate (task 2d)
+- kind: obligation
+- status: open
+- owner: task 2d
+- what: Astra's round-3 review of 2d-3a found that the quote matcher treats an apostrophe-joined sequence as one lexeme, so negations and units inside it are not recognised.
+  - Example: `say'not'now` vs `say'now`. A move of `mg` within `alpha'mg'omega'delta` is missed the same way.
+  - These cases get a near-match diagnostic instead of a plain mismatch.
+  - The quote is still quarantined, so it never passes. Only the diagnostic label is wrong.
+  - Astra's boundary matrix had 30 failures out of 120. All of them involve straight or curly apostrophes.
+  - The operator accepted this as tracked debt at the round cap (Trevor, 2026-10-11: "Your rec is fine").
+- source: private/reviews/gen2-2d-3a-r3-astra-review-20261010.md (R3-1); operator decision 2026-10-11
+- removal: 2d-3b treats apostrophes as letter boundaries when it recognises negations and units, and adds the following before the matcher is wired into the governed path:
+  - literals for insertion, deletion, replacement and movement of a negation, and for movement of a unit;
+  - a generated boundary law that includes apostrophe wrappers;
+  - a paired guard and control.
+
+  Astra's boundary probe and boundary property scripts (private/evidence/astra-2d-3a-r3/) must pass.

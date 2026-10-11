@@ -2184,3 +2184,7 @@ The post-2q Gate D is renumbered #5.
   - Astra found 30 failures out of 120 in a boundary matrix. All 30 involve straight or curly apostrophes.
 - **Landing at ce6dfaa:** green, 2,797 of 2,797 mutants killed.
 - **Under the charter's round-cap rule, the orchestrator has stopped dispatching.** Recommendation to the operator: accept R3-1 as tracked debt, owned by 2d-3b and fixed before the matcher is wired into the governed path. The alternative is a 4th round, which needs a fresh Gate D first.
+- **Operator decision (Trevor, 2026-10-11): "Your rec is fine."**
+  - R3-1 is accepted as tracked debt, **DEBT-038**, owned by task 2d. 2d-3b must fix it first, before the matcher is wired into the governed path.
+  - **2d-3a is closed**, with the pure matcher at `ce6dfaa`.
+  - 2d-3b is dispatched (`docs/gen2/tasks/2d-3b.md`).
