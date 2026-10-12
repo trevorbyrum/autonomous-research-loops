@@ -115,9 +115,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_out
 - location: engine:gen2/router/service.py
-- limit: 18
-- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core. Task 2d-4b2 adds one acquisition admission collaborator (17 to 18) and only constructor/schema/public-delegate wiring.
-- task: 2d-4b2
+- limit: 19
+- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core. Task 2d-4b2 adds one acquisition admission collaborator (17 to 18) and only constructor/schema/public-delegate wiring. Task 2d-4b3e1 adds one ExtractionRecords collaborator (18 to 19), with only construction, authentication/write delegation and audit-result wiring.
+- task: 2d-4b3e1
 
 ### ML-0014
 - action: admit
@@ -183,9 +183,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/router/boundary.py
-- limit: 10
-- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority.
-- task: 2d-4b2
+- limit: 11
+- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority. Task 2d-4b3e1 adds one caller (10 to 11), reusing the existing staged-artifact authentication and typed refusal paths.
+- task: 2d-4b3e1
 
 ### ML-0025
 - action: budget
@@ -660,3 +660,63 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - target: engine|reach|gen2/router/service.py->gen2/router/reaccess.py
 - reason: Authoritative fixture admission consumes the already accepted pure acquisition validator, so digest, identity, capture acknowledgement and retrieved-record checks have one implementation; app reach remains through Router.
 - task: 2d-4b2
+
+### ML-0103
+- action: admit
+- target: engine|edge|gen2/router/service.py->gen2/router/extractions.py
+- reason: The narrow extraction-record collaborator reuses the existing staged-artifact authentication and fenced commit; app reach stays through Router, and core helper reach is transitive through boundary.py. No new execution, provider, clock or transaction authority.
+- task: 2d-4b3e1
+
+### ML-0104
+- action: admit
+- target: engine|file|gen2/router/extractions.py
+- reason: The narrow extraction-record collaborator reuses the existing staged-artifact authentication and fenced commit; app reach stays through Router, and core helper reach is transitive through boundary.py. No new execution, provider, clock or transaction authority.
+- task: 2d-4b3e1
+
+### ML-0105
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/extractions.py
+- reason: The narrow extraction-record collaborator reuses the existing staged-artifact authentication and fenced commit; app reach stays through Router, and core helper reach is transitive through boundary.py. No new execution, provider, clock or transaction authority.
+- task: 2d-4b3e1
+
+### ML-0106
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/extractions.py
+- reason: The narrow extraction-record collaborator reuses the existing staged-artifact authentication and fenced commit; app reach stays through Router, and core helper reach is transitive through boundary.py. No new execution, provider, clock or transaction authority.
+- task: 2d-4b3e1
+
+### ML-0107
+- action: admit
+- target: engine|reach|gen2/router/extractions.py->gen2/core/canonical.py
+- reason: The narrow extraction-record collaborator reuses the existing staged-artifact authentication and fenced commit; app reach stays through Router, and core helper reach is transitive through boundary.py. No new execution, provider, clock or transaction authority.
+- task: 2d-4b3e1
+
+### ML-0108
+- action: admit
+- target: engine|reach|gen2/router/extractions.py->gen2/core/instants.py
+- reason: The narrow extraction-record collaborator reuses the existing staged-artifact authentication and fenced commit; app reach stays through Router, and core helper reach is transitive through boundary.py. No new execution, provider, clock or transaction authority.
+- task: 2d-4b3e1
+
+### ML-0109
+- action: admit
+- target: engine|reach|gen2/router/extractions.py->gen2/core/pagination.py
+- reason: The narrow extraction-record collaborator reuses the existing staged-artifact authentication and fenced commit; app reach stays through Router, and core helper reach is transitive through boundary.py. No new execution, provider, clock or transaction authority.
+- task: 2d-4b3e1
+
+### ML-0110
+- action: admit
+- target: engine|reach|gen2/router/extractions.py->gen2/router/boundary.py
+- reason: The narrow extraction-record collaborator reuses the existing staged-artifact authentication and fenced commit; app reach stays through Router, and core helper reach is transitive through boundary.py. No new execution, provider, clock or transaction authority.
+- task: 2d-4b3e1
+
+### ML-0111
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/extractions.py
+- reason: The narrow extraction-record collaborator reuses the existing staged-artifact authentication and fenced commit; app reach stays through Router, and core helper reach is transitive through boundary.py. No new execution, provider, clock or transaction authority.
+- task: 2d-4b3e1
+
+### ML-0112
+- action: admit
+- target: engine|edge|gen2/router/extractions.py->gen2/router/boundary.py
+- reason: ExtractionRecords directly imports the existing staged-artifact authenticator and Refusal vocabulary for C-9 admission outside the writer lock.
+- task: 2d-4b3e1
