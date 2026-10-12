@@ -817,7 +817,7 @@ def _inventory():
     MANUAL.update(VERIFICATION_ATTENTION_CONTROLS)
     from gen2_mutants.reaccess_2d4b import CONTROLS as REACCESS_CONTROLS; MANUAL.update(REACCESS_CONTROLS)
     from gen2_mutants.acquisitions_2d4b2 import CONTROLS as ACQUISITION_CONTROLS; MANUAL.update(ACQUISITION_CONTROLS)
-    from gen2_mutants import canonical_receipts_2d4b3, content_tiers_2d4b3b, ddl_0a, extraction_acquisitions_2d4b3c, extraction_content_2d4b3c2, table_availability_2d4b3d, span_domain_2d4b3d_repair1; MANUAL.update(canonical_receipts_2d4b3.CONTROLS | content_tiers_2d4b3b.CONTROLS | ddl_0a.CONTROLS | extraction_acquisitions_2d4b3c.CONTROLS | extraction_content_2d4b3c2.CONTROLS | table_availability_2d4b3d.CONTROLS | span_domain_2d4b3d_repair1.CONTROLS)
+    from gen2_mutants import canonical_receipts_2d4b3, content_tiers_2d4b3b, ddl_0a, extraction_acquisitions_2d4b3c, extraction_content_2d4b3c2, table_availability_2d4b3d, span_domain_2d4b3d_repair1, exact_spans_2d4b3d_repair2; MANUAL.update(canonical_receipts_2d4b3.CONTROLS | content_tiers_2d4b3b.CONTROLS | ddl_0a.CONTROLS | extraction_acquisitions_2d4b3c.CONTROLS | extraction_content_2d4b3c2.CONTROLS | table_availability_2d4b3d.CONTROLS | span_domain_2d4b3d_repair1.CONTROLS | exact_spans_2d4b3d_repair2.CONTROLS)
     return gen2_mutations
 
 

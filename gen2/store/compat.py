@@ -61,6 +61,14 @@ JSON_PROBES: tuple[tuple[str, str, list[tuple]], ...] = (
     ("json_each", """SELECT key, value FROM json_each('{"a":1,"b":"x"}') ORDER BY key""", [("a", 1), ("b", "x")]),
     ("json_tree", r"""SELECT key, count(*) FROM json_tree('{"a":{"k":1,"\u006b":2},"b":{"k":3}}')
         WHERE typeof(key) = 'text' GROUP BY parent, key HAVING count(*) > 1""", [("k", 2)]),
+    ("json_tree_names", r"""SELECT hex(key), key = 'kind' COLLATE BINARY,
+        instr(CAST(key AS BLOB), x'00') FROM (
+          SELECT key FROM json_tree('{"kind\u0000suffix":1,"kind":2}') WHERE typeof(key) = 'text'
+          UNION ALL SELECT key FROM json_each('{"kind\u0000suffix":1,"kind":2}')) ORDER BY hex(key)""",
+        [("6B696E64", 1, 0), ("6B696E64", 1, 0), ("6B696E6400737566666978", 0, 5), ("6B696E6400737566666978", 0, 5)]),
+    ("json_numeral_text", """SELECT value -> '$.start' FROM json_each(
+        '[{"start":1.00000000000000001},{"start":-1e-999},{"start":5.0},{"start":1e+30},{"start":9223372036854775809}]') ORDER BY key""",
+        [("1.00000000000000001",), ("-1e-999",), ("5.0",), ("1e+30",), ("9223372036854775809",)]),
 )
 
 _VERSION = re.compile(r"\A([0-9]+)\.([0-9]+)\.([0-9]+)\Z")

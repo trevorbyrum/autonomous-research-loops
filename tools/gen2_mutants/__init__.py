@@ -39,6 +39,7 @@ from . import extraction_acquisitions_2d4b3c
 from . import extraction_content_2d4b3c2
 from . import table_availability_2d4b3d
 from . import span_domain_2d4b3d_repair1
+from . import exact_spans_2d4b3d_repair2
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -98,4 +99,5 @@ MUTATIONS: list[Mutation] = [
     *extraction_content_2d4b3c2.MUTATIONS,
     *table_availability_2d4b3d.MUTATIONS,
     *span_domain_2d4b3d_repair1.MUTATIONS,
+    *exact_spans_2d4b3d_repair2.MUTATIONS,
 ]

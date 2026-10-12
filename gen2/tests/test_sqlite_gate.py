@@ -104,6 +104,20 @@ class VersionFloorTest(unittest.TestCase):
 
 
 class JsonCapabilityTest(unittest.TestCase):
+    def test_exact_representation_probes_fail_closed(self):
+        for name, sql, expected in compat.JSON_PROBES[-2:]:
+            with self.subTest(probe=name), sqlite3.connect(":memory:") as conn:
+                self.assertEqual(conn.execute(sql).fetchall(), expected)
+                for failure in (sqlite3.OperationalError("probe unavailable"), [("wrong",)]):
+                    def execute(query, *args):
+                        if query == sql:
+                            if isinstance(failure, Exception): raise failure
+                            return mock.Mock(fetchall=lambda: failure)
+                        return conn.execute(query, *args)
+                    with mock.patch.object(ReportingConnection, "execute", side_effect=execute):
+                        with self.assertRaisesRegex(StoreCompatibilityError, name):
+                            compat.check_library(ReportingConnection())
+
     def test_missing_json_function_is_refused_at_a_passing_version(self) -> None:
         """The version passes; SQLITE_OMIT_JSON removes the functions anyway."""
         for name in ("json_valid", "json_extract", "json_type", "json_array_length", "json_remove", "json_each", "json_tree"):

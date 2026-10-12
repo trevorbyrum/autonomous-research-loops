@@ -980,3 +980,64 @@ table-identity/extraction limitation. Run targeted tests, full composition,
 all affected mutant families after landing units are inactive (without venv
 refresh), and all eight required Make gates. Evidence:
 `/home/trevor/work/research-loops-public/private/evidence/2d-4b3d-repair-1/`.
+
+### 2d-4b3d-repair-2: decoded names and exact numeral validation (before code)
+
+Read Astra's complete round-2 report and both reproduction files. Verified
+the premise in `Store._prepare` (`gen2/store/api.py`): both receipt and
+cited_spans are discovered JSON columns and every API write serializes them
+through `canonical.parse_json_strict` (text input) and `canonical_bytes`.
+Router `boundary.normalize` also uses these helpers. C-13 accurately states
+the parser's duplicate, Unicode, non-finite, precision-loss and integer-notation
+restrictions; the raw SQL route does not call that parser.
+
+There is a material exception to the proposed numeral shortcut: integral JCS
+numbers are not always bounded plain integers. On the pinned implementation,
+strict parsing then JCS writes `5.0` as `5`, `9007199254740992.0` as
+`9007199254740992`, and `1e30` as `1e+30`. The Store accepts these float values.
+C-13's integer-notation bound applies to the parser's input, not to every
+numeral the serializer can emit from a float. [RFC 8785 section 3.2.2.3 and
+Appendix B](https://www.rfc-editor.org/rfc/rfc8785#section-3.2.2.3) confirm
+binary64 serialization, including large integer and exponent output. No API
+writer preserves a noncanonical input spelling, but that fact cannot justify
+a digits-only rule or a blanket offset bound of 2^53-1. Choose the brief's
+exact lexical alternative: retain schema-valid integral decimal/exponent
+spellings and large integers, with no new schema maximum. Raw admission will
+establish exact span integrality/minima and unambiguous decoded bindings;
+it will not claim to implement the entire JCS serializer or all C-13 parser
+restrictions. The Store/Router continue enforcing C-13 on their own routes.
+
+Re-estimate from `276bf69` (working HEAD recorded in evidence): **about 490
+hand-written lines**: undeployed SQL 21/name and numeral repair 95, isolated
+raw/Router tests 170, compat probes/tests 35, predicate mutants and control
+integration 120, documentation/evidence 70. Keep one dispatch within about
+500 lines; split if materially larger. Edit undeployed SQL 21 rather than
+adding a second overlapping trigger; retain its trace marker and every SQL
+14–20 consumer, diagnostic, shared view, SQL 17 fence and cannot-assess path.
+
+Before any path-dependent guard, reject U+0000 in decoded member names
+through complete binary name equality and check required/allowed name sets
+of the receipt objects SQL 03 reads, including optional tier0/adjudication
+objects. Span/locator sets also use complete decoded names with binary
+equality; valid NUL in locator values remains allowed. Retain whole-document
+duplicate detection. Offset validation uses preserved numeral text from `->`:
+split mantissa/exponent, remove the decimal point, and compare decimal scale
+against trailing zero count. Nonzero negative numbers fail start/end minima;
+zero fails end's minimum. Only the exponent is converted to INTEGER for a
+scale comparison; overflow saturation preserves its ordering against the
+string lengths, which SQLite bounds far below int64. No offset is converted
+to REAL before validation. Pin decoded-NUL equality/detection and numeral-text
+preservation on SQLite 3.45.1 in fail-closed compatibility probes.
+
+Isolated raw pairs run across all three methods, including the split receipt,
+aliases throughout bindings, rounded fractions, underflow, and late spans;
+Router pairs stage literal payload bytes, then commit valid controls. New
+mutants each have separate admitted controls; update existing numeric mutant
+selectors while preserving their killers/control mappings. Reaudit JSON
+fixtures if representations change. The legacy SQL 03 missing-key CHECK test
+isolates those predicates by removing SQL 21 on its disposable connection;
+full-trigger required-member refusals have separate new tests. No admitted
+fixture JSON representation changes. Run targeted tests/full composition,
+every edited-target or transitive fixture-dependent mutant family with --only
+after landing units become inactive, and the eight required Make gates.
+Evidence: `/home/trevor/work/research-loops-public/private/evidence/2d-4b3d-repair-2/`.

@@ -12780,6 +12780,130 @@
   ],
   "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
  },
+ "2D4B3DR2-compat-json_numeral_text": {
+  "controls": [
+   "test_sqlite_gate.VersionFloorTest.test_this_interpreters_sqlite_passes"
+  ],
+  "why": "An independent real SQLite connection still passes all enabled compatibility probes and reads back both connection pragmas."
+ },
+ "2D4B3DR2-compat-json_tree_names": {
+  "controls": [
+   "test_sqlite_gate.VersionFloorTest.test_this_interpreters_sqlite_passes"
+  ],
+  "why": "An independent real SQLite connection still passes all enabled compatibility probes and reads back both connection pragmas."
+ },
+ "2D4B3DR2-decimal-scale": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-end-fraction": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-end-sign": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-end-zero": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-extra-names": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-late-number": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-locator-names": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-nullable-shape": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-optional-shape": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-required-names": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-span-names": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-start-fraction": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-start-sign": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
+ "2D4B3DR2-zero-scale": {
+  "controls": [
+   "test_store_exact_spans.ExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ExtractionExactSpanDDLTest.test_exact_control",
+   "test_store_exact_spans.ValidatedExactSpanDDLTest.test_exact_control"
+  ],
+  "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"
