@@ -1041,3 +1041,168 @@ fixture JSON representation changes. Run targeted tests/full composition,
 every edited-target or transitive fixture-dependent mutant family with --only
 after landing units become inactive, and the eight required Make gates.
 Evidence: `/home/trevor/work/research-loops-public/private/evidence/2d-4b3d-repair-2/`.
+
+### 2d-4b3e: durable extraction basis (design and re-estimate; implementation stopped)
+
+Design against `d7be82b3a07978942eea885b12e6c4bfd96a8311`, after reading
+the named flow architecture, adjudication and methodology synthesis in full,
+V-1 through V-4, C-9, BOUNDARIES Router/Verifier, the preceding 2d-4b3
+designs and accepted SQL 14–21. **INCOMPLETE: design only.** The authority
+settles canonical-byte reuse and recorded lineage, but does not settle which
+extraction-validation methods may authorize support. The task expressly
+requires stopping here when that choice is open. No implementation, schema,
+fixture or invariant change accompanies this design.
+
+**Open question and recommendation.** Does a fresh validator invocation
+rerunning the producer's identical extractor/version on identical acquired
+bytes and reproducing its output hash count as successful validation for
+load-bearing support, or must validation independently check the extraction
+with another extraction/checking procedure? What method-specific success
+predicate and retained evidence establish that check? Flow S4 step 8 permits
+identical *canonical* bytes; it does not approve identical extraction logic
+as a sufficient validation method. Adjudication (a) K-A2 and (b) resolution 5
+say independence must match the error tested: different URLs can share faulty
+OCR/extraction. Methodology sections 3–4 distinguish checking, evidence origins
+and analytical methods, and warn that readers of one extraction share its
+omissions. None enumerates accepted validation methods or their success
+criteria. The task itself calls deterministic re-extraction a candidate,
+not an approved method.
+
+Recommend an initial closed, versioned method for **independent extraction
+from canonical input**, retaining the independent output and the validator's
+comparison evidence. Its input must be the admitted acquisition, not the
+producer's selected output; matching output hashes can establish byte agreement,
+while any semantic comparison remains an attributed verifier assessment.
+Recommend retaining same-extractor deterministic replay as an integrity result
+without granting it support authority by itself: it can reproduce a systematic
+omission. The design authority must approve the method set, its success
+criteria and what makes an extraction procedure independent before these are
+encoded. These recommendations are proposals, not new accepted policy.
+
+**Re-estimate and split before code.** Conditional on that ruling, about
+**1,250 hand-written implementation/test/mutant lines**, replacing the old
+400-line estimate; design documentation and generated controls are additional.
+The estimate now includes C-9 artifact authentication, independent raw guards,
+receipt-domain compatibility, the full fixture audit and transitive mutant
+controls. Split into three dependent parts, re-estimating each at dispatch:
+
+1. **First part, about 480 lines:** durable extraction and validation records
+   (ordered DDL 95, schemas 50, collaborator 95, thin wiring 10, isolated
+   Router/raw record tests 175, predicate mutants 55). Keep every receipt and
+   SQL 17 support consumer fenced. Stop after this first implementation part.
+2. **Next part, about 460 lines:** consume those records on both receipt paths
+   (ordered consumers/domain extension 65, receipt schema/examples 35,
+   collaborator 45, Router/raw receipt tests 210, audited fixture repairs 65,
+   mutants 40). Admission alone grants no promotion; SQL 17 remains.
+3. **Following part, about 310 lines:** replace SQL 17 only with bound-basis
+   consumption and adjust pending-extraction attention (DDL 35, collaborator
+   25, promotion/hold/replay/rollback tests 170, mutants 50, fixture repairs 30).
+   SQL 12 and EvidenceWriter's governed-capture consumers remain canonical.
+
+If a part grows materially past approximately 500 lines, split it again before
+implementation and stop after its first part. This dispatch stops before part
+1 because the method ruling is absent; the entire 2d-4b3e brief stays incomplete.
+
+**Durable records.** Add ordered SQL after 21 with `-- trace:` markers,
+STRICT tables, foreign keys, unconditional update/delete refusal and no
+REPLACE path. An extraction ID identifies one immutable `source_extractions`
+row. Its input is the complete SQL 14 acquisition key
+`(topic_id, work_id, source_version, event_id, verifier_invocation_id)`, enforced
+by a composite foreign key; retain no alternative caller-supplied input hash
+as acquisition authority. Record extractor identity and version separately,
+the actual extracting invocation, an output artifact reference, its supported
+output tier, recording operation and time. Bind the extractor invocation to
+the topic and recorded execution, rather than letting a recorder impersonate
+another invocation. The acquisition's acquirer and extractor may differ.
+
+Stage output bytes in the protected topic-scoped C-9 spool. The Router
+authenticates/re-hashes the artifact and checks size/media type outside the
+writer lock, then commits the reference and topic authorization atomically
+with the record. Raw DDL checks artifact existence, topic authorization and
+reference metadata; it does not claim to recompute a hash or prove that the
+named invocation actually executed the extractor. Preserve the acquisition
+hash as the receipt's `obtained_content_hash`; output has its own hash.
+Cap the extraction's supported tier by that exact acquisition's row in
+`source_acquisition_content_tiers`. Output-content adequacy remains an
+attributed assessment; the store only establishes the cap and relationships.
+Valid tiers here are bibliographic, abstract and full_text. Hash reproduction
+of extraction output never supplies scientific `reproduced` access, and SQL
+16/19's rank-three ceiling remains in force.
+
+An immutable `extraction_validations` row identifies the target extraction,
+validator invocation, approved method and policy version, outcome, retained
+method evidence (including a second extraction/output when required), recording
+operation and time. Only a contract-admitted verification invocation of the
+same topic, without controlling parentage, may record validation. It must be
+different from the target extraction's invoking producer. It must bind the
+acquisition's verifier lineage; any comparison extraction must consume that
+same exact acquisition and have independent recorded attribution. Keep failed
+attempts as failed records; retries get new IDs, never update the old outcome.
+Schema and raw guards enforce the approved closed method/evidence shapes.
+Success is the authenticated validator's method-specific recorded result,
+not a store certification of semantic correctness. Unknown methods, missing
+evidence and an arbitrary success label cannot substitute for its durable basis.
+
+**Router admission and consumption.** Put validation, artifact binding and
+record writes in a narrow collaborator using the existing core protocols;
+`service.py` adds delegates/wiring only. Use optional typed extraction and
+validation arrays in the existing outcome envelope, writing artifacts and
+extractions before validations, and validations before receipts. The extracting
+or validating invocation is the authenticated committing invocation; an ID in
+a document cannot record work on behalf of another invocation. Authenticate
+through its capability, and use the existing short writer fence to recheck
+operands, live lease, pins, cancellation and pause. No transaction spans
+extraction, external I/O or expensive comparison. Replaying an identical
+operation and payload returns the stored commit; a different payload or
+conflicting record ID is refused. Refused writes and injected faults roll back
+records, artifact authorization and successful audit effects.
+Fixture execution only; provider execution and scheduling remain 2e2.
+
+Add a typed extraction-record reference to extraction receipts. Retain the
+`validation_ref` wire spelling only as a typed durable validation ID consumed
+by a relational guard, removing all authority from a non-null free-text value.
+Use ordered additive columns/guards and a narrowly extended receipt-domain
+guard for SQL 21's extraction member set; preserve every duplicate-name,
+decoded-name, exact numeral, span and other object-shape predicate. Do not edit
+accepted SQL 14–21 in place or rewrite historical receipts.
+`verifier_extraction` must name the verifier's own extraction record.
+`validated_extraction` must name a succeeded approved validation of that
+specific extraction, whose validator is this verifier. Both consumers require
+the exact acquisition key and its work/version/input hash/call/time/route,
+extractor identity/invocation, the record's pinned extractor version and output
+reference, and sufficient output tier to bind. Acquisition selectors alone
+never select arbitrary output.
+Apply these guards to all verdicts through the Router and raw receipt insertion;
+missing, foreign, unbound or failed references abort rather than being retained
+as newly accepted declarations. Preserve SQL 15/18's missing-acquisition and
+SQL 16/19's inflated-tier diagnostics independently of trigger order.
+
+**Authority and attention.** The final part replaces SQL 17's method fence
+with an exact-revision qualifying receipt that consumes its immutable durable
+basis. Retain SQL 03's load-bearing use, claim-required tier, substantive checks
+and role separation, plus contract standing and every other promotion guard.
+Historical extraction declarations without a basis remain fenced. Bound
+support may stop generating a pending-extraction hold; truthful cannot-assess
+still creates owned missing-content remediation, and disagreement stays
+retained. Refusal of an invented reference does not fabricate a hold or commit.
+Keep SQL 12's governed-capture binding and EvidenceWriter's canonical-method
+checks intact: an extraction basis supplies no new quote/span domain, and
+cannot preserve accepted support against an unmatched later governed capture.
+
+**Acceptance work after the ruling.** Independently isolate Router/raw
+negatives for missing IDs, each foreign relationship (topic, work, version,
+event/acquisition and verifier), failed validation, extractor/validator identity,
+producer self-validation, output artifact authorization/metadata and tier
+inflation. Pair every guard predicate with a separately accepted nearby control.
+Cover both methods at all three valid tiers, producer-acquired-byte reuse,
+promotion with/without a basis, historical declarations, governed captures,
+readback, equal replay, conflict and transactional rollback. Audit every receipt
+schema-example loader, `receipt_document`, `verification_receipts=` and raw
+`verify` helper/caller, including transitive imports; migrate positive extraction
+controls to explicit durable setup without weakening their existing assertions.
+Run targeted tests and full `gen2.tests.test_router_composition`, every family
+targeting an edited file or sharing an edited fixture with `--only`, and the
+eight task Make gates. Before each mutant run wait for no active
+`gen2-landing-*` user unit, never touching units/clones or refreshing the venv
+during mutation. No provider calls, live gateway, real database migration or
+main merge. Evidence: `/home/trevor/work/research-loops-public/private/evidence/2d-4b3e/`.
