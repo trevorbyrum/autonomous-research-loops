@@ -917,3 +917,66 @@ Run targeted tests, full composition, every affected mutant family (`--only`)
 after no `gen2-landing-*` user unit is active, then the eight required Make
 gates. Do not refresh the venv during mutation runs. Evidence:
 `/home/trevor/work/research-loops-public/private/evidence/2d-4b3d/`.
+
+### 2d-4b3d-repair-1: unambiguous raw cited spans (design before code)
+
+Re-estimate against `29f71bf` (reviewed code `9cece22`): **about 480 hand-written lines** (additive
+DDL 65, raw/Router regression-control pairs 220, fixture repairs/audit 35,
+paired predicate mutants/integration 90, design/status documentation 70).
+Keep this repair in one dispatch within approximately 500 lines; split and
+stop if the implementation requires a materially larger scope. Astra's full
+first review and both probe files were read before this design. F1's cause
+is SQL 20 depending on a discriminator whose input domain storage does not
+enforce, rather than a missing special case in table detection.
+
+Ordered additive SQL 21 establishes that domain with a BEFORE INSERT guard,
+so SQL 20's AFTER INSERT availability decision sees only well-formed spans.
+Reject duplicate member names throughout the **whole receipt document**,
+not only its cited spans: otherwise SQL 03's column-to-document matching
+can select one of conflicting top-level or nested bindings. SQL 03's exact
+JSON matching carries this uniqueness to the cited-spans column. Group decoded object member names by
+their actual parent identity using SQLite's JSON tree, with binary name
+comparison; different objects may reuse names, and escaped spellings of the
+same name are duplicates. This adopts the unique-name requirement of
+[I-JSON, RFC 7493 §2.3](https://www.rfc-editor.org/rfc/rfc7493.html#section-2.3),
+which defines equality after decoding escapes. [RFC 8259 §4](https://www.rfc-editor.org/rfc/rfc8259.html#section-4)
+explains that duplicate-name handling varies across implementations. This
+repair adopts that object constraint, not unrelated I-JSON numeric limits.
+
+Match `verification-receipt.schema.json`'s cited-spans domain: a nonempty
+array of at most 50 objects, each with exactly start/end/locator; integral
+numeric offsets at the schema's minima (start >= 0, end >= 1), including
+integral real JSON spellings; exactly kind/value in each locator; the six
+case-sensitive enum values; and a string value of 1–500 Unicode characters
+(the referenced common short_text definition). Count embedded NUL characters
+as characters too. Do not add end > start, byte bounds, whitespace trimming,
+nonempty substantive labels, machine-integer bounds or table identity claims.
+Use guarded CASE expressions before traversing objects, so primitive span
+and locator inputs are refused cleanly. Existing SQL 03 JSON/column matching
+remains authoritative; SQL 14–20, their diagnostics, the shared content view,
+SQL 17's pending-extraction fence and truthful insufficient-access admission
+remain unchanged. No service wiring, API or real-database migration is needed.
+The first DDL gate requires every JSON function to have a compatibility
+probe; `json_tree` is new to the DDL. Before adding that probe, re-estimate
+this repair at **about 490 hand-written lines**. Add a literal compatibility
+probe for decoded names, duplicate retention and grouping by parent, extend
+the existing missing-function regression, and rerun the SQLC and 1C mutant
+families that target `compat.py`. The gate's decision logic stays unchanged.
+
+Raw pairs isolate every structural predicate across all three methods,
+including duplicate names inside/outside spans, escaped names, missing and
+extra members, wrong container/scalar types, offsets, enum case and string
+length. Each refusal checks unchanged rows, then admits a nearby valid
+control in an isolated savepoint. Separate schema-valid controls demonstrate
+all enum members, reordered members, repeated names in different objects,
+integral real offsets, NUL/Unicode labels and unconstrained offset ordering.
+Router regressions exercise schema refusals and strict duplicate parsing at
+the actual boundary. Predicate mutants have separately passing controls.
+Repair capture fixtures with truthful page/section locators while preserving
+their capture assertions; audit every receipt example/helper/raw-verify user
+and transitive fixture consumer. Update V-2's implementation note and Router
+status per NB1, describe SQL 21's structural domain, and keep the outstanding
+table-identity/extraction limitation. Run targeted tests, full composition,
+all affected mutant families after landing units are inactive (without venv
+refresh), and all eight required Make gates. Evidence:
+`/home/trevor/work/research-loops-public/private/evidence/2d-4b3d-repair-1/`.

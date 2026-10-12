@@ -12618,6 +12618,168 @@
   ],
   "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
  },
+ "2D4B3DR1-all_spans": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-array_max": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-end_integer": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-end_min": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-end_type": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-locator_members": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-locator_object": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-span_members": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-span_object": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-start_integer": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-start_min": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-start_type": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-value_characters": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-value_max": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-value_min": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
+ "2D4B3DR1-value_type": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_domain_control",
+   "test_store_span_domain.ExtractionSpanDDLTest.test_domain_control",
+   "test_store_span_domain.ValidatedSpanDDLTest.test_domain_control"
+  ],
+  "why": "Separate unique-name page receipts at bibliographic tier remain admitted for every method; no domain predicate is bypassed in setup."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

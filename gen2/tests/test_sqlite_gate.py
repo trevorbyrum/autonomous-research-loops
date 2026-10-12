@@ -106,7 +106,7 @@ class VersionFloorTest(unittest.TestCase):
 class JsonCapabilityTest(unittest.TestCase):
     def test_missing_json_function_is_refused_at_a_passing_version(self) -> None:
         """The version passes; SQLITE_OMIT_JSON removes the functions anyway."""
-        for name in ("json_valid", "json_extract", "json_type", "json_array_length", "json_remove", "json_each"):
+        for name in ("json_valid", "json_extract", "json_type", "json_array_length", "json_remove", "json_each", "json_tree"):
             with self.subTest(function=name):
                 conn = ReportingConnection(missing=name)
                 with self.assertRaises(StoreCompatibilityError) as ctx:

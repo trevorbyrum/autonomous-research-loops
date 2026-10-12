@@ -133,14 +133,16 @@ class CaptureDDLTest(DDLTest):
 
     def test_multi_unchecked(self):
         self.raw()
-        self.refused(lambda: self.bound(cited_spans=[{"start": 0, "end": 5}, {"start": 5, "end": 10}]))
+        self.refused(lambda: self.bound(cited_spans=[{"start": 0, "end": 5, "locator": {"kind": "page", "value": "3"}},
+            {"start": 5, "end": 10, "locator": {"kind": "page", "value": "3"}}]))
 
     def test_multi_control(self):
         self.raw()
         doc = {"expected_artifact_hash": h("7"), "artifact_hash": h("7"), "span_start": 5, "span_end": 10,
             "status": "match", "normalization": ["quote-nfc-safe", "2+ucd15.0.0"]}
         self.raw(check_id="qck_second0001", span_start=5, span_end=10, match_result=json.dumps(doc))
-        self.bound(cited_spans=[{"start": 0, "end": 5}, {"start": 5, "end": 10}])
+        self.bound(cited_spans=[{"start": 0, "end": 5, "locator": {"kind": "page", "value": "3"}},
+            {"start": 5, "end": 10, "locator": {"kind": "page", "value": "3"}}])
         self.promote()
 
     def test_negative_control(self):
@@ -183,12 +185,12 @@ class CaptureDDLTest(DDLTest):
         self.x("SAVEPOINT late")
         self.raw()
         self.assertEqual(self.rows("SELECT status FROM claims"), [("accepted_support" if accepted else "provisional",)])
-        spans = [{"start": 0, "end": 5}]
+        spans = [{"start": 0, "end": 5, "locator": {"kind": "page", "value": "3"}}]
         if multiple:
             doc = {"expected_artifact_hash": h("7"), "artifact_hash": h("7"), "span_start": 5, "span_end": 10,
                 "status": "match", "normalization": ["quote-nfc-safe", "2+ucd15.0.0"]}
             self.raw(check_id="qck_second0001", span_start=5, span_end=10, match_result=json.dumps(doc))
-            spans.append({"start": 5, "end": 10})
+            spans.append({"start": 5, "end": 10, "locator": {"kind": "page", "value": "3"}})
         self.bound(cited_spans=spans)
         self.finish()
         self.x("RELEASE late")
@@ -219,7 +221,7 @@ class CaptureDDLTest(DDLTest):
         self.promote()
         def invalid():
             self.raw()
-            self.bound(cited_spans=[{"start": 5, "end": 10}])
+            self.bound(cited_spans=[{"start": 5, "end": 10, "locator": {"kind": "page", "value": "3"}}])
             self.finish()
         self.refused(invalid)
         self.assertEqual(self.rows("SELECT status FROM claims"), [("accepted_support",)])

@@ -59,6 +59,8 @@ JSON_PROBES: tuple[tuple[str, str, list[tuple]], ...] = (
     ("json_array_length", """SELECT json_array_length('[1,2,3]'), json_array_length('{"a":[1]}', '$.a')""", [(3, 1)]),
     ("json_remove", """SELECT json_remove('{"a":1,"b":2}', '$.a')""", [('{"b":2}',)]),
     ("json_each", """SELECT key, value FROM json_each('{"a":1,"b":"x"}') ORDER BY key""", [("a", 1), ("b", "x")]),
+    ("json_tree", r"""SELECT key, count(*) FROM json_tree('{"a":{"k":1,"\u006b":2},"b":{"k":3}}')
+        WHERE typeof(key) = 'text' GROUP BY parent, key HAVING count(*) > 1""", [("k", 2)]),
 )
 
 _VERSION = re.compile(r"\A([0-9]+)\.([0-9]+)\.([0-9]+)\Z")

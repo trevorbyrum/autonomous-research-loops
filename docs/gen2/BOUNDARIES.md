@@ -27,8 +27,7 @@ reader. Replay/collision/rollback use the existing commit mechanism; later
 support never clears retained disagreement. No semantic judgment, clock,
 transaction, provider call or escalation scheduler is added. SQL protects
 existing hold shape/open creation/identity/clearance; verdict routing is a
-Router responsibility. Re-access, tier/route/table admission and detailed
-check receipts remain later 2d-4 parts; deadline escalation remains 2e2.
+Router responsibility. Re-access and acquisition/content-tier admission are implemented by SQL 14–19 and their Router consumers. SQL 20 adds the same recorded-full-text minimum for table citations across all three receipt methods, including insertion through the Router, with truthful insufficient access retaining the existing hold. SQL 21 establishes unique member names throughout the receipt and the schema's exact cited-span/locator domain before raw table admission. Structured rows alone confer no table availability. Durable table-locator binding, extraction/validation consumption and detailed check receipts remain later 2d-4 work; deadline escalation remains 2e2.
 
 `AcquisitionAdmission` in `acquisitions.py` (2d-4b2) admits fixture re-access
 through `Router.admit_reaccess`. Its narrow core protocol includes the existing
@@ -41,8 +40,7 @@ SQL 14 retains exact operands/lineage with verifier attribution; equal replay
 adds nothing and conflicts roll back. SQL binds recorded relationships and size;
 the Router authenticates and hashes bytes. This record supplies no tier, table,
 extraction-validation or support authority. Canonical-byte receipts consume it
-(SQL 15, task 2d-4b3 slice 1); table tiers and durable extraction
-validation are the remaining 2d-4b3 slices; trusted workflow capture execution
+(SQL 15, task 2d-4b3 slice 1); durable table-locator binding and extraction/validation consumption remain subsequent 2d-4b3 work; trusted workflow capture execution
 remains 2e2.
 
 SQL 16 and SQL 19 (2d-4b3c2) cap every receipt method/verdict at its
@@ -66,8 +64,7 @@ An unbound supporting declaration creates the existing missing-content
 remediation hold through Verification, using the producer's owner/deadline;
 later canonical support does not clear it. Truthful insufficient-access receipts
 remain admissible and create the missing-content hold; inflated declarations are
-refused. Tables and durable extraction/validation storage remain the subsequent
-2d-4b3 slices.
+refused. Durable table-locator binding and extraction/validation consumption remain subsequent 2d-4b3 work.
 
 ## Station supervisor
 

@@ -25,3 +25,4 @@
 18-extraction-receipt-acquisitions.sql
 19-extraction-content-tiers.sql
 20-receipt-table-availability.sql
+21-receipt-span-domain.sql
