@@ -2392,3 +2392,19 @@ The post-2q Gate D is renumbered #5.
   - `gen2-gateway` green: 413 mutants killed.
 - **With this, 2d-4b3c is complete:** binding (SQL 18) plus ceilings (SQL 19).
 - **Next:** 2d-4b3d (`docs/gen2/tasks/2d-4b3d.md`), table citations require recorded table availability (V-2).
+
+## 2026-10-12: 2d-4b3d (table citations require recorded full text): round 1 BLOCK on F1
+- **Astra** (`f124568c`, pinned 9cece22; `private/reviews/gen2-2d-4b3d-astra-review-20261012.md`): **A BLOCK (MITIGATION at the family level); B PASS; C PASS.**
+- **What passed:**
+  - "Recorded full text as the minimum for a table citation" is sound as a conservative necessary condition.
+  - Refusing structured BEA and Census rows without full text is the right call, and the limitation is disclosed.
+  - Borrowing, metadata-only, Unicode-blank and the verdict exceptions all hold. The diagnostics are preserved.
+- **F1 (MEDIUM, DEVIATION):** SQL 20 reads `$.locator.kind`, but nothing at the storage layer enforces the span or locator shape.
+  - Raw inserts with duplicate keys (`{"kind":"page","kind":"table"}`, or a duplicated `locator`), a missing locator, or the kind `"TABLE"` are admitted as `supports` at `bibliographic`, for all three methods.
+  - The Router's schema boundary refuses these, so it is not an agent-facing exploit; the raw guarantee is still in scope.
+  - **Root cause:** the guard relies on an unenforced input domain.
+- **NB1 (low, BOUNDARY-DRIFT):** INVARIANTS V-2 and BOUNDARIES Router still describe table admission as future work. This understates what is implemented and grants no false authority. It is folded into the repair.
+- **Landing at 9cece22:**
+  - `gen2-check` green: 3,210 tests; 217 triggers in reverse order; 3,090/3,090 mutants killed.
+  - `gen2-gateway` green: 413 mutants killed.
+- **Routed:** `docs/gen2/tasks/2d-4b3d-repair-1.md`, round 2 of 3. It applies I-JSON's unique-names rule (RFC 7493) plus an exact schema-shape domain at raw admission, and the NB1 doc fix.
