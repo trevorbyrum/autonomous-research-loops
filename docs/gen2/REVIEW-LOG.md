@@ -2423,3 +2423,13 @@ The post-2q Gate D is renumbered #5.
 - **Common cause:** both families come from validating through SQLite's lossy interpretation of the text, not through the store's actual canonical representation (store API JCS, C-13). They remain raw-store-only; the Router refuses them.
 - **Landing at 9fa4748:** `gen2-check` green; `gen2-gateway` green.
 - **Routed:** `docs/gen2/tasks/2d-4b3d-repair-2.md`, **round 3 of 3 (the cap)**. Raw admission requires the stored canonical representation, checked against the exact text and decoded names.
+
+## 2026-10-12: 2d-4b3d repair-2, round 3 (the cap): PASS. 2d-4b3d accepted
+- **Astra** (`d730e646`, pinned 9436a34; `private/reviews/gen2-2d-4b3d-r3-astra-review-20261012.md`): **A, B and C all PASS. "2d-4b3d is ACCEPTED."**
+- **F1(a) closed (root cause).** Complete decoded-name member sets now cover every receipt object that SQL 03, 20 and 21 read. 318 independent NUL-alias cases across all three methods were refused. Valid NUL characters in locator values still pass.
+- **F1(b) closed (root cause).** Offsets are judged from the preserved numeral text with exact decimal reasoning. 1,260 combinations were checked against Fraction/Decimal expectations with no disagreement. Integral spellings and large integers stay valid.
+- **Design note:** Sol rejected canonical-only enforcement because JCS writes `1e+30` and long digit strings, which would have refused store-writable offsets. It used an exact lexical check instead. DOSSIER records the reasoning.
+- **Docs:** BOUNDARIES and V-2 claim exactly the resulting guarantee. The compat probes fail closed.
+- **Landing at 9436a34:** `gen2-check` green; `gen2-gateway` green.
+- **Process note:** the coder read the repair-1 evidence directory, which wasn't among its named inputs, and disclosed it. Briefs now list the coder's own and prior evidence directories as allowed reads.
+- **Next:** 2d-4b3e (`docs/gen2/tasks/2d-4b3e.md`): durable extraction and validation records replace the SQL 17 fence (V-3).
