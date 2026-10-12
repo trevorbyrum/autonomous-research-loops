@@ -2408,3 +2408,18 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` green: 3,210 tests; 217 triggers in reverse order; 3,090/3,090 mutants killed.
   - `gen2-gateway` green: 413 mutants killed.
 - **Routed:** `docs/gen2/tasks/2d-4b3d-repair-1.md`, round 2 of 3. It applies I-JSON's unique-names rule (RFC 7493) plus an exact schema-shape domain at raw admission, and the NB1 doc fix.
+
+## 2026-10-12: 2d-4b3d repair-1, round 2: BLOCK. F1 narrowed but still open
+- **Astra** (`9dfe734b`, pinned 9fa4748; `private/reviews/gen2-2d-4b3d-r2-astra-review-20261012.md`): **A BLOCK; B PASS; C PASS.**
+- **How the session ended:** the Codex cybersecurity filter ended it after the verdict draft was complete. The report is Astra's own draft, copied verbatim apart from the landing paragraph.
+- **What was closed:**
+  - the duplicate-name uniqueness check, which is sound, including escaped and nested names, and correctly treats Unicode-normalized names as distinct;
+  - the exact shape for ordinary members;
+  - the `compat.py` probe, which is a probe only and fails closed;
+  - the fixtures;
+  - NB1's future-tense wording.
+- **Still open, F1(a):** on SQLite 3.45.1, path lookup treats a decoded NUL as the end of a member name. A `"cited_spans\u0000suffix"` member placed before the real `cited_spans` splits the column from the receipt, and every method admits a table citation as `supports` at `bibliographic`.
+- **Still open, F1(b):** `1.00000000000000001` and `-1e-999` are converted to REAL before the integrality and minimum checks, so they pass.
+- **Common cause:** both families come from validating through SQLite's lossy interpretation of the text, not through the store's actual canonical representation (store API JCS, C-13). They remain raw-store-only; the Router refuses them.
+- **Landing at 9fa4748:** pending at routing time.
+- **Routed:** `docs/gen2/tasks/2d-4b3d-repair-2.md`, **round 3 of 3 (the cap)**. Raw admission requires the stored canonical representation, checked against the exact text and decoded names.
