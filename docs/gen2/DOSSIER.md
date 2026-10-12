@@ -869,3 +869,51 @@ mutant families (including transitive imports), and the eight required Make
 gates. Before each mutant run wait for no active `gen2-landing-*` user unit;
 never modify those units/clones or refresh the venv during mutation runs.
 Evidence: `evidence/2d-4b3c2/`.
+
+### 2d-4b3d: recorded table availability (design before code)
+
+Re-estimate against `0170d6e`: **about 460 hand-written lines** (ordered DDL
+30, Router/raw-DDL tests 320, predicate mutants/integration 65, documentation
+and fixture audit 45). This fits one dispatch; split and stop after the first
+part if the implementation exceeds approximately 500 lines. SQL 14–19 remain
+accepted, including the shared content rule and SQL 17 authority fence.
+
+For this conservative slice, a substantive receipt citing any `table` locator
+requires its consumed acquisition's `source_acquisition_content_tiers` rank
+to be at least 3 (`full_text`). SQL 16's selected-record, coverage and
+`recorded-nonblank/1+ucd17.0.0` rule is reused unchanged. This establishes
+recorded content access, not the correctness of a table label or its claims;
+durable extraction/validation and table identity matching remain later work.
+Gateway CORE enrichment records full text in `text`. BEA `data` emits a
+`series` record with a `table:bea:` identity, `rows`, `row_count`, `notes`,
+`method`, `query` and opaque `raw`; its metadata listings use the same
+record shape. Census similarly records `columns`/`rows`. There is no durable
+binding from a receipt's arbitrary table locator value to those structured
+rows, and SQL 16 grants them no full-text tier. Refuse them in this slice;
+neither structured rows nor identities, locator labels, routes, kinds, media
+types, links or flags alone grant table availability.
+
+Ordered additive SQL 20 uses an AFTER INSERT guard for all three methods,
+matching work, version, verifier, obtained hash, gateway call, retrieval time
+and route; only canonical bytes additionally match the acquiring invocation.
+Verifier identity implies topic through SQL 14/03. A missing match defers to
+SQL 15/18's existing acquisition diagnostic, irrespective of trigger order.
+SQL 16/19 already refuse inflated full-text/reproduction declarations. The
+new guard handles lower-tier declarations, preserving those ceiling diagnostics
+even when an inflated declaration also cites a table.
+Every cited span is examined, including tables after non-table spans.
+`cannot_assess_at_required_tier` reports unavailable content rather than
+certifying it, so it is exempt from the table guard; existing acquisition and
+tier ceilings still apply, and truthful lower-tier reports retain the existing
+missing-content hold. No production Python/API or real migration is needed.
+
+Independent Router/raw-DDL cases cover both insufficient tiers, all methods,
+substantive verdicts, mixed spans, unrelated records/acquisitions/works,
+structured rows, accepted controls, truthful missing access, readback, replay,
+conflict, rollback and retained diagnostics. Each new guard has a paired
+predicate mutant. Audit all receipt example/helper/raw-verify consumers,
+including transitive fixtures, without weakening their original assertions.
+Run targeted tests, full composition, every affected mutant family (`--only`)
+after no `gen2-landing-*` user unit is active, then the eight required Make
+gates. Do not refresh the venv during mutation runs. Evidence:
+`/home/trevor/work/research-loops-public/private/evidence/2d-4b3d/`.

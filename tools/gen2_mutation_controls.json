@@ -12446,6 +12446,178 @@
   ],
   "why": "Separate literal recorded-content controls admit both pending methods at or below the selected record's ceiling; SQL 17 still refuses support authority."
  },
+ "2D4B3D-abstract": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-acquirer": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-all-spans": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-bibliographic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-call": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-comparison": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_non_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_non_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_non_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-independent-extractor": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-method": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-missing": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-route": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-table": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-threshold": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-tier-diagnostic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-time": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-truthful": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-verifier": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-version": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
+ "2D4B3D-work": {
+  "by_hand": true,
+  "controls": [
+   "test_store_table_availability.TableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ExtractionTableDDLTest.test_lower_table_control",
+   "test_store_table_availability.ValidatedTableDDLTest.test_lower_table_control"
+  ],
+  "why": "Separate literal table/full-text or non-table/lower-tier receipts remain admitted; extraction declarations retain SQL 17's authority fence."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"
