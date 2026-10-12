@@ -2421,5 +2421,5 @@ The post-2q Gate D is renumbered #5.
 - **Still open, F1(a):** on SQLite 3.45.1, path lookup treats a decoded NUL as the end of a member name. A `"cited_spans\u0000suffix"` member placed before the real `cited_spans` splits the column from the receipt, and every method admits a table citation as `supports` at `bibliographic`.
 - **Still open, F1(b):** `1.00000000000000001` and `-1e-999` are converted to REAL before the integrality and minimum checks, so they pass.
 - **Common cause:** both families come from validating through SQLite's lossy interpretation of the text, not through the store's actual canonical representation (store API JCS, C-13). They remain raw-store-only; the Router refuses them.
-- **Landing at 9fa4748:** pending at routing time.
+- **Landing at 9fa4748:** `gen2-check` green; `gen2-gateway` green.
 - **Routed:** `docs/gen2/tasks/2d-4b3d-repair-2.md`, **round 3 of 3 (the cap)**. Raw admission requires the stored canonical representation, checked against the exact text and decoded names.
