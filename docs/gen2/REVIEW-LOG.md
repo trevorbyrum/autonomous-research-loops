@@ -2381,3 +2381,14 @@ The post-2q Gate D is renumbered #5.
   - 3,037/3,037 mutants killed, 3,020 with paired controls; 17 keep their disclosed classifications.
   - `gen2-gateway` carried forward from ead2779 (exit 0).
 - **Next:** 2d-4b3c part 2 (`docs/gen2/tasks/2d-4b3c2.md`), which applies SQL 16's recorded-content ceiling to extraction declarations.
+
+## 2026-10-12: 2d-4b3c2 (extraction declarations capped at recorded content): PASS on the first review. Accepted
+- **Astra** (`e9e08dab`, pinned 0988139; `private/reviews/gen2-2d-4b3c2-astra-review-20261011.md`): **A, B and C all PASS, ROOT-CAUSE. "2d-4b3c2 is ACCEPTED."** There are no blocking or non-blocking findings.
+- **The SQL 16 refactor conforms.** The shared view `source_acquisition_content_tiers` is the old inline rule, and canonical behaviour is unchanged. Editing the earlier ordered part is acceptable because the schema is undeployed.
+- **SQL 19** caps both extraction methods through SQL 18's seven operands. Astra probed multiple matching acquisitions, short text, abstract-only records, malformed JSON and unselected records; all held.
+- **The BOUNDARIES and INVARIANTS edits match the code.**
+- **Landing at 0988139:**
+  - `gen2-check` green: 3,167 tests; 216 triggers in reverse order; 3,070/3,070 mutants killed.
+  - `gen2-gateway` green: 413 mutants killed.
+- **With this, 2d-4b3c is complete:** binding (SQL 18) plus ceilings (SQL 19).
+- **Next:** 2d-4b3d (`docs/gen2/tasks/2d-4b3d.md`), table citations require recorded table availability (V-2).
