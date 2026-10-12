@@ -1044,6 +1044,49 @@ Evidence: `/home/trevor/work/research-loops-public/private/evidence/2d-4b3d-repa
 
 ### 2d-4b3e: durable extraction basis (design and re-estimate; implementation stopped)
 
+**Operator ruling encoded before implementation, 2026-10-12; dispatch
+2d-4b3e1.** Trevor's ruling at the end of `tasks/2d-4b3e.md` closes the
+historical open question below. The closed validation policy is
+`extraction-validation/1` (stored `policy_version = 1`), with exactly two
+methods: `independent_extraction` and `same_extractor_replay`. Unknown methods
+or versions are refused. Independence requires a different extractor
+**identity** (tool or method), not another version of the same identity, and
+a contract-admitted verification invocation distinct from both the source's
+recorded producer and the target extraction's extracting invocation. The
+producer here is the immutable source artifact's capture invocation. The
+validator has no controlling parent, matches the acquisition's verifier, and
+performs its own comparison extraction from the same complete SQL 14 key.
+The comparison record's extracting invocation must be the validator itself.
+
+For `independent_extraction`, the method-success predicate is: those bound
+independent relationships, authenticated output and comparison artifacts,
+`outcome = succeeded`, and comparison `byte_equal` or `semantic_agreement`.
+Retain the validator's own immutable extraction/output reference and a C-9
+comparison-evidence artifact, alongside the comparison outcome. `byte_equal`
+additionally requires equal output hashes, which establishes byte agreement;
+`semantic_agreement` is an attributed validator assessment whose rationale
+is retained, never store-proven semantic correctness. `disagreement` requires
+`failed`; failed records remain immutable and never satisfy method success.
+`same_extractor_replay` requires the same identity and version, records byte
+equality or disagreement with the same retained evidence, and never satisfies
+the authorizing predicate, even when its integrity outcome is `succeeded`.
+The part-1 result view exposes this predicate for testing only; no receipt or
+support consumer reads it. SQL 17 continues fencing every extraction receipt.
+
+**Dispatch re-estimate before code:** about **500 handwritten lines** for
+part 1 (DDL 145, typed shapes 50, collaborator 55, wiring 10, isolated
+Router/raw tests 180, paired mutants 60). Documentation and generated mutation
+controls are additional. Implement records only and stop; the following
+receipt-consumption (~460) and SQL 17 replacement (~310) parts stay pending.
+Use optional outcome arrays, with actual attribution derived from the
+committing invocation, artifact authentication outside the writer lock,
+and writes after the operation receipt and before existing evidence writes.
+All existing receipt consumers and accepted SQL 14–21 stay unchanged. The
+shared history-sweep population fixture only appends the two new record types;
+its receipt operands and assertions stay unchanged. Its transitive paired
+controls expand the required mutant sweep.
+Evidence: `/home/trevor/work/research-loops-public/private/evidence/2d-4b3e1/`.
+
 Design against `d7be82b3a07978942eea885b12e6c4bfd96a8311`, after reading
 the named flow architecture, adjudication and methodology synthesis in full,
 V-1 through V-4, C-9, BOUNDARIES Router/Verifier, the preceding 2d-4b3

@@ -43,6 +43,22 @@ extraction-validation or support authority. Canonical-byte receipts consume it
 (SQL 15, task 2d-4b3 slice 1); durable table-locator binding and extraction/validation consumption remain subsequent 2d-4b3 work; trusted workflow capture execution
 remains 2e2.
 
+`ExtractionRecords` in `extractions.py` (2d-4b3e1) authenticates retained
+output and comparison artifacts outside the writer lock, then writes through
+the existing fenced outcome transaction after artifacts and its operation
+receipt. Attribution comes from the committing capability. SQL 22 retains
+immutable extraction inputs (the complete SQL 14 key), extractor identity and
+version, output reference and content-capped tier, plus validator lineage,
+method, policy version, comparison evidence and outcomes. Under the closed
+`extraction-validation/1` policy, an independent method needs a distinct
+extractor identity and a validator distinct from source producer and target
+extractor, with its own extraction of the same acquisition. Equal output hashes
+establish byte agreement; semantic agreement remains the validator's attributed
+assessment. Failed results and same-extractor integrity replay never satisfy
+method success. The result view has no receipt or support consumer in this
+part: SQL 17 and every existing receipt consumer are unchanged. The store binds
+records; it does not certify extraction execution or semantic correctness.
+
 SQL 16 and SQL 19 (2d-4b3c2) cap every receipt method/verdict at its
 consumed acquisition's recorded content: the selected record's nonblank abstract
 or full-text body, with `metadata_only` unable to certify full text. Links,

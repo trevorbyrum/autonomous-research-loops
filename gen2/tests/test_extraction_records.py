@@ -1,0 +1,245 @@
+"""Isolated SQL 22 / Router guards; fixture execution only, no receipt changes."""
+import sqlite3
+
+from gen2.tests.router_fixtures import OTHER, empty_outcome
+from gen2.tests.test_reaccess_admission import AcquisitionCase, RAW, STAMP, raw_acquisition
+
+
+class RecordCase(AcquisitionCase):
+    def setUp(self):
+        super().setUp()
+        self.assertEqual(self.router.admit_reaccess(self.request())["status"], "admitted")
+        self.extractor = self.started("inv_extract001", "checkpoint")
+        self.output = self.artifact(b"independent extraction output")
+        self.evidence = self.artifact(b"validator comparison rationale")
+        for grant in (self.extractor, self.verifier):
+            payload = empty_outcome(grant["invocation_id"], "interim_transition")
+            self.assertEqual(self.router.commit_outcome(self.envelope(grant, "op_setup_" + grant["invocation_id"],
+                payload, refs=[self.output, self.evidence]))["status"], "committed")
+
+    def extraction(self, identity="target", **changes):
+        return {**dict(extraction_id=identity, work_id=self.work, source_version="v1", event_id=self.EVENT_ID,
+            verifier_invocation_id=self.verifier["invocation_id"], extractor_identity="tool-a" if identity == "target" else "tool-b",
+            extractor_version="1", output_ref=self.output, supported_tier="abstract"), **changes}
+
+    def validation(self, **changes):
+        return {"validation_id": "validation-1", "target_extraction_id": "target", "validator_extraction_id": "independent",
+            "method": "independent_extraction", "policy_version": 1, "outcome": "succeeded", "comparison": "byte_equal",
+            "comparison_evidence_ref": self.evidence, **changes}
+
+    def foreign_ref(self, text):
+        ref = self.artifact(text)
+        self.to_scoping(OTHER)
+        other = self.started("inv_other001", tid=OTHER)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, ?, ?, ?)",
+            ref["content_hash"], ref["size_bytes"], ref["media_type"], STAMP)
+        self.x("INSERT INTO artifact_topics VALUES (?, ?, ?, ?)", ref["content_hash"], OTHER, other["invocation_id"], STAMP)
+        return ref
+
+    def send(self, grant=None, op="op_record0001", **sections):
+        grant = grant or self.extractor
+        payload = {**empty_outcome(grant["invocation_id"], "interim_transition"), **sections}
+        return self.router.commit_outcome(self.envelope(grant, op, payload))
+
+    def basis(self, target_grant=None, target=None, independent=None):
+        self.assertEqual(self.send(target_grant, source_extractions=[target or self.extraction()])["status"], "committed")
+        self.assertEqual(self.send(self.verifier, "op_independent1", source_extractions=[independent or self.extraction("independent")])["status"], "committed")
+
+    def refuse(self, **sections):
+        before = self.state()
+        grant = self.verifier if "extraction_validations" in sections else self.extractor
+        out = self.send(grant, "op_refused001", **sections)
+        self.assertEqual(out["status"], "rejected", out)
+        self.assertEqual(self.state(), before)
+
+
+class RecordTest(RecordCase):
+    def test_control(self):
+        self.basis()
+        self.assertEqual(self.send(self.verifier, "op_validation1", extraction_validations=[self.validation()])["status"], "committed")
+        self.assertEqual(self.value("SELECT method_succeeded FROM extraction_validation_results"), 1)
+        self.assertEqual(self.rows("SELECT extracting_invocation_id FROM source_extractions ORDER BY rowid"),
+            [(self.extractor["invocation_id"],), (self.verifier["invocation_id"],)])
+        self.assertEqual(self.rows("PRAGMA foreign_key_check"), [])
+        self.assertEqual(self.rows("SELECT * FROM verification_receipts"), [])
+
+    def test_acquisition(self):
+        for field, value in (("event_id", "absent"), ("source_version", "absent"), ("work_id", "wrk_absent001"),
+                ("verifier_invocation_id", self.extractor["invocation_id"])):
+            with self.subTest(field=field):
+                record = self.extraction()
+                record[field] = value
+                self.refuse(source_extractions=[record])
+
+    def test_tier(self):
+        record = self.extraction()
+        record["supported_tier"] = "full_text"
+        self.refuse(source_extractions=[record])
+
+    def test_extractor(self):
+        self.basis(target_grant=self.verifier)
+        self.refuse(extraction_validations=[self.validation()])
+
+    def test_producer(self):
+        # Isolate the producer predicate from the primary-kind admission guard:
+        # this synthetic attribution cannot be created through SQL 10 admission.
+        self.x("DROP TRIGGER source_artifacts_immutable_u")
+        self.x("UPDATE source_artifacts SET invocation_id = ?", self.verifier["invocation_id"])
+        self.basis()
+        self.refuse(extraction_validations=[self.validation()])
+
+    def test_same_identity(self):
+        independent = self.extraction("independent")
+        independent.update(extractor_identity="tool-a", extractor_version="2")
+        self.basis(independent=independent)
+        self.refuse(extraction_validations=[self.validation()])
+
+    def test_missing_basis(self):
+        self.basis()
+        for field in ("target_extraction_id", "validator_extraction_id"):
+            with self.subTest(field=field):
+                self.refuse(extraction_validations=[self.validation(**{field: "absent"})])
+
+    def test_foreign_basis(self):
+        self.x("INSERT INTO source_artifacts SELECT topic_id, work_id, 'v2', content_hash, invocation_id, recorded_by_operation_id, created_at FROM source_artifacts")
+        raw_acquisition(self, source_version="v2")
+        self.basis(independent=self.extraction("independent", source_version="v2"))
+        self.refuse(extraction_validations=[self.validation()])
+
+    def test_failed(self):
+        self.basis()
+        failed = self.validation(outcome="failed", comparison="disagreement")
+        self.assertEqual(self.send(self.verifier, "op_failed0001", extraction_validations=[failed])["status"], "committed")
+        self.assertEqual(self.value("SELECT method_succeeded FROM extraction_validation_results"), 0)
+
+    def test_outcome(self):
+        self.basis()
+        self.refuse(extraction_validations=[self.validation(outcome="succeeded", comparison="disagreement")])
+
+    def test_byte_comparison(self):
+        independent = self.extraction("independent")
+        independent["output_ref"] = self.evidence
+        self.basis(independent=independent)
+        self.refuse(extraction_validations=[self.validation()])
+
+    def test_semantic_control(self):
+        independent = self.extraction("independent")
+        independent["output_ref"] = self.evidence
+        self.basis(independent=independent)
+        self.assertEqual(self.send(self.verifier, "op_semantic001", extraction_validations=[self.validation(comparison="semantic_agreement")])["status"], "committed")
+        self.assertEqual(self.value("SELECT method_succeeded FROM extraction_validation_results"), 1)
+
+    def test_integrity_control(self):
+        independent = self.extraction("independent")
+        independent["extractor_identity"] = "tool-a"
+        self.basis(independent=independent)
+        self.assertEqual(self.send(self.verifier, "op_integrity01", extraction_validations=[self.validation(method="same_extractor_replay")])["status"], "committed")
+        self.assertEqual(self.value("SELECT method_succeeded FROM extraction_validation_results"), 0)
+
+    def test_integrity_version(self):
+        self.basis(independent=self.extraction("independent", extractor_identity="tool-a", extractor_version="2"))
+        self.refuse(extraction_validations=[self.validation(method="same_extractor_replay")])
+
+    def test_artifact(self):
+        ref = self.foreign_ref(b"unadmitted output")
+        record = self.extraction()
+        record["output_ref"] = ref
+        self.refuse(source_extractions=[record])
+
+    def test_evidence(self):
+        self.basis()
+        ref = self.foreign_ref(b"unadmitted comparison")
+        self.refuse(extraction_validations=[self.validation(comparison_evidence_ref=ref)])
+
+    def test_evidence_metadata(self):
+        self.basis()
+        for field, value in (("size_bytes", 999), ("media_type", "application/json")):
+            with self.subTest(field=field):
+                self.refuse(extraction_validations=[self.validation(comparison_evidence_ref={**self.evidence, field: value})])
+
+    def test_metadata(self):
+        for field, value in (("size_bytes", 999), ("media_type", "application/json")):
+            with self.subTest(field=field):
+                record = self.extraction()
+                record["output_ref"] = {**self.output, field: value}
+                self.refuse(source_extractions=[record])
+
+    def test_immutable(self):
+        self.test_control()
+        for table in ("source_extractions", "extraction_validations"):
+            for statement in (f"UPDATE {table} SET created_at = created_at", f"DELETE FROM {table}",
+                    f"INSERT OR REPLACE INTO {table} SELECT * FROM {table}", f"UPDATE OR REPLACE {table} SET created_at = created_at",
+                    f"INSERT INTO {table} SELECT * FROM {table} WHERE true ON CONFLICT DO UPDATE SET created_at = excluded.created_at"):
+                with self.subTest(statement=statement):
+                    before = self.state(exclude=())
+                    with self.assertRaises(sqlite3.IntegrityError):
+                        self.x(statement)
+                    self.assertEqual(self.state(exclude=()), before)
+
+    def test_record_conflict(self):
+        self.basis()
+        self.refuse(source_extractions=[self.extraction(extractor_identity="forged")])
+
+    def test_rollback(self):
+        self.basis()
+        record = self.extraction("rollback-output")
+        self.refuse(source_extractions=[record], extraction_validations=[self.validation(validator_extraction_id="absent")])
+
+    def test_policy(self):
+        self.basis()
+        for changes in ({"method": "invented"}, {"policy_version": 2}):
+            with self.subTest(changes=changes):
+                self.refuse(extraction_validations=[self.validation(**changes)])
+
+    def test_authentication_control(self):
+        reads = []
+        original = self.spool.read
+        def read(*args, **kwargs):
+            reads.append(self.db.in_transaction)
+            return original(*args, **kwargs)
+        self.spool.read = read
+        self.test_control()
+        self.assertTrue(reads)
+        self.assertFalse(any(reads))
+
+    def test_authentication(self):
+        original = self.spool.read
+        self.spool.read = lambda digest, **key: b"corrupted bytes" if digest == self.output["content_hash"] else original(digest, **key)
+        self.refuse(source_extractions=[self.extraction()])
+
+    def test_replay(self):
+        record = self.extraction()
+        payload = {**empty_outcome(self.extractor["invocation_id"], "interim_transition"), "source_extractions": [record]}
+        env = self.envelope(self.extractor, "op_record0001", payload)
+        first = self.router.commit_outcome(env)
+        before = self.state(exclude=())
+        self.assertEqual(self.router.commit_outcome(env)["status"], "replayed")
+        self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(first["status"], "committed")
+        env = {**env, "expected_state_revision": env["expected_state_revision"] + 1}
+        self.assertEqual(self.router.commit_outcome(env)["reason"], "operation_id_conflict")
+
+    def test_empty_control(self):
+        self.assertEqual(self.send()["status"], "committed")
+
+
+class FullTextTest(RecordCase):
+    RESPONSE = RAW.replace(b'"kind":"article"', b'"kind":"full_text","text":"Canonical full text"')
+
+    def test_tiers(self):
+        for tier in ("bibliographic", "abstract", "full_text"):
+            with self.subTest(tier=tier):
+                self.assertEqual(self.send(op="op_" + tier, source_extractions=[self.extraction(tier, supported_tier=tier)])["status"], "committed")
+
+
+class AtomicTest(RecordCase):
+    def test_fault_rollback(self):
+        ref = self.artifact(b"new extraction bytes for atomic commit")
+        payload = {**empty_outcome(self.extractor["invocation_id"], "interim_transition"),
+            "source_extractions": [self.extraction(output_ref=ref)]}
+        env = self.envelope(self.extractor, "op_fault00001", payload, refs=[ref])
+        before = self.state(exclude=())
+        self.faults["in_transaction:evidence"] = RuntimeError("after extraction write")
+        with self.assertRaisesRegex(RuntimeError, "after extraction write"):
+            self.router.commit_outcome(env)
+        self.assertEqual(self.state(exclude=()), before)

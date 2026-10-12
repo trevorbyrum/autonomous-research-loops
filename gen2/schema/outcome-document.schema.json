@@ -26,6 +26,8 @@
     "exports"
   ],
   "properties": {
+    "source_extractions": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/source_extraction"}},
+    "extraction_validations": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/extraction_validation"}},
     "quote_checks": {
       "description": "V-6 operands for engine-computed checks; a supplied match label is ignored.",
       "type": "array", "maxItems": 64, "items": {"$ref": "quote-check.schema.json"}
@@ -236,6 +238,35 @@
     }
   },
   "$defs": {
+    "source_extraction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["extraction_id", "work_id", "source_version", "event_id", "verifier_invocation_id", "extractor_identity", "extractor_version", "output_ref", "supported_tier"],
+      "properties": {
+        "extraction_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
+        "source_version": {"$ref": "common.schema.json#/$defs/short_text"},
+        "event_id": {"$ref": "common.schema.json#/$defs/local_id"},
+        "verifier_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+        "extractor_identity": {"$ref": "common.schema.json#/$defs/short_text"},
+        "extractor_version": {"$ref": "common.schema.json#/$defs/short_text"},
+        "output_ref": {"$ref": "common.schema.json#/$defs/artifact_ref"},
+        "supported_tier": {"enum": ["bibliographic", "abstract", "full_text"]}
+      }
+    },
+    "extraction_validation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["validation_id", "target_extraction_id", "validator_extraction_id", "method", "policy_version", "outcome", "comparison", "comparison_evidence_ref"],
+      "properties": {
+        "validation_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "target_extraction_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "validator_extraction_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "method": {"enum": ["independent_extraction", "same_extractor_replay"]},
+        "policy_version": {"const": 1},
+        "outcome": {"enum": ["succeeded", "failed"]},
+        "comparison": {"enum": ["byte_equal", "semantic_agreement", "disagreement"]},
+        "comparison_evidence_ref": {"$ref": "common.schema.json#/$defs/artifact_ref"}
+      }
+    },
     "registry_disposition": {
       "type": "object", "additionalProperties": false,
       "required": ["disposition_id", "registry_kind", "registry_id", "subject", "disposition", "contract_revision", "eligibility_protocol_version", "framing_version", "supersedes_id", "reason_code", "evidence_refs"],

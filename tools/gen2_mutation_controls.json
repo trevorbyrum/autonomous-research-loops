@@ -12904,6 +12904,168 @@
   ],
   "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."
  },
+ "2D4B3E1-acquisition": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-authenticate": {
+  "controls": [
+   "test_extraction_records.RecordTest.test_authentication_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-authenticate-wiring": {
+  "controls": [
+   "test_extraction_records.RecordTest.test_authentication_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-byte-comparison": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-ceiling": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-commit-attribution": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-extraction_validations-d": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-extraction_validations-u": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-extraction_validations_artifact-media_type": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-extraction_validations_artifact-size_bytes": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-extraction_validations_artifact-topic": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-extractor": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-failed-result": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-integrity-result": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-integrity-version": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_integrity_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-lineage": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-method": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-outcome": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-policy": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-producer": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-same-identity": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-source_extractions-d": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-source_extractions-u": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-source_extractions_artifact-media_type": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-source_extractions_artifact-size_bytes": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-source_extractions_artifact-topic": {
+  "controls": [
+   "test_store_extraction_records.DDLTest.test_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
+ "2D4B3E1-write-wiring": {
+  "controls": [
+   "test_extraction_records.RecordTest.test_empty_control"
+  ],
+  "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

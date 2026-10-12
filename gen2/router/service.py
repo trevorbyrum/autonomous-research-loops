@@ -61,6 +61,7 @@ from gen2.router.amendments import AMENDMENT_COMMANDS, COMPATIBLE, Amendments, b
 from gen2.router.boundary import Refusal, instant
 from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
 from gen2.router.evidence_writer import EvidenceWriter
+from gen2.router.extractions import ExtractionRecords
 from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle, is_episode_hold
 from gen2.router.registries import REGISTRY_COMMANDS, Registries
 from gen2.router.scheduling import SCHEDULING_COMMANDS, Scheduling
@@ -229,6 +230,7 @@ class Router:
         self._assessments = Assessments(self)
         self._gateway_captures = gateway_captures
         self._acquisitions = AcquisitionAdmission(self)
+        self._extractions = ExtractionRecords(self)
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
@@ -963,6 +965,7 @@ class Router:
             bind(claim["text_ref"], f"{claim['claim_id']}: its text")
         self._assessments.bind_evidence(payload, bind)
         self._evidence_writer.bind_source_artifacts(payload, inv, bind)
+        self._extractions.authenticate(payload, inv, bind)
         quote_checks = self._evidence_writer.check_quotes(payload, inv, bind)
         for report in payload["scoping_reports"]:  # task 2a: flow S2's hand-off, by the work whose admission it names (C-12)
             if report["topic_id"] != inv["topic_id"]:
@@ -1048,7 +1051,9 @@ class Router:
         self._write_operation_receipt(env, receipt_id, inv, fingerprint, lease_id, lease, topic, after, checked, receipt, now)
         self._fault("in_transaction:receipt")
         self._write_final_effects(ordinal, inv, env, lease_release, lease_id, now, final)
+        extraction_records = self._extractions.write(payload, inv, env["operation_id"], now)
         written = self._write_evidence(env, inv, checked, now, new_triggers, outbox)
+        written.update(extraction_records)
         self._fault("in_transaction:evidence")
         self._store.insert("audit_events", {"audit_event_id": audit_id, "at": now, "kind": "commit_outcome", "topic_id": inv["topic_id"],
                                             "invocation_id": inv["invocation_id"], "operation_id": env["operation_id"],

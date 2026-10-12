@@ -95,10 +95,13 @@ MUTATIONS.append(Mutation(mid, "2d-4b2", "acquisition-to-retrieval topic",
     old="e.topic_id = NEW.topic_id AND o.topic_id = NEW.topic_id", new="1 = 1", scope="source_acquisitions_binding"))
 CONTROLS[mid] = CONTROLS["2D4B2-ddl-relation-source-hash"]
 mid = "2D4B2-ddl-natural-key"
+# SQL 22 depends on the exact parent key. Remove that child FK in this
+# in-memory mutation too, so the accepted control tests valid mutated DDL.
 MUTATIONS.append(Mutation(mid, "2d-4b2", "admission time does not create a new acquisition identity",
     ("test_store_acquisition_relationships.RelationshipTest.test_natural_key",),
     old="PRIMARY KEY (topic_id, work_id, source_version, event_id, verifier_invocation_id)",
-    new="PRIMARY KEY (topic_id, work_id, source_version, event_id, verifier_invocation_id, admitted_at)", scope="source_acquisitions"))
+    new="PRIMARY KEY (topic_id, work_id, source_version, event_id, verifier_invocation_id, admitted_at)",
+    also=(("FOREIGN KEY (topic_id, work_id, source_version, event_id, verifier_invocation_id)\n    REFERENCES source_acquisitions (topic_id, work_id, source_version, event_id, verifier_invocation_id)", "CHECK (1)"),)))
 CONTROLS[mid] = CONTROLS["2D4B2-ddl-binding"]
 mid = "2D4B2-ddl-attempt-upper"
 MUTATIONS.append(Mutation(mid, "2d-4b2", "safe-integer capture attempt upper bound",
