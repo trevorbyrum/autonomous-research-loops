@@ -65,6 +65,18 @@ identity trust and canonicalization policy must be settled before part 2 of
 2d-4b3e (receipt consumption) can grant any authority; unequal declarations
 alone do not demonstrate that independent extraction procedures ran.
 
+SQL 23 begins the store-wide JSON member-name domain: decoded names are unique
+within each actual object under binary equality and contain no U+0000. NUL
+in string values remains allowed. This first repair part covers extraction
+output/comparison references and `quote_checks.match_result`, with INSERT and
+UPDATE guards generated from one checked template. Router outcome admission
+and Store preparation refuse these names before logical serialization/writes;
+the matcher emits fixed result names. The static DDL check reports all 33
+remaining columns by name, owned by repair part 2, and refuses uncovered new
+columns. Other entry points adopt the rule with that part's exact-byte retention
+for incompatible attempted requests, preserving their denominator. SQL 21's
+span/numeral domain remains intact. Retained provider/artifact BLOBs stay raw.
+
 SQL 16 and SQL 19 (2d-4b3c2) cap every receipt method/verdict at its
 consumed acquisition's recorded content: the selected record's nonblank abstract
 or full-text body, with `metadata_only` unable to certify full text. Links,

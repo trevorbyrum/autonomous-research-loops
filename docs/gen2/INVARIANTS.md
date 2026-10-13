@@ -96,6 +96,20 @@ Numbering follows DR §10's release gates; gate 1 is split into its crash half (
 
 ---
 
+Operator amendment to C-13, 2026-10-13: stored logical JSON member names must
+be unique within each actual object (decoded names, binary equality) and must
+not contain U+0000; NUL in string values remains allowed. Router and Store
+refuse incompatible names before logical hashing/writing. Rollout in
+2d-4b3e1-repair-1 part 1 enables member-domain normalization on outcome
+payloads and Store preparation on the three SQL 23 guarded columns:
+`code: source_extractions.output_ref`, `code: extraction_validations.comparison_evidence_ref`
+and `code: quote_checks.match_result`. The other 33 columns remain explicitly pending
+under that repair's part 2 static-check manifest. That part must retain exact
+raw attempted-request bytes and their hash before enabling global refusal,
+including contract confidence-scheme labels and every admitted open map.
+Incompatible requests must still be recorded as attempts; no name is renamed,
+truncated or dropped. Raw retained byte hashes remain separate from JCS hashes.
+
 ## 3. Invocation lifecycle
 
 **L-1 — One state machine for all kinds.** States: `admitted`, `launching`, `running`, `result_ready`, `committed`, `cancelled`, `failed`, `outcome_unknown`. Allowed transitions:

@@ -14,6 +14,7 @@ fixture-rule test does the same with a literal one-file schema tree and
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -76,6 +77,51 @@ class DdlRuleTest(unittest.TestCase):
     def test_guarded_table_passes(self) -> None:
         result = self.run_check(GUARDED)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
+
+    def test_json_column_uncovered(self):
+        result = self.run_check(GUARDED.replace('v TEXT', 'v TEXT CHECK (json_valid(v))'))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('JSON member domain uncovered column: t.v', result.stderr)
+
+    def test_json_operand_uncovered(self):
+        result = self.run_check(GUARDED + "CREATE VIEW operand AS SELECT json_extract(v, '$.a') FROM t;\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('JSON member domain uncovered column: t.v', result.stderr)
+
+    def domain_check(self, edit=None):
+        shutil.copytree(REPO / 'gen2/store', self.root / 'gen2/store', dirs_exist_ok=True)
+        (self.root / 'tools').mkdir(exist_ok=True)
+        shutil.copy(REPO / 'tools/gen2_json_member_domain.json', self.root / 'tools')
+        path = self.root / 'gen2/store/schema/23-json-member-domain.sql'
+        if edit:
+            path.write_text(edit(path.read_text()))
+        return subprocess.run([sys.executable, str(CHECKER), '--root', str(self.root), '--part', 'ddl'],
+            capture_output=True, text=True, timeout=60, env=children.env())
+
+    def test_domain_control(self):
+        result = self.domain_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_domain_pending_disclosed(self):
+        result = self.domain_check()
+        self.assertEqual(result.stdout.count('JSON member domain PENDING:'), 33)
+
+    def test_stored_value_not_excluded_as_derived(self):
+        result = self.run_check(GUARDED.replace('v TEXT', 'value TEXT') +
+            "CREATE VIEW operand AS SELECT json_extract(r.value, '$.a') FROM t r;\n")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('JSON member domain uncovered column: t.value', result.stderr)
+
+    def test_domain_guard_drift(self):
+        for edit in (lambda text: text.replace('HAVING count(*) > 1', 'HAVING count(*) > 2', 1),
+                     lambda text: text.replace("x'00'", "x'01'", 1),
+                     lambda text: text.replace('BEFORE INSERT', 'AFTER INSERT', 1),
+                     lambda text: text.replace('BEFORE UPDATE', 'AFTER UPDATE', 1)):
+            with self.subTest(edit=edit.__code__.co_firstlineno):
+                result = self.domain_check(edit)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn('JSON member domain generated output differs', result.stderr)
+                self.assertIn('JSON member domain missing/changed', result.stderr)
 
     def test_table_without_delete_guard_fails(self) -> None:
         result = self.run_check(GUARDED + "-- trace: fixture\nCREATE TABLE u (id TEXT PRIMARY KEY) STRICT;\n")

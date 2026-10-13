@@ -68,7 +68,7 @@ def _exact_float(text: str) -> float:
     return value
 
 
-def parse_json_strict(text: str | bytes) -> object:
+def parse_json_strict(text: str | bytes, *, member_domain: bool = False) -> object:
     """Parse JSON text (bytes are UTF-8) for hashing: duplicate keys,
     NaN/Infinity, integer-notation numerals outside +/-(2**53-1) and numerals
     a double cannot hold exactly (underflow to zero included) are errors,
@@ -84,11 +84,11 @@ def parse_json_strict(text: str | bytes) -> object:
         value = json.loads(text, object_pairs_hook=_reject_duplicates, parse_constant=_reject_constant, parse_float=_exact_float)
     except json.JSONDecodeError as exc:
         raise CanonicalizationError(f"not JSON: {exc}") from exc
-    _validate(value)
+    _validate(value, member_domain=member_domain)
     return value
 
 
-def _validate(value: object, path: str = "$") -> None:
+def _validate(value: object, path: str = "$", *, member_domain: bool = False) -> None:
     if value is None or isinstance(value, bool):
         return
     if isinstance(value, int):
@@ -107,14 +107,16 @@ def _validate(value: object, path: str = "$") -> None:
         return
     if isinstance(value, (list, tuple)):
         for index, item in enumerate(value):
-            _validate(item, f"{path}[{index}]")
+            _validate(item, f"{path}[{index}]", member_domain=member_domain)
         return
     if isinstance(value, dict):
         for key, item in value.items():
             if not isinstance(key, str):
                 raise CanonicalizationError(f"{path}: object key {key!r} is not a string")
+            if member_domain and '\0' in key:
+                raise CanonicalizationError(f"{path}: NUL in object member name {key!r}")
             _validate(key, f"{path}.<key>")
-            _validate(item, f"{path}.{key}")
+            _validate(item, f"{path}.{key}", member_domain=member_domain)
         return
     raise CanonicalizationError(f"{path}: {type(value).__name__} is not a JSON value")
 
@@ -136,9 +138,9 @@ def identity_integer(value: object, *, minimum: int = 0) -> int:
     return int(value)
 
 
-def canonical_bytes(value: object) -> bytes:
+def canonical_bytes(value: object, *, member_domain: bool = False) -> bytes:
     """The RFC 8785 serialization (UTF-8 bytes) of a logical JSON value."""
-    _validate(value)
+    _validate(value, member_domain=member_domain)
     try:
         return rfc8785.dumps(value)
     except (rfc8785.CanonicalizationError, UnicodeEncodeError) as exc:

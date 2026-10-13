@@ -914,7 +914,7 @@ class Router:
         if env["topic_id"] != inv["topic_id"]:
             raise Refusal("cross_topic", f"{inv['invocation_id']} is of topic {inv['topic_id']}")
         raw = boundary.staged(self._spool, env["payload_digest"], env["payload_size_bytes"], topic_id=inv["topic_id"])
-        payload = boundary.normalize(raw, "payload_invalid")
+        payload = boundary.normalize(raw, "payload_invalid", member_domain=True)
         boundary.require_schema(self._schemas, payload, "outcome-document.schema.json", "payload_invalid")
         if payload["invocation_id"] != inv["invocation_id"]:
             raise Refusal("capability_invocation_mismatch", f"the outcome document is {payload['invocation_id']}'s")

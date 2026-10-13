@@ -27,3 +27,4 @@
 20-receipt-table-availability.sql
 21-receipt-span-domain.sql
 22-extraction-records.sql
+23-json-member-domain.sql

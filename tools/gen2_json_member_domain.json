@@ -1,0 +1,42 @@
+{
+  "covered": [
+    "extraction_validations.comparison_evidence_ref",
+    "quote_checks.match_result",
+    "source_extractions.output_ref"
+  ],
+  "pending": {
+    "amendment_impacts.document": "2d-4b3e1-repair-1 part 2",
+    "audit_events.detail": "2d-4b3e1-repair-1 part 2",
+    "capability_facts.affected_lanes": "2d-4b3e1-repair-1 part 2",
+    "claim_source_links.spans": "2d-4b3e1-repair-1 part 2",
+    "config_bundles.document": "2d-4b3e1-repair-1 part 2",
+    "contract_revisions.document": "2d-4b3e1-repair-1 part 2",
+    "decision_receipts.answer": "2d-4b3e1-repair-1 part 2",
+    "decision_receipts.receipt": "2d-4b3e1-repair-1 part 2",
+    "decision_specs.document": "2d-4b3e1-repair-1 part 2",
+    "export_delivery_receipts.receipt": "2d-4b3e1-repair-1 part 2",
+    "intake_briefs.document": "2d-4b3e1-repair-1 part 2",
+    "invocation_reconciliations.request": "2d-4b3e1-repair-1 part 2",
+    "invocation_transitions.facts": "2d-4b3e1-repair-1 part 2",
+    "obligation_assessments.confidence": "2d-4b3e1-repair-1 part 2",
+    "obligation_assessments.evidence_refs": "2d-4b3e1-repair-1 part 2",
+    "obligations.facet_ids": "2d-4b3e1-repair-1 part 2",
+    "operation_receipts.receipt": "2d-4b3e1-repair-1 part 2",
+    "operator_decisions.payload": "2d-4b3e1-repair-1 part 2",
+    "outbox_events.expected_connectors": "2d-4b3e1-repair-1 part 2",
+    "outbox_events.manifest": "2d-4b3e1-repair-1 part 2",
+    "questions.document": "2d-4b3e1-repair-1 part 2",
+    "registry_dispositions.evidence_refs": "2d-4b3e1-repair-1 part 2",
+    "scoping_reports.document": "2d-4b3e1-repair-1 part 2",
+    "screening_assessments.criterion_results": "2d-4b3e1-repair-1 part 2",
+    "search_observations.continuation": "2d-4b3e1-repair-1 part 2",
+    "search_observations.obligation_ids": "2d-4b3e1-repair-1 part 2",
+    "search_observations.request": "2d-4b3e1-repair-1 part 2",
+    "semantic_assessments.evidence_refs": "2d-4b3e1-repair-1 part 2",
+    "source_lifecycle.evidence_refs": "2d-4b3e1-repair-1 part 2",
+    "source_proposals.document": "2d-4b3e1-repair-1 part 2",
+    "verification_receipts.acquisition": "2d-4b3e1-repair-1 part 2",
+    "verification_receipts.cited_spans": "2d-4b3e1-repair-1 part 2",
+    "verification_receipts.receipt": "2d-4b3e1-repair-1 part 2"
+  }
+}

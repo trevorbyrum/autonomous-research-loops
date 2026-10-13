@@ -19306,6 +19306,118 @@
   ],
   "why": "gen2/importer/dry_run.py: executes line 243; or leaves line 235-241 for a line outside 234-244 (or returns)"
  },
+ "JSON-DOMAIN-canonical-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_json_member_admission.AdmissionTest.test_control"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-extraction_validations-i-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.ComparisonTest.test_control_i"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-extraction_validations-i-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.ComparisonTest.test_control_i"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-extraction_validations-u-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.ComparisonTest.test_control_u"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-extraction_validations-u-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.ComparisonTest.test_control_u"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-quote_checks-i-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.QuoteTest.test_control_i"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-quote_checks-i-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.QuoteTest.test_control_i"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-quote_checks-u-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.QuoteTest.test_control_u"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-quote_checks-u-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.QuoteTest.test_control_u"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-router-admission": {
+  "by_hand": true,
+  "controls": [
+   "test_json_member_admission.AdmissionTest.test_control"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-source_extractions-i-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.OutputTest.test_control_i"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-source_extractions-i-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.OutputTest.test_control_i"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-source_extractions-u-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.OutputTest.test_control_u"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-source_extractions-u-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_json_member_domain.OutputTest.test_control_u"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-static-check": {
+  "by_hand": true,
+  "controls": [
+   "test_check_ddl_rules.DdlRuleTest.test_domain_control"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
+ "JSON-DOMAIN-store-admission": {
+  "by_hand": true,
+  "controls": [
+   "test_json_member_admission.AdmissionTest.test_control"
+  ],
+  "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
+ },
  "NULL-spec-screening-protocol": {
   "controls": [
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"
