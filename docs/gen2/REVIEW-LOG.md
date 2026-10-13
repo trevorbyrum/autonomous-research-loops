@@ -2433,3 +2433,21 @@ The post-2q Gate D is renumbered #5.
 - **Landing at 9436a34:** `gen2-check` green; `gen2-gateway` green.
 - **Process note:** the coder read the repair-1 evidence directory, which wasn't among its named inputs, and disclosed it. Briefs now list the coder's own and prior evidence directories as allowed reads.
 - **Next:** 2d-4b3e (`docs/gen2/tasks/2d-4b3e.md`): durable extraction and validation records replace the SQL 17 fence (V-3).
+
+## 2026-10-13: 2d-4b3e1 (durable extraction and validation records): round 1 BLOCK on F1 and F2
+- **Astra** (`882a46cd`, pinned 190dabb; `private/reviews/gen2-2d-4b3e1-astra-review-20261012.md`): **A BLOCK, B PASS, C BLOCK; MITIGATION.**
+- **What passed:**
+  - The records architecture, immutability, the five-column acquisition key and validator role separation are sound.
+  - Authentication happens outside the writer lock, with no new time-of-check/time-of-use gap.
+  - Nothing reads the new tables yet.
+  - The metrics changes are 18→19 and 10→11 plus ten admissions, all attributable to the collaborator.
+  - Gate B: the policy is faithful to the operator ruling, and semantic agreement isn't overclaimed.
+- **F1 (MEDIUM): SQL 22 artifact references accept ambiguous JSON.**
+  - Duplicate `content_hash`/`size_bytes`/`media_type` keys, or `key\u0000suffix` names, in `output_ref` or `comparison_evidence_ref` commit with method success.
+  - The records then fail `Store.select` readback.
+  - This is a raw-admission defect; the Router and Store normalize normal writes. It is the **second occurrence** of the 2d-4b3d F1 family.
+- **F2 (MEDIUM): the new raw fixture breaks `gen2-trigger-order`.** It cuts the DDL text at `CREATE TABLE source_extractions`, and under reversed order that tail includes unrelated triggers, giving 51 differences. The landing `gen2-check` exited 2.
+- **N1 (non-blocking):** extractor independence compares caller-declared labels exactly, so `TOOL-A`, ` tool-a ` and aliases count as distinct. It must be documented, and settled before receipt consumption grants authority.
+- **Landing at 190dabb:** `gen2-check` exit 2 (trigger-order). `gen2-gateway` green.
+- **Operator ruling 2026-10-13 (Trevor): close the JSON member-name family store-wide.** One shared domain (unique decoded names, no NUL in names) covers every JSON column, and a static `gen2-ddl` check fails on any uncovered column. It may split into two parts.
+- **Routed:** `docs/gen2/tasks/2d-4b3e1-repair-1.md`, round 2 of 3. The coder's pre-commit gates now include `make gen2-trigger-order`.
