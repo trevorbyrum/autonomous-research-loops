@@ -2459,3 +2459,16 @@ The post-2q Gate D is renumbered #5.
 - **N1 is documented:** extractor identity is an exact comparison of caller-declared labels, and must be settled before receipt consumption.
 - **Operator ruling (Trevor):** stored logical JSON member names are NUL-free. Router and Store refuse them, through a C-13 amendment. A failed attempt whose request contains one keeps that request as exact raw bytes plus its hash.
 - **Re-dispatched** under the same brief; still round 2, because no review was consumed.
+
+## 2026-10-13: 2d-4b3e1-repair-1 part 1, round 2: BLOCK on R2-1 and R2-2
+- **Astra** (`54094fc5`, pinned d41e42c; `private/reviews/gen2-2d-4b3e1-r2-astra-review-20261013.md`): **A BLOCK, B PASS (carried), C BLOCK.**
+- **Accepted:**
+  - SQL 23's domain on the three covered columns: 96 independent raw cases (84 refusals, 12 readable controls);
+  - the Router and Store NUL-name refusal and the C-13 amendment;
+  - the F2 fixture;
+  - generator drift checks;
+  - the 33 named pending columns owned by part 2.
+- **R2-1 (MEDIUM):** the static inventory scanner misses quoted function names, a comment before the `(`, a `'--'` inside a string literal, and an alias-borrowed retained-BLOB exclusion. Astra's five probe schemas pass `gen2-ddl` with exit 0, which defeats the requirement to prevent recurrence. The root cause is a custom partial SQL scanner.
+- **R2-2 (MEDIUM):** the landing `gen2-check` exited 2. Thirty `test_exact_spans` subtests expect the old schema diagnostic, but the inputs are now refused earlier, as NUL member names. The refusal is still correct.
+- **Landing at d41e42c:** `gen2-check` exit 2. `gen2-gateway` green, with 413 mutants killed.
+- **Routed:** `docs/gen2/tasks/2d-4b3e1-repair-2.md`, **round 3 of 3 (the cap)**. Replace the hand-rolled discovery with an established, fail-closed approach (a SQL parser or SQLite's authorizer). New coder gate: the full `make gen2-test` whenever shared core modules change.
