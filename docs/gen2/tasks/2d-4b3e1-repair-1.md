@@ -44,3 +44,27 @@
 - **Don't edit:** BUILD-STATE, REVIEW-LOG or DEBT-REGISTER. Edits to BOUNDARIES and INVARIANTS must match the code exactly.
 - **Evidence:** `~/work/research-loops-public/private/evidence/2d-4b3e1-repair-1/`, with a COMPLETION.md.
 - **Commits:** end the message with `Co-Authored-By: GPT-6.1-Sol <noreply@openai.com>`.
+
+## Operator ruling 2026-10-13 (Trevor), answering the compatibility stop in DOSSIER §2d-4b3e1-repair-1 (`8e1b0dc`)
+**Stored logical JSON never has U+0000 in a member name.**
+- The Router and Store refuse such names before hashing or writing, as C-13 already refuses duplicate keys. INVARIANTS C-13 gets amended to say so.
+- NUL characters in string *values* stay allowed.
+- PostgreSQL `jsonb` takes the same position: it rejects `\u0000`.
+
+**Failed attempts are still recorded.**
+- Attempted-request records keep the denominator honest, so an attempt whose request contains such a name is still recorded.
+- The incompatible request is kept as **exact raw bytes plus their hash**, through a retained-bytes path like the one already used for provider responses. Nothing is renamed, truncated or dropped.
+
+**Contract confidence-scheme labels** (and any other admitted open map) refuse NUL-containing names at admission.
+
+## Continuation: implement under the ruling (still round 2 of 3, since no review was consumed by the design stop)
+- **Re-estimate in DOSSIER first,** to cover the C-13 write-path refusal and the raw-bytes retention for attempted requests.
+- **Ordering rule.** The DDL domain guard on a column must never land before every write path to that column has stopped producing refused names.
+- **The first part closes F1 and F2:**
+  - the shared generator, DDL and static check;
+  - the domain on SQL 22's two columns and `quote_checks.match_result`;
+  - the F2 fixture fix;
+  - any C-13 write-path changes those columns need.
+  - Split at about 500 lines.
+- **Later parts:** the attempted-request raw retention and the remaining named columns. Each pending column must appear on the static check's named pending list, owned by this task.
+- **Tests** for the write-path refusal, at both the Router and the Store, and for raw-bytes retention when that part lands: exact readback and hash.

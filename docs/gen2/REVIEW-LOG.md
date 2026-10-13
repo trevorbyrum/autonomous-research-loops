@@ -2451,3 +2451,11 @@ The post-2q Gate D is renumbered #5.
 - **Landing at 190dabb:** `gen2-check` exit 2 (trigger-order). `gen2-gateway` green.
 - **Operator ruling 2026-10-13 (Trevor): close the JSON member-name family store-wide.** One shared domain (unique decoded names, no NUL in names) covers every JSON column, and a static `gen2-ddl` check fails on any uncovered column. It may split into two parts.
 - **Routed:** `docs/gen2/tasks/2d-4b3e1-repair-1.md`, round 2 of 3. The coder's pre-commit gates now include `make gen2-trigger-order`.
+
+## 2026-10-13: 2d-4b3e1-repair-1 design stop and operator ruling
+- Sol (`ddcf72d4`, `8e1b0dc`) stopped after the design, as the brief requires.
+- **The inventory:** 36 JSON columns across 29 tables.
+- **The compatibility finding:** Router and Store paths currently admit NUL member names in open JSON. These are attempted-request records, which keep the request even on failure; contract confidence-scheme labels; and direct Store writes.
+- **N1 is documented:** extractor identity is an exact comparison of caller-declared labels, and must be settled before receipt consumption.
+- **Operator ruling (Trevor):** stored logical JSON member names are NUL-free. Router and Store refuse them, through a C-13 amendment. A failed attempt whose request contains one keeps that request as exact raw bytes plus its hash.
+- **Re-dispatched** under the same brief; still round 2, because no review was consumed.
