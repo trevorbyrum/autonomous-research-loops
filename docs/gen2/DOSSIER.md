@@ -1249,3 +1249,173 @@ eight task Make gates. Before each mutant run wait for no active
 `gen2-landing-*` user unit, never touching units/clones or refreshing the venv
 during mutation. No provider calls, live gateway, real database migration or
 main merge. Evidence: `/home/trevor/work/research-loops-public/private/evidence/2d-4b3e/`.
+
+### 2d-4b3e1-repair-1: store-wide JSON member domain (design before code; stopped)
+
+Design against `250e2fca69a2ec499b652df29635d885d6ded102c`, after reading
+Astra's full round-1 report, its artifact/member/identity/trigger-order probes
+and results, the named flow/adjudication/methodology authorities, and accepted
+SQL 21 with the two preceding repair designs. Trevor's 2026-10-13 ruling
+requires one domain for every stored JSON column, not field-specific patches.
+**INCOMPLETE: documentation only. Requirement 1's compatibility stop applies.**
+No guard, generator, static check or fixture repair has been implemented.
+
+**Write-path compatibility finding and open decision.** Duplicate decoded
+names are already refused by `canonical.parse_json_strict`; Python object
+writes cannot preserve duplicate dictionary keys. However, `canonical._validate`
+checks Unicode validity without excluding U+0000 from keys, and JCS preserves
+such names. `boundary.normalize` and `Store._prepare` both use that contract.
+The Router observation command admits `request` as an open object, and
+`record_observation` stores the attempted request, including its filters, not
+merely a provider-approved request. `gateway_client/observe.py` explicitly
+requires retention of attempted requests even when no answer exists. An
+in-memory probe recorded a nested filter named `field\u0000suffix` through
+the Router, then read that exact name through `Store.select`. The proposed
+NUL predicate selects it. A separate direct Store insert/readback preserves
+the same name in `audit_events.detail`.
+
+There are also scientific open maps: `contract-v2` confidence-scheme labels
+use `common.short_text` property names, which have length bounds but no NUL
+prohibition; `source-proposal.motivation.observed_coverage` uses that same
+name domain. These are admitted names under the current interface, not
+duplicate-name decoder attacks. It is therefore impossible to confirm that
+the existing Router and Store writers can never produce a value the proposed
+domain refuses. Raw provider response objects are separately retained in BLOBs
+and are not themselves a reason to guard or rewrite those bytes.
+
+The task says: **"If any open-ended JSON object (provider metadata, for
+example) could legitimately contain such a name, stop and report rather than
+refusing it silently."** Stop before implementation. The open decision is
+how to preserve arbitrary attempted-request data and currently admitted open
+map names while making all logical JSON writes satisfy the new member domain.
+Recommend an explicit, documented NUL-free logical-member admission contract,
+enforced before Router hashing and Store writes, with exact original attempted
+requests retained as bytes when their logical representation cannot be stored.
+That requires operator approval of the interface/retention change; do not
+delete, truncate, rename or escape decoded keys as an implicit repair. NUL in
+string values must remain allowed. The ruling's uniqueness/NUL requirements
+themselves are settled; this compatibility policy is the remaining choice.
+
+**Proposed shared mechanism, conditional on that decision.** Generate ordered
+additive SQL 23 from one checked template, with `-- trace:` markers. For each
+inventoried column generate BEFORE INSERT and BEFORE UPDATE guards (SQL NULL
+remains allowed only where the existing column permits it). Refuse non-NULL
+invalid JSON explicitly. Feed `json_tree` a CASE-selected valid document or
+JSON `null`, so malformed inputs cannot depend on trigger execution order.
+For duplicates use SQL 21's accepted predicate:
+`typeof(key) = 'text' GROUP BY parent, key COLLATE BINARY HAVING count(*) > 1`.
+The parent is the actual tree node identity, not its JSON path; different
+objects may reuse names, integer array indices are not object names, and
+literal/escaped spellings of one decoded name are equal. This adopts RFC 7493
+section 2.3's member-uniqueness rule without changing numeric limits.
+For NUL use `typeof(key) = 'text' AND instr(CAST(key AS BLOB), x'00') > 0`;
+never apply it to string values or rely on SQLite TEXT length/path truncation.
+Keep validity, duplicates and NUL as separate mutant-testable predicates.
+
+SQL 21 stays byte-unchanged, including whole-receipt uniqueness, complete
+object member sets, cited-span/locator shapes, exact preserved-numeral
+integrality/minima and locator-value character counting. Its uniqueness
+predicate becomes logically redundant once `verification_receipts.receipt`
+has the shared guard; retain it, with its existing tests and mutants. The
+shared domain supplies no replacement for SQL 21's shape or numeral rules.
+No receipt consumer, extraction authority or SQL 17 fence changes here.
+
+**Complete JSON-column inventory: 36 columns in 29 tables.** Derived from
+the combined ordered DDL executed only in memory, including SQL 11's ALTER,
+and Store's `_json_columns` discovery; cross-checked every distinct first
+operand of the DDL's `json_*` calls. All stored JSON operands have a
+`json_valid(column)` declaration and are serialized by Store. Qualified
+aliases refer to the columns below; tree/each `.value` operands and SQL 21
+shape lists are derived values, not additional stored columns. SQL 16's
+`source_acquisitions.response_bytes` remains a raw BLOB exclusion even though
+its content is inspected with JSON functions. `request_bytes` is also retained
+raw bytes, not a JSON column. No other DDL column is a stored JSON operand.
+
+| Schema part | Table | JSON columns | Proposed repair part |
+|---|---|---|---|
+| 01 | intake_briefs | document | 2 |
+| 01 | scoping_reports | document | 2 |
+| 01 | source_proposals | document | 2 |
+| 01 | contract_revisions | document | 2 |
+| 01 | obligations | facet_ids | 2 |
+| 02 | invocation_reconciliations | request | 2 |
+| 02 | invocation_transitions | facts | 2 |
+| 02 | operator_decisions | payload | 2 |
+| 02 | operation_receipts | receipt | 2 |
+| 02 | capability_facts | affected_lanes | 2 |
+| 03 | search_observations | request, obligation_ids, continuation | 2 |
+| 03 | screening_assessments | criterion_results | 2 |
+| 03 | claim_source_links | spans | 2 |
+| 03 | verification_receipts | cited_spans, acquisition, receipt | 2 |
+| 03 | decision_specs | document | 2 |
+| 03 | decision_receipts | answer, receipt | 2 |
+| 04 | config_bundles | document | 2 |
+| 04 | questions | document | 2 |
+| 04 | amendment_impacts | document | 2 |
+| 04 | outbox_events | expected_connectors, manifest | 2 |
+| 04 | export_delivery_receipts | receipt | 2 |
+| 04 | audit_events | detail | 2 |
+| 05 | semantic_assessments | evidence_refs | 2 |
+| 06 | source_lifecycle | evidence_refs | 2 |
+| 07 | registry_dispositions | evidence_refs | 2 |
+| 08 | obligation_assessments | confidence, evidence_refs | 2 |
+| 11 (ALTER) | quote_checks | match_result | 1 |
+| 22 | source_extractions | output_ref | 1 |
+| 22 | extraction_validations | comparison_evidence_ref | 1 |
+
+These part assignments are a proposal, not installed coverage or a live
+static-check exemption. **Every one of the 36 columns remains pending** at
+this documentation-only stop. Conditional part 1 would protect the two F1
+fields and the fixed-shape SQL 11 result, leaving 33 named column entries
+owned by `2d-4b3e1-repair-1` part 2. Part 2 must remove all pending entries.
+
+**Proposed static check.** Extend `check_gen2_schemas.py --part ddl` to derive
+the JSON-column set independently from executed schema objects and every
+resolved stored `json_*` operand. Fail closed on unresolved operands or a
+new JSON column absent from guarded/pending sets; compare against Store's
+serialization discovery to prevent either route escaping the inventory.
+Require exactly the template's INSERT and UPDATE guards per covered column
+and verify committed generated SQL equals fresh tool output. A named pending
+manifest records task owner and part, prints every outstanding column in
+`make gen2-ddl`, and rejects stale/unknown/overlapping entries. Test the check
+by adding an uncovered JSON column and by removing either event guard or
+either member predicate; a generated-file match alone cannot discover a
+new column omitted from the inventory. No pending list has been installed yet.
+
+**F2 fixture design.** Build a disposable reference connection with the
+requested transformed DDL. Select only objects belonging to the two extraction
+tables (their tables, indexes and triggers) and the result view, in their
+actual creation order from `sqlite_schema`. After seeding normal admitted
+operands, drop the corresponding normal objects and install those selected
+transformed objects. Do not select a physical DDL suffix. Assert the installed
+SQL and trigger order match the transformed reference, including mutants;
+exercise both raw classes under normal and reversed orders. Existing
+mutations, requested order and cases must survive without suppression/fallback.
+
+**Re-estimate before any code.** Conditional implementation is about **960
+handwritten lines**, plus generated SQL/controls and this documentation:
+part 1 about **490** (shared generator/inventory/static check 180, F2 fixture
+repair/order assertions 45, isolated raw/readback/static-check tests 200,
+predicate paired mutants 65); part 2 about **470** (remaining-table raw/control
+fixtures and compatibility admission tests 340, paired mutants 90, final
+inventory/pending removal 40). Part 1 covers the three columns named above
+and stops; generated guards do not justify expanding the handwritten slice.
+Re-estimate after the compatibility ruling, including any approved original
+request retention change, and split further if it exceeds this guide.
+For each covered table/field test literal and escaped duplicates, top-level
+and nested NUL-suffixed names, accepted nearby controls, binary case distinction,
+reuse of names in different parents and allowed NUL values. Refusals leave
+the store unchanged and valid controls remain readable through `Store.select`.
+Pair every predicate guard with its own mutant/control. Required landing
+checks and transitive fixture-dependent `--only` sweeps remain mandatory
+when implementation resumes.
+
+**N1 identity boundary, effective now.** SQL 22 compares `extractor_identity`
+as exact, case-sensitive caller-declared labels. It neither derives identity
+from execution nor resolves aliases (case/whitespace changes are different
+labels). Version-only changes under one exact identity are not independent.
+Settle identity trust and canonicalization policy **before part 2 of 2d-4b3e,
+receipt consumption, can grant any authority**; arbitrary unequal declarations
+cannot stand in for demonstrated method independence. Same-extractor replay
+remains integrity only and the result view still has no authority consumer.
+Evidence: `/home/trevor/work/research-loops-public/private/evidence/2d-4b3e1-repair-1/`.

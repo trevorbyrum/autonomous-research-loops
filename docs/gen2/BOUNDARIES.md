@@ -58,6 +58,12 @@ assessment. Failed results and same-extractor integrity replay never satisfy
 method success. The result view has no receipt or support consumer in this
 part: SQL 17 and every existing receipt consumer are unchanged. The store binds
 records; it does not certify extraction execution or semantic correctness.
+`extractor_identity` independence is an exact, case-sensitive comparison of
+caller-declared labels. Identity is not execution-derived; aliases are not
+resolved, and different case or whitespace denotes a different label. The
+identity trust and canonicalization policy must be settled before part 2 of
+2d-4b3e (receipt consumption) can grant any authority; unequal declarations
+alone do not demonstrate that independent extraction procedures ran.
 
 SQL 16 and SQL 19 (2d-4b3c2) cap every receipt method/verdict at its
 consumed acquisition's recorded content: the selected record's nonblank abstract
