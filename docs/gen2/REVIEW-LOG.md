@@ -2501,3 +2501,11 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` green: 3,543 tests; 3,214/3,214 mutants killed.
   - `gen2-gateway` green.
 - **Routed:** `docs/gen2/tasks/2d-4b3e1-json2-repair-1.md`, round 2 of 3.
+
+## 2026-10-14: json2-repair-1, both parts landed; process incident
+- **Part 1** `bc6fffa` closes F1 and F3. **Part 2** `db85860` closes F2: unconditional failed-attempt retention and an explicit opaque failed representation.
+- Both parts are reviewed together as round 2. Landing at db85860 is running.
+- **Process incident (disclosed by the coder):** a disposable snapshot that symlinked `.venv-gen2` caused `make` to run `venv --clear` against the shared environment.
+  - It was restored from cached hash-locked wheels. The orchestrator verified the installed package set is identical to the 10-14 00:15 clone's (11 packages, the same dist-info).
+  - All credited validation came after the restore.
+  - **Rule:** disposable snapshots copy `.venv-gen2` (`cp -a`) and touch `.gen2-installed`. They never symlink it.
