@@ -797,6 +797,24 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/core/pagination.py
-- limit: 5
-- reason: Observations adds one caller of the closed request-type vocabulary (4 to 5); no additional pagination algorithm or authority.
-- task: 2d-4b3e1-json2
+- limit: 6
+- reason: Observations added one caller of the closed request-type vocabulary (4 to 5); repair-1 adds Accounting as the sixth caller for the pure same-row retained representation check. Neither adds I/O or pagination authority.
+- task: 2d-4b3e1-json2-repair-1
+
+### ML-0126
+- action: admit
+- target: engine|edge|gen2/router/accounting.py->gen2/core/pagination.py
+- reason: Accounting reads the shared pure retained-row binding predicate before deciding whether a request is opaque; it gains no admission or write authority.
+- task: 2d-4b3e1-json2-repair-1
+
+### ML-0127
+- action: admit
+- target: engine|reach|gen2/router/accounting.py->gen2/core/canonical.py
+- reason: Accounting reaches canonical transitively through pagination's existing cursor and request vocabulary; the retained-row reader binds labels without hashing or I/O.
+- task: 2d-4b3e1-json2-repair-1
+
+### ML-0128
+- action: admit
+- target: engine|reach|gen2/router/accounting.py->gen2/core/pagination.py
+- reason: Accounting reaches the same-row retained representation check through its one new direct core import; no extra store, network or transaction authority.
+- task: 2d-4b3e1-json2-repair-1

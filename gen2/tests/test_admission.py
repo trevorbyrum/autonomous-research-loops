@@ -147,6 +147,12 @@ class AtTheRouter(Cases, RouterTestCase):
         self.grant = self.started(INV, "discovery")
         self.counter = itertools.count(1)
 
+    def test_accepted_integer_boundaries(self) -> None:
+        """Separate accepted control for the integer predicate, including its endpoints."""
+        for outcome in ("continuation", "limit_reached"):
+            for cursor in (0, 1, 2 ** 53 - 1):
+                self.verdicts(f"{outcome}: integer {cursor}", page(outcome=outcome, cursor=cursor), True)
+
     def verdicts(self, label: str, doc: dict, admitted: bool) -> None:
         full, events = self.parts(doc)
         out = self.router.record_observation({"capability_id": self.grant["capability_id"], "invocation_id": INV, "observation": full, "retrieval_events": events})

@@ -4,6 +4,9 @@ from .base import Mutation
 MUTATIONS, CONTROLS = [], {}
 RAW = 'test_attempted_request_bytes.AttemptTest.test_'
 DDL = 'test_store_observation_domain.ObservationDomainTest.test_'
+CONTROLS['2B13-cursor-beyond-the-bound'] = {
+    'controls': ['test_admission.AtTheRouter.test_accepted_integer_boundaries'],
+    'why': 'Accepted 0, 1 and 2**53-1 reach the integer bound for both continuation outcomes; separate from the unchanged negative oracle (JSON2 repair F3).'}
 
 
 def add(name, killer, control, old, new, target='ddl', scope=None):
@@ -46,3 +49,21 @@ add('client-byte-hash', RAW + 'client_retention', RAW + 'control', "rid = canoni
 add('accounting-raw', RAW + 'retention', RAW + 'control',
     'return None  # retained refused bytes do not assert a decoded search/page',
     'return a.SearchPage(a.search_identity({}), 1, None, None)', target='gen2/router/accounting.py')
+
+add('descriptor-needs-bytes', DDL + 'descriptor_requires_its_own_bytes', DDL + 'retained_control',
+    "(json_type(NEW.request, '$.retained_request') IS NOT NULL)\n  != (NEW.request_bytes IS NOT NULL)",
+    '0', scope='search_observations_retained_representation')
+add('reserved-descriptor', RAW + 'descriptor_cannot_be_an_ordinary_request', RAW + 'control',
+    'if raw is None and isinstance(obs["request"], dict) and "retained_request" in obs["request"]:',
+    'if False:', target='gen2/router/observations.py')
+for name, old in (
+        ('ordinary', 'if not marked and raw is None and digest is None:'),
+        ('pair', 'if not marked or type(raw) is not bytes or digest is None:'),
+        ('identity', 'if digest != observation["request_identity"]:'),
+        ('descriptor', 'if kind is None or request != {"request": {"request_type": kind}, "retained_request": {\n            "bytes_hash": digest, "reason": "member_name_domain"}}:'),
+        ('failed', 'if (observation["coverage_state"], observation["completeness"], observation["error_class"],')):
+    new = ('if raw is None and digest is None:' if name == 'ordinary' else
+           'if False:' if name in ('pair', 'identity', 'descriptor') else old.replace('if ', 'if False and ', 1))
+    add('accounting-binding-' + name,
+        RAW + 'accounting_requires_the_complete_binding', RAW + 'bound_accounting_control', old, new,
+        target='gen2/core/pagination.py')

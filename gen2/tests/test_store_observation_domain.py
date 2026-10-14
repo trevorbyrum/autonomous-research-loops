@@ -101,6 +101,7 @@ class ObservationDomainTest(fx.StoreTestCase):
         wrong_reason = json.loads(row['request'])
         wrong_reason['retained_request']['reason'] = 'other'
         for changes in ({'request_bytes': None}, {'request_bytes_hash': None}, {'request_identity': fx.h('5')},
+                        {'request': fx.FIND_REQUEST, 'request_bytes': None},
                         {'request': fx.FIND_REQUEST}, {'error_class': 'timeout'}, {'request': wrong_hash},
                         {'request': wrong_reason}, {'request': {**json.loads(row['request']), 'extra': 1}}):
             before = list(self.db.iterdump())
@@ -109,6 +110,56 @@ class ObservationDomainTest(fx.StoreTestCase):
             self.assertEqual(list(self.db.iterdump()), before)
         self.insert_raw(row)
         self.assertEqual(self.reader.select('search_observations')[0]['request_bytes'], row['request_bytes'])
+
+    def test_descriptor_requires_its_own_bytes(self):
+        row = self.retained_row()
+        for extra in ({}, {'observation_id': 'obs_other001'}, {'column': 'response_bytes'}):
+            for observed in (False, True):
+                changed = json.loads(row['request'])
+                changed['retained_request'].update(extra)
+                candidate = {**row, 'request': changed, 'request_bytes': None, 'request_bytes_hash': None}
+                if observed:
+                    candidate.update(coverage_state='searched_ok', completeness='complete', result_count=1,
+                        error_class=None, page_outcome='exhausted', gateway_call_ref='call-1')
+                before = list(self.db.iterdump())
+                with self.subTest(extra=extra, observed=observed), self.assertRaises(sqlite3.IntegrityError):
+                    self.insert_raw(candidate)
+                self.assertEqual(list(self.db.iterdump()), before)
+
+    def test_retained_foreign_and_observed(self):
+        row = self.retained_row()
+        for extra in ({'observation_id': 'obs_other001'}, {'column': 'response_bytes'}):
+            changed = json.loads(row['request'])
+            changed['retained_request'].update(extra)
+            before = list(self.db.iterdump())
+            with self.subTest(extra=extra), self.assertRaises(sqlite3.IntegrityError):
+                self.insert_raw({**row, 'request': changed})
+            self.assertEqual(list(self.db.iterdump()), before)
+        for state, count in (('searched_empty', 0), ('searched_ok', 1)):
+            before = list(self.db.iterdump())
+            with self.subTest(state=state), self.assertRaises(sqlite3.IntegrityError):
+                self.insert_raw({**row, 'coverage_state': state, 'completeness': 'complete',
+                    'result_count': count, 'error_class': None, 'page_outcome': 'exhausted', 'gateway_call_ref': 'call-1'})
+            self.assertEqual(list(self.db.iterdump()), before)
+
+    def test_retained_retrieval_refused(self):
+        row = self.retained_row()
+        self.insert_raw(row)
+        before = list(self.db.iterdump())
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.x('INSERT INTO retrieval_events VALUES (?,?,?,?,?,?)',
+                'rev_retained01', row['observation_id'], fx.TOPIC, 'rec-1', 1, fx.T)
+        self.assertEqual(list(self.db.iterdump()), before)
+        self.assertEqual(self.reader.select('retrieval_events'), [])
+
+    def test_observed_retrieval_control(self):
+        row = {**self.row, 'coverage_state': 'searched_ok', 'completeness': 'complete',
+            'result_count': 1, 'error_class': None, 'page_outcome': 'exhausted', 'gateway_call_ref': 'call-1'}
+        self.insert_raw(row)
+        self.x('INSERT INTO retrieval_events VALUES (?,?,?,?,?,?)',
+            'rev_observed01', row['observation_id'], fx.TOPIC, 'rec-1', 1, fx.T)
+        self.assertEqual(self.reader.select('retrieval_events')[0]['provider_record_id'], 'rec-1')
+        self.assertIsNone(self.reader.select('search_observations')[0]['request_bytes'])
 
 
 for column in ('request', 'obligation_ids', 'continuation'):

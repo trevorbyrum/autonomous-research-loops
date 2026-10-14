@@ -4,9 +4,9 @@ import hashlib
 import json
 from unittest.mock import patch
 
-from gen2.core import canonical
+from gen2.core import canonical, pagination
 from gen2.gateway_client import observe
-from gen2.router.accounting import read_inventory
+from gen2.router.accounting import read_inventory, read_page
 from gen2.store import api
 from gen2.tests.router_fixtures import RouterTestCase
 
@@ -152,3 +152,63 @@ class AttemptTest(RouterTestCase):
         self.assertEqual(self.send(command)['status'], 'recorded')
         self.assertEqual(self.row()['request_bytes'], produced['observation']['request'].encode())
         self.assertEqual(json.loads(self.row()['request_bytes']), request)
+
+    def test_descriptor_cannot_be_an_ordinary_request(self):
+        self.assertEqual(self.send()['status'], 'recorded')
+        descriptor = self.row()['request']
+        for extra in ({}, {'observation_id': self.row()['observation_id']}, {'column': 'response_bytes'}):
+            for observed in (False, True):
+                for text in (False, True):
+                    ref = copy.deepcopy(descriptor)
+                    ref['retained_request'].update(extra)
+                    command = self.command(None)
+                    command['observation'].update(observation_id='obs_forged001', attempt=2,
+                        request=json.dumps(ref) if text else ref, request_identity=canonical.logical_hash(ref))
+                    if observed:
+                        command['observation'].update(coverage_state='searched_empty', completeness='complete',
+                            result_count=0, error_class=None, page_outcome='exhausted', gateway_call_ref='call-1')
+                    before = self.state(exclude=())
+                    with self.subTest(extra=extra, observed=observed, text=text):
+                        result = self.send(command)
+                        self.assertEqual(result['reason'], 'request_invalid', result)
+                        self.assertIn('reserved for same-row', result['detail'])
+                        self.assertEqual(self.state(exclude=()), before)
+
+    def test_bound_accounting_control(self):
+        self.assertEqual(self.send()['status'], 'recorded')
+        self.assertTrue(pagination.retained_request(self.row()))
+        self.assertIsNone(read_page(self.row()))
+        ordinary = self.command(None)
+        ordinary['observation'].update(observation_id='obs_ordinary01', attempt=2)
+        self.assertEqual(self.send(ordinary)['status'], 'recorded')
+        rows = self.store.select('search_observations')
+        self.assertFalse(pagination.retained_request(rows[-1]))
+        inventory = read_inventory(self.store, self.grant['topic_id'], 'native')
+        self.assertEqual(len(inventory.observations), 2)
+        self.assertIsNone(inventory.observations[0].page)
+        self.assertIsNotNone(inventory.observations[1].page)
+
+    def test_accounting_requires_the_complete_binding(self):
+        self.assertEqual(self.send()['status'], 'recorded')
+        row = self.row()
+        changes = ({'request_bytes': None, 'request_bytes_hash': None}, {'request_bytes': None},
+            {'request_bytes_hash': None}, {'request_identity': 'sha256:' + '0' * 64},
+            {'request': self.command(None)['observation']['request']},
+            {'coverage_state': 'searched_empty'}, {'completeness': 'complete'}, {'error_class': 'timeout'},
+            {'page_outcome': 'exhausted'}, {'result_count': 0}, {'continuation': {'cursor': 1}})
+        for change in changes:
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, 'retained request'):
+                pagination.retained_request({**row, **change})
+        for extra in ({'column': 'response_bytes'}, {'observation_id': row['observation_id']},
+                      {'bytes_hash': 'sha256:' + '0' * 64}, {'reason': 'other'}):
+            changed = copy.deepcopy(row)
+            changed['request']['retained_request'].update(extra)
+            with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, 'retained request descriptor'):
+                pagination.retained_request(changed)
+
+    def test_accounting_refuses_an_unbound_descriptor(self):
+        self.assertEqual(self.send()['status'], 'recorded')
+        for change in ({'request_bytes': None, 'request_bytes_hash': None},
+                       {'request_bytes_hash': None}, {'request_bytes': None}):
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, 'retained request byte pair'):
+                read_page({**self.row(), **change})

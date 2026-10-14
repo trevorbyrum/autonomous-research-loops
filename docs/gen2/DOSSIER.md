@@ -1672,3 +1672,96 @@ mutants are killed, including the 25 new separately paired cases, after a
 gates pass (metrics checked on a committed disposable snapshot before the
 gen2 commit, then on gen2). No dependency refresh, provider call, live gateway
 access, real-database migration, protected-register edit or main merge occurred.
+
+### 2d-4b3e1-json2-repair-1: review repair, design before code
+
+**Design and re-estimate, 2026-10-14, against 0c1c8fb on gen2.** Read Astra's
+full round-1 report and reference/storage/retention probes and controls audit.
+Flow S4 step 2 and methodology §§5–6 require durable attempts and unknown
+capture to remain unknown; adjudication's capture ruling gives no authority
+to a decoded reference or invented page. F1 and F2 are distinct gaps in the
+submitted representation/admission design. The operator's every-attempt and
+exact-byte rulings remain requirements, including the currently failing cases.
+
+Re-estimate the whole repair at **about 850 handwritten lines**, excluding
+generated control/catalog data and documentation. **Part 1, this dispatch,
+about 450 lines:** bidirectional representation binding and accounting 80,
+ordered additive DDL 40, isolated Router/raw-DDL/readback/retrieval and accepted
+controls 190, paired mutants/control audit and fixture integration 140.
+This part closes F1 and repairs/audits F3. **Part 2, about 400 lines**, owns F2:
+explicit opaque failed representation without a decoded discriminator, narrow
+schema evolution preserving the ordinary discriminator, object/raw producer
+handoff before whole-command normalization, and structural-NUL/duplicate/
+object-path byte-exact denominator/replay/unknown-inventory controls and paired
+mutants. Re-estimate part 2 at dispatch. Stop after part 1; the repair remains
+INCOMPLETE until F2 is implemented and reviewed. The existing 30-column rollout
+continues to belong to 2d-4b3e1-json2 part 2, a separate pending obligation.
+
+Part 1 reserves the top-level retained_request member for the retained-byte
+representation. Ordinary object/text requests carrying that member are refused
+at Router admission. Retained rows require their own BLOB/hash pair, exact
+reference member sets (no foreign observation or column), matching reference,
+byte-hash and request-identity labels, and unknown/unobserved/payload_invalid/
+failed shape. Install an additional SQL 25 trigger after SQL 24 so both absent
+byte fields cannot bypass the binding. Keep SQL 24's
+existing label/failure checks and Router/Store SHA-256 truth checks; no old
+schema part is rewritten or real database migrated. Existing retrieval guards
+already reject an unobserved row; add an isolated attempted retrieval assertion
+and positive observed-event control. Immutable old rows are not backfilled.
+
+A shared pure predicate in core/pagination checks the complete retained row
+representation. Accounting selects opaque only from that bound representation;
+a stray descriptor or byte/hash column is an explicit invalid-representation
+error, never a decoded page. Positive ordinary and retained inventories and
+malformed read-adapter operands exercise both directions. The retained descriptor
+still carries a known request_type in part 1: this is the reviewed limitation,
+not a solution to F2. No duplicate last-value-wins decoding is introduced; its
+existing admission use is explicitly pending removal in repair part 2.
+
+F3 gets a separate accepted numeric-cursor test covering 0, 1 and 2**53-1 for
+both continuation outcomes. Pin that control for 2B13-cursor-beyond-the-bound
+through the existing manual-control registry. Prove it reaches the integer
+predicate, fails when every integer is rejected, and passes under the intended
+bound-widening mutant. Audit the other reviewed re-pair (cursor-with-nul) with
+a relevant premature-string-refusal counterfactual, the unchanged negative
+oracle and the intended mutant; record any new re-pair in the same audit.
+
+After DDL changes, review all JSON/scalar/retained-BLOB classifications and
+consumers against the complete ordered DDL and parsed catalog; explicitly
+repin both hashes and record old/new values. Counts stay 36 JSON / 6 covered /
+30 pending, 489 scalar TEXT. C-13 and BOUNDARIES must disclose the remaining
+F2 retention gap while describing the actual F1 binding. Before committing:
+full gen2-test, trigger-order, composition, --only for every edited-target and
+transitively edited-fixture family, and all eight required static gates. Wait
+for no active gen2-landing-* unit before heavy runs; never alter their units or
+clones, refresh the environment during mutants, call providers, touch the live
+gen-1 gateway/8765, migrate real data, edit protected registers or merge main.
+Evidence: /home/trevor/work/research-loops-public/private/evidence/2d-4b3e1-json2-repair-1/.
+
+**Repair part 1 implemented; stop here, 2026-10-14.** F1 is bound in both
+representations by Router reservation, additive SQL 25 and Accounting's pure
+whole-row check. F3 uses the separately accepted numeric boundary control
+through the existing family/manual registry. Both reviewed re-pairings have
+predicate traces and premature-refusal counterfactuals; no other old control
+list or in-killer/no-control guarantee changed. Seven paired guards were added.
+This part adds 182 handwritten repository lines and 209 evidence-script lines;
+generated control/catalog data and documentation are additional. F2 remains
+unimplemented in **2d-4b3e1-json2-repair-1 part 2**, with its three disappearing
+attempt families reproduced in the evidence. The separate 30-column rollout
+remains owned by **2d-4b3e1-json2 part 2**. Every-attempt retention is still an
+unmet requirement, not narrowed by this split.
+
+Validation passes: full make gen2-test (3,552 tests, two existing skips),
+trigger-order (242 triggers; 2,946 identical Store tests/subtests), full
+composition in the final 68-test targeted run, all 2,189 required mutants from
+29 edited-target/fixture-dependent families (2,176 separate controls passing;
+13 retain their existing documented treatment), and all eight static gates on
+a committed disposable gen2 snapshot. An initial full run failed because one
+disposable child could not import rfc8785 before its assertions; the isolated
+case and the fresh full run passed without dependency refresh or weakened
+tests. The catalog still has 36 JSON / 6 covered / 30 pending and 489 scalar
+TEXT identities; both hashes are explicitly repinned, with no old objects or
+columns changed. SQL 03/21/23/24 remain byte-unchanged. Detailed logs, audits,
+probe results, commit identity and the INCOMPLETE hand-off are in the named
+repair evidence directory's COMPLETION.md. No provider call, live gateway or
+8765 access, real migration, protected-register edit or main merge occurred.

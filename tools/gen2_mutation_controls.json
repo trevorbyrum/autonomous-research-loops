@@ -7053,13 +7053,11 @@
   "why": "gen2/gateway_client/client.py: executes line 517 (else 515); or executes line 513"
  },
  "2B13-cursor-beyond-the-bound": {
+  "by_hand": true,
   "controls": [
-   "test_admission.TheTrustModel.test_a_relabelled_outcome_is_not_detected_here"
+   "test_admission.AtTheRouter.test_accepted_integer_boundaries"
   ],
-  "rejected": [
-   "test_admission.AtTheRouter.test_the_cursor_domain_is_one"
-  ],
-  "why": "gen2/core/pagination.py: executes line 38; or executes line 37"
+  "why": "Accepted 0, 1 and 2**53-1 reach the integer bound for both continuation outcomes; separate from the unchanged negative oracle (JSON2 repair F3)."
  },
  "2B13-cursor-dropped": {
   "controls": [
@@ -19762,6 +19760,41 @@
   ],
   "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
  },
+ "JSON2-accounting-binding-descriptor": {
+  "by_hand": true,
+  "controls": [
+   "test_attempted_request_bytes.AttemptTest.test_bound_accounting_control"
+  ],
+  "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
+ },
+ "JSON2-accounting-binding-failed": {
+  "by_hand": true,
+  "controls": [
+   "test_attempted_request_bytes.AttemptTest.test_bound_accounting_control"
+  ],
+  "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
+ },
+ "JSON2-accounting-binding-identity": {
+  "by_hand": true,
+  "controls": [
+   "test_attempted_request_bytes.AttemptTest.test_bound_accounting_control"
+  ],
+  "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
+ },
+ "JSON2-accounting-binding-ordinary": {
+  "by_hand": true,
+  "controls": [
+   "test_attempted_request_bytes.AttemptTest.test_bound_accounting_control"
+  ],
+  "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
+ },
+ "JSON2-accounting-binding-pair": {
+  "by_hand": true,
+  "controls": [
+   "test_attempted_request_bytes.AttemptTest.test_bound_accounting_control"
+  ],
+  "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
+ },
  "JSON2-accounting-raw": {
   "by_hand": true,
   "controls": [
@@ -19801,6 +19834,13 @@
   "by_hand": true,
   "controls": [
    "test_store_observation_domain.ObservationDomainTest.test_continuation_u_control"
+  ],
+  "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
+ },
+ "JSON2-descriptor-needs-bytes": {
+  "by_hand": true,
+  "controls": [
+   "test_store_observation_domain.ObservationDomainTest.test_retained_control"
   ],
   "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
  },
@@ -19878,6 +19918,13 @@
   "by_hand": true,
   "controls": [
    "test_store_observation_domain.ObservationDomainTest.test_request_u_control"
+  ],
+  "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
+ },
+ "JSON2-reserved-descriptor": {
+  "by_hand": true,
+  "controls": [
+   "test_attempted_request_bytes.AttemptTest.test_control"
   ],
   "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
  },

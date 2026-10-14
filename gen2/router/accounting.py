@@ -4,6 +4,7 @@ from typing import Mapping, Protocol
 
 from gen2 import accounting as a
 from gen2.accounting import views as v
+from gen2.core import pagination
 
 
 class Rows(Protocol):
@@ -100,7 +101,7 @@ def read_lifecycle(record: dict) -> a.SourceDisposition:
 
 
 def read_page(observation: dict) -> a.SearchPage | None:
-    if observation.get('request_bytes') is not None:
+    if pagination.retained_request(observation):
         return None  # retained refused bytes do not assert a decoded search/page
     request = observation["request"]["request"]
     if request["request_type"] != "find":

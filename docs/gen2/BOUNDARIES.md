@@ -77,16 +77,28 @@ observations.py admits logical names before hashing, through the same Router
 transaction and existing capability/lease fences; service.py supplies only
 construction and public delegation. ObservationCore declares the schema,
 transaction and existing observation-write members it uses. The composition
-tests include this collaborator. Refused attempted-request text is retained as
+tests include this collaborator. When admission can extract a known
+discriminator, refused attempted-request text is retained as
 exact UTF-8 bytes plus their SHA-256, alongside an explicit logical byte
 reference, in the existing failed-attempt ledger. Router and Store recompute
-the byte hash; raw DDL binds its labels and failed/unobserved shape, without
+the byte hash; SQL 24 binds its labels/exact member sets and failed/unobserved
+shape, and SQL 25 requires the descriptor's own same-row bytes even when both
+byte fields would otherwise be absent. Ordinary Router requests cannot carry
+the reserved top-level retained_request member. Raw DDL does this without
 claiming raw SQL proves SHA-256 truth. Replay compares the bytes; accounting
-counts these observations with an unknown result count and no decoded page.
+counts these observations with an unknown result count and no decoded page
+after validating the whole bound representation; malformed bindings raise
+an explicit error instead of being read as logical pages.
 The client emits the text/byte-hash representation for refused request names.
 Other callers with original octets supply their unchanged UTF-8 text; an
 already parsed object cannot prove an earlier byte spelling. No original key
-or octet is rewritten or dropped. The static DDL check reports the remaining
+or octet is rewritten or dropped.
+**Retention is still incomplete (Astra F2, repair-1 part 2):** the raw path
+requires a usable discriminator, and direct object requests with refused
+names can fail whole-command normalization before recording. The next repair
+owns discriminator-independent opaque failure and the complete producer
+hand-off. Every-attempt retention remains the operator requirement. The
+static DDL check reports the remaining
 30 columns by name, owned by 2d-4b3e1-json2 part 2; global admission of the
 other entry points/confidence labels/open maps remains pending. SQL 21's
 receipt uniqueness is not yet redundant because that column remains pending;

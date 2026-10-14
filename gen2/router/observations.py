@@ -51,6 +51,8 @@ class Observations:
                         "bytes_hash": canonical.bytes_digest(raw), "reason": "member_name_domain"}}
                 except canonical.CanonicalizationError as exc:
                     raise Refusal("request_invalid", str(exc)) from None
+            if raw is None and isinstance(obs["request"], dict) and "retained_request" in obs["request"]:
+                raise Refusal("request_invalid", "retained_request is reserved for same-row retained bytes")
             boundary.check_observation(obs, events, request_bytes=raw)
             obs.update(request_bytes=raw, request_bytes_hash=None if raw is None else canonical.bytes_digest(raw))
             result = self._core._guarded("payload_invalid", lambda now: self._core._observation_in_transaction(req, now))

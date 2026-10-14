@@ -30,6 +30,32 @@ def request_type(request: object) -> str | None:
     return kind if isinstance(kind, str) and kind in REQUEST_TYPES else None
 
 
+def retained_request(observation: dict) -> bool:
+    """Recognize only a same-row, failed retained representation (C-13).
+
+    Hash truth is established at Router/Store admission. Readers bind the
+    labels and shape; a stray marker or byte column is never a decoded page.
+    """
+    request = observation["request"]
+    raw, digest = observation.get("request_bytes"), observation.get("request_bytes_hash")
+    marked = isinstance(request, dict) and "retained_request" in request
+    if not marked and raw is None and digest is None:
+        return False
+    if not marked or type(raw) is not bytes or digest is None:
+        raise ValueError("unbound retained request byte pair")
+    if digest != observation["request_identity"]:
+        raise ValueError("unbound retained request identity")
+    kind = request_type(request)
+    if kind is None or request != {"request": {"request_type": kind}, "retained_request": {
+            "bytes_hash": digest, "reason": "member_name_domain"}}:
+        raise ValueError("unbound retained request descriptor")
+    if (observation["coverage_state"], observation["completeness"], observation["error_class"],
+            observation["page_outcome"], observation["result_count"], observation["continuation"]) != (
+            "unknown", "unobserved", "payload_invalid", "failed", None, None):
+        raise ValueError("retained request must be failed and unobserved")
+    return True
+
+
 def cursor_problem(cursor: object) -> str | None:
     """Why `cursor` cannot be kept or sent as a cursor, or None when it can: an integer from 0 to the JSON bound, or a string of 1 to
     CURSOR_MAX_CHARS characters, none of them NUL, that is not the finished-lane sentinel. A boolean, a float, null or anything else is no
