@@ -2520,3 +2520,15 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` green: 3,571 tests; 3,228/3,228 mutants killed.
   - `gen2-gateway` green.
 - **Routed:** `docs/gen2/tasks/2d-4b3e1-json2-repair-2.md`, **round 3 of 3 (the cap)**. Any authenticated failed attempt whose request is not admissible as logical JSON for **any** strict-parse reason is retained as opaque exact bytes plus hash. This follows the operator's every-attempt-recorded ruling. Ordinary validation is unchanged.
+
+## 2026-10-14: json2-repair-2, round 3 (the cap): PASS. json2 part 1 accepted
+- **Astra** (`59fc121d`, pinned b916117; `private/reviews/gen2-2d-4b3e1-json2-r3-astra-review-20261014.md`): **A, B and C all PASS. "2d-4b3e1-json2 part 1 is ACCEPTED."** There are no blocking findings.
+- **F2 closed (root cause).** Retention catches every strict-parse refusal (`ValueError`, `RecursionError`) for a valid failed/unobserved envelope.
+  - All nine edge probes record exact bytes and replay.
+  - Further probes also pass: empty text, whitespace, non-JSON, a literal NUL, a BOM, trailing garbage, an escaped lone surrogate, 5,000-digit integers, 2,000-level nesting and extreme exponents.
+  - Ordinary validation is intact.
+  - The refusal-class audit is bound, immutable and written in the same transaction.
+- **Landing at b916117:**
+  - `gen2-check` green: 3,233/3,233 mutants killed.
+  - `gen2-gateway` carried forward from db85860, green.
+- **Next:** 2d-4b3e1-json2b (`docs/gen2/tasks/2d-4b3e1-json2b.md`): global admission and the 30 remaining pending columns.
