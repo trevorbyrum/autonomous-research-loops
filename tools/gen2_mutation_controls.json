@@ -19942,6 +19942,27 @@
   ],
   "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
  },
+ "JSON2-refusal-audit": {
+  "by_hand": true,
+  "controls": [
+   "test_failed_attempt_retention.FailedAttemptTest.test_ordinary_numeric_control"
+  ],
+  "why": "Separate accepted observed/exhausted numeric controls reach the audit guard with no refusal class and record logical rows without refusal events, even when the audit body is removed."
+ },
+ "JSON2-refusal-audit-replay": {
+  "by_hand": true,
+  "controls": [
+   "test_failed_attempt_retention.FailedAttemptTest.test_retained_name_control"
+  ],
+  "why": "Separate name-only opaque control takes the newly recorded audit branch once and passes when the replay-status predicate is removed; the numeric killer also checks byte-exact replay leaves all state unchanged."
+ },
+ "JSON2-refusal-class": {
+  "by_hand": true,
+  "controls": [
+   "test_failed_attempt_retention.FailedAttemptTest.test_retained_name_control"
+  ],
+  "why": "Separate name-only opaque control reaches the exception-class predicate and retains its member_name_domain label when every refusal is mislabeled as a member-name error."
+ },
  "JSON2-request-i-duplicate": {
   "by_hand": true,
   "controls": [
@@ -20018,6 +20039,20 @@
    "test_store_observation_domain.ObservationDomainTest.test_retained_control"
   ],
   "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
+ },
+ "JSON2-retention-error-order": {
+  "by_hand": true,
+  "controls": [
+   "test_failed_attempt_retention.FailedAttemptTest.test_retained_name_control"
+  ],
+  "why": "Separate name-only failed attempt reaches and passes the retention predicate even when numeric/other strict-parser errors are excluded; the killer checks both float/NUL orders, exact bytes, denominator, unknown inventory and replay."
+ },
+ "JSON2-retention-parser-limits": {
+  "by_hand": true,
+  "controls": [
+   "test_failed_attempt_retention.FailedAttemptTest.test_retained_name_control"
+  ],
+  "why": "Separate name-only opaque control reaches the retention predicate with a CanonicalizationError subclass and passes when Python decoder digit/nesting failures are excluded; the killer checks both limits without permitting logical admission."
  },
  "JSON2-router-admission": {
   "by_hand": true,

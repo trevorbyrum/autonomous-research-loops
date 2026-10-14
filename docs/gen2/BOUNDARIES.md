@@ -76,8 +76,9 @@ three search_observations JSON columns. Its Observations collaborator in
 observations.py admits logical names before hashing, through the same Router
 transaction and existing capability/lease fences; service.py supplies only
 construction and public delegation. ObservationCore declares the schema,
-transaction and existing observation-write members it uses. The composition
-tests include this collaborator. Refused attempted-request text is retained as
+transaction, audit and existing observation-write members it uses. The composition
+tests include this collaborator. A failed attempt whose request is not admissible
+as logical JSON for any strict-parse reason retains the supplied request text as
 exact UTF-8 bytes plus their SHA-256, alongside an explicit logical byte
 reference, in the existing failed-attempt ledger. Router and Store recompute
 the byte hash; SQL 24 binds its labels/exact member sets and failed/unobserved
@@ -99,7 +100,17 @@ whole-command normalization, object requests are isolated; after envelope
 admission their existing JCS serialization supplies exact hand-off bytes and
 the matching supplied identity. An already parsed object cannot prove an
 earlier byte spelling. No original key or supplied octet is rewritten or dropped.
-Authenticated failed member-domain attempts remain recorded. The
+Authenticated failed attempts remain recorded regardless of strict-parser error
+order, including numeric bounds/precision, decoder digit/nesting limits, syntax,
+non-finite values, Unicode, duplicate and NUL names. The supplied hash, valid
+failed/unobserved envelope, capability, running invocation and current lease
+are still required. SQL 24's
+historical member_name_domain descriptor tag remains unchanged; an
+observation_request_refused audit event records the actual first refusal class
+as a label, bound to the observation ID, byte hash and invocation, in the same
+transaction. Replay adds no refusal audit. Classification never decodes the
+refused document; observed/exhausted requests still require strict logical
+numeric/name admission and the closed discriminator. The
 static DDL check reports the remaining
 30 columns by name, owned by 2d-4b3e1-json2 part 2; global admission of the
 other entry points/confidence labels/open maps remains pending. SQL 21's

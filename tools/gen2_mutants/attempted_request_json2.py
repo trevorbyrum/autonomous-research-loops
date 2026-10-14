@@ -85,3 +85,27 @@ add('opaque-reader', OPAQUE + 'structural_nul', OPAQUE + 'legacy_read_control',
     'if request != descriptor and request != legacy:', 'if request != legacy:', target='gen2/core/pagination.py')
 add('opaque-inventory-type', OPAQUE + 'structural_nul', OPAQUE + 'ordinary_control',
     'pagination.request_type(o["request"])', '"find"', target='gen2/router/accounting.py')
+
+FAILED = 'test_failed_attempt_retention.FailedAttemptTest.test_'
+add('retention-error-order', FAILED + 'float_and_nul_both_orders', FAILED + 'retained_name_control',
+    'if (obs["coverage_state"], obs["completeness"], obs["error_class"], obs["page_outcome"], events) != (',
+    'if not isinstance(exc, canonical.MemberNameError) or (obs["coverage_state"], obs["completeness"], obs["error_class"], obs["page_outcome"], events) != (',
+    target='gen2/router/observations.py')
+CONTROLS['JSON2-retention-error-order']['why'] = 'Separate name-only failed attempt reaches and passes the retention predicate even when numeric/other strict-parser errors are excluded; the killer checks both float/NUL orders, exact bytes, denominator, unknown inventory and replay.'
+add('retention-parser-limits', FAILED + 'parser_limits', FAILED + 'retained_name_control',
+    'if (obs["coverage_state"], obs["completeness"], obs["error_class"], obs["page_outcome"], events) != (',
+    'if not isinstance(exc, canonical.CanonicalizationError) or (obs["coverage_state"], obs["completeness"], obs["error_class"], obs["page_outcome"], events) != (',
+    target='gen2/router/observations.py')
+CONTROLS['JSON2-retention-parser-limits']['why'] = 'Separate name-only opaque control reaches the retention predicate with a CanonicalizationError subclass and passes when Python decoder digit/nesting failures are excluded; the killer checks both limits without permitting logical admission.'
+add('refusal-class', FAILED + 'numeric_failures_without_names', FAILED + 'retained_name_control',
+    'isinstance(exc, canonical.MemberNameError) else "logical_json_invalid"',
+    'True else "logical_json_invalid"', target='gen2/router/observations.py')
+add('refusal-audit', FAILED + 'numeric_failures_without_names', FAILED + 'ordinary_numeric_control',
+    'if result["status"] == "recorded" and refusal_class is not None:',
+    'if False:', target='gen2/router/observations.py')
+add('refusal-audit-replay', FAILED + 'numeric_failures_without_names', FAILED + 'retained_name_control',
+    'if result["status"] == "recorded" and refusal_class is not None:',
+    'if refusal_class is not None:', target='gen2/router/observations.py')
+CONTROLS['JSON2-refusal-class']['why'] = 'Separate name-only opaque control reaches the exception-class predicate and retains its member_name_domain label when every refusal is mislabeled as a member-name error.'
+CONTROLS['JSON2-refusal-audit']['why'] = 'Separate accepted observed/exhausted numeric controls reach the audit guard with no refusal class and record logical rows without refusal events, even when the audit body is removed.'
+CONTROLS['JSON2-refusal-audit-replay']['why'] = 'Separate name-only opaque control takes the newly recorded audit branch once and passes when the replay-status predicate is removed; the numeric killer also checks byte-exact replay leaves all state unchanged.'

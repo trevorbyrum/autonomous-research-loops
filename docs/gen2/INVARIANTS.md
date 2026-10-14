@@ -104,8 +104,9 @@ refuse incompatible names before logical hashing/writing. Rollout in
 payloads and Store preparation on the three SQL 23 guarded columns:
 `code: source_extractions.output_ref`, `code: extraction_validations.comparison_evidence_ref`
 and `code: quote_checks.match_result`. JSON2 part 1 additionally covers all
-three search_observations JSON columns and its Router admission. A refused attempted-request document
-supplied as exact UTF-8 text is retained wholly in
+three search_observations JSON columns and its Router admission. For a failed
+attempt whose request is not admissible as logical JSON for any strict-parse
+reason, the supplied exact UTF-8 text is retained wholly in
 request_bytes with its byte SHA-256 in request_bytes_hash and request_identity;
 the logical request field is an explicit retained-byte reference. SQL 25
 requires that descriptor to have its own same-row bytes; SQL 24 binds its
@@ -134,6 +135,17 @@ marker through SQL 24/25's same-row binding and failed shape. Accounting keeps
 its type, page and result count unknown; retrieval/capture denominators stay
 unknown. Capability, running-state, lease and transaction fences still apply.
 Ordinary observations retain the closed discriminator.
+**Parser-independent retention (repair-2, Astra round-2 F2):** every strict-parse
+refusal takes this failed-attempt path, including numeric bounds, precision loss,
+malformed JSON, non-finite numbers, invalid Unicode and decoder digit/nesting
+limits; retention never depends on member order or which parser error is
+reported first. The descriptor's member_name_domain reason is SQL 24's historical
+storage tag. The actual first
+refusal class, member_name_domain or logical_json_invalid, is recorded as a label
+in a same-transaction observation_request_refused audit event bound to the
+observation ID, byte hash and invocation; replay adds no audit event. No refused
+document is reparsed to classify it. Observed/exhausted and ordinary logical
+admission still require all strict JCS/C-13 numeric/name and discriminator checks.
 
 ## 3. Invocation lifecycle
 

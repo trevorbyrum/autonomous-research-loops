@@ -1833,3 +1833,114 @@ columns changed. SQL 03/21/23/24 remain byte-unchanged. Detailed logs, audits,
 probe results, commit identity and the INCOMPLETE hand-off are in the named
 repair evidence directory's COMPLETION.md. No provider call, live gateway or
 8765 access, real migration, protected-register edit or main merge occurred.
+
+### 2d-4b3e1-json2-repair-2: final F2 repair, design before code
+
+**Design and re-estimate, 2026-10-14, against db85860 on gen2.** Read the
+round-2 Astra report and both retention-edge probe files. F1/F3 and the SQL,
+classification, C-11 and control audit remain accepted. F2's root cause is
+Observations' exception partition: only MemberNameError retains bytes; an
+earlier numeric or other CanonicalizationError returns before the ledger write.
+Flow S4 step 2 and adjudication's event-derived denominator require durable
+attempts; unknown capture never establishes zero yield. The operator's exact
+bytes/every-attempt ruling applies regardless of strict-parser error order.
+
+Re-estimate this single repair at **about 290 handwritten lines**: collaborator
+and refusal-label recording 40; isolated retention/order/ordinary-admission,
+authorization/hash/rollback tests and separate controls 220; predicate mutants
+and existing adapter updates 30. Documentation and generated control data are
+additional. No split is needed. No DDL, classification, producer or shared
+fixture change is planned; SQL 24/25 and both classification pins stay intact.
+The separately owned thirty-column rollout remains JSON2 part 2's obligation.
+
+Catch every CanonicalizationError from parse_json_strict, including its
+MemberNameError subclass. For a schema-valid unknown/unobserved/payload_invalid/
+failed envelope with no retrieval events, retain the original UTF-8 text bytes
+and their independently checked supplied byte identity, using the existing
+opaque descriptor. No parser result, discriminator, page or count is inferred.
+Other envelopes still refuse, and successfully parsed requests still pass all
+existing logical JCS/C-13, reserved-marker, discriminator and page checks.
+This trigger is exactly a failed attempt whose request is not admissible as
+logical JSON for **any strict-parse reason**, including malformed syntax,
+precision loss, numeric bounds, invalid Unicode, duplicate and NUL names.
+Already parsed objects keep the existing JCS hand-off contract; objects that
+cannot produce those bytes do not claim an unavailable original spelling.
+
+SQL 24 fixes the descriptor's historical reason label to member_name_domain;
+keep that representation/binding unchanged. Record the actual first reported
+refusal class separately as a label (member_name_domain or logical_json_invalid)
+in an observation_request_refused audit event, bound to observation ID,
+request byte hash and invocation, in the **same guarded transaction** as the
+observation. Do not decode or serialize the refused document to classify it.
+Include that label in request_refusal replies. The historical descriptor reason
+is a storage tag, not a claim that all retained documents failed the name rule.
+The audit fires only for a newly recorded opaque attempt, never for replay or
+refusal. An audit failure rolls back both records. Declare the existing audit
+member in ObservationCore; service.py remains unchanged. Existing capability,
+running/current-lease, hash, rollback and replay/conflict checks remain authoritative.
+
+Tests use a new module and unchanged shared fixtures: both numeric/member
+orders for oversized integers with NUL and duplicate names; precision-losing
+floats with NUL and duplicates, including NUL-first/numeral-second; plain
+numeric, malformed, non-finite and Unicode failures. Every retention regression
+asserts exact byte readback/independent SHA-256, one denominator row, replay and
+conflict, no type/page/count, unknown inventory and durable refusal label.
+Separate controls admit interoperable numeric boundaries and exact floats as
+logical observed/exhausted requests. Observed/exhausted invalid numeric/name
+requests must still refuse atomically. Test forged capability, non-running
+invocation, expired lease, wrong hash, invalid failed envelopes and audit
+rollback on the newly retained general-error path. Add a predicate mutant
+restricting the catch back to MemberNameError, paired with a separate retained
+name-only control which reaches that catch and passes under the mutant; pair
+any new audit predicates separately. Preserve existing mutation IDs/oracles/
+controls and adapt only textual selectors made stale by the collaborator change.
+
+Before committing: full make gen2-test, gen2-trigger-order, full composition,
+--only for every family targeting an edited file and every control dependency
+on an edited shared fixture (transitive imports included), then the eight named
+static gates. Inventory/audit evidence will name the selected families and show
+old controls unchanged. Heavy runs wait for no active gen2-landing-* units.
+Use disposable snapshots with cp -a .venv-gen2 and touch their installed marker;
+never symlink or refresh the venv during mutants. No provider/live-gen1/8765,
+real migration, protected-register edit, main merge or out-of-scope search.
+Evidence: private/evidence/2d-4b3e1-json2-repair-2/, ending with COMPLETION.md
+and the gen2 commit hash.
+
+**Pre-final-validation design extension, 2026-10-14.** Direct probes found
+that Python's JSON integer-digit limit raises ValueError and its nesting limit
+raises RecursionError rather than CanonicalizationError. These are also
+strict-parse refusals, so catch ValueError (including CanonicalizationError)
+and RecursionError around the strict parser only; label the non-member cases
+logical_json_invalid. Add byte/denominator/replay/unknown regressions for both
+limits, ordinary observed refusals and a paired predicate restricting retention
+to CanonicalizationError. Re-estimate **about 320 handwritten lines**. The first
+disposable full run is superseded, stopped before completion; recreate final
+validation evidence after this extension without refreshing the copied venv.
+
+**Implemented and validated, 2026-10-14.** F2 now retains exact UTF-8 bytes for
+any strict-parse refusal, including the decoder's own digit/nesting limits,
+without extracting a discriminator or inventing a page/count. The valid failed
+shape, supplied byte hash and existing authorization/transaction fences still
+apply. The first reported refusal class is an immutable same-transaction audit
+label; replay creates no additional audit. Ordinary observed/exhausted logical
+requests keep strict numeric/name and discriminator admission. service.py,
+SQL 24/25, classification and both pins are unchanged. This repair adds 284
+handwritten repository lines and removes nine, excluding documentation and
+35 generated control lines. The separate thirty-column rollout remains owned
+by 2d-4b3e1-json2 part 2; no broader acceptance is claimed here.
+
+Validation: 54 focused tests; all nine original reviewer edge probes now
+record exact bytes and replay; full make gen2-test passes 3,589 tests with two
+existing skips; reversed creation of 242 triggers gives identical outcomes
+for 2,966 Store tests/subtests; full composition passes six tests. The --only
+1B,JSON2 run kills 230/230 mutants with all separate controls passing and 639
+baseline tests green: it covers every one of the 199 required exact-family
+members plus 31 additional prefix matches. Five paired predicates were added;
+all 3,228 old control entries remain unchanged, and only the existing clock
+adapter's textual selector changes, with its ID/oracles/control intact. All
+eight static gates pass; final document formatting and this execution note
+receive one final static run before the gen2 commit. The pre-extension aborted
+full run and the pre-correction decoder-limit focused failure are retained
+under evidence/superseded and are not credited as validation. The final runs
+use a copied, never symlinked or refreshed venv and recorded landing-unit waits.
+Evidence/COMPLETION.md records the final commit and complete execution audit.
