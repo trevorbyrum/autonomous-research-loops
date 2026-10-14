@@ -2567,3 +2567,12 @@ The post-2q Gate D is renumbered #5.
 - **C1 (MEDIUM):** four new mutants (`router-membership`, `router-replay` and two classification mutants) are paired with controls that never reach the changed code; a line trace shows zero lines in the target. The killers are valid; the pairings break the positive-control rule.
 - **Landing at 1013ed6:** `gen2-check` green; `gen2-gateway` green.
 - **Routed:** `docs/gen2/tasks/2d-4b3e2-repair-1.md`, round 2 of 3, tests and tooling only.
+
+## 2026-10-14: 2d-4b3e2-repair-1, round 2: PASS. 2d-4b3e2 part 1 (registry) accepted
+- **Astra** (`6724bdcb`, pinned 23440ec; `private/reviews/gen2-2d-4b3e2-r2-astra-review-20261014.md`): **A, B and C all PASS. "2d-4b3e2 part 1 is ACCEPTED."**
+- **C1 closed.** Each of the four repaired pairings reaches its changed line, as the trace shows. The audit of all 37 pairings was independently reproduced. Exactly four of 3,394 control entries changed.
+- **Landing at 23440ec:**
+  - `gen2-check` green: 3,852 tests; 310 triggers in reverse order; 3,394/3,394 mutants killed.
+  - `gen2-gateway` carried forward from 1013ed6, green.
+- **New brief rule:** new mutant pairings need trace evidence that the control reaches the changed code.
+- **Next:** 2d-4b3e2 part 2: `/2` validation records and both receipt consumers. SQL 17 stays.
