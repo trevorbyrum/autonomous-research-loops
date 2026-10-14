@@ -13461,6 +13461,293 @@
   ],
   "why": "Registers then identically replays revision 2 through _write's audit-detail comparison, with all-table unchanged-state readback including audit; the weakened comparison still accepts it."
  },
+ "2D4B3E2V2-admission": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-authenticate": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_validations_v2.RouterV2Test.test_authentication_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-byte-comparison": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-commit-author": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-commit-contract": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-commit-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-comparison-author": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-comparison-domain": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-domain-i-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.V2DomainTest.test_control_i"
+  ],
+  "why": "Separate successful domain event with Store.select readback; only UPDATE immutability is removed."
+ },
+ "2D4B3E2V2-domain-i-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.V2DomainTest.test_control_i"
+  ],
+  "why": "Separate successful domain event with Store.select readback; only UPDATE immutability is removed."
+ },
+ "2D4B3E2V2-domain-u-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.V2DomainTest.test_control_u"
+  ],
+  "why": "Separate successful domain event with Store.select readback; only UPDATE immutability is removed."
+ },
+ "2D4B3E2V2-domain-u-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.V2DomainTest.test_control_u"
+  ],
+  "why": "Separate successful domain event with Store.select readback; only UPDATE immutability is removed."
+ },
+ "2D4B3E2V2-event": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-evidence-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-evidence-media": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-evidence-size": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-evidence-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-extractor": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-failed-result": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-immutable-d": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-immutable-u": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-independent-family": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-integrity-result": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-lineage": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-method": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-outcome-binding": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-outcome-domain": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-parent": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-policy": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-producer": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-replay-family": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_integrity_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-replay-semantic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_integrity_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-target-verifier": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-validator-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-validator-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-version": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-work": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-write": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_validations_v2.RouterV2Test.test_legacy_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-x-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-y-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

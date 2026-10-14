@@ -11,6 +11,7 @@
     "decision_specs.document",
     "export_delivery_receipts.receipt",
     "extraction_validations.comparison_evidence_ref",
+    "extraction_validations_v2.comparison_evidence_ref",
     "intake_briefs.document",
     "invocation_reconciliations.request",
     "invocation_transitions.facts",
@@ -163,6 +164,15 @@
     "extraction_validations.validation_id",
     "extraction_validations.validator_extraction_id",
     "extraction_validations.validator_invocation_id",
+    "extraction_validations_v2.comparison",
+    "extraction_validations_v2.created_at",
+    "extraction_validations_v2.method",
+    "extraction_validations_v2.outcome",
+    "extraction_validations_v2.recorded_by_operation_id",
+    "extraction_validations_v2.target_extraction_id",
+    "extraction_validations_v2.validation_id",
+    "extraction_validations_v2.validator_extraction_id",
+    "extraction_validations_v2.validator_invocation_id",
     "extractor_registry_revisions.audit_event_id",
     "extractor_registry_revisions.created_at",
     "extractor_registry_revisions.operator_id",
@@ -535,6 +545,6 @@
     "works.study_group_id",
     "works.work_id"
   ],
-  "schema_sha256": "7bfcb72499033cf6a28cf968fd6e8d69304c84ec5ebab9d7316e2644cc502af0",
-  "ddl_sha256": "4abae97942bb43a31203cf60a69cce39aa34adf4d7010acbabe71be87f1c6a91"
+  "schema_sha256": "2a684d62d938a53dcb8b71aebbb555a2f32aad7deebef9085ff47954776802d1",
+  "ddl_sha256": "739382eeb0663ecf6fccfdf96806fabc86820352d7b93a0fd116243b32800f6b"
 }

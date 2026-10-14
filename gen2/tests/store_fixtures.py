@@ -683,6 +683,8 @@ class StoreTestCase(unittest.TestCase):
             for eid, tool, inv, op in (("ext-target", "tool-a", "inv_pppppppp", "op_00000001"), ("ext-independent", "tool-b", "inv_vvvvvvvv", "op_extractval")):
                 self.x("INSERT INTO source_extractions VALUES (?, ?, 'wrk_00000001', 'v1', 'e1', 'inv_vvvvvvvv', ?, '1', ?, ?, 'full_text', ?, ?, 1)", eid, TOPIC, tool, inv, ref, op, T)
             self.x("INSERT INTO extraction_validations VALUES ('val-fixture', 'ext-target', 'inv_vvvvvvvv', 'ext-independent', 'independent_extraction', 1, 'succeeded', 'byte_equal', ?, 'op_extractval', ?)", ref, T)
+            if "extraction_validations_v2" in self.tables():
+                self.x("INSERT INTO extraction_validations_v2 SELECT validation_id, target_extraction_id, validator_invocation_id, validator_extraction_id, method, 2, outcome, comparison, comparison_evidence_ref, recorded_by_operation_id, created_at FROM extraction_validations")
         self.quote_check("qc-1")
         self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway="gw-call:1")
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1")

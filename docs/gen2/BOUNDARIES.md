@@ -68,10 +68,20 @@ replay and conflicts refuse. Outcomes cannot maintain the registry. Canonical
 tool/family names are lower-case ASCII; unknown tools, aliases and case,
 whitespace or NUL-suffixed variants cannot satisfy admission. Historical rows
 without a registry pin stay readable. Identity is still declared rather than
-execution-derived; station execution checking remains 2e2. The defined successor
-policy `extraction-validation/2` requires different registered families; same-family
-replay is integrity only. Its records and receipt consumption are part 2, still
-pending. `/1` results have no authority consumer and SQL 17 still fences all
+execution-derived; station execution checking remains 2e2. SQL 29 now installs successor
+`extraction_validations_v2` records and their readback result view under
+`extraction-validation/2`. Both operands need non-NULL registered pins; each
+family is resolved from that extraction's own immutable registry snapshot.
+Independent extraction requires different families. Same-family replay permits
+byte equality or disagreement and remains integrity only, even across tool
+identities/versions. Exact acquisition, independent validator/producer lineage,
+retained evidence and byte-hash comparisons remain enforced in Router commits
+and raw DDL. The optional successor outcome array authenticates evidence outside
+the writer lock and derives attribution from the committing capability. SQL 30
+guards its new comparison JSON column under the closed member-name family.
+Both durable receipt consumers and the positive receipt-fixture migration remain
+pending after this records-only split; free-text validation_ref has no authority.
+`/1` results have no authority consumer and SQL 17 still fences all
 extraction-based load-bearing support.
 
 SQL 23 begins the store-wide JSON member-name domain: decoded names are unique
@@ -121,13 +131,14 @@ transaction. Replay adds no refusal audit. Classification never decodes the
 refused document; observed/exhausted requests still require strict logical
 numeric/name admission and the closed discriminator. The
 store-wide JSON member-name rollout is complete: the static DDL check covers
-all 36 logical JSON columns and has no pending entries. Member-domain
+all 37 logical JSON columns and has no pending entries. Member-domain
 normalization is enabled by default for every Router document entry point and
 for every Store JSON writer,
 including contract confidence labels and every other admitted open map.
 Store admission is independent of installed trigger coverage. SQL 23 covers
 six columns, ordered additive SQL 26 covers eight more and SQL 27 covers the
-final 22; every column has both INSERT and UPDATE guards. SQL 21's receipt
+final 22 of that rollout; SQL 30 adds the successor comparison column under
+the same family. Every column has both INSERT and UPDATE guards. SQL 21's receipt
 uniqueness predicate is now redundant under the whole-receipt member-domain
 guard and remains unchanged; its span-shape and
 preserved-numeral guarantees remain necessary and unchanged.

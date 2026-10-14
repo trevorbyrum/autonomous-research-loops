@@ -33,3 +33,5 @@
 26-json-member-rollout.sql
 27-json-member-completion.sql
 28-extractor-registry.sql
+29-extraction-validations-v2.sql
+30-extraction-v2-member-domain.sql

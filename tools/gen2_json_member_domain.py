@@ -10,6 +10,8 @@ MANIFEST = "tools/gen2_json_member_domain.json"
 OUTPUT = "gen2/store/schema/23-json-member-domain.sql"
 ROLLOUT = "gen2/store/schema/26-json-member-rollout.sql"
 FINAL = "gen2/store/schema/27-json-member-completion.sql"
+SUCCESSOR = "gen2/store/schema/30-extraction-v2-member-domain.sql"
+V2 = frozenset({'extraction_validations_v2.comparison_evidence_ref'})
 INITIAL = frozenset({'extraction_validations.comparison_evidence_ref', 'quote_checks.match_result',
     'search_observations.continuation', 'search_observations.obligation_ids',
     'search_observations.request', 'source_extractions.output_ref'})
@@ -48,7 +50,7 @@ def generate(covered):
 
 def outputs(covered):
     return {OUTPUT: generate(set(covered) & INITIAL), ROLLOUT: generate(set(covered) & PART1),
-            FINAL: generate(set(covered) - INITIAL - PART1)}
+            FINAL: generate(set(covered) - INITIAL - PART1 - V2), SUCCESSOR: generate(set(covered) & V2)}
 
 
 def schema_sha256(conn):

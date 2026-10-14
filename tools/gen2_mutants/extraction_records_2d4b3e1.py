@@ -27,8 +27,8 @@ change("byte-comparison", "byte_comparison", "json_extract(y.output_ref, '$.cont
 change("outcome", "outcome", "CHECK ((outcome = 'succeeded') = (comparison IN ('byte_equal', 'semantic_agreement')))", "CHECK (1)", "extraction_validations")
 change("policy", "policy", "CHECK (policy_version = 1)", "CHECK (1)", "extraction_validations")
 change("method", "policy", "CHECK (method IN ('independent_extraction', 'same_extractor_replay'))", "CHECK (1)", "extraction_validations")
-change("failed-result", "failed", "AND outcome = 'succeeded'", "AND 1 = 1")
-change("integrity-result", "integrity_control", "SELECT *, (method = 'independent_extraction'", "SELECT *, (1 = 1")
+change("failed-result", "failed", "policy_version = 1 AND outcome = 'succeeded'", "policy_version = 1 AND 1 = 1")
+change("integrity-result", "integrity_control", "method = 'independent_extraction' AND policy_version = 1", "1 = 1 AND policy_version = 1")
 for scope, killer, field in (("source_extractions_artifact", "artifact", "output_ref"),
         ("extraction_validations_artifact", "evidence", "comparison_evidence_ref")):
     change(scope + "-topic", killer, "t.topic_id = NEW.topic_id" if field == "output_ref" else "t.topic_id = x.topic_id", scope=scope)

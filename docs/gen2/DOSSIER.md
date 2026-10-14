@@ -1306,6 +1306,87 @@ venv, never symlink or refresh it during mutants. No provider, live gateway,
 real-database migration or main merge. Evidence:
 `/home/trevor/work/research-loops-public/private/evidence/2d-4b3e2/`.
 
+### 2d-4b3e2 continuation part 2: re-estimate before code, 2026-10-14
+
+Registry part 1 is accepted at `23440ec`. Read the complete continuation,
+both operator rulings, this dossier from §2d-4b3e onward, the named private
+design authority and part-1/repair evidence. The old 475-line estimate omits
+the additive successor table, its complete independently isolated raw guards,
+NULL-pin history refusal, and receipt-fixture migration. Revised estimate:
+**about 930 handwritten lines**, excluding documentation and generated
+SQL/control/catalog data. Split again and stop after its first part:
+
+1. **This dispatch, about 490 lines:** SQL 29 successor records/view and
+   registry-family/lineage/artifact guards 105; typed outcome shape and narrow
+   ExtractionRecords wiring 30; Router/raw records, historical pins, replay,
+   conflict, rollback and immutable controls 235; predicate mutants and traced
+   pairing/classification/scope evidence scripts 120.
+2. **Next dispatch, about 440 lines:** both receipt consumers and additive
+   receipt-domain extension 100; isolated Router/raw refusal and accepted
+   controls 160; complete positive receipt-fixture migration 110; paired
+   mutants and path traces 70. Re-estimate at dispatch. SQL 17 replacement
+   remains a separate following task.
+
+SQL 22 has a fixed `/1` CHECK and stays byte-unchanged. Install immutable
+`extraction_validations_v2` and `extraction_validation_results_v2`, with the
+same retained comparison/output and exact SQL 14 acquisition/validator/producer
+bindings. Both operands must have non-NULL registered revision pins; resolve
+families from each operand's own immutable snapshot. `/2` admits only
+`independent_extraction` (different families) and `same_family_replay` (equal
+families). Replay permits byte equality or disagreement and is integrity only,
+including different identities/versions in one family. Byte equality requires
+equal hashes; semantic agreement remains an attributed assessment. A failed
+record never satisfies method success. Historical `/1` records stay readable;
+neither result view has a receipt/support consumer in this slice.
+
+Expose a separate optional `extraction_validations_v2` outcome array, deriving
+validator attribution from the committing invocation, authenticating evidence
+outside the writer lock, and writing after extractions in the existing fenced
+transaction. `service.py` needs no logic change. Classify and guard the one new
+JSON column under the closed member-name family in a new generated SQL part,
+retaining SQL 23–28 unchanged and explicitly reviewing/repinning both hashes.
+
+The receipt-fixture audit records every positive declaration as pending next
+dispatch; no nonexistent durable receipt enforcement is claimed. BOUNDARIES
+and V-3 must describe only the installed records and the still-pending
+consumers. Free-text validation_ref grants no authority. **SQL 17 still fences
+every extraction-based load-bearing support.** Trace each new separate control
+through its changed predicate/successful SQL event, following the C1 repair.
+Before committing run full gen2-test, trigger-order, full composition, all
+edited-target and transitively edited-fixture mutant families with --only,
+and all eight static gates. Heavy runs wait for no active gen2-landing-* unit;
+snapshots copy .venv-gen2 and never refresh it during mutants. No provider,
+live gen-1/8765, real migration, protected-register edit or main merge.
+Evidence: private/evidence/2d-4b3e2-part2/COMPLETION.md. Overall continuation
+remains INCOMPLETE at this requested first-part stop.
+
+**Continuation first slice implemented; stop here, 2026-10-14.** SQL 29
+retains immutable `/2` validation records and its result view, with independent
+registered families, same-family integrity replay, both pinned operands, exact
+acquisition/validator/producer lineage and retained comparison artifacts. The
+existing ExtractionRecords collaborator authenticates successor evidence outside
+the writer lock and writes through the existing fenced commit. SQL 30 covers
+the new comparison JSON with both member-domain guards. Catalog review proves
+every old object unchanged and exactly one new table, one view and eight
+triggers; classification is **37 JSON / 37 covered / zero pending, 504 scalar
+TEXT and three unchanged retained BLOB identities**. Both hashes were explicitly
+repinned. SQL 01–28, service.py and the protected registers are byte-unchanged.
+
+This slice adds **452 handwritten repository lines**, removing nine;
+documentation and generated SQL/control/catalog data are additional. The scope
+script is new; the path audit reuses the accepted C1 repair script with family
+and count adaptations plus successful-view-read instrumentation. The history
+fixture gains only a successor record and its append-only oracle entry; its
+receipt operands and all prior assertions remain unchanged. All 3,394 old
+control entries are unchanged, and 41 new pairings have individual path traces.
+The receipt audit explicitly retains every positive extraction declaration's
+durable-basis migration as pending next dispatch. Both receipt consumers remain
+unimplemented; free-text validation_ref and `/1` confer no authority, and
+**SQL 17 still fences every extraction-based load-bearing support**. This
+continuation is **INCOMPLETE** at the requested first-part stop. Final validation,
+probe-isolation repairs, per-ID mutant reconciliation and commit identity are
+in private/evidence/2d-4b3e2-part2/COMPLETION.md.
+
 ### 2d-4b3e1-repair-1: store-wide JSON member domain (design before code; stopped)
 
 Design against `250e2fca69a2ec499b652df29635d885d6ded102c`, after reading

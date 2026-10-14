@@ -1,7 +1,7 @@
 """Durable attributed extraction records; DOSSIER 2d-4b3e1, V-3, C-9.
 
 Authentication runs outside the core writer lock; writes use its fenced commit.
-SQL 22 checks recorded relationships, never semantic correctness or execution.
+SQL 22/29 check recorded relationships, never semantic correctness or execution.
 """
 from typing import Callable, Mapping, Protocol
 
@@ -25,7 +25,7 @@ class ExtractionRecords:
 
     def authenticate(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> None:
         extractions = payload.get("source_extractions", [])
-        validations = payload.get("extraction_validations", [])
+        validations = payload.get("extraction_validations", []) + payload.get("extraction_validations_v2", [])
         if (extractions or validations) and inv["admission_context"] != "contract/1":
             raise Refusal("kind_not_permitted", "extraction records require contract-admitted work")
         if validations and (inv["kind"] != "verification" or inv["parent_invocation_id"] is not None):
@@ -42,7 +42,8 @@ class ExtractionRecords:
     def write(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
         written = {}
         for table, identity, attribution in (("source_extractions", "extraction_id", "extracting_invocation_id"),
-                ("extraction_validations", "validation_id", "validator_invocation_id")):
+                ("extraction_validations", "validation_id", "validator_invocation_id"),
+                ("extraction_validations_v2", "validation_id", "validator_invocation_id")):
             records = payload.get(table, [])
             for record in records:
                 row = {**record, attribution: inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now}

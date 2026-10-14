@@ -27,6 +27,7 @@
   ],
   "properties": {
     "source_extractions": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/source_extraction"}},
+    "extraction_validations_v2": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/extraction_validation_v2"}},
     "extraction_validations": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/extraction_validation"}},
     "quote_checks": {
       "description": "V-6 operands for engine-computed checks; a supplied match label is ignored.",
@@ -263,6 +264,20 @@
         "validator_extraction_id": {"$ref": "common.schema.json#/$defs/short_text"},
         "method": {"enum": ["independent_extraction", "same_extractor_replay"]},
         "policy_version": {"const": 1},
+        "outcome": {"enum": ["succeeded", "failed"]},
+        "comparison": {"enum": ["byte_equal", "semantic_agreement", "disagreement"]},
+        "comparison_evidence_ref": {"$ref": "common.schema.json#/$defs/artifact_ref"}
+      }
+    },
+    "extraction_validation_v2": {
+      "type": "object", "additionalProperties": false,
+      "required": ["validation_id", "target_extraction_id", "validator_extraction_id", "method", "policy_version", "outcome", "comparison", "comparison_evidence_ref"],
+      "properties": {
+        "validation_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "target_extraction_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "validator_extraction_id": {"$ref": "common.schema.json#/$defs/short_text"},
+        "method": {"enum": ["independent_extraction", "same_family_replay"]},
+        "policy_version": {"const": 2},
         "outcome": {"enum": ["succeeded", "failed"]},
         "comparison": {"enum": ["byte_equal", "semantic_agreement", "disagreement"]},
         "comparison_evidence_ref": {"$ref": "common.schema.json#/$defs/artifact_ref"}
