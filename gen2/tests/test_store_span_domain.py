@@ -59,6 +59,15 @@ class SpanDDLTest(TableDDLTest):
     def setUp(self):
         super().setUp()
         self.acquired({"identity": "rec-1"})
+        # Isolate SQL 21's retained predicates from redundant SQL 27 guards;
+        # keep its transformed definition, all span shapes and exact numerals.
+        removed = {'member_domain_verification_receipts_receipt_i',
+            'member_domain_verification_receipts_cited_spans_i'}
+        objects = self.rows("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='verification_receipts' ORDER BY rowid")
+        for name in removed:
+            self.x(f'DROP TRIGGER {name}')
+        self.assertEqual(self.rows("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='verification_receipts' ORDER BY rowid"),
+            [(name, sql) for name, sql in objects if name not in removed])
 
     def insert(self, spans, transform=lambda doc: doc):
         raw = spans if isinstance(spans, str) else json.dumps(spans)

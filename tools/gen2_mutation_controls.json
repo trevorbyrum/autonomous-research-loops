@@ -20278,6 +20278,540 @@
   ],
   "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
  },
+ "JSON2BC-capability_facts-affected_lanes-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.CapabilityLanesTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-capability_facts-affected_lanes-i-nul": {
+  "controls": [
+   "test_store_json_completion.CapabilityLanesTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-capability_facts-affected_lanes-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.CapabilityLanesTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-capability_facts-affected_lanes-u-nul": {
+  "controls": [
+   "test_store_json_completion.CapabilityLanesTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-claim_source_links-spans-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.ClaimSpansTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-claim_source_links-spans-i-nul": {
+  "controls": [
+   "test_store_json_completion.ClaimSpansTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-claim_source_links-spans-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.ClaimSpansTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-claim_source_links-spans-u-nul": {
+  "controls": [
+   "test_store_json_completion.ClaimSpansTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_receipts-answer-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.DecisionAnswerTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_receipts-answer-i-nul": {
+  "controls": [
+   "test_store_json_completion.DecisionAnswerTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_receipts-answer-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.DecisionAnswerTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_receipts-answer-u-nul": {
+  "controls": [
+   "test_store_json_completion.DecisionAnswerTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_receipts-receipt-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.DecisionReceiptTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_receipts-receipt-i-nul": {
+  "controls": [
+   "test_store_json_completion.DecisionReceiptTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_receipts-receipt-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.DecisionReceiptTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_receipts-receipt-u-nul": {
+  "controls": [
+   "test_store_json_completion.DecisionReceiptTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_specs-document-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.DecisionSpecTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_specs-document-i-nul": {
+  "controls": [
+   "test_store_json_completion.DecisionSpecTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_specs-document-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.DecisionSpecTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-decision_specs-document-u-nul": {
+  "controls": [
+   "test_store_json_completion.DecisionSpecTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-export_delivery_receipts-receipt-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.DeliveryReceiptTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-export_delivery_receipts-receipt-i-nul": {
+  "controls": [
+   "test_store_json_completion.DeliveryReceiptTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-export_delivery_receipts-receipt-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.DeliveryReceiptTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-export_delivery_receipts-receipt-u-nul": {
+  "controls": [
+   "test_store_json_completion.DeliveryReceiptTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-generated-completion": {
+  "controls": [
+   "test_check_ddl_rules.DdlRuleTest.test_domain_control"
+  ],
+  "why": "Unchanged complete generated schema passes the checked output comparison."
+ },
+ "JSON2BC-intake_briefs-document-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.IntakeBriefTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-intake_briefs-document-i-nul": {
+  "controls": [
+   "test_store_json_completion.IntakeBriefTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-intake_briefs-document-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.IntakeBriefTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-intake_briefs-document-u-nul": {
+  "controls": [
+   "test_store_json_completion.IntakeBriefTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-invocation_reconciliations-request-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.ReconciliationTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-invocation_reconciliations-request-i-nul": {
+  "controls": [
+   "test_store_json_completion.ReconciliationTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-invocation_reconciliations-request-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.ReconciliationTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-invocation_reconciliations-request-u-nul": {
+  "controls": [
+   "test_store_json_completion.ReconciliationTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligation_assessments-confidence-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.ObligationConfidenceTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligation_assessments-confidence-i-nul": {
+  "controls": [
+   "test_store_json_completion.ObligationConfidenceTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligation_assessments-confidence-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.ObligationConfidenceTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligation_assessments-confidence-u-nul": {
+  "controls": [
+   "test_store_json_completion.ObligationConfidenceTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligation_assessments-evidence_refs-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.ObligationEvidenceTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligation_assessments-evidence_refs-i-nul": {
+  "controls": [
+   "test_store_json_completion.ObligationEvidenceTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligation_assessments-evidence_refs-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.ObligationEvidenceTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligation_assessments-evidence_refs-u-nul": {
+  "controls": [
+   "test_store_json_completion.ObligationEvidenceTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligations-facet_ids-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.ObligationFacetsTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligations-facet_ids-i-nul": {
+  "controls": [
+   "test_store_json_completion.ObligationFacetsTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligations-facet_ids-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.ObligationFacetsTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-obligations-facet_ids-u-nul": {
+  "controls": [
+   "test_store_json_completion.ObligationFacetsTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-operation_receipts-receipt-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.OperationReceiptTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-operation_receipts-receipt-i-nul": {
+  "controls": [
+   "test_store_json_completion.OperationReceiptTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-operation_receipts-receipt-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.OperationReceiptTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-operation_receipts-receipt-u-nul": {
+  "controls": [
+   "test_store_json_completion.OperationReceiptTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-operator_decisions-payload-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.OperatorPayloadTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-operator_decisions-payload-i-nul": {
+  "controls": [
+   "test_store_json_completion.OperatorPayloadTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-operator_decisions-payload-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.OperatorPayloadTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-operator_decisions-payload-u-nul": {
+  "controls": [
+   "test_store_json_completion.OperatorPayloadTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-outbox_events-expected_connectors-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.OutboxConnectorsTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-outbox_events-expected_connectors-i-nul": {
+  "controls": [
+   "test_store_json_completion.OutboxConnectorsTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-outbox_events-expected_connectors-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.OutboxConnectorsTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-outbox_events-expected_connectors-u-nul": {
+  "controls": [
+   "test_store_json_completion.OutboxConnectorsTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-outbox_events-manifest-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.OutboxManifestTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-outbox_events-manifest-i-nul": {
+  "controls": [
+   "test_store_json_completion.OutboxManifestTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-outbox_events-manifest-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.OutboxManifestTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-outbox_events-manifest-u-nul": {
+  "controls": [
+   "test_store_json_completion.OutboxManifestTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-questions-document-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.QuestionTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-questions-document-i-nul": {
+  "controls": [
+   "test_store_json_completion.QuestionTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-questions-document-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.QuestionTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-questions-document-u-nul": {
+  "controls": [
+   "test_store_json_completion.QuestionTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-registry_dispositions-evidence_refs-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.RegistryEvidenceTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-registry_dispositions-evidence_refs-i-nul": {
+  "controls": [
+   "test_store_json_completion.RegistryEvidenceTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-registry_dispositions-evidence_refs-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.RegistryEvidenceTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-registry_dispositions-evidence_refs-u-nul": {
+  "controls": [
+   "test_store_json_completion.RegistryEvidenceTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-semantic_assessments-evidence_refs-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.SemanticEvidenceTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-semantic_assessments-evidence_refs-i-nul": {
+  "controls": [
+   "test_store_json_completion.SemanticEvidenceTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-semantic_assessments-evidence_refs-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.SemanticEvidenceTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-semantic_assessments-evidence_refs-u-nul": {
+  "controls": [
+   "test_store_json_completion.SemanticEvidenceTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-source_lifecycle-evidence_refs-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.LifecycleEvidenceTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-source_lifecycle-evidence_refs-i-nul": {
+  "controls": [
+   "test_store_json_completion.LifecycleEvidenceTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-source_lifecycle-evidence_refs-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.LifecycleEvidenceTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-source_lifecycle-evidence_refs-u-nul": {
+  "controls": [
+   "test_store_json_completion.LifecycleEvidenceTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-acquisition-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.VerificationAcquisitionTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-acquisition-i-nul": {
+  "controls": [
+   "test_store_json_completion.VerificationAcquisitionTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-acquisition-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.VerificationAcquisitionTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-acquisition-u-nul": {
+  "controls": [
+   "test_store_json_completion.VerificationAcquisitionTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-cited_spans-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.VerificationSpansTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-cited_spans-i-nul": {
+  "controls": [
+   "test_store_json_completion.VerificationSpansTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-cited_spans-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.VerificationSpansTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-cited_spans-u-nul": {
+  "controls": [
+   "test_store_json_completion.VerificationSpansTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-receipt-i-duplicate": {
+  "controls": [
+   "test_store_json_completion.VerificationReceiptTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-receipt-i-nul": {
+  "controls": [
+   "test_store_json_completion.VerificationReceiptTest.test_control_i"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-receipt-u-duplicate": {
+  "controls": [
+   "test_store_json_completion.VerificationReceiptTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
+ "JSON2BC-verification_receipts-receipt-u-nul": {
+  "controls": [
+   "test_store_json_completion.VerificationReceiptTest.test_control_u"
+  ],
+  "why": "Separate accepted Store.select readback; named fixture exclusions isolate mirrored/closed domains, while preserving the transformed target guard and order."
+ },
  "NULL-spec-screening-protocol": {
   "controls": [
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"

@@ -121,7 +121,12 @@ class DdlRuleTest(unittest.TestCase):
 
     def test_domain_pending_disclosed(self):
         result = self.domain_check()
-        self.assertEqual(result.stdout.count('JSON member domain PENDING:'), 22)
+        self.assertEqual(result.stdout.count('JSON member domain PENDING:'), 0)
+
+    def test_completion_generated_drift(self):
+        result = self.domain_check(lambda text: text + '\n-- unreviewed change\n', '27-json-member-completion.sql')
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('JSON member domain generated output differs', result.stderr)
 
     def test_rollout_generated_drift(self):
         result = self.domain_check(lambda text: text + '\n-- unreviewed change\n', '26-json-member-rollout.sql')

@@ -118,14 +118,14 @@ accounting derives no decoded page only after checking the complete bound
 representation; stray descriptors or byte/hash columns raise an invalid-binding
 error. The client emits this
 text/byte-identity hand-off for requests with refused member names. Normal
-requests keep their JCS identities. JSON2B part 1 enables the member domain
-by default at every Router document
+requests keep their JCS identities. The member-name rollout is complete:
+the member domain is enabled by default at every Router document
 entry point, including contract confidence labels and other open maps, and at
 Store preparation for all 36 JSON columns, independently of raw guard coverage.
-Ordered additive SQL 26 covers eight more columns, for 14 guarded columns.
-The remaining 22 raw-DDL columns are explicitly named in the static-check
-manifest, owned by 2d-4b3e1-json2b part 2. SQL 21's receipt uniqueness is not
-yet redundant because verification_receipts.receipt remains pending; its
+Ordered additive SQL 23, 26 and 27 cover all 36 logical JSON columns with
+both INSERT and UPDATE guards; the static-check manifest has no pending
+columns. SQL 21's receipt uniqueness predicate is now redundant under the
+whole-receipt member-domain guard and is retained unchanged. Its
 span-shape and preserved-numeral guarantees remain unchanged.
 Incompatible requests must still be recorded as attempts; no name is renamed,
 truncated or dropped. Raw retained byte hashes remain separate from JCS hashes.

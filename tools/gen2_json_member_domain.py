@@ -9,10 +9,14 @@ from pathlib import Path
 MANIFEST = "tools/gen2_json_member_domain.json"
 OUTPUT = "gen2/store/schema/23-json-member-domain.sql"
 ROLLOUT = "gen2/store/schema/26-json-member-rollout.sql"
+FINAL = "gen2/store/schema/27-json-member-completion.sql"
 INITIAL = frozenset({'extraction_validations.comparison_evidence_ref', 'quote_checks.match_result',
     'search_observations.continuation', 'search_observations.obligation_ids',
     'search_observations.request', 'source_extractions.output_ref'})
 OWNER = "2d-4b3e1-json2b part 2"
+PART1 = frozenset({'amendment_impacts.document', 'audit_events.detail',
+    'config_bundles.document', 'contract_revisions.document', 'invocation_transitions.facts',
+    'scoping_reports.document', 'screening_assessments.criterion_results', 'source_proposals.document'})
 RETAINED_BYTES = {'source_acquisitions.request_bytes', 'source_acquisitions.response_bytes', 'search_observations.request_bytes'}
 
 
@@ -43,7 +47,8 @@ def generate(covered):
 
 
 def outputs(covered):
-    return {OUTPUT: generate(set(covered) & INITIAL), ROLLOUT: generate(set(covered) - INITIAL)}
+    return {OUTPUT: generate(set(covered) & INITIAL), ROLLOUT: generate(set(covered) & PART1),
+            FINAL: generate(set(covered) - INITIAL - PART1)}
 
 
 def schema_sha256(conn):
