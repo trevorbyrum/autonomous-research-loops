@@ -2576,3 +2576,10 @@ The post-2q Gate D is renumbered #5.
   - `gen2-gateway` carried forward from 1013ed6, green.
 - **New brief rule:** new mutant pairings need trace evidence that the control reaches the changed code.
 - **Next:** 2d-4b3e2 part 2: `/2` validation records and both receipt consumers. SQL 17 stays.
+
+## 2026-10-14: landing at 0cfb573 (2d-4b3e2 part 2, slice 1): mutation baseline timing flake, rerun queued
+- The `gen2-check` unit suite was green (3,947 tests) and trigger order was green (318 triggers).
+- The mutation harness's child-tree baseline then failed on one timing-dependent gateway-routes test, which uses a 0.2-second client deadline. `gen2-check` exited 2 before any mutant ran.
+- Five standalone reruns pass, and the commit doesn't touch the gateway client.
+- Recorded as **DEBT-039** (owner: task 2d): make deadline-based client and route tests independent of load, at the root.
+- The run 1 record is kept as `gen2-check-run1-baseline-flake.*`. `gen2-check` is being rerun after `gen2-gateway` finishes, so the two don't overlap.

@@ -425,3 +425,16 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - closed by: 2026-10-11. Task 2d-3b part 1 is `f722a39`; its endpoint repair is `dba8f35` (`quote-protection/5`). Astra's round-2 review (private/reviews/gen2-2d-3b1-r2-astra-review-20261011.md) passed the apostrophe literals, the boundary laws, the paired guard and control, and the boundary probes (120 of 120) and endpoint probes (480 of 480).
 
   Astra's boundary probe and boundary property scripts (private/evidence/astra-2d-3a-r3/) must pass.
+
+### DEBT-039 - Load-sensitive gateway-client timing tests can fail a landing baseline (task 2d)
+- kind: obligation
+- status: open
+- owner: task 2d
+- what: `gen2/tests/test_gateway_routes.py` `DirectHttpOnly.test_a_redirect_is_never_followed_whatever_the_status_and_wherever_it_points` gives `GatewayClient` a 0.2-second deadline and asserts the timeout or transport-failure classification.
+  - On 2026-10-14 the landing at `0cfb573` ran its full unit suite green (3,947 tests). Then the mutation harness's child-tree baseline failed on exactly this test while other heavy work was running, so `gen2-check` exited 2 before any mutant ran.
+  - Five standalone reruns in the same clone passed.
+  - The commit didn't touch the gateway client or its tests.
+  - A gate that can fail on machine load costs a full landing cycle and hides real signal.
+  - Fix at the root: make the deadline-dependent assertions independent of scheduler load, for example by injecting the clock, `time-machine`-style, as the charter's refactor evidence standard allows. Don't just raise the timeout. Audit the other deadline-based gateway-client and route tests for the same pattern.
+- source: orchestrator landing 2026-10-14, `private/evidence/2d-4b3e2-part2/orchestrator/gen2-check.log`
+- removal: the timing-dependent client and route tests pass deterministically under load, shown by a loaded rerun of the mutation baseline, and no deadline assertion depends on wall-clock scheduling.
