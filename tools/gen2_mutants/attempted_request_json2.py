@@ -38,7 +38,7 @@ add('failed-only', RAW + 'failed_only', RAW + 'retention',
     'if False and (obs["coverage_state"], obs["completeness"], obs["error_class"], obs["page_outcome"], events) != (', target='gen2/router/observations.py')
 add('router-admission', RAW + 'router_nul', RAW + 'control',
     'req = boundary.normalize(request, "request_invalid", member_domain=True)',
-    'req = boundary.normalize(request, "request_invalid")', target='gen2/router/observations.py')
+    'req = boundary.normalize(request, "request_invalid", member_domain=False)', target='gen2/router/observations.py')
 add('store-byte-hash', RAW + 'store_hash', RAW + 'store_hash_control', "if digest != prepared.get('request_bytes_hash'):",
     'if False:', target='gen2/store/api.py')
 add('raw-identity', RAW + 'retention', RAW + 'control',

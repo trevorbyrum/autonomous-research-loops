@@ -4,9 +4,9 @@ from .base import Mutation
 MUTATIONS, CONTROLS = [], {}
 
 
-def add(name, killer, control, old, new, target='ddl', scope=None):
+def add(name, killer, control, old, new, target='ddl', scope=None, also=()):
     mid = 'JSON-DOMAIN-' + name
-    MUTATIONS.append(Mutation(mid, '2d-4b3e1-repair-1', name, (killer,), old=old, new=new, target=target, scope=scope))
+    MUTATIONS.append(Mutation(mid, '2d-4b3e1-repair-1', name, (killer,), old=old, new=new, target=target, scope=scope, also=also))
     CONTROLS[mid] = {'controls': [control], 'why': 'Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture.'}
 
 
@@ -23,10 +23,11 @@ admission = 'test_json_member_admission.AdmissionTest.test_'
 add('canonical-nul', admission+'router_nul', admission+'control', "if member_domain and '\\0' in key:",
     'if False:', target='gen2/core/canonical.py')
 add('store-admission', admission+'store_nul', admission+'control',
-    'guarded = f"member_domain_{table}_{column}_i" in self._member_domain', 'guarded = False', target='gen2/store/api.py')
+    'canonical.parse_json_strict(value, member_domain=True)', 'canonical.parse_json_strict(value, member_domain=False)',
+    target='gen2/store/api.py', also=(('canonical.canonical_bytes(parsed, member_domain=True)', 'canonical.canonical_bytes(parsed, member_domain=False)'),))
 add('router-admission', admission+'payload_wiring', admission+'control',
     'payload = boundary.normalize(raw, "payload_invalid", member_domain=True)',
-    'payload = boundary.normalize(raw, "payload_invalid")', target='gen2/router/service.py')
+    'payload = boundary.normalize(raw, "payload_invalid", member_domain=False)', target='gen2/router/service.py')
 add('static-check', 'test_check_ddl_rules.DdlRuleTest.test_json_column_uncovered',
     'test_check_ddl_rules.DdlRuleTest.test_domain_control', 'failures += check_member_domain(root, conn, text)',
     'pass', target='tools/check_gen2_schemas.py')

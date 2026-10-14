@@ -20068,6 +20068,216 @@
   ],
   "why": "Independent accepted observation passes this predicate; byte retention never canonicalizes the original. UPDATE controls isolate unconditional immutability/cursor shape in disposable schema objects."
  },
+ "JSON2B-amendment_impacts-i-duplicate": {
+  "controls": [
+   "test_store_json_rollout.AmendmentImpactsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-amendment_impacts-i-nul": {
+  "controls": [
+   "test_store_json_rollout.AmendmentImpactsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-amendment_impacts-u-duplicate": {
+  "controls": [
+   "test_store_json_rollout.AmendmentImpactsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-amendment_impacts-u-nul": {
+  "controls": [
+   "test_store_json_rollout.AmendmentImpactsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-audit_events-i-duplicate": {
+  "controls": [
+   "test_store_json_rollout.AuditEventsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-audit_events-i-nul": {
+  "controls": [
+   "test_store_json_rollout.AuditEventsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-audit_events-u-duplicate": {
+  "controls": [
+   "test_store_json_rollout.AuditEventsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-audit_events-u-nul": {
+  "controls": [
+   "test_store_json_rollout.AuditEventsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-boundary-default": {
+  "controls": [
+   "test_json_global_admission.GlobalAdmissionTest.test_boundary_control"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-config_bundles-i-duplicate": {
+  "controls": [
+   "test_store_json_rollout.ConfigBundlesTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-config_bundles-i-nul": {
+  "controls": [
+   "test_store_json_rollout.ConfigBundlesTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-config_bundles-u-duplicate": {
+  "controls": [
+   "test_store_json_rollout.ConfigBundlesTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-config_bundles-u-nul": {
+  "controls": [
+   "test_store_json_rollout.ConfigBundlesTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-contract_revisions-i-duplicate": {
+  "controls": [
+   "test_store_json_rollout.ContractRevisionsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-contract_revisions-i-nul": {
+  "controls": [
+   "test_store_json_rollout.ContractRevisionsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-contract_revisions-u-duplicate": {
+  "controls": [
+   "test_store_json_rollout.ContractRevisionsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-contract_revisions-u-nul": {
+  "controls": [
+   "test_store_json_rollout.ContractRevisionsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-generated-rollout": {
+  "controls": [
+   "test_check_ddl_rules.DdlRuleTest.test_domain_control"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-invocation_transitions-i-duplicate": {
+  "controls": [
+   "test_store_json_rollout.InvocationTransitionsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-invocation_transitions-i-nul": {
+  "controls": [
+   "test_store_json_rollout.InvocationTransitionsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-invocation_transitions-u-duplicate": {
+  "controls": [
+   "test_store_json_rollout.InvocationTransitionsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-invocation_transitions-u-nul": {
+  "controls": [
+   "test_store_json_rollout.InvocationTransitionsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-scoping_reports-i-duplicate": {
+  "controls": [
+   "test_store_json_rollout.ScopingReportsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-scoping_reports-i-nul": {
+  "controls": [
+   "test_store_json_rollout.ScopingReportsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-scoping_reports-u-duplicate": {
+  "controls": [
+   "test_store_json_rollout.ScopingReportsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-scoping_reports-u-nul": {
+  "controls": [
+   "test_store_json_rollout.ScopingReportsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-screening_assessments-i-duplicate": {
+  "controls": [
+   "test_store_json_rollout.ScreeningAssessmentsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-screening_assessments-i-nul": {
+  "controls": [
+   "test_store_json_rollout.ScreeningAssessmentsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-screening_assessments-u-duplicate": {
+  "controls": [
+   "test_store_json_rollout.ScreeningAssessmentsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-screening_assessments-u-nul": {
+  "controls": [
+   "test_store_json_rollout.ScreeningAssessmentsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-source_proposals-i-duplicate": {
+  "controls": [
+   "test_store_json_rollout.SourceProposalsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-source_proposals-i-nul": {
+  "controls": [
+   "test_store_json_rollout.SourceProposalsTest.test_control_i"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-source_proposals-u-duplicate": {
+  "controls": [
+   "test_store_json_rollout.SourceProposalsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-source_proposals-u-nul": {
+  "controls": [
+   "test_store_json_rollout.SourceProposalsTest.test_control_u"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
+ "JSON2B-store-global": {
+  "controls": [
+   "test_json_global_admission.GlobalAdmissionTest.test_store_all_columns_control"
+  ],
+  "why": "Separate accepted/readable control passes the changed predicate; raw fixtures preserve all semantic INSERT guards and assert transformed trigger order."
+ },
  "NULL-spec-screening-protocol": {
   "controls": [
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"

@@ -111,11 +111,15 @@ as a label, bound to the observation ID, byte hash and invocation, in the same
 transaction. Replay adds no refusal audit. Classification never decodes the
 refused document; observed/exhausted requests still require strict logical
 numeric/name admission and the closed discriminator. The
-static DDL check reports the remaining
-30 columns by name, owned by 2d-4b3e1-json2 part 2; global admission of the
-other entry points/confidence labels/open maps remains pending. SQL 21's
-receipt uniqueness is not yet redundant because that column remains pending;
-its span-shape/numeral guarantees remain necessary after the eventual rollout.
+static DDL check reports the remaining 22 raw-DDL columns by name, owned by
+2d-4b3e1-json2b part 2. JSON2B part 1 enables member-domain normalization by
+default for every Router document entry point and for every Store JSON writer,
+including contract confidence labels and every other admitted open map.
+Store admission is independent of installed trigger coverage. SQL 23 covers
+six columns and ordered additive SQL 26 covers eight more; fourteen columns
+have both INSERT and UPDATE guards. SQL 21's receipt uniqueness is not yet
+redundant because that column remains pending; its span-shape and
+preserved-numeral guarantees remain necessary and unchanged.
 Retained provider/artifact/request BLOBs stay raw.
 
 SQL 16 and SQL 19 (2d-4b3c2) cap every receipt method/verdict at its

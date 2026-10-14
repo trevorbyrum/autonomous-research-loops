@@ -121,7 +121,6 @@ class Store:
         self._unusable: str | None = None  # why the connection was closed after a failed rollback
         self._columns: dict[str, dict[str, str]] = {}
         self._json: dict[str, frozenset[str]] = {}
-        self._member_domain = {r[0] for r in conn.execute("SELECT name FROM sqlite_schema WHERE type='trigger' AND name LIKE 'member_domain_%'")}
         for table, sql in conn.execute("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"):
             self._columns[table] = {row[1]: row[2] for row in conn.execute(f"PRAGMA table_info({table})")}
             self._json[table] = _json_columns(sql)
@@ -198,9 +197,8 @@ class Store:
             return None
         if column in self._json[table]:
             try:
-                guarded = f"member_domain_{table}_{column}_i" in self._member_domain
-                parsed = canonical.parse_json_strict(value, member_domain=guarded) if isinstance(value, (str, bytes)) else value
-                return canonical.canonical_bytes(parsed, member_domain=guarded).decode("utf-8")
+                parsed = canonical.parse_json_strict(value, member_domain=True) if isinstance(value, (str, bytes)) else value
+                return canonical.canonical_bytes(parsed, member_domain=True).decode("utf-8")
             except CanonicalizationError as exc:
                 raise StoreWriteError(f"{table}.{column}: {exc}") from exc
         if self._columns[table][column] == "INTEGER":

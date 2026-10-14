@@ -1944,3 +1944,139 @@ full run and the pre-correction decoder-limit focused failure are retained
 under evidence/superseded and are not credited as validation. The final runs
 use a copied, never symlinked or refreshed venv and recorded landing-unit waits.
 Evidence/COMPLETION.md records the final commit and complete execution audit.
+
+### 2d-4b3e1-json2b: global admission and remaining guards (design before code)
+
+**Inventory and re-estimate, 2026-10-14, against 6b5fd3c on gen2.** Read the
+json2b brief, repair-1 operator rulings, every dossier section from repair-1
+through json2-repair-2, accepted SQL 23–25, and the generator, exhaustive
+classification, Store writers and Router collaborators. No code changed before
+this inventory/design. Existing classification is 36 logical JSON columns,
+six covered, thirty pending, 489 scalar TEXT columns and three exact retained
+BLOB exclusions. The complete column inventory above remains applicable.
+
+**Router entry-point inventory.** Every public document/command surface is
+listed here, including reads that accept logical JSON:
+
+| Entry points | Admission before schema/hash/write |
+|---|---|
+| status | Status.status, boundary.normalize |
+| record_capability_probe, record_gateway_facts | Capabilities, boundary.normalize |
+| admit_reaccess | Acquisitions.admit, boundary.normalize |
+| activate_config_bundle | Registries.activate_config_bundle, boundary.normalize |
+| record_qualification, revoke_qualification | Registries._registry_command, boundary.normalize |
+| request_cancel, reconcile, invocation_status | Lifecycle, boundary.normalize |
+| requeue, open_reservation, open_review, create_topic, raise_signal | Scheduling._scheduling_command, boundary.normalize |
+| version_brief, open_brief, mark_brief_overdue, propose_amendment, draft_contract, close_brief | Amendments._amendment_command, boundary.normalize |
+| claim, record_transition, register_works, apply_operator_decision, ack_delivery | Router, boundary.normalize |
+| commit_outcome | envelope normalization before fingerprint; staged outcome normalization before logical payload admission |
+| record_observation | Observations: isolate attempted object first, normalize envelope, strict-parse request; any refused exact text can use the authenticated failed-attempt ledger |
+
+The remaining public surfaces accept scalar identifiers or no documents:
+open/close, healthy, candidate_units, evidence_inventory, coverage_snapshot,
+config_bundle, restore_config_bundle, is_qualified and receipt. They do not
+admit caller open maps. Constructor dependencies are internal collaborators,
+not logical document admission. Lifecycle's staged execution evidence also
+normalizes before use. All internally generated logical JSON writes converge
+on Store.insert/update through Store._prepare; insert and update prepare
+all supplied values before SQL. No direct Router JSON decoder bypass was found.
+
+**Admission design.** Enable the shared member domain by default in
+boundary.normalize, retaining its typed Refusal reasons. Enforce it on every
+Store JSON column independently of installed domain-trigger names, with typed
+StoreWriteError before serialization/SQL. Preserve canonical's explicit optional
+member-domain contract: Observations must still serialize an attempted object
+as its existing JCS hand-off bytes before refusing its logical names. That path
+is the already accepted exception for retaining bytes, never logical admission.
+No canonical default change, provider call, bytes rewriting or retention-schema
+change is needed. Contract confidence labels and source-proposal coverage maps
+are now refused at whole-document admission before content hashing. NUL values,
+binary-distinct names and reuse of names under distinct actual parents stay valid.
+
+**Re-estimate and split.** The earlier 410-line estimate omits the exhaustive
+entry-point oracles and the separate fixtures needed to isolate receipt/span
+predicates without weakening their other guards. Re-estimate **about 810
+handwritten lines** plus generated SQL/control/catalog data and documentation.
+**Part 1, this dispatch, about 490:** shared admission 15; Router/all-column
+Store refusal and accepted open-map/retention controls 175; eight-table raw
+INSERT/UPDATE pairs/readback and selective fixture isolation 220; separately
+paired mutants, inventory/owner and integration changes 80. Stop after part 1.
+**Part 2 about 320:** remaining 22 columns' table-specific receipt/array/history
+fixtures 240, paired mutants and final classification/pending removal 80.
+Re-estimate that part at dispatch. Raw fixtures remove only named content
+immutability guards for UPDATE and deletion guards to prepare INSERT templates
+in disposable memory; semantic INSERT bindings and column CHECKs remain active.
+Assert each fixture's installed transformed objects/order, preserving mutations
+and reversed creation order. Every negative must fail atomically for the member
+domain predicate and pair with a separately readable accepted record.
+
+Part 1 covers amendment_impacts.document, audit_events.detail,
+config_bundles.document, contract_revisions.document,
+invocation_transitions.facts, scoping_reports.document,
+screening_assessments.criterion_results and source_proposals.document.
+Their writers receive global admission first; then ordered additive SQL 26
+contains the existing checked template for these eight columns. Keep SQL 23–25
+byte-unchanged. Extend checked generation to assign accepted six guards to
+SQL 23 and these eight to SQL 26. After the DDL change re-review all catalog
+classifications/JSON consumers and explicitly repin both hashes, retaining old
+and new hashes in evidence. Counts become 36 / 14 covered / 22 pending, with
+489 scalar TEXT and three unchanged BLOB identities. All remaining columns
+must be named in the manifest, owned by **2d-4b3e1-json2b part 2**. The static
+check must continue to reject missing, stale, changed or unclassified guards.
+
+SQL 21 remains byte-unchanged: verification_receipts.receipt is still pending,
+so its uniqueness is not yet redundant. Upon that column's eventual coverage
+its whole-receipt uniqueness becomes redundant; its span-shape and preserved
+numeral guarantees remain necessary and cannot be weakened. No extraction
+receipt consumption, SQL 17 fence or identity trust policy changes here.
+C-13/BOUNDARIES must distinguish completed global writer admission from the
+22 explicitly pending raw-DDL columns. Validate full gen2-test, trigger-order,
+composition, every edited-target and transitive-fixture --only mutant family,
+and all eight required static gates, after waiting for no active landing units.
+Disposable snapshots copy .venv-gen2 with cp -a and touch their installed marker;
+never symlink/refresh it. Evidence: private/evidence/2d-4b3e1-json2b/COMPLETION.md.
+
+**Part 1 implemented; stop here, 2026-10-14.** Global Router document
+normalization and all 36 Store JSON writers now refuse incompatible member
+names before serialization/hash admission or SQL, independently of raw guard
+coverage. The accepted attempted-object/raw-text byte-retention hand-off is
+unchanged. Eight columns receive both generated event guards through additive
+SQL 26; the classification is 36 JSON / 14 covered / 22 pending, with 489
+unchanged scalar TEXT identities and three unchanged retained BLOB identities.
+Every remaining column is named and owned by **2d-4b3e1-json2b part 2** in the
+manifest. SQL 21 and SQL 23–25, service.py and the protected registers are
+byte-unchanged. SQL 21's uniqueness remains necessary at raw admission until
+its receipt column is covered; span-shape/numeral guarantees remain intact.
+No extraction authority or identity trust policy changes here.
+
+This slice adds 344 handwritten repository lines (23 removed), plus 116
+lines in the evidence scope/validation scripts: about 460 handwritten lines.
+Generated SQL, control/classification data and documentation are additional.
+The classification review verifies all old catalog objects and JSON consumers
+are unchanged, with exactly sixteen new triggers, and records both old/new
+hashes. Both reviewed hashes were explicitly repinned, never by the generator.
+
+Validation passes on the corrected tree: 162 focused tests; full make gen2-test
+with 3,647 tests and two existing skips; 258 reversed triggers with 3,094
+identical Store tests/subtests; the full six-test composition module; all eight
+static Make gates. The audited --only selection covers 1,067 mutants: 1,032
+unchanged old-family mutants killed in the broad sweep plus the corrected
+35-mutant JSON2B rerun, all separately paired. All 1,063 separate controls pass;
+four pre-existing documented unpaired cases retain their accepted treatment.
+All 3,233 old control records remain unchanged. Five old textual selectors
+follow the new explicit/default admission flags without changing IDs, negative
+oracles or controls.
+
+The first broad sweep exposed six duplicate probes masked by a stray comma in
+empty-object documents, and one stale Store-module/exception-class fixture.
+Corrected probes assert json_valid=1 before every negative; the global Store
+killer and control explicitly adopt the current module, including its mutant.
+The corrected 35-mutant run kills every added guard; the entire corrected
+full suite and trigger-order check were then rerun. Evidence retains the
+unsuccessful logs and reconciles every required mutant by ID. Final document
+changes receive another static run before the gen2 commit. Every heavy check
+waited for no active landing units. Validation used a copied, never symlinked
+or refreshed venv. No provider call, live gen-1/8765 access, real migration,
+protected-register edit or main merge occurred. Overall rollout remains
+**INCOMPLETE** at this requested first-part stop. Final commit and complete
+logs/audits: private/evidence/2d-4b3e1-json2b/COMPLETION.md.

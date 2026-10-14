@@ -63,10 +63,11 @@ class Refusal(Exception):
         self.detail = detail
 
 
-def normalize(value: object, reason: str, *, member_domain: bool = False) -> object:
+def normalize(value: object, reason: str, *, member_domain: bool = True) -> object:
     """The value as the router hashes and stores it: its RFC 8785 form parsed
     back (C-13). Refuses what JCS cannot represent faithfully (NaN, lone
-    surrogates, integers beyond 2**53-1, duplicate keys in text)."""
+    surrogates, integers beyond 2**53-1, duplicate keys in text and NUL in
+    decoded member names). The default covers every Router document route."""
     try:
         raw = value if isinstance(value, (bytes, str)) else canonical.canonical_bytes(value, member_domain=member_domain)
         return canonical.parse_json_strict(raw, member_domain=member_domain)

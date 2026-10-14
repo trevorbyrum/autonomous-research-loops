@@ -30,3 +30,4 @@
 23-json-member-domain.sql
 24-attempted-request-bytes.sql
 25-retained-request-representation.sql
+26-json-member-rollout.sql

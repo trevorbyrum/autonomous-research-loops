@@ -105,11 +105,11 @@ class DdlRuleTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('JSON member domain uncovered column: t.v', result.stderr)
 
-    def domain_check(self, edit=None):
+    def domain_check(self, edit=None, part='23-json-member-domain.sql'):
         shutil.copytree(REPO / 'gen2/store', self.root / 'gen2/store', dirs_exist_ok=True)
         (self.root / 'tools').mkdir(exist_ok=True)
         shutil.copy(REPO / 'tools/gen2_json_member_domain.json', self.root / 'tools')
-        path = self.root / 'gen2/store/schema/23-json-member-domain.sql'
+        path = self.root / 'gen2/store/schema' / part
         if edit:
             path.write_text(edit(path.read_text()))
         return subprocess.run([sys.executable, str(CHECKER), '--root', str(self.root), '--part', 'ddl'],
@@ -121,7 +121,12 @@ class DdlRuleTest(unittest.TestCase):
 
     def test_domain_pending_disclosed(self):
         result = self.domain_check()
-        self.assertEqual(result.stdout.count('JSON member domain PENDING:'), 30)
+        self.assertEqual(result.stdout.count('JSON member domain PENDING:'), 22)
+
+    def test_rollout_generated_drift(self):
+        result = self.domain_check(lambda text: text + '\n-- unreviewed change\n', '26-json-member-rollout.sql')
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('JSON member domain generated output differs', result.stderr)
 
     def test_stored_value_not_excluded_as_derived(self):
         result = self.run_check(GUARDED.replace('v TEXT', 'value TEXT') +
