@@ -2472,3 +2472,15 @@ The post-2q Gate D is renumbered #5.
 - **R2-2 (MEDIUM):** the landing `gen2-check` exited 2. Thirty `test_exact_spans` subtests expect the old schema diagnostic, but the inputs are now refused earlier, as NUL member names. The refusal is still correct.
 - **Landing at d41e42c:** `gen2-check` exit 2. `gen2-gateway` green, with 413 mutants killed.
 - **Routed:** `docs/gen2/tasks/2d-4b3e1-repair-2.md`, **round 3 of 3 (the cap)**. Replace the hand-rolled discovery with an established, fail-closed approach (a SQL parser or SQLite's authorizer). New coder gate: the full `make gen2-test` whenever shared core modules change.
+
+## 2026-10-14: 2d-4b3e1-repair-2, round 3 (the cap): PASS. 2d-4b3e1 accepted
+- **Astra** (`d6ddbdcb`, pinned b731a22; `private/reviews/gen2-2d-4b3e1-r3-astra-review-20261014.md`): **A, B and C all PASS. "2d-4b3e1 is ACCEPTED (the JSON-domain rollout part 2 remains, owned by this task)."**
+- **R2-1 closed (root cause).** The custom scanner was replaced by an exhaustive SQLite-catalog classification: 524 TEXT columns, of which 36 are JSON and 488 named scalar.
+  - It is pinned to the installed-schema and ordered-DDL hashes, with no automatic refresh.
+  - 26 independent checks cover views, triggers, CHECKs, expression indexes, defaults, generated columns, namespaces and preparation failure.
+  - Retained-byte exclusions bind to catalog identity.
+- **The authorizer evaluation was reproduced.** It doesn't report CHECK operands during DML preparation, so rejecting it was justified.
+- **R2-2 closed.** Only the two expected diagnostics changed.
+- **Landing at b731a22:** `gen2-check` green. `gen2-gateway` carried forward from d41e42c, green.
+- **Operational note:** every future DDL slice must re-review the classification and update both hashes, by design.
+- **Next:** 2d-4b3e1-json2 (`docs/gen2/tasks/2d-4b3e1-json2.md`): attempted-request raw-byte retention, the domain on every write path, and the 33 pending columns.
