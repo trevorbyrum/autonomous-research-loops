@@ -2509,3 +2509,14 @@ The post-2q Gate D is renumbered #5.
   - It was restored from cached hash-locked wheels. The orchestrator verified the installed package set is identical to the 10-14 00:15 clone's (11 packages, the same dist-info).
   - All credited validation came after the restore.
   - **Rule:** disposable snapshots copy `.venv-gen2` (`cp -a`) and touch `.gen2-installed`. They never symlink it.
+
+## 2026-10-14: json2-repair-1 (both parts), round 2: BLOCK on the remaining part of F2
+- **Astra** (`a33674f2`, pinned db85860; `private/reviews/gen2-2d-4b3e1-json2-r2-astra-review-20261014.md`): **A BLOCK, B PASS, C BLOCK.**
+- **F1 closed (root cause).** Descriptors are bound both ways by SQL 24/25, ordinary requests can't impersonate one, and accounting validates the whole representation.
+- **F3 closed.** The numeric control reaches the predicate; a reject-all-integers counterfactual makes it fail six times.
+- **Also accepted:** SQL/classification/C-11; control audit (3,228 entries, only F3's entry changed); producer chain; last-value-wins removed; the venv incident does not compromise the evidence.
+- **F2 remaining (HIGH):** retention happens only when strict parsing raises `MemberNameError`. An earlier numeric error (an integer above 2^53−1, or a precision-losing float) returns `request_invalid` with **zero rows**, so the same refused document is retained or lost depending on member order.
+- **Landing at db85860:**
+  - `gen2-check` green: 3,571 tests; 3,228/3,228 mutants killed.
+  - `gen2-gateway` green.
+- **Routed:** `docs/gen2/tasks/2d-4b3e1-json2-repair-2.md`, **round 3 of 3 (the cap)**. Any authenticated failed attempt whose request is not admissible as logical JSON for **any** strict-parse reason is retained as opaque exact bytes plus hash. This follows the operator's every-attempt-recorded ruling. Ordinary validation is unchanged.
