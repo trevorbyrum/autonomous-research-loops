@@ -2532,3 +2532,14 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` green: 3,233/3,233 mutants killed.
   - `gen2-gateway` carried forward from db85860, green.
 - **Next:** 2d-4b3e1-json2b (`docs/gen2/tasks/2d-4b3e1-json2b.md`): global admission and the 30 remaining pending columns.
+
+## 2026-10-14: 2d-4b3e1-json2b part 1 (global JSON admission; SQL 26): PASS on the first review. Accepted
+- **Astra** (`67d4ef2f`, pinned a28c7e2; `private/reviews/gen2-2d-4b3e1-json2b-astra-review-20261014.md`): **A, B and C all PASS, ROOT-CAUSE for the slice.** There are no blocking or non-blocking findings.
+- **Coverage:**
+  - All 28 Router document entry points reach `boundary.normalize`, which now enforces the member domain by default.
+  - Store INSERT and UPDATE enforce it on all 36 columns, independently of the triggers.
+  - All 8 newly guarded columns' writers are covered before SQL runs.
+  - No bypass was found.
+- **Unchanged:** the failed-attempt path, SQL 21/23–25 and `service.py`, byte for byte.
+- **Landing at a28c7e2:** `gen2-check` green; `gen2-gateway` green.
+- **Next:** json2b part 2, raw-DDL guards on the 22 remaining columns (see the brief's continuation).

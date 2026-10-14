@@ -51,3 +51,18 @@
 - **Don't edit:** BUILD-STATE, REVIEW-LOG or DEBT-REGISTER.
 - **Evidence:** `~/work/research-loops-public/private/evidence/2d-4b3e1-json2b/`, with a COMPLETION.md.
 - **Commits:** end the message with `Co-Authored-By: GPT-6.1-Sol <noreply@openai.com>`.
+
+## Continuation (2026-10-14): part 2, the remaining 22 columns
+- **Part 1 was accepted** on Astra's first review at `a28c7e2`.
+  - Global Router/Store admission covers all 28 entry points and all 36 columns at the Store API.
+  - SQL 26 guards 8 more columns, for 14 of 36.
+- **Part 2:**
+  - Install generated SQL-23-style INSERT and UPDATE guards on the **22 named pending columns**, as ordered additive DDL.
+  - Empty the pending list completely.
+  - The ordering rule still applies. Every writer already stops refused names at the Store API, but verify this per column.
+- **SQL 21.** Once `verification_receipts.receipt` is covered, document that its uniqueness predicate is redundant. Keep the span-shape and preserved-numeral guarantees.
+- **Reclassify and repin** both hashes explicitly after each DDL change.
+- **Docs.** C-13 and BOUNDARIES must state that the rollout is **complete**.
+- **Constraints and tests:** the same as above, including the full `make gen2-test`, `make gen2-trigger-order`, composition, family `--only` sweeps, the eight static gates, and copying the venv rather than linking it.
+- **Re-estimate** in DOSSIER first; split at about 500 lines.
+- **Evidence:** `~/work/research-loops-public/private/evidence/2d-4b3e1-json2b-part2/`.
