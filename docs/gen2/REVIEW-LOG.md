@@ -2557,3 +2557,13 @@ The post-2q Gate D is renumbered #5.
   - `gen2-gateway` green.
 - **Operator ruling 2026-10-14 (Trevor), settling N1:** extractor identity comes from an operator-maintained tool **registry** with families. Independent validation needs a different family; unknown or aliased tools are refused.
 - **Next:** 2d-4b3e2 (`docs/gen2/tasks/2d-4b3e2.md`): the registry, then receipts consume the durable extraction and validation records. SQL 17 stays in force.
+
+## 2026-10-14: 2d-4b3e2 part 1 (extractor tool registry, SQL 28): round 1 BLOCK on C1 (evidence only)
+- **Astra** (`1eadbfa1`, pinned 1013ed6; `private/reviews/gen2-2d-4b3e2-astra-review-20261014.md`): **A PASS, B PASS, C BLOCK; ROOT-CAUSE.**
+- **What passed:**
+  - registry admission, versioned provenance and the operator-only authority route;
+  - immutable storage;
+  - the registry binds approved declarations without claiming to certify execution or semantics.
+- **C1 (MEDIUM):** four new mutants (`router-membership`, `router-replay` and two classification mutants) are paired with controls that never reach the changed code; a line trace shows zero lines in the target. The killers are valid; the pairings break the positive-control rule.
+- **Landing at 1013ed6:** `gen2-check` green; `gen2-gateway` green.
+- **Routed:** `docs/gen2/tasks/2d-4b3e2-repair-1.md`, round 2 of 3, tests and tooling only.
