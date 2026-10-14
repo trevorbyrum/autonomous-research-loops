@@ -50,7 +50,7 @@ def read_window_pins(rows: Rows, topic_id: str) -> tuple[v.WindowPin, ...]:
 def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory:
     where = {"topic_id": topic_id}
     observations = tuple(a.Observation(o["observation_id"], o["invocation_id"], o["lane"], o["request_identity"],
-                                       o["request"]["request"]["request_type"], o["completeness"], o["page_outcome"], o["result_count"],
+                                       pagination.request_type(o["request"]), o["completeness"], o["page_outcome"], o["result_count"],
                                        read_page(o))
                          for o in rows.select("search_observations", where))
     retrievals = tuple(a.Retrieval(r["event_id"], r["observation_id"]) for r in rows.select("retrieval_events", where))

@@ -90,7 +90,7 @@ class AttemptTest(RouterTestCase):
             self.assertEqual(self.state(exclude=()), before)
 
     def test_router_nul(self):
-        for column, value in (('request', json.loads(RAW)), ('obligation_ids', [{'name\0suffix': 1}]),
+        for column, value in (('obligation_ids', [{'name\0suffix': 1}]),
                               ('continuation', {'cursor': 'next', 'name\0suffix': 1})):
             command = self.command(None)
             command['observation'][column] = value

@@ -47,7 +47,7 @@ class Observation:
     invocation_id: str
     lane: str
     request_identity: str
-    request_type: str
+    request_type: str | None  # opaque failed attempts assert no decoded type
     completeness: str
     page_outcome: str
     result_count: int | None

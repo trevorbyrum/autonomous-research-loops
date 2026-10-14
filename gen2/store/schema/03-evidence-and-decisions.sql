@@ -58,7 +58,8 @@ CREATE TABLE search_observations (
   attempt INTEGER NOT NULL CHECK (attempt >= 1),
   lane TEXT NOT NULL,
   request TEXT NOT NULL CHECK (json_valid(request)
-    AND COALESCE(json_extract(request, '$.request.request_type') IN ('find', 'resolve', 'enrich', 'fetch', 'data'), 0)),
+    AND (COALESCE(json_extract(request, '$.request.request_type') IN ('find', 'resolve', 'enrich', 'fetch', 'data'), 0)
+      OR json_type(request, '$.retained_request') IS NOT NULL)), -- SQL 24/25 bind opaque failed attempts (C-13/F2).
   obligation_ids TEXT NOT NULL CHECK (json_valid(obligation_ids) AND json_type(obligation_ids) = 'array'),
   started_at TEXT NOT NULL,
   ended_at TEXT,

@@ -230,7 +230,12 @@ def check_observation(observation: dict, events: list[dict], *, request_bytes: b
     records = [event["provider_record_id"] for event in events]
     if len(set(records)) != len(records):
         raise Refusal("payload_invalid", f"{oid}: a provider record is captured twice")
-    check_page_outcome(observation)
+    try:
+        opaque = pagination.retained_request(observation)
+    except ValueError as exc:
+        raise Refusal("payload_invalid", str(exc)) from None
+    if not opaque:
+        check_page_outcome(observation)
     if observation["completeness"] == "unobserved":
         if events or observation["result_count"] is not None:
             raise Refusal("payload_invalid", f"{oid}: an unobserved result set has no captured records and no count; unknown is not zero (RG-U)")

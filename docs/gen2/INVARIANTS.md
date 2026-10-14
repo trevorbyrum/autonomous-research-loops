@@ -104,8 +104,7 @@ refuse incompatible names before logical hashing/writing. Rollout in
 payloads and Store preparation on the three SQL 23 guarded columns:
 `code: source_extractions.output_ref`, `code: extraction_validations.comparison_evidence_ref`
 and `code: quote_checks.match_result`. JSON2 part 1 additionally covers all
-three search_observations JSON columns and its Router admission. When admission
-can extract a known discriminator, a refused attempted-request document
+three search_observations JSON columns and its Router admission. A refused attempted-request document
 supplied as exact UTF-8 text is retained wholly in
 request_bytes with its byte SHA-256 in request_bytes_hash and request_identity;
 the logical request field is an explicit retained-byte reference. SQL 25
@@ -124,12 +123,17 @@ admission, including contract confidence-scheme labels and every other open
 map, remains that next part's obligation.
 Incompatible requests must still be recorded as attempts; no name is renamed,
 truncated or dropped. Raw retained byte hashes remain separate from JCS hashes.
-**Remaining retention gap (Astra F2, repair-1 part 2):** raw requests with an
-unusable discriminator (including a structural NUL name or duplicate
-request_type) and direct object requests with refused names can currently be
-rejected without a ledger row. The unconditional-attempt requirement is not
-yet satisfied. That next repair owns an explicit opaque failed case and the
-complete producer hand-off; ordinary observations retain the closed discriminator.
+**Discriminator-independent retention (repair-1 part 2, Astra F2):** structural
+NUL names and duplicate discriminators retain exact supplied text without
+last-value-wins reparsing. Object requests are isolated before envelope member
+normalization, then handed off as their existing JCS bytes after envelope
+admission; those bytes match the supplied identity and assert no earlier wire
+spelling. New retained descriptors assert no decoded type or page. Existing
+typed retained descriptors remain bound/readable. SQL 03 permits the opaque
+marker through SQL 24/25's same-row binding and failed shape. Accounting keeps
+its type, page and result count unknown; retrieval/capture denominators stay
+unknown. Capability, running-state, lease and transaction fences still apply.
+Ordinary observations retain the closed discriminator.
 
 ## 3. Invocation lifecycle
 

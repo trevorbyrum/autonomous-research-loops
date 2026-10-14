@@ -727,12 +727,6 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - reason: The observation admission collaborator uses the existing canonical member-domain parser and exact-byte SHA-256 helper; no new hashing contract.
 - task: 2d-4b3e1-json2
 
-### ML-0114
-- action: admit
-- target: engine|edge|gen2/router/observations.py->gen2/core/pagination.py
-- reason: The failed retained-request descriptor uses the existing closed request-type vocabulary; it grants no acquisition or support authority.
-- task: 2d-4b3e1-json2
-
 ### ML-0115
 - action: admit
 - target: engine|edge|gen2/router/observations.py->gen2/router/boundary.py

@@ -94,6 +94,60 @@ class ObservationDomainTest(fx.StoreTestCase):
         self.insert_raw(row)
         self.assertEqual(self.reader.select('search_observations')[0]['request_bytes'], row['request_bytes'])
 
+    def opaque_row(self):
+        row = self.retained_row()
+        descriptor = json.loads(row['request'])
+        del descriptor['request']
+        row['request'] = json.dumps(descriptor, separators=(',', ':'))
+        return row
+
+    def test_opaque_control(self):
+        row = self.opaque_row()
+        self.insert_raw(row)
+        stored = self.reader.select('search_observations')[0]
+        self.assertEqual(stored['request'], json.loads(row['request']))
+        self.assertEqual(stored['request_bytes'], row['request_bytes'])
+        self.assertNotIn('request', stored['request'])
+
+    def test_ordinary_discriminator(self):
+        for request in ({}, {'request': {}}, {'request': {'request_type': 'bad'}}):
+            before = list(self.db.iterdump())
+            with self.subTest(request=request), self.assertRaises(sqlite3.IntegrityError):
+                self.insert_raw({**self.row, 'request': request})
+            self.assertEqual(list(self.db.iterdump()), before)
+
+    def test_opaque_binding(self):
+        row = self.opaque_row()
+        descriptor = json.loads(row['request'])
+        for change in ({'request_bytes': None, 'request_bytes_hash': None}, {'request_bytes': None},
+                       {'request_bytes_hash': None}, {'request_identity': fx.h('5')}, {'error_class': 'timeout'},
+                       {'request': {**descriptor, 'page': 1}}, {'request': {**descriptor, 'request': {}}},
+                       {'request': {'retained_request': {**descriptor['retained_request'], 'column': 'response_bytes'}}},
+                       {'coverage_state': 'searched_empty', 'completeness': 'complete', 'result_count': 0,
+                        'error_class': None, 'page_outcome': 'end_unknown', 'gateway_call_ref': 'call-1'}):
+            before = list(self.db.iterdump())
+            with self.subTest(change=change), self.assertRaises(sqlite3.IntegrityError):
+                self.insert_raw({**row, **change})
+            self.assertEqual(list(self.db.iterdump()), before)
+
+    def test_legacy_discriminator(self):
+        row = self.retained_row()
+        for kind in (None, 'bad', 1):
+            request = json.loads(row['request'])
+            request['request']['request_type'] = kind
+            before = list(self.db.iterdump())
+            with self.subTest(kind=kind), self.assertRaises(sqlite3.IntegrityError):
+                self.insert_raw({**row, 'request': request})
+            self.assertEqual(list(self.db.iterdump()), before)
+
+    def test_opaque_retrieval_refused(self):
+        self.insert_raw(self.opaque_row())
+        before = list(self.db.iterdump())
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.x('INSERT INTO retrieval_events VALUES (?,?,?,?,?,?)',
+                'rev_opaque001', self.row['observation_id'], fx.TOPIC, 'rec-1', 1, fx.T)
+        self.assertEqual(list(self.db.iterdump()), before)
+
     def test_retained_binding(self):
         row = self.retained_row()
         wrong_hash = json.loads(row['request'])

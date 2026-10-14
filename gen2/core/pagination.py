@@ -46,8 +46,9 @@ def retained_request(observation: dict) -> bool:
     if digest != observation["request_identity"]:
         raise ValueError("unbound retained request identity")
     kind = request_type(request)
-    if kind is None or request != {"request": {"request_type": kind}, "retained_request": {
-            "bytes_hash": digest, "reason": "member_name_domain"}}:
+    descriptor = {"retained_request": {"bytes_hash": digest, "reason": "member_name_domain"}}
+    legacy = {"request": {"request_type": kind}, **descriptor} if kind is not None else None
+    if request != descriptor and request != legacy:
         raise ValueError("unbound retained request descriptor")
     if (observation["coverage_state"], observation["completeness"], observation["error_class"],
             observation["page_outcome"], observation["result_count"], observation["continuation"]) != (

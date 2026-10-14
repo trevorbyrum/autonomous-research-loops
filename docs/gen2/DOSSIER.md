@@ -1673,6 +1673,74 @@ gates pass (metrics checked on a committed disposable snapshot before the
 gen2 commit, then on gen2). No dependency refresh, provider call, live gateway
 access, real-database migration, protected-register edit or main merge occurred.
 
+### 2d-4b3e1-json2-repair-1 part 2: F2 continuation, design before code
+
+**Re-estimate, 2026-10-14, against bc6fffa on gen2:** about **440
+handwritten lines**: Router/object hand-off and bound opaque reader 90,
+schema predicates 25, isolated Router/raw-DDL/producer/denominator/replay/
+authorization tests 235, paired mutants and integration 90. Generated controls,
+classification data and documentation are additional. This closes F2 in the
+same observation ledger; the thirty-column JSON2 rollout is a separate task.
+
+Every newly retained member-domain refusal uses exactly
+`{"retained_request":{"bytes_hash":digest,"reason":"member_name_domain"}}`.
+It asserts neither a decoded request type nor a page. No duplicate document is
+reparsed with last-value-wins, even to choose a descriptor. Accounting binds
+the complete representation before returning a nullable request type and page;
+failed/unobserved records keep coverage and all result denominators unknown.
+Existing typed retained descriptors remain readable, bound and failed-only.
+
+Before whole-command member normalization, the observation collaborator lifts
+only the attempted-request object into UTF-8 text. For existing object callers,
+that hand-off uses their existing JCS serialization, whose byte hash equals
+their supplied logical identity; these are the exact bytes created at the
+object hand-off, not a claim about an earlier wire spelling. Raw-text callers
+keep their supplied text byte-for-byte. The client already emits its exact
+text and byte hash; its full search-to-router hand-off receives coverage.
+The envelope still passes strict member/schema admission; only a refused
+attempted request gets the failed/unobserved/payload_invalid exception. Keep
+byte-hash truth, capability, running state, lease, topic and transaction fences.
+
+The SQL 03 request CHECK currently requires a known discriminator on every
+row, so a descriptor without an invented type cannot satisfy it. Narrowly
+extend that fresh-store definition to permit a retained marker, whose same-row
+bytes, identity, exact descriptor shape and failed-only shape are independently
+required by SQL 24/25. Extend SQL 24's exact shape predicate to accept both the
+new opaque and existing typed descriptors. No table/column is removed, no
+migration or data rewriting is supplied or run. Ordinary requests continue to
+require the original closed discriminator. Re-review these two changed catalog
+objects and all classifications, and explicitly repin both DDL/catalog hashes.
+
+Tests independently assert literal bytes/hashes, one row per structural-NUL,
+duplicate-discriminator and object-filter attempt, equal replay/conflict,
+unknown inventory and no retrievals. Raw-DDL controls/negatives exercise opaque
+shape and ordinary discriminator separately. Existing F1/F3 mutants and
+controls stay relevant; add separate controls for each new predicate and
+audit any changed pairing. Before committing run the full gen2-test,
+trigger-order, composition, all edited-target/transitive-fixture mutant families
+with --only, and the eight static gates. Evidence appends to
+private/evidence/2d-4b3e1-json2-repair-1/COMPLETION.md.
+
+**Part 2 implemented, 2026-10-14.** F2 now records structural-NUL,
+duplicate-discriminator and object-filter failures in the existing ledger,
+with exact hand-off bytes/hash and no invented decoded type/page. Ordinary
+discriminators remain required; legacy typed descriptors remain bound and
+readable. The production search-to-Router hand-off is covered with an injected
+transport. There are 291 handwritten repository additions (23 removed), plus
+generated classification/control data, documentation and retained evidence
+scripts. Seven separately paired guards were added; all 3,221 prior control
+entries remain byte-equivalent as parsed records. Six existing mutant match
+expressions follow the changed predicates without changing their IDs, negative
+oracles or controls. Classification remains 36 JSON / six covered / thirty
+pending, 489 scalar TEXT and three unchanged BLOB exclusions, with both hashes
+explicitly repinned. ML-0114 is removed because Observations no longer imports
+pagination to decode a discriminator. No service.py authority was added.
+Final checks and commit are recorded in evidence/COMPLETION.md. An accidental
+venv clear through the disposable snapshot's symlink interrupted validation;
+the environment was restored after stopping those runs, and fresh validation
+supersedes them. The evidence retains the incident and unsuccessful logs.
+The separate thirty-column rollout and round-2 review remain outstanding.
+
 ### 2d-4b3e1-json2-repair-1: review repair, design before code
 
 **Design and re-estimate, 2026-10-14, against 0c1c8fb on gen2.** Read Astra's

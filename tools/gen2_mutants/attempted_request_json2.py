@@ -28,7 +28,7 @@ for name, old in (
         ('identity', 'NEW.request_bytes_hash IS NOT NEW.request_identity'),
         ('reference-hash', "json_extract(NEW.request, '$.retained_request.bytes_hash') IS NOT NEW.request_bytes_hash"),
         ('reference-reason', "json_extract(NEW.request, '$.retained_request.reason') IS NOT 'member_name_domain'"),
-        ('reference-shape', "json_remove(NEW.request, '$.request.request_type', '$.retained_request.bytes_hash', '$.retained_request.reason')\n      != '{\"request\":{},\"retained_request\":{}}'"),
+        ('reference-shape', "json_remove(NEW.request, '$.request.request_type', '$.retained_request.bytes_hash', '$.retained_request.reason')\n      NOT IN ('{\"request\":{},\"retained_request\":{}}', '{\"retained_request\":{}}')"),
         ('failed-error', "NEW.error_class IS NOT 'payload_invalid'")):
     add('retained-' + name, DDL + 'retained_binding', DDL + 'retained_control', old, '0', scope='search_observations_retained_request')
 
@@ -60,10 +60,28 @@ for name, old in (
         ('ordinary', 'if not marked and raw is None and digest is None:'),
         ('pair', 'if not marked or type(raw) is not bytes or digest is None:'),
         ('identity', 'if digest != observation["request_identity"]:'),
-        ('descriptor', 'if kind is None or request != {"request": {"request_type": kind}, "retained_request": {\n            "bytes_hash": digest, "reason": "member_name_domain"}}:'),
+        ('descriptor', 'if request != descriptor and request != legacy:'),
         ('failed', 'if (observation["coverage_state"], observation["completeness"], observation["error_class"],')):
     new = ('if raw is None and digest is None:' if name == 'ordinary' else
            'if False:' if name in ('pair', 'identity', 'descriptor') else old.replace('if ', 'if False and ', 1))
     add('accounting-binding-' + name,
         RAW + 'accounting_requires_the_complete_binding', RAW + 'bound_accounting_control', old, new,
         target='gen2/core/pagination.py')
+
+OPAQUE = 'test_opaque_attempts.OpaqueAttemptTest.test_'
+add('opaque-schema', DDL + 'opaque_control', DDL + 'retained_control',
+    "OR json_type(request, '$.retained_request') IS NOT NULL", 'OR 0', scope='search_observations')
+add('legacy-discriminator', DDL + 'legacy_discriminator', DDL + 'retained_control',
+    "(json_type(NEW.request, '$.request') IS NOT NULL AND NOT COALESCE(\n      json_extract(NEW.request, '$.request.request_type') IN ('find', 'resolve', 'enrich', 'fetch', 'data'), 0))",
+    '0', scope='search_observations_retained_request')
+add('object-handoff', OPAQUE + 'object_nul', RAW + 'readable_text_control',
+    'if handoff is not None:', 'if False:', target='gen2/router/observations.py')
+add('opaque-page-exception', OPAQUE + 'structural_nul', OPAQUE + 'ordinary_control',
+    'if not opaque:', 'if True:', target='gen2/router/boundary.py')
+add('opaque-descriptor', OPAQUE + 'structural_nul', OPAQUE + 'ordinary_control',
+    'obs["request"] = {"retained_request": {',
+    'obs["request"] = {"request": {"request_type": "find"}, "retained_request": {', target='gen2/router/observations.py')
+add('opaque-reader', OPAQUE + 'structural_nul', OPAQUE + 'legacy_read_control',
+    'if request != descriptor and request != legacy:', 'if request != legacy:', target='gen2/core/pagination.py')
+add('opaque-inventory-type', OPAQUE + 'structural_nul', OPAQUE + 'ordinary_control',
+    'pagination.request_type(o["request"])', '"find"', target='gen2/router/accounting.py')
