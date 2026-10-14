@@ -10,6 +10,9 @@ from __future__ import annotations
 from .base import AD, CB, CG, CS, DC, DE, DI, DK, DR, DX, EX, FI, H, IL, IN, LT, Mutation, OB, SD, VO, VT
 
 CONTROLS = {
+    "R2.5-claim-drop-provisional-to-support": {
+        "controls": [CS + "test_contested_to_accepted_support_follows_the_same_rule"],
+        "why": "Previously accepted paired control: contested support exercises the same transition trigger while the mutant removes only the provisional-to-support edge."},
     "A6-D28-old-over-restriction": {
         "controls": [VT + "test_canonical_bytes_from_separate_acquirer"],
         "why": "Canonical full-text receipt consumes an admitted acquisition by a separate research pass; extraction differs from the producer with no validation reference, so D28's deliberate over-restriction still accepts it.",

@@ -100,6 +100,8 @@ def read_lifecycle(record: dict) -> a.SourceDisposition:
 
 
 def read_page(observation: dict) -> a.SearchPage | None:
+    if observation.get('request_bytes') is not None:
+        return None  # retained refused bytes do not assert a decoded search/page
     request = observation["request"]["request"]
     if request["request_type"] != "find":
         return None

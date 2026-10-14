@@ -28,3 +28,4 @@
 21-receipt-span-domain.sql
 22-extraction-records.sql
 23-json-member-domain.sql
+24-attempted-request-bytes.sql

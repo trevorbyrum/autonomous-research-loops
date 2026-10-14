@@ -20,7 +20,7 @@ CREATE TRIGGER raw_no_delete BEFORE DELETE ON source_acquisitions
 BEGIN SELECT RAISE(ABORT, 'never deleted'); END;
 CREATE VIEW operand AS SELECT json_extract(CAST(a.response_bytes AS TEXT), '$.a') FROM source_acquisitions a;
 """
-OWNER = '2d-4b3e1-repair-1 part 2'
+OWNER = '2d-4b3e1-json2 part 2'
 
 
 class InventoryTest(unittest.TestCase):

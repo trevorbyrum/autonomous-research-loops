@@ -25,7 +25,12 @@ class RelationshipTest(acquisitions.DDLTest):
         self.x("INSERT INTO source_artifacts VALUES (?, ?, ?, ?, ?, ?, ?)", topic, work, version, digest or h("e"), invocation, operation, T)
 
     def observation(self, *, topic=TOPIC, invocation="inv_pppppppp", attempt=2):
-        self.x("INSERT INTO search_observations SELECT 'o2', ?, ?, request_identity, ?, lane, request, obligation_ids, started_at, ended_at, coverage_state, result_count, completeness, error_class, capability_fact_id, policy_version, cost_units, gateway_call_ref, page_outcome, continuation FROM search_observations WHERE observation_id = 'o1'", invocation, topic, attempt)
+        self.x("""INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt,
+            lane, request, obligation_ids, started_at, ended_at, coverage_state, result_count, completeness,
+            error_class, capability_fact_id, policy_version, cost_units, gateway_call_ref, page_outcome, continuation)
+            SELECT 'o2', ?, ?, request_identity, ?, lane, request, obligation_ids, started_at, ended_at, coverage_state,
+            result_count, completeness, error_class, capability_fact_id, policy_version, cost_units, gateway_call_ref,
+            page_outcome, continuation FROM search_observations WHERE observation_id = 'o1'""", invocation, topic, attempt)
 
     def event(self, *, observation="o1", topic=TOPIC, work="wrk_00000001"):
         self.x("INSERT INTO retrieval_events VALUES ('e2', ?, ?, 'rec-2', 1, ?)", observation, topic, T)

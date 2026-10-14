@@ -211,7 +211,7 @@ def check_screening(assessment: dict, protocol: dict, receipt: dict | None, spec
         raise Refusal("payload_invalid", f"{aid}: its receipt's spec is not for eligibility protocol version {version} (A10)")
 
 
-def check_observation(observation: dict, events: list[dict]) -> None:
+def check_observation(observation: dict, events: list[dict], *, request_bytes: bytes | None = None) -> None:
     """A10 and H-5: the request identity is the hash of the request (two
     different requests never share one); an observed result set's count is
     exactly the retrieval events captured with it, so no count stands without
@@ -222,7 +222,8 @@ def check_observation(observation: dict, events: list[dict]) -> None:
     (check_page_outcome): what an observation must carry to assert how a
     search ended."""
     oid = observation["observation_id"]
-    if canonical.logical_hash(observation["request"]) != observation["request_identity"]:
+    identity = canonical.logical_hash(observation["request"]) if request_bytes is None else canonical.bytes_digest(request_bytes)
+    if identity != observation["request_identity"]:
         raise Refusal("payload_invalid", f"{oid}: request_identity is not the hash of its request (H-5)")
     if observation["ended_at"] is not None and instant(observation["ended_at"]) < instant(observation["started_at"]):
         raise Refusal("payload_invalid", f"{oid}: it ended before it started")

@@ -18,7 +18,7 @@ kind, filters, cursors) — so it exists whether or not anything answered, and t
 different requests never share it. It holds nothing the answer said: not the gateway's
 echo of its effective request (a failure has none), not how the answer was delivered
 (dispatched, coalesced, from a cache, polled), not its durable-capture acknowledgement.
-`request_identity` is the engine's RFC 8785 hash of that document; `observation_id` and
+`request_identity` is the engine's RFC 8785 hash of that document (or the exact UTF-8 byte hash for a refused member-name domain, C-13 JSON2 part 1); `observation_id` and
 each `event_id` derive from the invocation, attempt and request identity, so recording
 the same observation again replays, and the same attempt answered another way is a
 conflict at the router — never a second observation of one attempt.
@@ -43,6 +43,8 @@ means "paged, and its end is not known" for a `find` and "does not page" for any
 say nothing else (task 2b-repair-13d). See `page_end`.
 """
 from __future__ import annotations
+
+import json
 
 import hashlib
 
@@ -185,7 +187,15 @@ def observation(entry: dict, *, request: dict, invocation_id: str, attempt: int,
     """{"observation", "retrieval_events"} for one validated lane entry. `request` is the
     engine's attempted-request document for this lane and page; its hash is the request identity.
     `capped`: the client's page cap ends the search at this page (page_end)."""
-    rid = canonical.logical_hash(request)
+    try:
+        canonical.canonical_bytes(request, member_domain=True)
+    except canonical.MemberNameError:
+        # These are the exact document bytes handed to the Router for retention.
+        request = json.dumps(request, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+        rid = canonical.bytes_digest(request.encode('utf-8'))
+        entry = unobserved(entry['source'], 'unknown', 'payload_invalid')
+    else:
+        rid = canonical.logical_hash(request)
     oid = "obs_" + _digest("observation", invocation_id, attempt, rid)
     observed = entry["completeness"] != "unobserved"
     seen: list[str] = []

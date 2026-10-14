@@ -280,6 +280,10 @@ class CaptureDDLTest(DDLTest):
             self.assertEqual(old.rows("SELECT status FROM claims"), [("accepted_support",)])
             before = {n: old.rows(f"SELECT * FROM {n} ORDER BY rowid") for n, in old.rows(
                 "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")}
+            # SQL 24 adds two nullable retained-byte fields; every original
+            # value/row must still match, and both added values must be NULL.
+            if 'request_bytes' not in [r[1] for r in old.rows('PRAGMA table_info(search_observations)')]:
+                before['search_observations'] = [(*row, None, None) for row in before['search_observations']]
             old.db.executescript(repair)  # disposable in-memory store only
             self.assertEqual({n: old.rows(f"SELECT * FROM {n} ORDER BY rowid") for n in before}, before)
             self.assertEqual(old.rows("PRAGMA foreign_key_check"), [])

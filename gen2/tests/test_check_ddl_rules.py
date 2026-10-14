@@ -121,7 +121,7 @@ class DdlRuleTest(unittest.TestCase):
 
     def test_domain_pending_disclosed(self):
         result = self.domain_check()
-        self.assertEqual(result.stdout.count('JSON member domain PENDING:'), 33)
+        self.assertEqual(result.stdout.count('JSON member domain PENDING:'), 30)
 
     def test_stored_value_not_excluded_as_derived(self):
         result = self.run_check(GUARDED.replace('v TEXT', 'value TEXT') +

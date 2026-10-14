@@ -71,11 +71,27 @@ in string values remains allowed. This first repair part covers extraction
 output/comparison references and `quote_checks.match_result`, with INSERT and
 UPDATE guards generated from one checked template. Router outcome admission
 and Store preparation refuse these names before logical serialization/writes;
-the matcher emits fixed result names. The static DDL check reports all 33
-remaining columns by name, owned by repair part 2, and refuses uncovered new
-columns. Other entry points adopt the rule with that part's exact-byte retention
-for incompatible attempted requests, preserving their denominator. SQL 21's
-span/numeral domain remains intact. Retained provider/artifact BLOBs stay raw.
+the matcher emits fixed result names. JSON2 part 1 adds both guards on the
+three search_observations JSON columns. Its Observations collaborator in
+observations.py admits logical names before hashing, through the same Router
+transaction and existing capability/lease fences; service.py supplies only
+construction and public delegation. ObservationCore declares the schema,
+transaction and existing observation-write members it uses. The composition
+tests include this collaborator. Refused attempted-request text is retained as
+exact UTF-8 bytes plus their SHA-256, alongside an explicit logical byte
+reference, in the existing failed-attempt ledger. Router and Store recompute
+the byte hash; raw DDL binds its labels and failed/unobserved shape, without
+claiming raw SQL proves SHA-256 truth. Replay compares the bytes; accounting
+counts these observations with an unknown result count and no decoded page.
+The client emits the text/byte-hash representation for refused request names.
+Other callers with original octets supply their unchanged UTF-8 text; an
+already parsed object cannot prove an earlier byte spelling. No original key
+or octet is rewritten or dropped. The static DDL check reports the remaining
+30 columns by name, owned by 2d-4b3e1-json2 part 2; global admission of the
+other entry points/confidence labels/open maps remains pending. SQL 21's
+receipt uniqueness is not yet redundant because that column remains pending;
+its span-shape/numeral guarantees remain necessary after the eventual rollout.
+Retained provider/artifact/request BLOBs stay raw.
 
 SQL 16 and SQL 19 (2d-4b3c2) cap every receipt method/verdict at its
 consumed acquisition's recorded content: the selected record's nonblank abstract

@@ -177,7 +177,13 @@ class ContractWorld(RouterTestCase):
             # test exercises pin compatibility, not capture authentication.
             raw = b'{"records":[{"identity":"rec-full","kind":"full_text","text":"Fixture full text"}]}'
             ref = self.artifact(raw, "application/json")
-            self.x("INSERT INTO search_observations SELECT 'obs_support001', invocation_id, topic_id, request_identity, 2, lane, request, obligation_ids, started_at, ended_at, 'searched_ok', 1, completeness, error_class, capability_fact_id, policy_version, cost_units, gateway_call_ref, page_outcome, continuation FROM search_observations WHERE observation_id = 'obs_000000000001'")
+            self.x("""INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt,
+                lane, request, obligation_ids, started_at, ended_at, coverage_state, result_count, completeness,
+                error_class, capability_fact_id, policy_version, cost_units, gateway_call_ref, page_outcome, continuation)
+                SELECT 'obs_support001', invocation_id, topic_id, request_identity, 2, lane, request, obligation_ids,
+                started_at, ended_at, 'searched_ok', 1, completeness, error_class, capability_fact_id, policy_version,
+                cost_units, gateway_call_ref, page_outcome, continuation FROM search_observations
+                WHERE observation_id = 'obs_000000000001'""")
             self.x("INSERT INTO retrieval_events VALUES ('rev_support001', 'obs_support001', ?, 'rec-full', 1, '2026-09-27T10:00:00Z')", TOPIC)
             self.x("INSERT INTO record_work_links VALUES ('rev_support001', 'wrk_00000001', 'dedup-1', '2026-09-27T10:00:00Z')")
             payload = {**empty_outcome("inv_research01", "interim_transition"), "source_artifacts": [

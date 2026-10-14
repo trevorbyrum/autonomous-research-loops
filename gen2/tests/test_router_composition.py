@@ -8,7 +8,7 @@ import inspect
 import unittest
 from pathlib import Path
 
-from gen2.router import acquisitions, amendments, assessments, capabilities, evidence_writer, lifecycle, registries, scheduling, service, status, verification
+from gen2.router import acquisitions, amendments, assessments, capabilities, evidence_writer, lifecycle, observations, registries, scheduling, service, status, verification
 from gen2.tests.router_fixtures import RouterTestCase
 
 COLLABORATORS = ((status, status.Status, status.StatusCore, "_status"), (capabilities, capabilities.Capabilities, capabilities.CapabilityCore, "_capabilities"),
@@ -17,7 +17,8 @@ COLLABORATORS = ((status, status.Status, status.StatusCore, "_status"), (capabil
                  (evidence_writer, evidence_writer.EvidenceWriter, evidence_writer.EvidenceCore, "_evidence_writer"),
                  (assessments, assessments.Assessments, assessments.AssessmentCore, "_assessments"),
                  (verification, verification.Verification, verification.VerificationCore, "_verification"),
-                 (acquisitions, acquisitions.AcquisitionAdmission, acquisitions.AcquisitionCore, "_acquisitions"))
+                 (acquisitions, acquisitions.AcquisitionAdmission, acquisitions.AcquisitionCore, "_acquisitions"),
+                 (observations, observations.Observations, observations.ObservationCore, "_observations"))
 PUBLIC_API = {  # Router's public methods at be5b2f1 plus intentional additions (evidence_inventory, task 2c-2a)
     "ack_delivery", "activate_config_bundle", "admit_reaccess", "apply_operator_decision", "claim", "close", "close_brief", "commit_outcome", "config_bundle", "create_topic", "draft_contract",
     "candidate_units", "coverage_snapshot", "evidence_inventory", "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",

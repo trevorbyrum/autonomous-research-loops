@@ -240,6 +240,13 @@ class Store:
             raise StoreWriteError("an insert names at least one column")
         prepared = {column: self._prepare(table, column, value) for column, value in row.items()}
         self._check_hash_contract(table, prepared)
+        if table == 'search_observations' and prepared.get('request_bytes') is not None:
+            try:
+                digest = canonical.bytes_digest(prepared['request_bytes'])
+            except TypeError as exc:
+                raise StoreWriteError(str(exc)) from exc
+            if digest != prepared.get('request_bytes_hash'):
+                raise StoreWriteError('attempted-request byte hash mismatch')
         self._conn.execute(f"INSERT INTO {table} ({', '.join(prepared)}) VALUES ({', '.join('?' for _ in prepared)})", list(prepared.values()))
 
     def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object], *, expect: Mapping[str, object] | None = None) -> None:

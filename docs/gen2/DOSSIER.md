@@ -1579,3 +1579,96 @@ from the six affected families killed, including 22 new separately paired
 inventory mutants; all eight static Make gates. No dependency/environment
 refresh or further guard rollout. Completion and full logs are in the evidence
 directory above; part 2 still owns the same 33 pending columns.
+
+### 2d-4b3e1-json2: attempted-request retention and continued domain rollout
+
+**Design and re-estimate before code, 2026-10-14.** The accepted SQL 23
+template and repair-2 exhaustive catalog classification remain the mechanism.
+The operator's rulings authorize NUL-free logical member names, including
+open maps, while every failed attempt remains recorded with its exact refused
+request bytes and their hash. Read the two preceding repair designs, SQL 21/23,
+the generator/manifest/checker, and the named flow S4 step 8, adjudication
+resolution 5/K-A2 and methodology sections 3–4. Extraction authority and the
+caller-declared identity prerequisite remain unchanged.
+
+The earlier 560-line estimate undercounts retention representation, replay,
+Store hash truth, client hand-off and paired coverage. Revised estimate:
+**about 900 handwritten lines** plus generated SQL/control/catalog data and
+documentation. **Part 1 about 490**: observation collaborator/wiring and raw
+request hand-off 130 (including the existing observation admission moved out
+of service.py), additive retention DDL and Store byte/hash check 55, isolated
+Router/Store/raw-DDL/readback/replay/rollback tests 220, predicate mutants and
+inventory/composition adjustments 85. Stop after part 1. **Part 2 about 410**:
+global Router/Store admission and confidence/open-map cases 80, remaining-table
+raw controls 235, paired guards and final inventory removal 95. Re-estimate
+part 2 at dispatch; do not silently enlarge this part.
+
+Part 1 adds nullable `request_bytes` BLOB and `request_bytes_hash` scalar TEXT
+to search_observations through ordered additive SQL 24. Existing rows keep
+NULLs. The observation command accepts the attempted-request document either
+as its existing object or as exact UTF-8 JSON text. The client emits text and a
+byte digest when the member domain refuses its request. The Router validates
+logical requests before hashing; refused text is retained without changing a
+byte, including whitespace, escape spellings and duplicate names. A typed
+member-name error distinguishes this refusal from other canonical errors.
+The existing request column then contains an explicit retained-byte reference
+and the request-type discriminator, never a representation claiming to be the
+original request. The original is wholly present in the BLOB. Only a failed,
+unobserved, payload_invalid attempt with no retrieval events can use this path;
+it can confer no acquisition or support authority. request_identity is its
+exact byte hash on this path, and remains the existing JCS hash otherwise.
+The Router and Store recompute byte hash truth; raw DDL binds the reference,
+identity and failure shape but cannot establish SHA-256 truth on its own.
+Replay compares the bytes too; no second attempt is created by redelivery.
+
+Install generated INSERT and UPDATE domain guards for search_observations
+request, obligation_ids and continuation only after that writer handles refused
+requests and normalizes the rest with the member domain. Store preparation
+already discovers covered columns and refuses them before serialization.
+All 30 other pending entries are reassigned explicitly to
+**2d-4b3e1-json2 part 2** in the checked manifest. This part does not claim
+global admission or completion. SQL 21 is byte-unchanged: its receipt uniqueness
+is **not yet redundant**, since verification_receipts.receipt remains pending;
+it will be redundant when that column is covered, while its span-shape and
+preserved-numeral guarantees remain necessary and unchanged.
+
+Re-review every stored column and JSON consumer against the complete ordered
+DDL and SQLite catalog after each schema change. Existing 36 JSON and 488
+scalar TEXT identities remain classified; the new byte hash is scalar TEXT,
+and only the exact new BLOB identity joins the retained-byte exclusions.
+Explicitly update both reviewed hashes, never via the generator. Retain the
+classification review and old/new hashes in evidence. Validate the new table
+coverage with literal/escaped duplicate names and top-level/nested NUL names,
+INSERT/UPDATE paired controls readable through Store.select, exact raw readback
+and SHA-256, failed-attempt inventory, replay/conflict and rollback. Add
+separately paired mutants for each new guard and retention predicate.
+
+Before committing run full make gen2-test, trigger-order, composition, all
+edited-file and transitive-fixture mutant families with --only, and all eight
+requested static gates. Before heavy runs verify no gen2-landing-* unit is
+active; never refresh the environment during mutants, use a real database,
+call providers, touch the live gateway, or merge main. Evidence belongs in
+/home/trevor/work/research-loops-public/private/evidence/2d-4b3e1-json2/.
+
+**Part 1 implemented; stop here.** 486 handwritten added lines (33 removed),
+plus 96 generated SQL lines, catalog/control data and documentation. The
+observation ledger now retains refused request text as exact UTF-8 bytes and
+its SHA-256; the Router returns a typed logical-request refusal alongside the
+recorded attempt. Store admission checks byte hash truth. Normal request
+identities remain JCS. Accounting retains these failed observations without
+asserting a decoded page. The client emits the raw-text hand-off for NUL names.
+Six JSON columns are covered; all thirty remaining manifest entries explicitly
+belong to **2d-4b3e1-json2 part 2**. Global admission and the final rollout remain
+incomplete. SQL 21 is unchanged and its receipt uniqueness is not yet redundant.
+The classification review confirms 36 JSON / 6 covered / 30 pending and 489
+scalar TEXT columns, with both hashes explicitly repinned. Existing positional
+observation-copy fixtures now name their original columns. The disposable
+upgrade proof compares all original values and both newly added NULL fields.
+Validation and final commit details are retained in evidence/COMPLETION.md.
+The full 3,543-test suite passes with two existing skips; 241 reversed triggers
+produce identical outcomes for 2,931 store tests/subtests. All 2,621 required
+mutants are killed, including the 25 new separately paired cases, after a
+130-case corrected rerun. The full composition module and all eight static
+gates pass (metrics checked on a committed disposable snapshot before the
+gen2 commit, then on gen2). No dependency refresh, provider call, live gateway
+access, real-database migration, protected-register edit or main merge occurred.

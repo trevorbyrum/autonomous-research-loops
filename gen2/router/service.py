@@ -63,6 +63,7 @@ from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
 from gen2.router.evidence_writer import EvidenceWriter
 from gen2.router.extractions import ExtractionRecords
 from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle, is_episode_hold
+from gen2.router.observations import Observations
 from gen2.router.registries import REGISTRY_COMMANDS, Registries
 from gen2.router.scheduling import SCHEDULING_COMMANDS, Scheduling
 from gen2.router.schemas import SchemaSet
@@ -123,7 +124,7 @@ COMMANDS = {  # the router's own request shapes (commands, not stored documents)
                                  "cost_units", "gateway_call_ref", "page_outcome", "continuation"],
                     "properties": {
                         "observation_id": {"type": "string", "pattern": "^obs_[A-Za-z0-9_-]{8,64}$"},
-                        "request": {"type": "object"}, "request_identity": {"$ref": "common.schema.json#/$defs/sha256"},
+                        "request": {"type": ["object", "string"]}, "request_identity": {"$ref": "common.schema.json#/$defs/sha256"},
                         "attempt": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}, "lane": _ID,
                         "obligation_ids": {"type": "array", "maxItems": 100, "uniqueItems": True, "items": {"$ref": "common.schema.json#/$defs/local_id"}},
                         "started_at": _TS, "ended_at": {"oneOf": [{"type": "null"}, _TS]},
@@ -231,6 +232,7 @@ class Router:
         self._gateway_captures = gateway_captures
         self._acquisitions = AcquisitionAdmission(self)
         self._extractions = ExtractionRecords(self)
+        self._observations = Observations(self)
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
@@ -756,13 +758,7 @@ class Router:
 
     # -- observations ----------------------------------------------------------
     def record_observation(self, request: Mapping) -> dict:
-        try:
-            req = boundary.normalize(request, "request_invalid")
-            boundary.require_schema(self._schemas, req, "router-commands#/$defs/observation", "request_invalid")
-            boundary.check_observation(req["observation"], req["retrieval_events"])
-            return self._guarded("payload_invalid", lambda now: self._observation_in_transaction(req, now))
-        except Refusal as refusal:
-            return {"status": "refused", "reason": refusal.reason, "detail": _short(refusal.detail)}
+        return self._observations.record_observation(request)
 
     def _observation_in_transaction(self, req: dict, now: str) -> dict:
         obs, events = req["observation"], req["retrieval_events"]

@@ -8,8 +8,8 @@ from pathlib import Path
 
 MANIFEST = "tools/gen2_json_member_domain.json"
 OUTPUT = "gen2/store/schema/23-json-member-domain.sql"
-OWNER = "2d-4b3e1-repair-1 part 2"
-RETAINED_BYTES = {'source_acquisitions.request_bytes', 'source_acquisitions.response_bytes'}
+OWNER = "2d-4b3e1-json2 part 2"
+RETAINED_BYTES = {'source_acquisitions.request_bytes', 'source_acquisitions.response_bytes', 'search_observations.request_bytes'}
 
 
 def guard(table, column, event):

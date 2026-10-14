@@ -127,6 +127,7 @@ from gen2_mutants import MUTATIONS, SECOND_LAYER, SECOND_LAYER_TRIGGERS, Mutatio
 # ("disk",): a file only children run (a script started by path); the
 # mutant exists only in the child tree.
 FILE_TARGETS = {
+    "gen2/router/observations.py": ("module", "gen2.router.observations", "gen2.router.service", "gen2.tests.router_fixtures"),
     "tools/gen2_json_member_domain.py": ("disk",),
     "gen2/router/extractions.py": ("module", "gen2.router.extractions", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/router/acquisitions.py": ("module", "gen2.router.acquisitions", "gen2.router.service", "gen2.tests.router_fixtures"),
@@ -139,7 +140,7 @@ FILE_TARGETS = {
     "tools/check_gen2_schemas.py": ("attr", "test_check_ddl_rules", "CHECKER"),
     "gen2/core/instants.py": ("module", "gen2.core.instants"),
     "gen2/core/canonical.py": ("module", "gen2.core.canonical", "gen2.router.boundary", "gen2.router.lifecycle", "gen2.router.registries", "gen2.router.amendments",
-                               "gen2.router.scheduling", "gen2.router.capabilities", "gen2.router.evidence_writer", "gen2.router.verification", "gen2.router.service", "gen2.tests.router_fixtures",
+                               "gen2.router.scheduling", "gen2.router.capabilities", "gen2.router.evidence_writer", "gen2.router.verification", "gen2.router.observations", "gen2.router.service", "gen2.tests.router_fixtures",
                                "gen2.gateway_client.observe", "gen2.gateway_client.client"),   # capabilities, observe: gateway_fact_id (2b-repair-2)
     "gen2/store/compat.py": ("module", "gen2.store.compat"),
     "gen2/store/db.py": ("module", "gen2.store.db"),
@@ -169,7 +170,7 @@ FILE_TARGETS = {
     "gen2/router/service.py": ("module", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/router/verification.py": ("module", "gen2.router.verification", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/router/boundary.py": ("module", "gen2.router.boundary", "gen2.router.lifecycle", "gen2.router.registries", "gen2.router.amendments",
-                                "gen2.router.scheduling", "gen2.router.evidence_writer", "gen2.router.service", "gen2.tests.router_fixtures"),
+                                "gen2.router.scheduling", "gen2.router.evidence_writer", "gen2.router.observations", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/router/schemas.py": ("attr", "test_router_schemas", "VALIDATOR"),  # the oracle tool loads the mutated copy
     # task 1d: the router's mixins (their dependents reloaded after them), and the composition root
     "gen2/router/registries.py": ("module", "gen2.router.registries", "gen2.router.service", "gen2.app.station", "gen2.tests.router_fixtures"),
@@ -193,7 +194,7 @@ FILE_TARGETS = {
     "gen2/supervisor/probe.py": ("module", "gen2.supervisor.probe", "gen2.app.station", "gen2.app.engine", "gen2.tests.operator_fixtures"),
     # task 2b-repair-13d: the page vocabulary and cursor domain the client and the router both read; their dependents are reloaded after it
     "gen2/core/pagination.py": ("module", "gen2.core.pagination", "gen2.gateway_client.observe", "gen2.gateway_client.client", "gen2.router.boundary",
-                                "gen2.router.lifecycle", "gen2.router.registries", "gen2.router.amendments", "gen2.router.scheduling", "gen2.router.service",
+                                "gen2.router.lifecycle", "gen2.router.registries", "gen2.router.amendments", "gen2.router.scheduling", "gen2.router.observations", "gen2.router.service",
                                 "gen2.tests.router_fixtures"),
     # task 2b: the engine's gateway client; the client module binds names from observe, so it is reloaded after it
     "gen2/gateway_client/observe.py": ("module", "gen2.gateway_client.observe", "gen2.gateway_client.client"),

@@ -96,7 +96,12 @@ class ContentDDLTest(relationships.RelationshipTest):
 
     def observation2(self, *, invocation="inv_pppppppp", lane="crossref", call="gw-call:1", coverage="searched_ok"):
         request = FIND_REQUEST.replace("crossref", lane)
-        self.x("INSERT INTO search_observations SELECT 'o2', ?, topic_id, request_identity, 2, ?, ?, obligation_ids, started_at, ended_at, ?, result_count, completeness, error_class, capability_fact_id, policy_version, cost_units, ?, page_outcome, continuation FROM search_observations WHERE observation_id = 'o1'",
+        self.x("""INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt,
+            lane, request, obligation_ids, started_at, ended_at, coverage_state, result_count, completeness,
+            error_class, capability_fact_id, policy_version, cost_units, gateway_call_ref, page_outcome, continuation)
+            SELECT 'o2', ?, topic_id, request_identity, 2, ?, ?, obligation_ids, started_at, ended_at, ?, result_count,
+            completeness, error_class, capability_fact_id, policy_version, cost_units, ?, page_outcome, continuation
+            FROM search_observations WHERE observation_id = 'o1'""",
             invocation, lane, request, coverage, call)
         return dict(observation_id="o2", acquired_by_invocation_id=invocation, attempt=2, lane=lane,
             gateway_call_ref=call, request_bytes=request.encode())

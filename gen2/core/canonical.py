@@ -43,11 +43,15 @@ class CanonicalizationError(ValueError):
     """The value cannot be hashed as logical JSON without losing meaning."""
 
 
+class MemberNameError(CanonicalizationError):
+    """A refused logical member name; attempted bytes may still be retained."""
+
+
 def _reject_duplicates(pairs: list[tuple[str, object]]) -> dict:
     out: dict = {}
     for key, value in pairs:
         if key in out:
-            raise CanonicalizationError(f"duplicate object key {key!r}")
+            raise MemberNameError(f"duplicate object key {key!r}")
         out[key] = value
     return out
 
@@ -114,7 +118,7 @@ def _validate(value: object, path: str = "$", *, member_domain: bool = False) ->
             if not isinstance(key, str):
                 raise CanonicalizationError(f"{path}: object key {key!r} is not a string")
             if member_domain and '\0' in key:
-                raise CanonicalizationError(f"{path}: NUL in object member name {key!r}")
+                raise MemberNameError(f"{path}: NUL in object member name {key!r}")
             _validate(key, f"{path}.<key>")
             _validate(item, f"{path}.{key}", member_domain=member_domain)
         return

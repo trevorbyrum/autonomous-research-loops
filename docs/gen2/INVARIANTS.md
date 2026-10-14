@@ -103,10 +103,19 @@ refuse incompatible names before logical hashing/writing. Rollout in
 2d-4b3e1-repair-1 part 1 enables member-domain normalization on outcome
 payloads and Store preparation on the three SQL 23 guarded columns:
 `code: source_extractions.output_ref`, `code: extraction_validations.comparison_evidence_ref`
-and `code: quote_checks.match_result`. The other 33 columns remain explicitly pending
-under that repair's part 2 static-check manifest. That part must retain exact
-raw attempted-request bytes and their hash before enabling global refusal,
-including contract confidence-scheme labels and every admitted open map.
+and `code: quote_checks.match_result`. JSON2 part 1 additionally covers all
+three search_observations JSON columns and its Router admission. A refused
+attempted-request document supplied as exact UTF-8 text is retained wholly in
+request_bytes with its byte SHA-256 in request_bytes_hash and request_identity;
+the logical request field is an explicit retained-byte reference. The Router
+and Store check the hash; only failed, unobserved payload_invalid attempts
+use this representation. They remain in the same observation denominator;
+accounting derives no decoded page from the reference. The client emits this
+text/byte-identity hand-off for requests with refused member names. Normal
+requests keep their JCS identities. The other 30 columns remain explicitly
+pending under 2d-4b3e1-json2 part 2 in the static-check manifest. Global
+admission, including contract confidence-scheme labels and every other open
+map, remains that next part's obligation.
 Incompatible requests must still be recorded as attempts; no name is renamed,
 truncated or dropped. Raw retained byte hashes remain separate from JCS hashes.
 

@@ -115,9 +115,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_out
 - location: engine:gen2/router/service.py
-- limit: 19
-- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core. Task 2d-4b2 adds one acquisition admission collaborator (17 to 18) and only constructor/schema/public-delegate wiring. Task 2d-4b3e1 adds one ExtractionRecords collaborator (18 to 19), with only construction, authentication/write delegation and audit-result wiring.
-- task: 2d-4b3e1
+- limit: 20
+- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core. Task 2d-4b2 adds one acquisition admission collaborator (17 to 18) and only constructor/schema/public-delegate wiring. Task 2d-4b3e1 adds one ExtractionRecords collaborator (18 to 19), with only construction, authentication/write delegation and audit-result wiring. JSON2 adds one Observations collaborator (19 to 20), moving observation admission out of service.py and retaining its existing transaction writer.
+- task: 2d-4b3e1-json2
 
 ### ML-0014
 - action: admit
@@ -183,9 +183,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/router/boundary.py
-- limit: 11
-- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority. Task 2d-4b3e1 adds one caller (10 to 11), reusing the existing staged-artifact authentication and typed refusal paths.
-- task: 2d-4b3e1
+- limit: 12
+- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority. Task 2d-4b3e1 adds one caller (10 to 11), reusing the existing staged-artifact authentication and typed refusal paths. JSON2 adds Observations (11 to 12), reusing normalization and observation checks before the existing writer transaction.
+- task: 2d-4b3e1-json2
 
 ### ML-0025
 - action: budget
@@ -507,9 +507,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/core/canonical.py
-- limit: 17
-- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity, and 2d-4b added the pure acquisition validator (15 to 16). Task 2d-4b2 adds the admission adapter (16 to 17), comparing trusted attempted-request octets with the existing canonical serializer; no second hashing or serialization mechanism.
-- task: 2d-4b2
+- limit: 18
+- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity, and 2d-4b added the pure acquisition validator (15 to 16). Task 2d-4b2 adds the admission adapter (16 to 17), comparing trusted attempted-request octets with the existing canonical serializer; no second hashing or serialization mechanism. JSON2 adds Observations (17 to 18), using the same logical-member checks and exact-byte SHA-256 helper.
+- task: 2d-4b3e1-json2
 
 ### ML-0078
 - action: admit
@@ -720,3 +720,83 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - target: engine|edge|gen2/router/extractions.py->gen2/router/boundary.py
 - reason: ExtractionRecords directly imports the existing staged-artifact authenticator and Refusal vocabulary for C-9 admission outside the writer lock.
 - task: 2d-4b3e1
+
+### ML-0113
+- action: admit
+- target: engine|edge|gen2/router/observations.py->gen2/core/canonical.py
+- reason: The observation admission collaborator uses the existing canonical member-domain parser and exact-byte SHA-256 helper; no new hashing contract.
+- task: 2d-4b3e1-json2
+
+### ML-0114
+- action: admit
+- target: engine|edge|gen2/router/observations.py->gen2/core/pagination.py
+- reason: The failed retained-request descriptor uses the existing closed request-type vocabulary; it grants no acquisition or support authority.
+- task: 2d-4b3e1-json2
+
+### ML-0115
+- action: admit
+- target: engine|edge|gen2/router/observations.py->gen2/router/boundary.py
+- reason: The collaborator reuses Router schema/refusal/observation checks before the existing fenced transaction.
+- task: 2d-4b3e1-json2
+
+### ML-0116
+- action: admit
+- target: engine|edge|gen2/router/service.py->gen2/router/observations.py
+- reason: Service imports only construction and public observation delegation; the existing transactional observation writer stays in the core.
+- task: 2d-4b3e1-json2
+
+### ML-0117
+- action: admit
+- target: engine|file|gen2/router/observations.py
+- reason: Observations moves admission out of service.py and owns attempted-byte retention validation, with no store, network or transaction authority of its own.
+- task: 2d-4b3e1-json2
+
+### ML-0118
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/observations.py
+- reason: Engine reaches observation admission through its existing Router; no new app import or write path.
+- task: 2d-4b3e1-json2
+
+### ML-0119
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/observations.py
+- reason: Station reaches observation admission through its existing Router; no new app import or write path.
+- task: 2d-4b3e1-json2
+
+### ML-0120
+- action: admit
+- target: engine|reach|gen2/router/observations.py->gen2/core/canonical.py
+- reason: The collaborator reaches the existing canonical member-name validation and byte-hash helpers.
+- task: 2d-4b3e1-json2
+
+### ML-0121
+- action: admit
+- target: engine|reach|gen2/router/observations.py->gen2/core/instants.py
+- reason: The collaborator reaches timestamp validation transitively through existing boundary checks; it reads no clock itself.
+- task: 2d-4b3e1-json2
+
+### ML-0122
+- action: admit
+- target: engine|reach|gen2/router/observations.py->gen2/core/pagination.py
+- reason: The collaborator reaches the established pagination vocabulary for a failed-attempt label only.
+- task: 2d-4b3e1-json2
+
+### ML-0123
+- action: admit
+- target: engine|reach|gen2/router/observations.py->gen2/router/boundary.py
+- reason: The collaborator reaches existing schema and typed-refusal validation under Router authority.
+- task: 2d-4b3e1-json2
+
+### ML-0124
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/observations.py
+- reason: Router reaches its narrow observation admission collaborator through thin construction/delegation.
+- task: 2d-4b3e1-json2
+
+### ML-0125
+- action: budget
+- metric: fan_in
+- location: engine:gen2/core/pagination.py
+- limit: 5
+- reason: Observations adds one caller of the closed request-type vocabulary (4 to 5); no additional pagination algorithm or authority.
+- task: 2d-4b3e1-json2

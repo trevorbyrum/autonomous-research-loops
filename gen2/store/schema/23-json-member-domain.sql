@@ -64,6 +64,102 @@ BEGIN
 END;
 
 -- trace: INVARIANTS C-13; RFC 7493 section 2.3; DOSSIER 2d-4b3e1-repair-1.
+CREATE TRIGGER member_domain_search_observations_continuation_i
+BEFORE INSERT ON search_observations
+WHEN NEW.continuation IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'JSON member domain: invalid JSON')
+  WHERE NOT json_valid(NEW.continuation);
+  SELECT RAISE(ABORT, 'JSON member domain: duplicate names')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.continuation) THEN NEW.continuation ELSE 'null' END)
+    WHERE typeof(key) = 'text'
+    GROUP BY parent, key COLLATE BINARY HAVING count(*) > 1);
+  SELECT RAISE(ABORT, 'JSON member domain: NUL name')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.continuation) THEN NEW.continuation ELSE 'null' END)
+    WHERE typeof(key) = 'text' AND instr(CAST(key AS BLOB), x'00') > 0);
+END;
+
+-- trace: INVARIANTS C-13; RFC 7493 section 2.3; DOSSIER 2d-4b3e1-repair-1.
+CREATE TRIGGER member_domain_search_observations_continuation_u
+BEFORE UPDATE ON search_observations
+WHEN NEW.continuation IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'JSON member domain: invalid JSON')
+  WHERE NOT json_valid(NEW.continuation);
+  SELECT RAISE(ABORT, 'JSON member domain: duplicate names')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.continuation) THEN NEW.continuation ELSE 'null' END)
+    WHERE typeof(key) = 'text'
+    GROUP BY parent, key COLLATE BINARY HAVING count(*) > 1);
+  SELECT RAISE(ABORT, 'JSON member domain: NUL name')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.continuation) THEN NEW.continuation ELSE 'null' END)
+    WHERE typeof(key) = 'text' AND instr(CAST(key AS BLOB), x'00') > 0);
+END;
+
+-- trace: INVARIANTS C-13; RFC 7493 section 2.3; DOSSIER 2d-4b3e1-repair-1.
+CREATE TRIGGER member_domain_search_observations_obligation_ids_i
+BEFORE INSERT ON search_observations
+WHEN NEW.obligation_ids IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'JSON member domain: invalid JSON')
+  WHERE NOT json_valid(NEW.obligation_ids);
+  SELECT RAISE(ABORT, 'JSON member domain: duplicate names')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.obligation_ids) THEN NEW.obligation_ids ELSE 'null' END)
+    WHERE typeof(key) = 'text'
+    GROUP BY parent, key COLLATE BINARY HAVING count(*) > 1);
+  SELECT RAISE(ABORT, 'JSON member domain: NUL name')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.obligation_ids) THEN NEW.obligation_ids ELSE 'null' END)
+    WHERE typeof(key) = 'text' AND instr(CAST(key AS BLOB), x'00') > 0);
+END;
+
+-- trace: INVARIANTS C-13; RFC 7493 section 2.3; DOSSIER 2d-4b3e1-repair-1.
+CREATE TRIGGER member_domain_search_observations_obligation_ids_u
+BEFORE UPDATE ON search_observations
+WHEN NEW.obligation_ids IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'JSON member domain: invalid JSON')
+  WHERE NOT json_valid(NEW.obligation_ids);
+  SELECT RAISE(ABORT, 'JSON member domain: duplicate names')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.obligation_ids) THEN NEW.obligation_ids ELSE 'null' END)
+    WHERE typeof(key) = 'text'
+    GROUP BY parent, key COLLATE BINARY HAVING count(*) > 1);
+  SELECT RAISE(ABORT, 'JSON member domain: NUL name')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.obligation_ids) THEN NEW.obligation_ids ELSE 'null' END)
+    WHERE typeof(key) = 'text' AND instr(CAST(key AS BLOB), x'00') > 0);
+END;
+
+-- trace: INVARIANTS C-13; RFC 7493 section 2.3; DOSSIER 2d-4b3e1-repair-1.
+CREATE TRIGGER member_domain_search_observations_request_i
+BEFORE INSERT ON search_observations
+WHEN NEW.request IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'JSON member domain: invalid JSON')
+  WHERE NOT json_valid(NEW.request);
+  SELECT RAISE(ABORT, 'JSON member domain: duplicate names')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.request) THEN NEW.request ELSE 'null' END)
+    WHERE typeof(key) = 'text'
+    GROUP BY parent, key COLLATE BINARY HAVING count(*) > 1);
+  SELECT RAISE(ABORT, 'JSON member domain: NUL name')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.request) THEN NEW.request ELSE 'null' END)
+    WHERE typeof(key) = 'text' AND instr(CAST(key AS BLOB), x'00') > 0);
+END;
+
+-- trace: INVARIANTS C-13; RFC 7493 section 2.3; DOSSIER 2d-4b3e1-repair-1.
+CREATE TRIGGER member_domain_search_observations_request_u
+BEFORE UPDATE ON search_observations
+WHEN NEW.request IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'JSON member domain: invalid JSON')
+  WHERE NOT json_valid(NEW.request);
+  SELECT RAISE(ABORT, 'JSON member domain: duplicate names')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.request) THEN NEW.request ELSE 'null' END)
+    WHERE typeof(key) = 'text'
+    GROUP BY parent, key COLLATE BINARY HAVING count(*) > 1);
+  SELECT RAISE(ABORT, 'JSON member domain: NUL name')
+  WHERE EXISTS (SELECT 1 FROM json_tree(CASE WHEN json_valid(NEW.request) THEN NEW.request ELSE 'null' END)
+    WHERE typeof(key) = 'text' AND instr(CAST(key AS BLOB), x'00') > 0);
+END;
+
+-- trace: INVARIANTS C-13; RFC 7493 section 2.3; DOSSIER 2d-4b3e1-repair-1.
 CREATE TRIGGER member_domain_source_extractions_output_ref_i
 BEFORE INSERT ON source_extractions
 WHEN NEW.output_ref IS NOT NULL
