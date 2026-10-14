@@ -1250,6 +1250,62 @@ eight task Make gates. Before each mutant run wait for no active
 during mutation. No provider calls, live gateway, real database migration or
 main merge. Evidence: `/home/trevor/work/research-loops-public/private/evidence/2d-4b3e/`.
 
+### 2d-4b3e2: registry first (design and re-estimate before code, 2026-10-14)
+
+The two operator rulings supersede the historical identity-label policy above.
+Re-estimate: **about 970 handwritten lines**, split into **part 1 about 495**
+(additive registry DDL 85, registry collaborator/operator wiring 105, extraction
+admission/schema/fixture compatibility 55, Router/raw/operator tests 185,
+predicate mutants 65), then **part 2 about 475** for successor records and
+both receipt consumers, their isolated controls and receipt-fixture migration.
+Documentation and generated controls are additional. This dispatch implements
+only part 1 and stops. SQL 17 replacement remains a separate following task.
+
+Part 1 introduces empty-by-default, immutable registry snapshots with an exact
+integer revision and canonical lower-case ASCII tool identities and families.
+The authenticated operator command supplies operator identity; an immutable
+audit event retains the reason and complete approved tool/family mapping.
+Registry revisions and entries must match that audit event in raw DDL.
+Revision replay is identical-content only; changes require a new increasing
+revision and another audit. No outcome can write registry entries. The Router
+checks exact membership, without trimming, case folding or alias resolution;
+an additive nullable extraction revision column keeps historical rows readable
+while every new extraction must pin a registered tool in a specific snapshot.
+Snapshots never relabel old extraction records. These checks bind declarations;
+actual execution identity checking remains station work in 2e2.
+
+**Successor policy definition: extraction-validation/2.** Independence requires
+all SQL 22 acquisition, verifier, producer separation and retained-artifact
+bindings, plus unequal **registered families**, read using each extraction's
+immutable registry revision. Different identities or versions within one
+family cannot establish independence. Its closed methods are
+`independent_extraction` and `same_family_replay`; both operands must have
+registered tools. Same-family replay requires equal registered families and
+permits only byte equality or disagreement, with no semantic-agreement result.
+It is integrity only, regardless of tool identity or version within the family;
+the successor must retain its independent output and comparison evidence and
+must not expose replay as method success. Success additionally requires
+`succeeded` with `byte_equal` (equal output hashes) or attributed
+`semantic_agreement`; semantic correctness is never store-proven. Historical
+`/1` remains readable and never becomes receipt/support authority. Part 1
+defines this policy; it does not install `/2` validation records or consumers.
+Part 2 must use additive successor records because SQL 22's immutable `/1`
+table has a fixed policy CHECK; it must refuse invented, failed, same-family,
+foreign and `/1`-only receipt bases in Router and raw DDL, audit every positive
+extraction receipt fixture and retain all SQL 21 member/span predicates.
+
+No new JSON columns are planned in part 1: the complete approval uses the
+already classified and guarded audit-event detail. Recheck the closed JSON
+inventory and repin its DDL hashes after additive SQL. Test registry authority,
+canonical identities, membership, revision binding, immutable readback,
+replay/conflict and atomic rollback, with predicate-level paired mutants.
+Run the full test/order/composition suites, every edited-target and transitive
+shared-fixture mutant family, and all eight required Make gates. Before heavy
+runs wait for no active gen2-landing-* unit; disposable snapshots copy the
+venv, never symlink or refresh it during mutants. No provider, live gateway,
+real-database migration or main merge. Evidence:
+`/home/trevor/work/research-loops-public/private/evidence/2d-4b3e2/`.
+
 ### 2d-4b3e1-repair-1: store-wide JSON member domain (design before code; stopped)
 
 Design against `250e2fca69a2ec499b652df29635d885d6ded102c`, after reading

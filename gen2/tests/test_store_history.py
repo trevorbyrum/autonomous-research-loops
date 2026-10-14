@@ -153,7 +153,7 @@ class EveryTableSweepTest(StoreTestCase):
                    "scoping_reports", "source_proposals",  # task 2a
                    "brief_replacements",  # task 2a-repair-3
                    "semantic_assessments", "source_lineage", "source_lifecycle", "registry_dispositions", "branch_windows", "source_artifacts", "source_acquisitions",
-                   "source_extractions", "extraction_validations")  # tasks 2c-2, 2d
+                   "source_extractions", "extraction_validations", "extractor_registry_revisions", "extractor_tools")  # tasks 2c-2, 2d
 
     def test_append_only_tables_reject_every_update(self) -> None:
         for table in self.APPEND_ONLY:

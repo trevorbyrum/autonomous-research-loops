@@ -62,6 +62,7 @@ from gen2.router.boundary import Refusal, instant
 from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
 from gen2.router.evidence_writer import EvidenceWriter
 from gen2.router.extractions import ExtractionRecords
+from gen2.router.extractor_registry import EXTRACTOR_COMMANDS, ExtractorRegistry
 from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle, is_episode_hold
 from gen2.router.observations import Observations
 from gen2.router.registries import REGISTRY_COMMANDS, Registries
@@ -219,7 +220,7 @@ class Router:
         self._fault = fault or (lambda point: None)
         self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {
             **COMMANDS["$defs"], **LIFECYCLE_COMMANDS, **REGISTRY_COMMANDS, **AMENDMENT_COMMANDS, **SCHEDULING_COMMANDS,
-            **STATUS_COMMANDS, **CAPABILITY_COMMANDS, **ACQUISITION_COMMANDS}}})
+            **STATUS_COMMANDS, **CAPABILITY_COMMANDS, **ACQUISITION_COMMANDS, **EXTRACTOR_COMMANDS}}})
         self._status = Status(self)
         self._capabilities = Capabilities(self)
         self._registries = Registries(self)
@@ -232,6 +233,7 @@ class Router:
         self._gateway_captures = gateway_captures
         self._acquisitions = AcquisitionAdmission(self)
         self._extractions = ExtractionRecords(self)
+        self._extractor_registry = ExtractorRegistry(self)
         self._observations = Observations(self)
 
     @classmethod
@@ -287,6 +289,12 @@ class Router:
     # -- the registries' public routes and the members the rest of the Router reads (registries.py) -----
     def activate_config_bundle(self, document: Mapping) -> dict:
         return self._registries.activate_config_bundle(document)
+
+    def register_extractor_registry(self, request: Mapping) -> dict:
+        return self._extractor_registry.register(request)
+
+    def _require_extractor_tool(self, record: dict) -> None:
+        self._extractor_registry.require_tool(record)
 
     def config_bundle(self, bundle_hash: str) -> dict | None:
         return self._registries.config_bundle(bundle_hash)

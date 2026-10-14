@@ -58,12 +58,21 @@ assessment. Failed results and same-extractor integrity replay never satisfy
 method success. The result view has no receipt or support consumer in this
 part: SQL 17 and every existing receipt consumer are unchanged. The store binds
 records; it does not certify extraction execution or semantic correctness.
-`extractor_identity` independence is an exact, case-sensitive comparison of
-caller-declared labels. Identity is not execution-derived; aliases are not
-resolved, and different case or whitespace denotes a different label. The
-identity trust and canonicalization policy must be settled before part 2 of
-2d-4b3e (receipt consumption) can grant any authority; unequal declarations
-alone do not demonstrate that independent extraction procedures ran.
+SQL 28 and `ExtractorRegistry` in `extractor_registry.py` (2d-4b3e2 part 1)
+require every new extraction to pin an immutable operator-approved registry
+revision and exact canonical tool identity. The authenticated operator surface
+supplies the approving identity; its complete tool/family mapping and reason
+are retained in an immutable audit event, with raw DDL binding revisions and
+entries to that event. Changes require increasing revisions; identical requests
+replay and conflicts refuse. Outcomes cannot maintain the registry. Canonical
+tool/family names are lower-case ASCII; unknown tools, aliases and case,
+whitespace or NUL-suffixed variants cannot satisfy admission. Historical rows
+without a registry pin stay readable. Identity is still declared rather than
+execution-derived; station execution checking remains 2e2. The defined successor
+policy `extraction-validation/2` requires different registered families; same-family
+replay is integrity only. Its records and receipt consumption are part 2, still
+pending. `/1` results have no authority consumer and SQL 17 still fences all
+extraction-based load-bearing support.
 
 SQL 23 begins the store-wide JSON member-name domain: decoded names are unique
 within each actual object under binary equality and contain no U+0000. NUL

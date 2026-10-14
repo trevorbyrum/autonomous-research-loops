@@ -32,3 +32,4 @@
 25-retained-request-representation.sql
 26-json-member-rollout.sql
 27-json-member-completion.sql
+28-extractor-registry.sql

@@ -12,7 +12,7 @@ import unittest
 from gen2.tests import operator_fixtures as of
 from gen2.tests.router_fixtures import OTHER
 
-OPERATOR_TOOLS = ["status", "apply_operator_decision", "request_cancel", "requeue", "close_brief", "activate_config_bundle", "version_brief",
+OPERATOR_TOOLS = ["status", "apply_operator_decision", "request_cancel", "requeue", "close_brief", "activate_config_bundle", "register_extractor_registry", "version_brief",
                   "mark_brief_overdue", "propose_amendment", "recover_incident", "probe_capability"]
 
 

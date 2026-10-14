@@ -109,6 +109,7 @@ COMMANDS: dict[str, tuple[str, dict[str, Callable[[Principal], str]]]] = {
     "requeue": ("operator", {"requested_by": _OPERATOR}),
     "close_brief": ("operator", {"closed_by": _NAME}),
     "activate_config_bundle": ("operator", {}),
+    "register_extractor_registry": ("operator", {"operator_id": _NAME}),
     "version_brief": ("operator", {}),
     "mark_brief_overdue": ("operator", {}),
     "propose_amendment": ("operator", {}),

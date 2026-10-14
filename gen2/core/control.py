@@ -212,6 +212,9 @@ class OperatorBackend(ControlBackend, Protocol):
     def activate_config_bundle(self, document: Mapping) -> dict:
         """Validate and activate a mounted config-bundle/1 (task 1d)."""
 
+    def register_extractor_registry(self, request: Mapping) -> dict:
+        """Approve an immutable extractor snapshot; authenticated operator only."""
+
     def version_brief(self, request: Mapping) -> dict:
         """Write the next version of an intake brief (task 1d)."""
 

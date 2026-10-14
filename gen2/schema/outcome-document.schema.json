@@ -240,7 +240,7 @@
   "$defs": {
     "source_extraction": {
       "type": "object", "additionalProperties": false,
-      "required": ["extraction_id", "work_id", "source_version", "event_id", "verifier_invocation_id", "extractor_identity", "extractor_version", "output_ref", "supported_tier"],
+      "required": ["extraction_id", "work_id", "source_version", "event_id", "verifier_invocation_id", "extractor_identity", "extractor_version", "extractor_registry_version", "output_ref", "supported_tier"],
       "properties": {
         "extraction_id": {"$ref": "common.schema.json#/$defs/short_text"},
         "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
@@ -248,6 +248,7 @@
         "event_id": {"$ref": "common.schema.json#/$defs/local_id"},
         "verifier_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
         "extractor_identity": {"$ref": "common.schema.json#/$defs/short_text"},
+        "extractor_registry_version": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
         "extractor_version": {"$ref": "common.schema.json#/$defs/short_text"},
         "output_ref": {"$ref": "common.schema.json#/$defs/artifact_ref"},
         "supported_tier": {"enum": ["bibliographic", "abstract", "full_text"]}

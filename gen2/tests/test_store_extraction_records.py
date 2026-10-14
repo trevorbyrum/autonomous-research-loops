@@ -50,7 +50,7 @@ class DDLTest(records.RecordTest):
         self.basis()
         before = self.state(exclude=())
         with self.assertRaises(sqlite3.IntegrityError):
-            self.x("INSERT INTO source_extractions SELECT 'forged', topic_id, work_id, source_version, event_id, verifier_invocation_id, extractor_identity, extractor_version, extracting_invocation_id, output_ref, supported_tier, 'op_setup_inv_verify0001', created_at FROM source_extractions WHERE extraction_id = 'target'")
+            self.x("INSERT INTO source_extractions SELECT 'forged', topic_id, work_id, source_version, event_id, verifier_invocation_id, extractor_identity, extractor_version, extracting_invocation_id, output_ref, supported_tier, 'op_setup_inv_verify0001', created_at, extractor_registry_version FROM source_extractions WHERE extraction_id = 'target'")
         self.assertEqual(self.state(exclude=()), before)
 
 

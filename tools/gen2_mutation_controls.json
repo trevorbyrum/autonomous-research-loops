@@ -13239,6 +13239,228 @@
   ],
   "why": "Separate accepted independent records consume admitted input and retained authenticated outputs; no receipt or SQL 17 support authority changes."
  },
+ "2D4B3E2-audit-invocation": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-audit-kind": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-audit-operation": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-audit-operator": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-audit-reason": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-audit-reference": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-audit-revision": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-audit-time": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-audit-topic": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extraction-identity": {
+  "controls": [
+   "test_store_extractor_registry.RegistryExtractionDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extraction-revision": {
+  "controls": [
+   "test_store_extractor_registry.RegistryExtractionDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extractor_identity-alphabet": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extractor_identity-initial": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extractor_identity-length": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extractor_identity-nul": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extractor_registry-d": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extractor_registry-u": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extractor_registry_version-classification": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extractor_tools-d": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-extractor_tools-u": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-family-alphabet": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-family-initial": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-family-length": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-family-nul": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-mapping-audit": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-mapping-family": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-mapping-identity": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-mapping-revision": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-registry_version-classification": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-revision-domain": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-revision-operator_id": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-revision-order": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-revision-reason": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-router-admission-wiring": {
+  "controls": [
+   "test_extractor_registry.RegistryTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-router-duplicates": {
+  "controls": [
+   "test_extractor_registry.RegistryTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-router-membership": {
+  "controls": [
+   "test_store_extractor_registry.RegistryDDLTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
+ "2D4B3E2-router-replay": {
+  "controls": [
+   "test_extractor_registry.RegistryTest.test_control"
+  ],
+  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

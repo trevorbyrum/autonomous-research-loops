@@ -8,6 +8,9 @@ from gen2.tests.test_reaccess_admission import AcquisitionCase, RAW, STAMP, raw_
 class RecordCase(AcquisitionCase):
     def setUp(self):
         super().setUp()
+        self.assertEqual(self.router.register_extractor_registry({"registry_version": 1, "operator_id": "fixture-operator",
+            "reason": "approve fixture tools", "tools": [{"extractor_identity": "tool-a", "family": "family-a"},
+                {"extractor_identity": "tool-b", "family": "family-b"}]})["status"], "registered")
         self.assertEqual(self.router.admit_reaccess(self.request())["status"], "admitted")
         self.extractor = self.started("inv_extract001", "checkpoint")
         self.output = self.artifact(b"independent extraction output")
@@ -20,7 +23,7 @@ class RecordCase(AcquisitionCase):
     def extraction(self, identity="target", **changes):
         return {**dict(extraction_id=identity, work_id=self.work, source_version="v1", event_id=self.EVENT_ID,
             verifier_invocation_id=self.verifier["invocation_id"], extractor_identity="tool-a" if identity == "target" else "tool-b",
-            extractor_version="1", output_ref=self.output, supported_tier="abstract"), **changes}
+            extractor_version="1", extractor_registry_version=1, output_ref=self.output, supported_tier="abstract"), **changes}
 
     def validation(self, **changes):
         return {"validation_id": "validation-1", "target_extraction_id": "target", "validator_extraction_id": "independent",
@@ -178,7 +181,7 @@ class RecordTest(RecordCase):
 
     def test_record_conflict(self):
         self.basis()
-        self.refuse(source_extractions=[self.extraction(extractor_identity="forged")])
+        self.refuse(source_extractions=[self.extraction(extractor_identity="tool-b")])
 
     def test_rollback(self):
         self.basis()

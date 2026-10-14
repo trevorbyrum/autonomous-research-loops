@@ -16,6 +16,7 @@ class Rows(Protocol):
 class ExtractionCore(Protocol):
     _store: Rows
     _spool: object
+    def _require_extractor_tool(self, record: dict) -> None: ...
 
 
 class ExtractionRecords:
@@ -29,6 +30,8 @@ class ExtractionRecords:
             raise Refusal("kind_not_permitted", "extraction records require contract-admitted work")
         if validations and (inv["kind"] != "verification" or inv["parent_invocation_id"] is not None):
             raise Refusal("kind_not_permitted", "validation requires independent verification")
+        for record in extractions:
+            self._core._require_extractor_tool(record)
         for records, field in ((extractions, "output_ref"), (validations, "comparison_evidence_ref")):
             for record in records:
                 ref = record[field]

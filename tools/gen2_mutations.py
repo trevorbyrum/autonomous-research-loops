@@ -130,6 +130,7 @@ FILE_TARGETS = {
     "gen2/router/observations.py": ("module", "gen2.router.observations", "gen2.router.service", "gen2.tests.router_fixtures"),
     "tools/gen2_json_member_domain.py": ("disk",),
     "gen2/router/extractions.py": ("module", "gen2.router.extractions", "gen2.router.service", "gen2.tests.router_fixtures"),
+    "gen2/router/extractor_registry.py": ("module", "gen2.router.extractor_registry", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/router/acquisitions.py": ("module", "gen2.router.acquisitions", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/router/reaccess.py": ("module", "gen2.router.reaccess"),
     "gen2/router/quote_matching.py": ("module", "gen2.router.quote_matching"),

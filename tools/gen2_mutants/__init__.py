@@ -46,6 +46,7 @@ from . import json_inventory_repair2
 from . import attempted_request_json2
 from . import json_rollout_json2b
 from . import json_completion_json2b
+from . import extractor_registry_2d4b3e2
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -112,4 +113,5 @@ MUTATIONS: list[Mutation] = [
     *attempted_request_json2.MUTATIONS,
     *json_rollout_json2b.MUTATIONS,
     *json_completion_json2b.MUTATIONS,
+    *extractor_registry_2d4b3e2.MUTATIONS,
 ]

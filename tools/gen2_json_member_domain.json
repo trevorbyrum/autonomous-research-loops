@@ -163,6 +163,12 @@
     "extraction_validations.validation_id",
     "extraction_validations.validator_extraction_id",
     "extraction_validations.validator_invocation_id",
+    "extractor_registry_revisions.audit_event_id",
+    "extractor_registry_revisions.created_at",
+    "extractor_registry_revisions.operator_id",
+    "extractor_registry_revisions.reason",
+    "extractor_tools.extractor_identity",
+    "extractor_tools.family",
     "facets.facet_id",
     "facets.operator_importance_band",
     "facets.operator_rating_decision_id",
@@ -529,6 +535,6 @@
     "works.study_group_id",
     "works.work_id"
   ],
-  "schema_sha256": "fbad11911e62f33d37566e8bd862156efeea7340fd8366f05b66ab482b332d0b",
-  "ddl_sha256": "dd04ee62dfd9a69453ee374e311ce91c1c550fa08f7faae3d905fb45b6c4a26b"
+  "schema_sha256": "7bfcb72499033cf6a28cf968fd6e8d69304c84ec5ebab9d7316e2644cc502af0",
+  "ddl_sha256": "4abae97942bb43a31203cf60a69cce39aa34adf4d7010acbabe71be87f1c6a91"
 }

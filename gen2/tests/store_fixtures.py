@@ -672,10 +672,16 @@ class StoreTestCase(unittest.TestCase):
             self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call:1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)",
                    TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
         if "source_extractions" in self.tables():
+            approval = {"registry_version": 1, "operator_id": "user", "reason": "fixture approval",
+                "tools": [{"extractor_identity": "tool-a", "family": "family-a"}, {"extractor_identity": "tool-b", "family": "family-b"}]}
+            self.x("INSERT INTO audit_events VALUES ('aud_extractors', ?, 'extractor_registry_registered', NULL, NULL, NULL, ?)", T, json.dumps(approval))
+            self.x("INSERT INTO extractor_registry_revisions VALUES (1, 'user', 'fixture approval', 'aud_extractors', ?)", T)
+            for tool in approval["tools"]:
+                self.x("INSERT INTO extractor_tools VALUES (1, ?, ?)", tool["extractor_identity"], tool["family"])
             self.receipt("op_extractval", "inv_vvvvvvvv", lease="lease_vvvvvvvv", gen=2, before=1, kind="interim_transition")
             ref = json.dumps({"content_hash": h("7"), "size_bytes": 512, "media_type": "application/json"})
             for eid, tool, inv, op in (("ext-target", "tool-a", "inv_pppppppp", "op_00000001"), ("ext-independent", "tool-b", "inv_vvvvvvvv", "op_extractval")):
-                self.x("INSERT INTO source_extractions VALUES (?, ?, 'wrk_00000001', 'v1', 'e1', 'inv_vvvvvvvv', ?, '1', ?, ?, 'full_text', ?, ?)", eid, TOPIC, tool, inv, ref, op, T)
+                self.x("INSERT INTO source_extractions VALUES (?, ?, 'wrk_00000001', 'v1', 'e1', 'inv_vvvvvvvv', ?, '1', ?, ?, 'full_text', ?, ?, 1)", eid, TOPIC, tool, inv, ref, op, T)
             self.x("INSERT INTO extraction_validations VALUES ('val-fixture', 'ext-target', 'inv_vvvvvvvv', 'ext-independent', 'independent_extraction', 1, 'succeeded', 'byte_equal', ?, 'op_extractval', ?)", ref, T)
         self.quote_check("qc-1")
         self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway="gw-call:1")
