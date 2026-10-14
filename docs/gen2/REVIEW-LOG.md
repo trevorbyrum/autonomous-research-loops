@@ -2543,3 +2543,17 @@ The post-2q Gate D is renumbered #5.
 - **Unchanged:** the failed-attempt path, SQL 21/23–25 and `service.py`, byte for byte.
 - **Landing at a28c7e2:** `gen2-check` green; `gen2-gateway` green.
 - **Next:** json2b part 2, raw-DDL guards on the 22 remaining columns (see the brief's continuation).
+
+## 2026-10-14: 2d-4b3e1-json2b part 2 (SQL 27, the final 22 columns): PASS on the first review. The JSON member-name family is closed store-wide
+- **Astra** (`318a9e28`, pinned b66298f; `private/reviews/gen2-2d-4b3e1-json2b-p2-astra-review-20261014.md`): **A, B and C all PASS, ROOT-CAUSE.** "2d-4b3e1-json2b part 2 is ACCEPTED; the JSON member-name family is closed store-wide."
+- **Coverage:**
+  - 36 of 36 JSON columns guarded, with 72 INSERT/UPDATE triggers and zero pending.
+  - The scalar spot-checks found no hidden JSON.
+  - All 28 production writers go through Store admission.
+  - SQL 21's uniqueness predicate is accurately documented as redundant, and the rest of SQL 21 is unchanged.
+  - 135 tests got individual ACCEPT verdicts.
+- **Landing at b66298f:**
+  - `gen2-check` green: 3,781 tests; 302 triggers in reverse order; 3,357/3,357 mutants killed.
+  - `gen2-gateway` green.
+- **Operator ruling 2026-10-14 (Trevor), settling N1:** extractor identity comes from an operator-maintained tool **registry** with families. Independent validation needs a different family; unknown or aliased tools are refused.
+- **Next:** 2d-4b3e2 (`docs/gen2/tasks/2d-4b3e2.md`): the registry, then receipts consume the durable extraction and validation records. SQL 17 stays in force.
