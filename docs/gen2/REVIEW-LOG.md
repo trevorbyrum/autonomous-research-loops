@@ -2484,3 +2484,20 @@ The post-2q Gate D is renumbered #5.
 - **Landing at b731a22:** `gen2-check` green. `gen2-gateway` carried forward from d41e42c, green.
 - **Operational note:** every future DDL slice must re-review the classification and update both hashes, by design.
 - **Next:** 2d-4b3e1-json2 (`docs/gen2/tasks/2d-4b3e1-json2.md`): attempted-request raw-byte retention, the domain on every write path, and the 33 pending columns.
+
+## 2026-10-14: 2d-4b3e1-json2 part 1 (retained refused requests; observation JSON domain): round 1 BLOCK
+- **Astra** (`57c70235`, pinned 0c1c8fb; `private/reviews/gen2-2d-4b3e1-json2-astra-review-20261014.md`): **A BLOCK, B PASS, C BLOCK; MITIGATION.**
+- **What passed:**
+  - the six generated member guards;
+  - the classification repin, independently reproduced;
+  - C-11 coverage;
+  - the 30-column ownership;
+  - writer ordering for ordinary logical writes;
+  - control-file churn: all 3,189 old entries are kept, the restored R2.5 control is legitimate, and the module re-anchors are legitimate.
+- **F1 (HIGH):** SQL 24 binds the retained-request descriptor only when `request_bytes` is non-NULL. A copied descriptor with no bytes is accepted by the Router, even as observed or exhausted with a capture acknowledgement. A retrieval event then crashes `accounting.read_page` (`KeyError: 'page'`).
+- **F2 (HIGH):** retention depends on normalizing and decoding a discriminator. Refused requests with a NUL-named or duplicated `request_type`, and object-form NUL filters, leave **zero observation rows**, which violates the operator's every-attempt-recorded ruling. The docs' claims of unconditional retention are therefore not yet true; this is boundary drift, fixed as part of F1 and F2.
+- **F3 (MEDIUM):** the `2B13-cursor-beyond-the-bound` mutant was re-paired to a control that never reaches the integer predicate.
+- **Landing at 0c1c8fb:**
+  - `gen2-check` green: 3,543 tests; 3,214/3,214 mutants killed.
+  - `gen2-gateway` green.
+- **Routed:** `docs/gen2/tasks/2d-4b3e1-json2-repair-1.md`, round 2 of 3.
