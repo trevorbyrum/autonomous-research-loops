@@ -23,11 +23,11 @@ class ExactSpanRouterTest(unittest.TestCase):
     def test_pairs_at_payload_boundary(self):
         cases = [(raw.numeric(k, n), lambda d: d, "not exactly representable")
             for k in ("start", "end") for n in ("1.00000000000000001", "-1e-999")]
-        cases += [(None, lambda d, k=k: d.replace('"' + k + '":', '"' + k + '\\u0000suffix":'), "no value is allowed")
+        cases += [(None, lambda d, k=k: d.replace('"' + k + '":', '"' + k + '\\u0000suffix":'), "NUL in object member name")
             for k in ("start", "end", "locator", "kind", "value", "extraction", "method", "checks", "status")]
         page = json.dumps([PAGE])
         cases += [(None, lambda d: d.replace('"cited_spans": ' + page,
-            '"cited_spans\\u0000suffix":' + page + ',"cited_spans":[{"start":0,"end":5,"locator":{"kind":"table","value":"T"}}]'), "no value is allowed")]
+            '"cited_spans\\u0000suffix":' + page + ',"cited_spans":[{"start":0,"end":5,"locator":{"kind":"table","value":"T"}}]'), "NUL in object member name")]
         for method in METHODS:
             for numeral, transform, detail in cases:
                 with self.subTest(method=method, numeral=numeral), content.fixture({"identity": content.IDENTITY}) as case:

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Generate/check the staged store-wide JSON member domain (C-13, repair-1)."""
 import argparse
+import hashlib
 import json
-import re
+import sqlite3
 from pathlib import Path
 
 MANIFEST = "tools/gen2_json_member_domain.json"
 OUTPUT = "gen2/store/schema/23-json-member-domain.sql"
 OWNER = "2d-4b3e1-repair-1 part 2"
+RETAINED_BYTES = {'source_acquisitions.request_bytes', 'source_acquisitions.response_bytes'}
 
 
 def guard(table, column, event):
@@ -36,63 +38,74 @@ def generate(covered):
         guard(*name.split('.'), event) for name in sorted(covered) for event in ('INSERT', 'UPDATE'))
 
 
-def operands(sql):
-    # Balanced first arguments; SQL strings may contain parentheses/commas.
-    code = re.sub(r'--[^\n]*', '', sql)
-    for match in re.finditer(r'\bjson_\w+\s*\(', code, re.I):
-        depth, quoted, arg = 0, False, ''
-        for char in code[match.end():]:
-            if char == "'":
-                quoted = not quoted
-            if not quoted:
-                if char in ',)' and depth == 0:
-                    break
-                depth += (char == '(') - (char == ')')
-            arg += char
-        contexts = list(re.finditer(r'(?:CREATE TABLE|ALTER TABLE) (\w+)|CREATE TRIGGER \w+.*?\bON (\w+)|CREATE VIEW \w+ AS', code[:match.start()], re.S))
-        owner = next((g for g in contexts[-1].groups() if g), None) if contexts else None
-        yield re.sub(r'\s+', ' ', arg.strip()), owner
+def schema_sha256(conn):
+    """Bind scalar classifications to all SQLite-parsed user objects."""
+    objects = conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_schema "
+                           "WHERE name NOT GLOB 'sqlite_*' ORDER BY type, name").fetchall()
+    return hashlib.sha256(json.dumps(objects, ensure_ascii=True, separators=(',', ':')).encode()).hexdigest()
 
 
-def inventory(conn, sql):
+def identifier(name):
+    return '"' + name.replace('"', '""') + '"'
+
+
+def inventory(conn, sql, manifest):
+    """Exhaustive candidates, never a token-based estimate of function operands.
+
+    Scalar exclusions require the exact reviewed schema. An unknown schema
+    loses every scalar exclusion; preparing it successfully is insufficient.
+    See DOSSIER 2d-4b3e1-repair-2 for the authorizer evaluation and tradeoff.
+    """
     from gen2.store.api import _json_columns
-    tables = list(conn.execute("SELECT name, sql FROM sqlite_schema WHERE type='table'"))
+    tables = list(conn.execute("SELECT name, sql FROM sqlite_schema WHERE type='table' AND name NOT GLOB 'sqlite_*'"))
     serialized = {f'{t}.{c}' for t, ddl in tables for c in _json_columns(ddl)}
-    columns = [(t, r[1], r[2]) for t, _ in tables for r in conn.execute(f'PRAGMA table_info({t})')]
+    columns = {t: conn.execute('SELECT * FROM pragma_table_xinfo(?)', (t,)).fetchall() for t, _ in tables}
     used, failures = set(), []
-    for arg, owner in operands(sql):
-        if re.fullmatch(r"CASE WHEN json_valid\(NEW\.(\w+)\) THEN NEW\.\1 ELSE 'null' END", arg):
-            continue  # generated guards: the inner json_valid is inventoried
-        if arg == "CASE WHEN r.type = 'object' THEN r.value ELSE '{}' END" and not any(c == 'value' for _, c, _ in columns):
-            continue  # SQL 16: derived json_each object
-        if arg == "CASE WHEN r.type = 'object' THEN r.value ELSE '{}' END":
-            arg = 'r.value'  # conservatively inventory any new stored value column
-        if arg in ('CAST(a.response_bytes AS TEXT)',
-                   "CASE WHEN json_valid(CAST(a.response_bytes AS TEXT)) THEN CASE WHEN json_type(CAST(a.response_bytes AS TEXT), '$.records') = 'array' THEN CAST(a.response_bytes AS TEXT) ELSE '{}' END ELSE '{}' END"):
-            if ('source_acquisitions', 'response_bytes', 'BLOB') not in columns:
-                failures.append('raw JSON operand exclusion is not a retained BLOB')
-            continue  # SQL 16: retained raw BLOB, not logical JSON
-        match = re.fullmatch(r'(?:(\w+)\.)?(\w+)', arg)
-        if not match:
-            failures.append(f'unclassified JSON operand: {arg}')
-            continue
-        alias, name = match.groups()
-        derived = (name == 'value' and alias in ('e', 'he', 'j', 'p', 'r', 're', 's')) or (alias == 'p' and name in ('required', 'optional'))
-        if derived and not any(c == name for _, c, _ in columns):
-            continue  # json_each/tree or SQL 21 shapes, never stored columns
-        found = {f'{t}.{c}' for t, c, kind in columns if c == name and kind != 'BLOB'
-                 and (owner is None or alias not in (None, 'NEW', 'OLD') or t == owner)}
-        if not found:
-            failures.append(f'unresolved stored JSON operand: {arg}')
-        used |= found
-    failures += [f'stored JSON operand lacks json_valid declaration: {n}' for n in sorted(used - serialized)]
+    if any(row[1] not in ('main', 'temp') for row in conn.execute('PRAGMA database_list')):
+        failures.append('JSON member domain cannot classify attached schemas')
+    if conn.execute("SELECT name FROM temp.sqlite_schema WHERE name NOT GLOB 'sqlite_*'").fetchone():
+        failures.append('JSON member domain cannot classify temporary objects')
+    for table, rows in columns.items():
+        for row in rows:
+            name, kind = f'{table}.{row[1]}', row[2]
+            if name in RETAINED_BYTES and kind == 'BLOB':
+                continue
+            if kind in ('TEXT', 'BLOB', 'ANY'):
+                used.add(name)
+            if kind in ('BLOB', 'ANY') or name in RETAINED_BYTES:
+                failures.append(f'JSON member domain unclassified storage type: {name} ({kind})')
+        quoted = identifier(table)
+        writable = [identifier(r[1]) + '=NULL' for r in rows if r[6] == 0]
+        statements = [f'INSERT INTO {quoted} DEFAULT VALUES', f'DELETE FROM {quoted}']
+        if writable:
+            statements.append(f'UPDATE {quoted} SET ' + ','.join(writable))
+        for statement in statements:
+            try:
+                conn.execute('EXPLAIN ' + statement).fetchall()
+            except sqlite3.Error as exc:
+                failures.append(f'JSON member domain cannot prepare {statement}: {exc}')
+    for (view,) in conn.execute("SELECT name FROM sqlite_schema WHERE type='view'").fetchall():
+        try:
+            conn.execute('EXPLAIN SELECT * FROM ' + identifier(view)).fetchall()
+        except sqlite3.Error as exc:
+            failures.append(f'JSON member domain cannot prepare view {view}: {exc}')
+    scalar = manifest.get('scalar', [])
+    if len(scalar) != len(set(scalar)) or set(scalar) - used:
+        failures.append('JSON member domain scalar classifications repeated/stale')
+    if set(scalar) & (set(manifest['covered']) | manifest['pending'].keys() | serialized):
+        failures.append('JSON member domain scalar classifications overlap JSON columns')
+    if (manifest.get('schema_sha256') == schema_sha256(conn)
+            and manifest.get('ddl_sha256') == hashlib.sha256(sql.encode()).hexdigest()):
+        used -= set(scalar)
+    else:
+        failures.append('JSON member domain schema classification changed; review every TEXT column before updating the manifest hash')
     return used | serialized, failures
 
 
 def check(root, conn, sql):
-    names, failures = inventory(conn, sql)
     path = root / MANIFEST
     manifest = json.loads(path.read_text()) if path.exists() else {'covered': [], 'pending': {}}
+    names, failures = inventory(conn, sql, manifest)
     covered, pending = set(manifest['covered']), manifest['pending']
     if len(covered) != len(manifest['covered']) or covered & pending.keys():
         failures.append('JSON member domain manifest repeats/overlaps columns')

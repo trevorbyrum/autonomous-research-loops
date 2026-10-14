@@ -1486,3 +1486,96 @@ Targeted/composition tests, the full trigger-order check and all eight Make
 gates pass; 2,111 required mutants are killed across the broad sweep and the
 corrected 16-mutant family rerun. Detailed results and first-run test corrections
 are retained in the evidence directory's continuation logs and COMPLETION.md.
+
+### 2d-4b3e1-repair-2 — complete catalog classification (design before code)
+
+R2-1's cause is incomplete SQL tokenization and unresolved alias exclusions.
+Replace the scanner entirely with the brief's **fail-closed classification of
+every stored TEXT column**. SQLite parses the DDL; its catalog supplies actual
+table/column/type identities. No SQL spelling determines whether a TEXT column
+enters the candidate inventory.
+
+**Research and choice.** SQLite's [compile-time authorizer](https://www.sqlite.org/c3ref/set_authorizer.html)
+and [action codes](https://www.sqlite.org/c3ref/c_alter_table.html) expose resolved
+column reads and functions, with the innermost view/trigger context. Python's
+[sqlite3 authorizer](https://docs.python.org/3/library/sqlite3.html#sqlite3.Connection.set_authorizer)
+provides this without a dependency. I evaluated it seriously in an isolated
+in-memory table: EXPLAIN SELECT from a JSON-consuming view reports the actual
+table and column, but EXPLAIN INSERT/UPDATE on a column CHECK containing quoted,
+comment-separated json_valid reports neither the function nor the CHECK read.
+Callbacks also do not associate a function's arguments with individual reads.
+Using their order as an operand parser would recreate the unsound mechanism.
+The probe and callback output will be retained in this repair's evidence.
+
+[SQLite table_xinfo](https://www.sqlite.org/pragma.html#pragma_table_xinfo)
+includes generated and hidden columns, unlike table_info. The
+[schema catalog](https://www.sqlite.org/schematab.html) retains each installed
+object's SQL. Use these authoritative catalogs to classify every TEXT column,
+including columns never currently consumed by a JSON function. Keep the accepted
+three covered and 33 owned-pending JSON classifications. Explicitly name the
+remaining **488 scalar TEXT columns** in the manifest; they are exclusions only
+for the exact reviewed schema, bound to SHA-256 of a deterministic serialization
+of every installed user object (type/name/table/SQL). This intentionally trades
+automatic operand precision for conservative completeness. Any added, removed,
+or modified object invalidates all scalar exclusions, fails the check, and
+reports unclassified TEXT columns. Updating that hash requires reviewing the
+whole schema's classifications; the generator must never update it implicitly.
+This catches adding JSON use to an existing scalar column as well as new columns,
+without depending on quoted names, comments, aliases, or function spelling.
+
+Only the exact resolved BLOB identities source_acquisitions.request_bytes and
+source_acquisitions.response_bytes are retained-byte exclusions, and each must
+still have BLOB type. No other BLOB or ANY column gets an implicit exclusion.
+Cross-check the Store's serialized-column set: it cannot intersect scalar or
+retained-byte exclusions. The logical JSON inventory remains **36 / 3 / 33**;
+the broader candidate inventory is **524 TEXT columns**. Scalar names do not
+become new pending JSON columns, and part 2's ownership does not change.
+
+Prepare [EXPLAIN](https://www.sqlite.org/lang_explain.html) INSERT, UPDATE of all
+writable columns, DELETE for every table and SELECT for every view in the empty
+disposable connection. This checks SQLite can resolve all trigger/view bodies
+without executing writes. Any preparation failure is a check failure. CHECKs,
+indexes and generated expressions are parsed by schema installation and covered
+by the schema-bound exhaustive classification. No unanalysed schema receives a
+passing fallback; absent classifications mean every TEXT column is uncovered.
+
+**Re-estimate before code:** about **330 handwritten lines**: catalog/hash and
+preparation checks 100, isolated regression/control and decision tests 140,
+predicate mutants/registration 65, fixture classifications 23 and R2-2 diagnostics
+2. The 488 explicit scalar names are generated catalog data, plus generated
+mutation-control entries and this documentation. No dependency or environment
+refresh is needed. This is one slice under the approximately 500-line guide.
+
+**Pre-final hardening within the same design:** also bind classifications to
+SHA-256 of the complete ordered DDL text, including statements that leave no
+catalog object. Explicitly refuse attached databases and temporary user objects;
+classification covers the main durable schema only. Use GLOB's literal reserved
+sqlite_ prefix, since LIKE's underscore wildcard excludes legitimate user names.
+Add direct paired cases/mutants for these decisions. Revised estimate **370
+handwritten lines**; the catalog data and 36 / 3 / 33 split remain unchanged.
+
+R2-2 changes only the two diagnostic literals producing thirty NUL-name
+subtests. Keep their refusals, unchanged-state assertions, accepted controls and
+retained spans. Validation: each of Astra's five isolated regression/control
+pairs, ordinary unquoted refusal, existing-scalar new consumption, retained-BLOB
+identity/type, generated columns, missing classifications, and preparation
+failure; mutants target each inventory decision, independently paired with an
+accepted control. Run targeted/composition tests, full gen2-test, trigger-order,
+the affected/transitively fixture-dependent mutant families, and all eight
+required static gates after waiting for no active gen2-landing-* units. Evidence:
+/home/trevor/work/research-loops-public/private/evidence/2d-4b3e1-repair-2/.
+
+**Implemented, 2026-10-14.** About 330 handwritten added lines, plus explicit
+catalog data and generated control entries. No SQL scanner remains in operand
+discovery. The 36 / 3 / 33 logical classification is unchanged; 488 scalar TEXT
+exclusions require both reviewed hashes. Actual retained BLOB identities,
+generated columns, literal sqlite_ prefix, temporary/attached scope, and all
+preparation failures have direct decision coverage. All six original full-schema
+probes now exit 1 and name the uncovered operand. The two NUL-diagnostic literals
+are updated without changing any other exact-span assertions. Required validation
+passes: 54 targeted/composition tests; the full 3,511-test suite (two skips);
+234 triggers reversed with 2,873 identical store tests/subtests; all 855 mutants
+from the six affected families killed, including 22 new separately paired
+inventory mutants; all eight static Make gates. No dependency/environment
+refresh or further guard rollout. Completion and full logs are in the evidence
+directory above; part 2 still owns the same 33 pending columns.

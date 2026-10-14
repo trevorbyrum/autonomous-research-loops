@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import shutil
+import hashlib
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -42,6 +44,17 @@ END;
 """
 
 
+def classification(schema, scalar):
+    """Literal fixture decisions, bound independently to SQLite's catalog."""
+    with sqlite3.connect(':memory:') as conn:
+        conn.executescript(schema)
+        rows = conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_schema "
+                            "WHERE name NOT GLOB 'sqlite_*' ORDER BY type, name").fetchall()
+    digest = hashlib.sha256(json.dumps(rows, ensure_ascii=True, separators=(',', ':')).encode()).hexdigest()
+    return {'covered': [], 'pending': {}, 'scalar': scalar, 'schema_sha256': digest,
+            'ddl_sha256': hashlib.sha256(textwrap.dedent(schema).encode()).hexdigest()}
+
+
 class DdlRuleTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -56,6 +69,10 @@ class DdlRuleTest(unittest.TestCase):
         (store / "schema" / "order.txt").write_text(ORDER, encoding="utf-8")
         (store / "schema" / "fixture.sql").write_text(textwrap.dedent(schema), encoding="utf-8")
         (store / "connection.sql").write_text(connection, encoding="utf-8")
+        (self.root / 'tools').mkdir(exist_ok=True)
+        manifest = self.root / 'tools/gen2_json_member_domain.json'
+        if not manifest.exists():
+            manifest.write_text(json.dumps(classification(GUARDED, ['t.id', 't.v'])))
         return subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root), "--part", "ddl"], capture_output=True, text=True, timeout=60, env=children.env())
 
     def test_refused_sqlite_fails_the_ddl_check(self) -> None:

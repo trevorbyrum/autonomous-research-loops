@@ -19418,6 +19418,160 @@
   ],
   "why": "Independent accepted/readable record passes this predicate; UPDATE pairs remove only unconditional immutability in the disposable fixture."
  },
+ "JSON-INVENTORY-alias": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_alias_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-attached": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_scalar_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-comment_check": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_comment_check_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-ddl-snapshot": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_scalar_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-delete-prepare": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_trigger_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-generated": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_scalar_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-insert-prepare": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_trigger_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-ordinary_view": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_ordinary_view_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-quoted_check": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_quoted_check_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-quoted_view": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_quoted_view_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-retained_wrong_type": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_alias_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-scalar-overlap": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_quoted_check_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-scalar-stale": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_scalar_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-serialized": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_scalar_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-snapshot": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_scalar_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-string_view": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_string_view_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-temporary": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_scalar_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-unclassified_any": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_alias_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-unclassified_blob": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_alias_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-update-prepare": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_trigger_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-user-prefix": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_scalar_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
+ "JSON-INVENTORY-view-prepare": {
+  "by_hand": true,
+  "controls": [
+   "test_json_inventory.InventoryTest.test_view_control"
+  ],
+  "why": "Independent literal-schema CLI control passes under this inventory predicate mutation."
+ },
  "NULL-spec-screening-protocol": {
   "controls": [
    "test_store_history.EveryTableSweepTest.test_every_table_is_populated"

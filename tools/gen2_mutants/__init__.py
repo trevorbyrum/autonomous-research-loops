@@ -42,6 +42,7 @@ from . import span_domain_2d4b3d_repair1
 from . import exact_spans_2d4b3d_repair2
 from . import extraction_records_2d4b3e1
 from . import json_member_domain_repair1
+from . import json_inventory_repair2
 from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 
 MUTATIONS: list[Mutation] = [
@@ -104,4 +105,5 @@ MUTATIONS: list[Mutation] = [
     *exact_spans_2d4b3d_repair2.MUTATIONS,
     *extraction_records_2d4b3e1.MUTATIONS,
     *json_member_domain_repair1.MUTATIONS,
+    *json_inventory_repair2.MUTATIONS,
 ]
