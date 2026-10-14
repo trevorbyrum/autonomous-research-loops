@@ -47,6 +47,15 @@ class RegistryTest(RecordCase):
         self.assertEqual(self.rows("SELECT family FROM extractor_tools WHERE extractor_identity = 'tool-a' ORDER BY registry_version"),
             [("family-a",), ("reclassified",)])
 
+    def test_registration_replay_control(self):
+        doc = approval(2)
+        self.assertEqual(self.router.register_extractor_registry(doc), {"status": "registered", "registry_version": 2})
+        before = self.state(exclude=())
+        self.assertEqual(self.router.register_extractor_registry(doc), {"status": "replayed", "registry_version": 2})
+        self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.rows("SELECT registry_version, extractor_identity, family FROM extractor_tools WHERE registry_version = 2 ORDER BY extractor_identity"),
+            [(2, "tool-a", "family-a"), (2, "tool-b", "family-b")])
+
     def test_duplicates(self):
         out = self.router.register_extractor_registry(approval(2, tools=[approval()["tools"][0]] * 2))
         self.assertEqual((out["status"], out["reason"]), ("rejected", "request_invalid"))

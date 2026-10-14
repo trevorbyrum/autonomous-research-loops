@@ -7,12 +7,12 @@ EXTRACTION = "test_store_extractor_registry.RegistryExtractionDDLTest."
 ROUTER = "test_extractor_registry.RegistryTest."
 
 
-def change(name, killer, old=None, new="1 = 1", scope=None, test=RAW, target="ddl", drop_trigger=None, control="test_control"):
+def change(name, killer, old=None, new="1 = 1", scope=None, test=RAW, target="ddl", drop_trigger=None, control="test_control", why=None):
     mid = "2D4B3E2-" + name
     MUTATIONS.append(Mutation(mid, "2d-4b3e2", name, (test + "test_" + killer,),
         old=old, new=new, scope=scope, target=target, drop_trigger=drop_trigger))
-    CONTROLS[mid] = {"controls": [(RAW if control == "raw" else test) + ("test_control" if control == "raw" else control)],
-        "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."}
+    CONTROLS[mid] = {"controls": [control if "." in control else test + control],
+        "why": why or "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."}
 
 
 for name, predicate in (
@@ -42,10 +42,15 @@ for table, prefix in (("extractor_registry", "extractor_registry"), ("extractor_
         change(table + "-" + suffix, "immutable", drop_trigger=prefix + "_immutable_" + suffix)
 change("extraction-identity", "registry_membership", "t.extractor_identity = NEW.extractor_identity", scope="source_extractions_registered_tool", test=EXTRACTION)
 change("extraction-revision", "registry_revision", "t.registry_version = NEW.extractor_registry_version", scope="source_extractions_registered_tool", test=EXTRACTION)
-change("router-membership", "membership", "is None:", "is None and False:", test=ROUTER, target="gen2/router/extractor_registry.py", control="raw")
-change("router-replay", "registration", 'audit["detail"] != doc', "False", test=ROUTER, target="gen2/router/extractor_registry.py")
+change("router-membership", "membership", "is None:", "is None and False:", test=ROUTER, target="gen2/router/extractor_registry.py",
+    why="Commits a registered extraction through require_tool's exact membership guard and reads back its identity and revision; the weakened guard still accepts it.")
+change("router-replay", "registration", 'audit["detail"] != doc', "False", test=ROUTER, target="gen2/router/extractor_registry.py",
+    control="test_registration_replay_control",
+    why="Registers then identically replays revision 2 through _write's audit-detail comparison, with all-table unchanged-state readback including audit; the weakened comparison still accepts it.")
 change("router-duplicates", "duplicates", 'len({t["extractor_identity"] for t in tools}) != len(tools)', "False", test=ROUTER, target="gen2/router/extractor_registry.py")
 change("router-admission-wiring", "membership", "self._core._require_extractor_tool(record)", "pass", test=ROUTER, target="gen2/router/extractions.py")
 for column in ("registry_version", "extractor_registry_version"):
     change(column + "-classification", "every_integer_column_is_classified_once", f'"{column}",', "",
-        test="test_writer.IdentityBoundTest.", target="gen2/store/api.py", control="raw")
+        test="test_writer.IdentityBoundTest.", target="gen2/store/api.py",
+        control=ROUTER + ("test_registration_replay_control" if column == "registry_version" else "test_control"),
+        why=f"Writes an integer {column} through Store._prepare, which reads IDENTITY_COLUMNS for that column, with committed readback; the ordinary integer remains accepted when its identity classification is removed.")

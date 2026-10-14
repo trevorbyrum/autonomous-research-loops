@@ -13343,9 +13343,9 @@
  },
  "2D4B3E2-extractor_registry_version-classification": {
   "controls": [
-   "test_store_extractor_registry.RegistryDDLTest.test_control"
+   "test_extractor_registry.RegistryTest.test_control"
   ],
-  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+  "why": "Writes an integer extractor_registry_version through Store._prepare, which reads IDENTITY_COLUMNS for that column, with committed readback; the ordinary integer remains accepted when its identity classification is removed."
  },
  "2D4B3E2-extractor_tools-d": {
   "controls": [
@@ -13409,9 +13409,9 @@
  },
  "2D4B3E2-registry_version-classification": {
   "controls": [
-   "test_store_extractor_registry.RegistryDDLTest.test_control"
+   "test_extractor_registry.RegistryTest.test_registration_replay_control"
   ],
-  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+  "why": "Writes an integer registry_version through Store._prepare, which reads IDENTITY_COLUMNS for that column, with committed readback; the ordinary integer remains accepted when its identity classification is removed."
  },
  "2D4B3E2-revision-domain": {
   "controls": [
@@ -13451,15 +13451,15 @@
  },
  "2D4B3E2-router-membership": {
   "controls": [
-   "test_store_extractor_registry.RegistryDDLTest.test_control"
+   "test_extractor_registry.RegistryTest.test_control"
   ],
-  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+  "why": "Commits a registered extraction through require_tool's exact membership guard and reads back its identity and revision; the weakened guard still accepts it."
  },
  "2D4B3E2-router-replay": {
   "controls": [
-   "test_extractor_registry.RegistryTest.test_control"
+   "test_extractor_registry.RegistryTest.test_registration_replay_control"
   ],
-  "why": "An independent accepted registry/extraction control binds the exact approved snapshot; SQL 17 remains fenced."
+  "why": "Registers then identically replays revision 2 through _write's audit-detail comparison, with all-table unchanged-state readback including audit; the weakened comparison still accepts it."
  },
  "2Q-baseline-digest-unchecked": {
   "controls": [
