@@ -78,3 +78,18 @@
 - **Don't edit:** BUILD-STATE, REVIEW-LOG or DEBT-REGISTER. C-13, BOUNDARIES and DOSSIER claims must match the code exactly.
 - **Evidence:** `~/work/research-loops-public/private/evidence/2d-4b3e1-json2-repair-1/`, with a COMPLETION.md.
 - **Commits:** end the message with `Co-Authored-By: GPT-6.1-Sol <noreply@openai.com>`.
+
+## Continuation (2026-10-14): part 2 closes F2 before re-review
+- **Part 1** (`bc6fffa`) closed F1, through SQL 25 and the reserved `retained_request`, and F3, through a pinned numeric control. All required checks passed.
+- **Part 2 closes F2** as specified above. Its review covers both parts together in round 2.
+- **Required in part 2:**
+  - Retain authenticated failed attempts independently of decoding a request discriminator.
+  - Add an explicit opaque failed representation, with no invented page or type.
+  - Complete the object/raw hand-off before whole-command normalization.
+  - Remove last-value-wins reparsing of duplicates as an admission decision.
+  - Add byte-exact readback, denominator, replay and unknown-inventory tests for:
+    - structural NUL names;
+    - a duplicated discriminator;
+    - object-form NUL filters.
+- **Constraints:** the same as above, including the full `make gen2-test`, `make gen2-trigger-order` and an explicit classification repin after any DDL change.
+- **Evidence:** append to `~/work/research-loops-public/private/evidence/2d-4b3e1-json2-repair-1/` (COMPLETION.md, part 2 section).
