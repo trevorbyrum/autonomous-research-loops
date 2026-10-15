@@ -2583,3 +2583,21 @@ The post-2q Gate D is renumbered #5.
 - Five standalone reruns pass, and the commit doesn't touch the gateway client.
 - Recorded as **DEBT-039** (owner: task 2d): make deadline-based client and route tests independent of load, at the root.
 - The run 1 record is kept as `gen2-check-run1-baseline-flake.*`. `gen2-check` is being rerun after `gen2-gateway` finishes, so the two don't overlap.
+
+## 2026-10-15: 2d-4b3e2 part 2 slice 1 (SQL 29, `extraction-validation/2` records): round 1 BLOCK on F1
+- **Astra** (`75df59cf`, pinned 0cfb573; `private/reviews/gen2-2d-4b3e2-p2-astra-review-20261014.md`): **A BLOCK, B PASS, C BLOCK; MITIGATION.**
+- **What passed:**
+  - non-NULL registered pins, with no `/1` or NULL-pin operands;
+  - a version-only change can't create independence;
+  - validator/producer separation;
+  - exact acquisition bindings;
+  - no authority consumer reads `/2`, and SQL 17 still fences;
+  - SQL 29/30 additive, with all 384 prior objects unchanged;
+  - C-11;
+  - 41 control traces qualify.
+- **F1 (MEDIUM):** each operand's family is resolved under its own registry revision and the labels are compared. An audited family **rename** between revisions makes a same-tool or same-family replay succeed as "independent", through both the Router and raw DDL. `test_snapshot_control` accepts one form of it.
+- **Landing at 0cfb573:**
+  - `gen2-gateway` green.
+  - `gen2-check` run 1 exited 2 because of the mutation-baseline timing flake (DEBT-039).
+  - The rerun at the same commit was **green** (3,786 s).
+- **Routed:** `docs/gen2/tasks/2d-4b3e2-p2-repair-1.md`, round 2 of 3. The fix is a coherent operator-governed family relationship across operands: a common comparison revision, or stable family lineage.
