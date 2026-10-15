@@ -11,10 +11,14 @@ gen2-trigger-order` itself.
 """
 from __future__ import annotations
 
+import io
 import runpy
 import sqlite3
+import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 TOOL = Path(__file__).resolve().parents[2] / "tools" / "gen2_trigger_order.py"
 CONTRACT = "PRAGMA foreign_keys = ON;\nPRAGMA recursive_triggers = ON;\n"
@@ -58,6 +62,36 @@ class TriggerOrderToolTest(unittest.TestCase):
         ddl = DDL + "DROP TRIGGER t_first;\n" + self.tool["TRIGGER"].search(DDL).group(0).replace("t_first", "t_successor")
         rebuilt = self.tool["reverse_triggers"](ddl)
         self.assertEqual(self.tool["check_rebuild"](ddl, rebuilt, CONTRACT), [])
+
+    def test_same_name_recreation_reverses_only_the_final_definition(self) -> None:
+        first = self.tool["TRIGGER"].search(DDL).group(0)
+        for replacement in (first, first.replace("'first'", "'replacement'")):
+            with self.subTest(replacement=replacement):
+                ddl = DDL + "DROP TRIGGER t_first;\n" + replacement
+                self.assertEqual(trigger_order(ddl), ["t_second", "t_third", "t_first"])
+                rebuilt = self.tool["reverse_triggers"](ddl)
+                self.assertEqual(trigger_order(rebuilt), ["t_first", "t_third", "t_second"])
+                self.assertEqual(self.tool["check_rebuild"](ddl, rebuilt, CONTRACT), [])
+
+    def test_comments_literals_and_unrelated_drops_do_not_change_reversal(self) -> None:
+        ddl = (DDL.replace("'first'", "'DROP TRIGGER t_first;'")
+               + "-- DROP TRIGGER t_second;\n/* DROP TRIGGER t_third; */\n"
+               + "CREATE TABLE unrelated (id INTEGER);\nDROP TABLE unrelated;\n"
+               + "DROP TRIGGER IF EXISTS absent;\n")
+        rebuilt = self.tool["reverse_triggers"](ddl)
+        self.assertEqual(trigger_order(rebuilt), ["t_third", "t_second", "t_first"])
+        self.assertEqual(self.tool["check_rebuild"](ddl, rebuilt, CONTRACT), [])
+
+    def test_report_counts_installed_and_reversed_triggers(self) -> None:
+        from gen2.tests import store_fixtures as fx
+
+        first = self.tool["TRIGGER"].search(DDL).group(0)
+        ddl = DDL + "DROP TRIGGER t_first;\n" + first.replace("t_first", "t_successor")
+        output = io.StringIO()
+        with mock.patch.object(fx, "DDL_TEXT", ddl), mock.patch.object(sys, "path", sys.path.copy()), \
+                mock.patch.dict(self.tool["main"].__globals__, run_suite=lambda *_: {"test": "pass"}), redirect_stdout(output):
+            self.assertEqual(self.tool["main"](), 0)
+        self.assertIn("3 installed triggers re-created in reverse order", output.getvalue())
 
     def test_a_rebuild_that_keeps_the_order_is_refused(self) -> None:
         """Without this, a rebuild that reversed nothing would pass trivially."""

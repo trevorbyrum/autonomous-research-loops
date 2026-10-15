@@ -48,6 +48,53 @@ def harness():
     return module
 
 
+class TriggerCoverageTest(unittest.TestCase):
+    """Final installed guards need coverage; retired source text does not."""
+
+    def setUp(self) -> None:
+        self.h = harness()
+        self.ddl = "CREATE TABLE t (v INTEGER);\n"
+        self.h.MUTATIONS = []
+        self.h.SECOND_LAYER_TRIGGERS = set()
+
+    @staticmethod
+    def guard(name: str, reason: str) -> str:
+        return (f"CREATE TRIGGER {name} BEFORE INSERT ON t WHEN NEW.v < 0\n"
+                f"BEGIN\n  SELECT RAISE(ABORT, '{reason}');\nEND;\n")
+
+    def cover(self, name: str) -> None:
+        self.h.MUTATIONS.append(self.h.Mutation("test-" + name, "test", "drop guard", (), drop_trigger=name))
+
+    def test_replacement_ignores_retired_definition_but_keeps_uncovered_live_guard(self) -> None:
+        self.ddl += (self.guard("retired", "old") + "DROP TRIGGER retired;\n"
+                     + self.guard("successor", "new") + self.guard("uncovered_live", "live"))
+        self.cover("successor")
+        self.assertEqual(self.h.uncovered_triggers(self.ddl), ["uncovered_live"])
+        self.cover("uncovered_live")
+        self.assertEqual(self.h.uncovered_triggers(self.ddl), [])
+
+    def test_same_name_recreation_requires_coverage_of_the_final_body(self) -> None:
+        self.ddl += self.guard("same", "retired body") + "DROP TRIGGER same;\n" + self.guard("same", "live body")
+        self.h.MUTATIONS = [self.h.Mutation("old-body", "test", "edit retired body", (), old="'retired body'", new="'changed'")]
+        self.assertEqual(self.h.uncovered_triggers(self.ddl), ["same"])
+        self.h.MUTATIONS = [self.h.Mutation("live-body", "test", "edit live body", (), old="'live body'", new="'changed'")]
+        self.assertEqual(self.h.uncovered_triggers(self.ddl), [])
+
+    def test_identical_same_name_recreation_remains_installed(self) -> None:
+        self.ddl += self.guard("same", "same body") + "DROP TRIGGER same;\n" + self.guard("same", "same body")
+        self.assertEqual(self.h.uncovered_triggers(self.ddl), ["same"])
+        self.cover("same")
+        self.assertEqual(self.h.uncovered_triggers(self.ddl), [])
+
+    def test_comments_literals_and_unrelated_drops_do_not_retire_a_live_guard(self) -> None:
+        self.ddl += (self.guard("live", "DROP TRIGGER live;")
+                     + "-- DROP TRIGGER live;\n/* DROP TRIGGER live; */\n"
+                     + self.guard("unrelated", "other") + "DROP TRIGGER unrelated;\n")
+        self.assertEqual(self.h.uncovered_triggers(self.ddl), ["live"])
+        self.cover("live")
+        self.assertEqual(self.h.uncovered_triggers(self.ddl), [])
+
+
 CHILD_THAT_CRASHES = "import sys\nprint('partial result of the child', flush=True)\nraise KeyError('cycle subcase')\n"
 CHILD_THAT_REFUSES = "import sys\nprint('gen2-metrics: refused', file=sys.stderr)\nsys.exit(1)\n"
 

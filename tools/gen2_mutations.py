@@ -117,6 +117,7 @@ CONTROLS_FILE = ROOT / "tools" / "gen2_mutation_controls.json"  # written by too
 if str(ROOT / "tools") not in sys.path:
     sys.path.append(str(ROOT / "tools"))
 from gen2_mutants import MUTATIONS, SECOND_LAYER, SECOND_LAYER_TRIGGERS, Mutation  # noqa: E402 (path set above)
+from gen2_ddl_triggers import installed_triggers  # noqa: E402
 
 # File targets: how the named tests are pointed at a mutated copy. ("attr",
 # module, name): the file is written to a temp dir and module.name is set to
@@ -228,11 +229,11 @@ FILE_TARGETS = {
 
 
 def uncovered_triggers(ddl: str) -> list[str]:
-    """DDL triggers that no mutation drops, scopes or edits, minus the
+    """Installed DDL triggers that no mutation drops, scopes or edits, minus the
     documented second layers. The run fails while this is non-empty, so a new
     guard cannot land without a mutant (CHECK constraints are anonymous in
     SQLite and are not enumerated here; their mutants edit their text)."""
-    blocks = {m.group(1): m.group(0) for m in re.finditer(r"CREATE TRIGGER (\w+)\b.*?\nEND;\n", ddl, re.DOTALL)}
+    blocks = {name: ddl[trigger.start:trigger.end] for name, trigger in installed_triggers(ddl).items()}
     covered: set[str] = set()
     for m in MUTATIONS:
         if m.target != "ddl":

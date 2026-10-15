@@ -37,17 +37,23 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "gen2" / "tests"
+if str(ROOT / "tools") not in sys.path:
+    sys.path.append(str(ROOT / "tools"))
+from gen2_ddl_triggers import installed_triggers  # noqa: E402 (script and path-loaded tool)
+
 TRIGGER = re.compile(r"CREATE TRIGGER (\w+)\b.*?\nEND;\n", re.DOTALL)
 
 
 def reverse_triggers(ddl: str) -> str:
     """The DDL with its triggers removed in place and re-created, last to
     first, after everything else."""
-    # Retired definitions must run before their ordered DROP. Reverse only
-    # triggers still installed after the additive schema has been applied.
-    retired = {m.group(1) for m in re.finditer(r"DROP TRIGGER (\w+);", ddl)}
-    blocks = [m.group(0) for m in TRIGGER.finditer(ddl) if m.group(1) not in retired]
-    rest = TRIGGER.sub(lambda m: m.group(0) if m.group(1) in retired else "", ddl)
+    # Retired CREATE/DROP pairs stay in place; move only the final installed
+    # CREATE for each name, including a same-name re-creation.
+    installed = list(installed_triggers(ddl).values())
+    blocks = [ddl[trigger.start:trigger.end] for trigger in installed]
+    rest = ddl
+    for trigger in sorted(installed, key=lambda trigger: trigger.start, reverse=True):
+        rest = rest[:trigger.start] + rest[trigger.end:]
     return rest.rstrip("\n") + "\n\n-- triggers, in reverse creation order (tools/gen2_trigger_order.py)\n" + "\n".join(reversed(blocks))
 
 
@@ -149,8 +155,8 @@ def main() -> int:
     if problems:
         print(f"gen2 trigger-order check FAILED: {len(problems)} problem(s)", file=sys.stderr)
         return 1
-    n_triggers = len(TRIGGER.findall(ddl))
-    print(f"gen2 trigger-order check OK: {n_triggers} triggers re-created in reverse order; "
+    n_triggers = len(installed_triggers(ddl))
+    print(f"gen2 trigger-order check OK: {n_triggers} installed triggers re-created in reverse order; "
           f"{len(normal)} store tests and subtests pass identically in both orders")
     return 0
 

@@ -47,6 +47,7 @@ for field, killer in (('gateway_call_ref', 'call'), ('retrieved_at', 'time'), ('
 mid = '2D4B3E2OWN-retired-trigger'
 MUTATIONS.append(Mutation(mid, '2d-4b3e2 consumers part 1', 'reverse retired trigger too',
     ('test_trigger_order_tool.TriggerOrderToolTest.test_additive_trigger_replacement',),
-    target='tools/gen2_trigger_order.py', old='if m.group(1) not in retired]', new=']'))
+    target='tools/gen2_trigger_order.py', old='    blocks = [ddl[trigger.start:trigger.end] for trigger in installed]',
+    new='    blocks = [m.group(0) for m in TRIGGER.finditer(ddl)]'))
 CONTROLS[mid] = dict(controls=['test_trigger_order_tool.TriggerOrderToolTest.test_rebuild_creates_the_same_triggers_in_reverse'],
     why='Separate literal schema without a retired definition still reverses all installed triggers.')
