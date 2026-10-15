@@ -1330,8 +1330,11 @@ SQL/control/catalog data. Split again and stop after its first part:
 SQL 22 has a fixed `/1` CHECK and stays byte-unchanged. Install immutable
 `extraction_validations_v2` and `extraction_validation_results_v2`, with the
 same retained comparison/output and exact SQL 14 acquisition/validator/producer
-bindings. Both operands must have non-NULL registered revision pins; resolve
-families from each operand's own immutable snapshot. `/2` admits only
+bindings. Both operands must retain non-NULL historical registered revision
+pins. As repaired by F1 below, both canonical identities must additionally be
+registered under the validator extraction's pinned operator-approved revision;
+resolve both families under that one comparison revision, refusing missing
+common membership without inheriting older mappings. `/2` admits only
 `independent_extraction` (different families) and `same_family_replay` (equal
 families). Replay permits byte equality or disagreement and is integrity only,
 including different identities/versions in one family. Byte equality requires
@@ -2319,3 +2322,109 @@ waited for no active gen2-landing-* unit. No provider call, live gen-1/8765
 access, real migration, protected-register edit or main merge occurred.
 Commit and complete audits/logs:
 private/evidence/2d-4b3e1-json2b-part2/COMPLETION.md.
+
+
+### 2d-4b3e2-p2-repair-1: F1 design and re-estimate before code, 2026-10-15
+
+Design against HEAD `1696d49` (reviewed code `0cfb573`) on gen2, after
+reading the repair dispatch, Astra's review and all three family-probes files,
+both operator rulings, and the named flow/adjudication/methodology passages.
+The defect is comparison of family labels under two different interpretations:
+a rename can make unchanged tools appear independent. Unequal identities alone
+would leave Astra's two-tool reproduction open.
+
+**Choose (a), one common approved comparison interpretation.** Keep each
+extraction's historical registry pin and its existing membership guard. For
+validation, resolve **both canonical tool identities under the validator
+extraction's pinned registry revision**. Both must be registered there; absence
+of either, a NULL historical pin, or an unresolved operand refuses admission.
+The registry's immutable `(revision, identity)` key makes the interpretation
+unique, and authenticated audited operator registration remains its sole source.
+Compare the two families from that one revision: unequal for independent
+extraction, equal for integrity-only same-family replay. No labels from separate
+revisions are compared. Thus the same identity, or two tools renamed together,
+cannot acquire independence by mixing extraction pins. The comparison revision
+is recoverable from the immutable validator extraction; no caller-selected
+revision, new column, or new JSON is needed. An approved registry can describe
+new relationships, but admission always requires a coherent classification of
+both tools in the selected revision; a partial snapshot never inherits mappings.
+
+This approach uses the existing operator-approved versioned registry directly.
+Stable family lineage (b) would require new family identifiers, transition
+semantics and operator tooling beyond F1; that expansion is unnecessary for a
+single common interpretation. Later registry updates cannot reinterpret a
+retained validation because its validator extraction pin is immutable.
+
+**DDL choice:** edit undeployed SQL 29 in its existing ordered additive slot.
+Add a narrowly scoped common-membership refusal and change the method guard's
+target-tool join to the common revision. SQL 01–28 and generated SQL 30 remain
+unchanged. Explicitly repin the ordered-DDL hash after reviewing the unchanged
+column classification; both hashes change because the catalog hash includes trigger SQL as well
+as columns; the exhaustive column identities and classifications stay unchanged. Never apply DDL to a real database.
+
+**Re-estimate: about 245 handwritten lines:** SQL guards/comments 20; isolated
+Router/raw refusals for both reproductions and absent common membership, stable
+same/cross-revision accepted controls and replay checks 110; predicate mutants
+25; retained scope/catalog/control-path audit scripts 90. Documentation and
+generated control/hash records are additional. This fits one repair slice below
+500 lines; both receipt consumers, their fixture migration and SQL 17 replacement
+remain later work. Semantic agreement remains attributed assessment, and SQL 17
+continues to fence every extraction-based load-bearing support.
+
+Before commit run full gen2-test, trigger-order, the full composition module,
+--only for every edited-target and transitive edited-fixture mutant family,
+and the eight required static gates. Trace each new paired control through a
+successful guard/table event and result-view read. Heavy runs must first wait
+for no active gen2-landing-* user unit. Disposable snapshots copy .venv-gen2
+with cp -a and touch .gen2-installed; never symlink or refresh during mutants.
+Evidence: private/evidence/2d-4b3e2-p2-repair-1/. No providers, live gen-1/8765,
+real migrations, protected-register edits or main merge.
+
+
+**F1 implementation, 2026-10-15.** Undeployed SQL 29 now refuses a target
+identity missing from the validator extraction's comparison revision, and the
+method guard resolves both tool families under that same revision. The original
+registered guard still checks both historical memberships. The two rename
+reproductions refuse independently through Router and raw DDL; stable different
+families accept with equal or unequal extraction pins. Renamed one-/two-tool
+families accept only as integrity replay. Ambiguous common membership refuses
+for both methods. Historical pins are read back unchanged.
+
+The new common guard redundantly refuses a NULL validator pin. A separate raw
+fixture removes only that guard to isolate the old registered-validator-pin
+predicate for its existing mutant; the production-path historical-pin tests keep
+all guards. No rename or missing-common-membership test removes a guard.
+Eight new predicate mutants cover all four common-membership relationships,
+both method-side revision interpretations and both tool identity joins.
+All 49 successor pairings have separate passing controls with retained successful
+SQL event/view-read or Python line/arc traces. All 3,435 previous control entries
+are unchanged.
+
+The replayable catalog audit finds one changed method trigger and one added
+membership trigger, from 394 to 395 objects, with every column unchanged.
+Classification stays 37 JSON / 37 covered / zero pending and 504 scalar TEXT;
+SQL 01–28, SQL 30, service.py and the protected registers are byte-unchanged.
+Both catalog and ordered-DDL hashes are explicitly repinned, because the catalog
+hash also includes trigger SQL. The repair adds 96 handwritten repository lines
+and retains 338 evidence-script lines (including the reused control auditor and
+reviewer probe), conservatively **434 lines**, below the split budget. Docs and
+generated control/hash data are additional. Both receipt consumers and their
+fixture migration remain pending; SQL 17 still fences extraction-based support.
+
+
+**F1 repair validation complete, 2026-10-15.** Full gen2-test passes **3,976
+tests with two existing skips**. Trigger-order passes with **319 reversed
+triggers / 3,708 identical Store tests and subtests**. The full composition
+module passes. Exact ordered-DDL source resolution and transitive fixture
+imports require 50 mutant IDs; their complete two families select **106/106
+killed, all 106 separate controls passing**, with a green 957-test Store
+baseline. All 49 successor control traces qualify. The twelve retained reviewer
+probes produce the repaired matrix; its old partial cross-revision control now
+refuses missing common membership, while the complete stable cross-revision
+controls accept on both paths. All eight static gates pass, with another check
+of the final documentation before commit. The tested code and copied venv bytes
+are verified unchanged throughout validation. Every heavy-run preflight finds
+no active gen2-landing-* unit; no venv refresh, provider, live gen-1/8765 access,
+real migration, protected-register edit or main merge occurred. F1 repair is
+**COMPLETE**; the already documented later receipt/SQL-17 work is unchanged.
+Commit and final evidence: private/evidence/2d-4b3e2-p2-repair-1/COMPLETION.md.

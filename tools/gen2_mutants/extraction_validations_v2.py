@@ -12,7 +12,8 @@ def change(name, killer, old=None, new="1 = 1", scope=None, control="control", t
     MUTATIONS.append(Mutation(mid, "2d-4b3e2 continuation part 2", name, (test + killer,),
         old=old, new=new, scope=scope, target=target, drop_trigger=drop_trigger))
     CONTROLS[mid] = {"controls": [test + control],
-        "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."}
+        "why": ("Separate accepted successor record compares both tools under the validator extraction's pinned registry; SQL 17 remains fenced."
+            if name.startswith("comparison-") else "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced.")}
 
 
 for name, predicate in (
@@ -28,7 +29,23 @@ for name, predicate in (
         ("commit-contract", "o.contract_revision = v.contract_revision")):
     change(name, "bindings", predicate, scope="extraction_validations_v2_binding")
 for side in ("x", "y"):
-    change(side + "-pin", "historical_pin", f"t{side}.registry_version = {side}.extractor_registry_version", scope="extraction_validations_v2_registered")
+    change(side + "-pin", "historical_pin" if side == "x" else "registered_validator_pin",
+        f"t{side}.registry_version = {side}.extractor_registry_version", scope="extraction_validations_v2_registered")
+for name, predicate in (
+        ("validator", "y.extraction_id = NEW.validator_extraction_id"),
+        ("revision", "tc.registry_version = y.extractor_registry_version"),
+        ("identity", "tc.extractor_identity = x.extractor_identity"),
+        ("target", "x.extraction_id = NEW.target_extraction_id")):
+    change("comparison-" + name, "comparison_target_absent", predicate,
+        scope="extraction_validations_v2_comparison_registry", control="cross_revision_control")
+for side in ("x", "y"):
+    change("comparison-" + side + "-own-pin", "two_identities_renamed",
+        f"t{side}.registry_version = y.extractor_registry_version", f"t{side}.registry_version = x.extractor_registry_version",
+        "extraction_validations_v2_method", control="cross_revision_control")
+    change("comparison-" + side + "-identity", "cross_revision_control",
+        f"t{side}.extractor_identity = {side}.extractor_identity",
+        f"t{side}.extractor_identity = {'y' if side == 'x' else 'x'}.extractor_identity",
+        "extraction_validations_v2_method", control="renamed_integrity_control")
 change("independent-family", "same_family", "ty.family = tx.family", "0 = 1", "extraction_validations_v2_method")
 change("replay-family", "method", "ty.family <> tx.family", "0 = 1", "extraction_validations_v2_method", control="integrity_control")
 change("byte-comparison", "byte_comparison", "json_extract(y.output_ref, '$.content_hash') <> json_extract(x.output_ref, '$.content_hash')", "0 = 1", "extraction_validations_v2_method")

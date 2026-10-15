@@ -70,10 +70,13 @@ whitespace or NUL-suffixed variants cannot satisfy admission. Historical rows
 without a registry pin stay readable. Identity is still declared rather than
 execution-derived; station execution checking remains 2e2. SQL 29 now installs successor
 `extraction_validations_v2` records and their readback result view under
-`extraction-validation/2`. Both operands need non-NULL registered pins; each
-family is resolved from that extraction's own immutable registry snapshot.
-Independent extraction requires different families. Same-family replay permits
-byte equality or disagreement and remains integrity only, even across tool
+`extraction-validation/2`. Both operands retain non-NULL historical registered
+pins. For comparison, both canonical tool identities must be registered under the validator extraction's
+pinned operator-approved revision; missing common membership refuses, without
+inheriting older mappings. Both families resolve under that one revision.
+Independent extraction requires different families there; a rename of the same
+tool or a whole family across historical pins cannot manufacture independence.
+Same-family replay permits byte equality or disagreement and remains integrity only, even across tool
 identities/versions. Exact acquisition, independent validator/producer lineage,
 retained evidence and byte-hash comparisons remain enforced in Router commits
 and raw DDL. The optional successor outcome array authenticates evidence outside

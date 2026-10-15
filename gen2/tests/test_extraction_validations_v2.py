@@ -48,16 +48,68 @@ class V2Case(RecordCase):
 
     def test_same_family(self):
         self.assertEqual(self.router.register_extractor_registry({"registry_version": 2, "operator_id": "fixture-operator",
-            "reason": "same codebase", "tools": [{"extractor_identity": "tool-b", "family": "family-a"}]})["status"], "registered")
+            "reason": "same codebase", "tools": [{"extractor_identity": i, "family": "family-a"}
+                for i in ("tool-a", "tool-b")]})["status"], "registered")
         self.basis(independent=self.extraction("independent", extractor_registry_version=2))
         self.refuse(extraction_validations=[self.validation()])
 
-    def test_snapshot_control(self):
-        self.assertEqual(self.router.register_extractor_registry({"registry_version": 2, "operator_id": "fixture-operator",
-            "reason": "new method family", "tools": [{"extractor_identity": "tool-a", "family": "family-b"}]})["status"], "registered")
+    def registry(self, version, tools):
+        self.assertEqual(self.router.register_extractor_registry({"registry_version": version, "operator_id": "fixture-operator",
+            "reason": "approve comparison classification", "tools": [{"extractor_identity": i, "family": f}
+                for i, f in tools]})["status"], "registered")
+
+    def test_same_identity_renamed(self):
+        self.registry(2, [("tool-a", "family-c")])
         self.basis(independent=self.extraction("independent", extractor_identity="tool-a", extractor_registry_version=2))
+        self.refuse(extraction_validations=[self.validation()])
+
+    def test_two_identities_renamed(self):
+        self.registry(2, [(i, "family-a") for i in ("tool-a", "tool-c")])
+        self.registry(3, [(i, "family-c") for i in ("tool-a", "tool-c")])
+        self.basis(target=self.extraction(extractor_registry_version=2),
+            independent=self.extraction("independent", extractor_identity="tool-c", extractor_registry_version=3))
+        self.refuse(extraction_validations=[self.validation()])
+
+    def test_comparison_target_absent(self):
+        # Both historical pins are valid; only target membership in the common
+        # interpretation is absent. No fallback to the target's old mapping.
+        self.registry(2, [("tool-b", "family-b")])
+        self.basis(independent=self.extraction("independent", extractor_registry_version=2))
+        self.refuse(extraction_validations=[self.validation()])
+
+    def test_cross_revision_control(self):
+        self.registry(2, [("tool-a", "family-a"), ("tool-b", "family-b")])
+        self.basis(independent=self.extraction("independent", extractor_registry_version=2))
         self.assertEqual(self.send(self.verifier, "op_snapshot01", extraction_validations=[self.validation()])["status"], "committed")
         self.assertEqual(self.result(), 1)
+        self.assertEqual(self.rows("SELECT extraction_id,extractor_registry_version FROM source_extractions ORDER BY extraction_id"),
+            [("independent", 2), ("target", 1)])
+        self.assertEqual(self.rows("PRAGMA foreign_key_check"), [])
+
+    def test_older_comparison_control(self):
+        self.registry(2, [("tool-a", "family-a"), ("tool-b", "family-b")])
+        self.basis(target=self.extraction(extractor_registry_version=2))
+        self.assertEqual(self.send(self.verifier, "op_snapshot01", extraction_validations=[self.validation()])["status"], "committed")
+        self.assertEqual(self.result(), 1)
+
+    def test_renamed_integrity_control(self):
+        self.registry(2, [("tool-a", "family-c")])
+        self.basis(independent=self.extraction("independent", extractor_identity="tool-a", extractor_registry_version=2))
+        self.assertEqual(self.send(self.verifier, "op_integrity01", extraction_validations=[self.validation(method="same_family_replay")])["status"], "committed")
+        self.assertEqual(self.result(), 0)
+
+    def test_two_identities_integrity_control(self):
+        self.registry(2, [(i, "family-a") for i in ("tool-a", "tool-c")])
+        self.registry(3, [(i, "family-c") for i in ("tool-a", "tool-c")])
+        self.basis(target=self.extraction(extractor_registry_version=2),
+            independent=self.extraction("independent", extractor_identity="tool-c", extractor_registry_version=3))
+        self.assertEqual(self.send(self.verifier, "op_integrity01", extraction_validations=[self.validation(method="same_family_replay")])["status"], "committed")
+        self.assertEqual(self.result(), 0)
+
+    def test_comparison_replay_target_absent(self):
+        self.registry(2, [("tool-b", "family-a")])
+        self.basis(independent=self.extraction("independent", extractor_registry_version=2))
+        self.refuse(extraction_validations=[self.validation(method="same_family_replay")])
 
     def test_method(self):
         self.basis()

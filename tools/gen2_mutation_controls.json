@@ -13517,6 +13517,54 @@
   ],
   "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
  },
+ "2D4B3E2V2-comparison-identity": {
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_cross_revision_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; both families use the validator extraction's pinned registry and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-comparison-revision": {
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_cross_revision_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; both families use the validator extraction's pinned registry and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-comparison-target": {
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_cross_revision_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; both families use the validator extraction's pinned registry and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-comparison-validator": {
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_cross_revision_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; both families use the validator extraction's pinned registry and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-comparison-x-identity": {
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_renamed_integrity_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; both families use the validator extraction's pinned registry and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-comparison-x-own-pin": {
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_cross_revision_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; both families use the validator extraction's pinned registry and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-comparison-y-identity": {
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_renamed_integrity_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; both families use the validator extraction's pinned registry and SQL 17 remains fenced."
+ },
+ "2D4B3E2V2-comparison-y-own-pin": {
+  "controls": [
+   "test_store_extraction_validations_v2.DDLV2Test.test_cross_revision_control"
+  ],
+  "why": "Separate accepted successor record reaches the changed predicate; both families use the validator extraction's pinned registry and SQL 17 remains fenced."
+ },
  "2D4B3E2V2-domain-i-duplicate": {
   "by_hand": true,
   "controls": [

@@ -28,6 +28,17 @@ WHEN NOT EXISTS (
 BEGIN
   SELECT RAISE(ABORT, 'validation /2 needs both pinned registered tools');
 END;
+-- trace: operator ruling 2026-10-14; F1 repair; INVARIANTS V-3.
+-- Keep historical pins; compare both tools under the validator extraction's pin.
+CREATE TRIGGER extraction_validations_v2_comparison_registry BEFORE INSERT ON extraction_validations_v2
+WHEN NOT EXISTS (
+  SELECT 1 FROM source_extractions x JOIN source_extractions y ON y.extraction_id = NEW.validator_extraction_id
+  JOIN extractor_tools tc ON tc.registry_version = y.extractor_registry_version
+    AND tc.extractor_identity = x.extractor_identity
+  WHERE x.extraction_id = NEW.target_extraction_id)
+BEGIN
+  SELECT RAISE(ABORT, 'validation /2 needs both tools in the comparison registry');
+END;
 CREATE TRIGGER extraction_validations_v2_binding BEFORE INSERT ON extraction_validations_v2
 WHEN NOT EXISTS (
   SELECT 1 FROM source_extractions x JOIN source_extractions y ON y.extraction_id = NEW.validator_extraction_id
@@ -48,7 +59,7 @@ END;
 CREATE TRIGGER extraction_validations_v2_method BEFORE INSERT ON extraction_validations_v2
 WHEN EXISTS (
   SELECT 1 FROM source_extractions x JOIN source_extractions y ON y.extraction_id = NEW.validator_extraction_id
-  JOIN extractor_tools tx ON tx.registry_version = x.extractor_registry_version AND tx.extractor_identity = x.extractor_identity
+  JOIN extractor_tools tx ON tx.registry_version = y.extractor_registry_version AND tx.extractor_identity = x.extractor_identity
   JOIN extractor_tools ty ON ty.registry_version = y.extractor_registry_version AND ty.extractor_identity = y.extractor_identity
   WHERE x.extraction_id = NEW.target_extraction_id AND (
     (NEW.method = 'independent_extraction' AND ty.family = tx.family)
