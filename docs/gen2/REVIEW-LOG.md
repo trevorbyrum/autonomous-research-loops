@@ -2601,3 +2601,11 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` run 1 exited 2 because of the mutation-baseline timing flake (DEBT-039).
   - The rerun at the same commit was **green** (3,786 s).
 - **Routed:** `docs/gen2/tasks/2d-4b3e2-p2-repair-1.md`, round 2 of 3. The fix is a coherent operator-governed family relationship across operands: a common comparison revision, or stable family lineage.
+
+## 2026-10-15: 2d-4b3e2-p2-repair-1, round 2: PASS. 2d-4b3e2 part 2 slice 1 accepted
+- **Astra** (`ab47b808`, pinned 50cff2e; `private/reviews/gen2-2d-4b3e2-p2-r2-astra-review-20261015.md`): **A, B and C all PASS, ROOT-CAUSE within the registry boundary.**
+- **F1 closed.** Both rename reproductions are refused through the Router and raw DDL. 12 original and 16 extended probes behave correctly, and complete stable cross-revision controls are accepted.
+- **Trust boundary noted:** the validator extraction's declared revision can be selected, so an older approved revision can still classify tools as separate after a later merge. This is acceptable under the repair as briefed, and it was raised to the operator.
+- **Operator ruling 2026-10-15 (Trevor): the latest registry revision governs new validations.** Retained validations keep their recorded interpretation. This is folded into slice 2.
+- **Landing at 50cff2e:** `gen2-check` green; `gen2-gateway` green.
+- **Next:** slice 2: the latest-revision rule, then both receipt consumers. SQL 17 stays.
