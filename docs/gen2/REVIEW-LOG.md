@@ -2609,3 +2609,13 @@ The post-2q Gate D is renumbered #5.
 - **Operator ruling 2026-10-15 (Trevor): the latest registry revision governs new validations.** Retained validations keep their recorded interpretation. This is folded into slice 2.
 - **Landing at 50cff2e:** `gen2-check` green; `gen2-gateway` green.
 - **Next:** slice 2: the latest-revision rule, then both receipt consumers. SQL 17 stays.
+
+## 2026-10-15: 2d-4b3e2 slice 2 part 1 (latest registry revision for new validations; SQL 31): PASS on the first review. Accepted
+- **Astra** (`c6a06d31`, pinned ad1cc4a; `private/reviews/gen2-2d-4b3e2-s2a-astra-review-20261015.md`): **A, B and C all PASS, ROOT-CAUSE.**
+- **What it does:**
+  - The Router and SQL 31 independently require the validator pin to equal the highest admitted registry revision. That value is monotonic, and an empty registry fails closed.
+  - The check runs inside `BEGIN IMMEDIATE`, so a merge committed before the transaction takes effect.
+  - Retained validations are unchanged.
+- **Older target pins** stay valid as provenance, and both identities are compared under the current revision.
+- **Landing at ad1cc4a:** `gen2-check` green; `gen2-gateway` green.
+- **Next:** slice 2 part 2, both receipt consumers. SQL 17 stays.
