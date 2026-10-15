@@ -21,7 +21,8 @@ def extraction_document(case, method):
         validation_ref="validation_unrecorded" if method == "validated_extraction" else None)
     doc["verifier_invocation_id"] = case.verifier["invocation_id"]
     doc["verifier_capability_id"] = case.verifier["capability_id"]
-    return doc
+    from gen2.tests.extraction_receipt_fixtures import attach
+    return attach(case, doc)
 
 
 class ExtractionRouterTest(unittest.TestCase):

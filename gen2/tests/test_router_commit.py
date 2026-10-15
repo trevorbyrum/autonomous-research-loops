@@ -334,6 +334,9 @@ class AuthorityTest(CommitCase):
         self.x("INSERT INTO source_acquisitions SELECT s.topic_id, s.work_id, s.source_version, s.content_hash, o.observation_id, e.event_id, o.gateway_call_ref, o.invocation_id, o.attempt, o.lane, 'find', e.provider_record_id, e.captured_at, 'inv_verify01', o.request_identity, CAST(o.request AS BLOB), ?, e.captured_at FROM source_artifacts s, search_observations o JOIN retrieval_events e USING (observation_id) WHERE o.observation_id = 'obs_authority01'", self.spool.blobs[source["content_hash"]])
         receipt["obtained_content_hash"] = source["content_hash"]
         receipt["checks"]["exact_quote"]["source_artifact_hash"] = source["content_hash"]
+        from gen2.tests.extraction_receipt_fixtures import seed, attach
+        seed(self, verifier)
+        attach(self, receipt)
         cases = (
             ("the producer commits it", self.grant, receipt, "kind_not_permitted"),
             ("the verifier names another verifier", verifier, {**receipt, "verifier_invocation_id": "inv_research01"}, "capability_invocation_mismatch"),

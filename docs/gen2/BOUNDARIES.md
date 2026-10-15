@@ -55,8 +55,8 @@ extractor identity and a validator distinct from source producer and target
 extractor, with its own extraction of the same acquisition. Equal output hashes
 establish byte agreement; semantic agreement remains the validator's attributed
 assessment. Failed results and same-extractor integrity replay never satisfy
-method success. The result view has no receipt or support consumer in this
-part: SQL 17 and every existing receipt consumer are unchanged. The store binds
+method success. The /1 result view has no receipt or support consumer. SQL 17 still fences
+every extraction-based load-bearing support. The store binds
 records; it does not certify extraction execution or semantic correctness.
 SQL 28 and `ExtractorRegistry` in `extractor_registry.py` (2d-4b3e2 part 1)
 require every new extraction to pin an immutable operator-approved registry
@@ -87,8 +87,15 @@ retained evidence and byte-hash comparisons remain enforced in Router commits
 and raw DDL. The optional successor outcome array authenticates evidence outside
 the writer lock and derives attribution from the committing capability. SQL 30
 guards its new comparison JSON column under the closed member-name family.
-Both durable receipt consumers and the positive receipt-fixture migration remain
-pending after this records-only split; free-text validation_ref has no authority.
+SQL 32 extends only the receipt domain's optional extraction_id member and
+requires new verifier_extraction receipts to consume their own non-NULL-pinned
+source_extractions row. Exact acquisition, work/version, verifier lineage,
+extracting invocation, canonical tool and sufficient output tier must bind.
+EvidenceWriter independently checks inside the writer transaction after receipt
+insertion, with rollback on refusal; SQL 18/19 retain their earlier diagnostics.
+Positive verifier receipt fixtures retain durable bases. The validated_extraction
+consumer and its /2 fixture migration remain pending; free-text validation_ref
+has no authority.
 `/1` results have no authority consumer and SQL 17 still fences all
 extraction-based load-bearing support.
 

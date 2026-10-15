@@ -187,6 +187,7 @@ class EvidenceWriter:
                 "extraction_validation_ref": doc["extraction"]["validation_ref"], "producer_invocation_id": doc["producer_invocation_id"],
                 "verifier_invocation_id": doc["verifier_invocation_id"], "quote_check_id": doc["quote_check_id"], "verdict": doc["verdict"],
                 "receipt": doc, "verified_at": doc["verified_at"]})
+            self._require_own_extraction(doc)
         verification = self._core._write_verification_holds(payload, op_id, now)
         for doc in payload["decision_receipts"]:
             response, outcome = doc["provider_response"], doc["outcome"]
@@ -324,3 +325,20 @@ class EvidenceWriter:
             self._core._store.update("review_episodes", {"episode_id": closure["episode_id"]}, {"closed_at": now, "closed_by_operation_id": op_id})
             for trigger in self._core._store.select("review_triggers", {"episode_id": closure["episode_id"]}):
                 self._core._store.update("review_triggers", {"trigger_identity": trigger["trigger_identity"]}, {"handled_at": now})
+
+    def _require_own_extraction(self, doc: dict) -> None:
+        # Inside the existing writer fence, after same-outcome extractions.
+        if doc["extraction"]["method"] != "verifier_extraction":
+            return
+        rank = {"bibliographic": 1, "abstract": 2, "full_text": 3, "reproduced": 4}
+        acquisitions = [a for a in self._core._store.select("source_acquisitions", {
+            **doc["source"], "verifier_invocation_id": doc["verifier_invocation_id"], "content_hash": doc["obtained_content_hash"]})
+            if a["gateway_call_ref"] == doc["acquisition"]["gateway_call_ref"]
+            and a["retrieved_at"] == doc["acquisition"]["retrieved_at"] and "gateway:" + a["lane"] == doc["acquisition"]["route"]]
+        extraction = self._core._one("source_extractions", {"extraction_id": doc["extraction"].get("extraction_id")})
+        if extraction is None or not any(all(extraction[k] == a[k] for k in
+                ("topic_id", "work_id", "source_version", "event_id", "verifier_invocation_id")) for a in acquisitions) or (
+                extraction["topic_id"] != doc["topic_id"] or extraction["extracting_invocation_id"] != doc["extraction"]["produced_by_invocation_id"]
+                or extraction["extractor_identity"] != doc["extraction"]["extractor"] or extraction["extractor_registry_version"] is None
+                or rank[extraction["supported_tier"]] < rank[doc["access_tier"]]):
+            raise Refusal("payload_invalid", "receipt needs its verifier durable extraction")

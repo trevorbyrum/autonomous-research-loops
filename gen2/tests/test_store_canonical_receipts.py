@@ -11,6 +11,11 @@ class CanonicalDDLTest(relationships.RelationshipTest):
     test_binding = test_verifier = test_immutable = test_control = None
     test_relationships = test_relationship_controls = test_natural_key = None
 
+    def raw(self, **changes):
+        super().raw(**changes)
+        from gen2.tests.extraction_receipt_fixtures import seed
+        seed(self)
+
     def canonical_receipt(self, **changes):
         acq = {"route": "gateway:crossref", "retrieved_at": T, "gateway_call_ref": "gw-call:1", "cache_reuse": True}
         acq.update(changes.pop("acquisition", {}))

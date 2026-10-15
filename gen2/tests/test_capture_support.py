@@ -112,6 +112,8 @@ class CaptureTest(CaptureCase):
         record, doc = self.operands()
         doc["verification_receipt_id"] = "ver_pending01"
         doc["extraction"].update(method="verifier_extraction", produced_by_invocation_id="inv_verify0001")
+        from gen2.tests.extraction_receipt_fixtures import attach
+        attach(self, doc)
         self.accepted(record, verification_receipts=[doc])
         self.promote(accepted=False)
 
@@ -120,6 +122,8 @@ class CaptureTest(CaptureCase):
         record, doc = self.operands()
         doc["verification_receipt_id"] = "ver_pending01"
         doc["extraction"].update(method="verifier_extraction", produced_by_invocation_id="inv_verify0001")
+        from gen2.tests.extraction_receipt_fixtures import attach
+        attach(self, doc)
         before = self.state(exclude=())
         self.accepted(record, verification_receipts=[doc])
         self.late_store(before, "quarantined", holds=1)
@@ -281,3 +285,8 @@ class RouterGuardTest(CaptureTest):
         self.x("DROP TRIGGER verification_receipts_capture_binding")
         self.x("DROP TRIGGER claims_accepted_support_needs_capture")
         self.x("DROP TRIGGER verification_receipts_admitted_extraction")
+
+    def substitution(self, change, pending=False):
+        # Isolate the capture predicate from the independent receipt consumer.
+        with patch.object(self.router._evidence_writer, '_require_own_extraction', return_value=None):
+            super().substitution(change, pending)

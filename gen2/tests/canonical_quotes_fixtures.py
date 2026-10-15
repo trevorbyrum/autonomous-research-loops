@@ -39,6 +39,8 @@ class CanonicalQuotesCase(QuotesCase):
         out = self.router.admit_reaccess({**{k: self.grant[k] for k in ("capability_id", "invocation_id")},
             "work_id": self.work, "source_version": "v1", "event_id": "rev_quote0000101"})
         self.assertEqual(out["status"], "admitted", out)
+        from gen2.tests.extraction_receipt_fixtures import seed
+        seed(self)
 
     def receipt_document(self, *args, **kwargs):
         doc = super().receipt_document(*args, **kwargs)

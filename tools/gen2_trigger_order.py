@@ -43,8 +43,11 @@ TRIGGER = re.compile(r"CREATE TRIGGER (\w+)\b.*?\nEND;\n", re.DOTALL)
 def reverse_triggers(ddl: str) -> str:
     """The DDL with its triggers removed in place and re-created, last to
     first, after everything else."""
-    blocks = [m.group(0) for m in TRIGGER.finditer(ddl)]
-    rest = TRIGGER.sub("", ddl)
+    # Retired definitions must run before their ordered DROP. Reverse only
+    # triggers still installed after the additive schema has been applied.
+    retired = {m.group(1) for m in re.finditer(r"DROP TRIGGER (\w+);", ddl)}
+    blocks = [m.group(0) for m in TRIGGER.finditer(ddl) if m.group(1) not in retired]
+    rest = TRIGGER.sub(lambda m: m.group(0) if m.group(1) in retired else "", ddl)
     return rest.rstrip("\n") + "\n\n-- triggers, in reverse creation order (tools/gen2_trigger_order.py)\n" + "\n".join(reversed(blocks))
 
 

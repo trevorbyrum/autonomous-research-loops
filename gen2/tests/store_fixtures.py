@@ -433,6 +433,9 @@ class StoreTestCase(unittest.TestCase):
         if not self.rows("SELECT 1 FROM source_acquisitions WHERE source_version = 'v1' AND verifier_invocation_id = ?", verifier):
             self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, ?, ?, ?, ?, ?)", TOPIC, h("7"), T, verifier, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
 
+        from gen2.tests.extraction_receipt_fixtures import seed
+        seed(self)
+
     CHECKS_OK = {"numeric_units": "checked_ok", "denominators": "checked_ok", "negation": "checked_ok", "qualifications": "checked_ok"}
 
     def verify(self, rid: str, *, claim: tuple = ("clm_00000001", 1), work: str = "wrk_00000001", tier: str = "full_text", required: str = "full_text",
@@ -461,6 +464,8 @@ class StoreTestCase(unittest.TestCase):
                "adjudication": adjudication, "verdict": verdict, "verified_at": T}
         for key, value in (receipt_overrides or {}).items():
             doc[key] = value
+        from gen2.tests.extraction_receipt_fixtures import attach
+        attach(self, doc)
         for path in drop:  # delete a (dotted) key: probes the absent-key case of NULL-sensitive CHECKs
             *parents, last = path.split(".")
             node = doc

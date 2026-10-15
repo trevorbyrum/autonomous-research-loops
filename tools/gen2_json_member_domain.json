@@ -545,6 +545,6 @@
     "works.study_group_id",
     "works.work_id"
   ],
-  "schema_sha256": "246e64ca9a4a7162ac3b24a50ec7c18694b3e13aeb09fc7344069d3ea8e89ed4",
-  "ddl_sha256": "8c89809591f64c36be4047c83aa55119bd17294f50e08babb16ecc1302e980d3"
+  "schema_sha256": "70b1834873f3259d0246126f90087aba9bd99cb748832cf87922d1231f608394",
+  "ddl_sha256": "488e7eebb33fbcd217a77986b64bdf7cb558937a59b51fcff98fd6a809eab7f2"
 }

@@ -13503,6 +13503,162 @@
   ],
   "why": "Separate admitted /2 validation reaches the current-at-admission predicate; retained history stays pinned."
  },
+ "2D4B3E2OWN-extracting_invocation_id": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-extraction_id": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-extractor_identity": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-gateway_call_ref": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-pin": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-reference-type": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-retired-trigger": {
+  "controls": [
+   "test_trigger_order_tool.TriggerOrderToolTest.test_rebuild_creates_the_same_triggers_in_reverse"
+  ],
+  "why": "Separate literal schema without a retired definition still reverses all installed triggers."
+ },
+ "2D4B3E2OWN-retrieved_at": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-route": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-dispatch": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-event_id": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-extracting_invocation_id": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-extractor_identity": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-gateway_call_ref": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-lookup": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-pin": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-retrieved_at": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-route": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-source_version": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-tier": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-verifier_invocation_id": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-router-work_id": {
+  "controls": [
+   "test_own_extraction_receipts.OwnReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-source_version": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-tier": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-verifier_invocation_id": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
+ "2D4B3E2OWN-work_id": {
+  "controls": [
+   "test_store_own_extraction_receipts.OwnReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted own-extraction receipt reaches the changed basis predicate."
+ },
  "2D4B3E2V2-admission": {
   "by_hand": true,
   "controls": [

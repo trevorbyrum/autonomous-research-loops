@@ -176,6 +176,8 @@ class AdmissionTest(QuotesCase):
         self.addCleanup(case.tearDown)
         doc = case.receipt_document()
         doc["extraction"].update(method="verifier_extraction", produced_by_invocation_id="inv_verify0001")
+        from gen2.tests.extraction_receipt_fixtures import attach
+        attach(case, doc)
         case.accepted(verification_receipts=[doc])
         self.assertEqual(case.rows("SELECT verdict FROM verification_receipts"), [("supports",)])
 

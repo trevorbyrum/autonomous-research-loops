@@ -53,7 +53,7 @@ class CompletionPairs(RolloutPairs):
         if self.table == 'verification_receipts':
             # SQL 21 redundantly refuses duplicate/unknown names. Isolate SQL 27;
             # unchanged full-schema span tests still enforce shape and numerals.
-            exclusions.append('verification_receipts_span_domain')
+            exclusions.append('verification_receipts_span_domain_v2')
         if self.table == 'obligations':
             # Facet tags normally admit strings only. Exercise object names in
             # the array without an unrelated facet/document binding masking it.

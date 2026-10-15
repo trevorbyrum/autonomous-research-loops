@@ -26,7 +26,8 @@ def support_document(case, method, tier):
         doc["extraction"]["produced_by_invocation_id"] = "inv_verify0001"
     if method == "validated_extraction":
         doc["extraction"]["validation_ref"] = "validation_unrecorded"
-    return doc
+    from gen2.tests.extraction_receipt_fixtures import attach
+    return attach(case, doc)
 
 
 class PendingRouterTest(unittest.TestCase):

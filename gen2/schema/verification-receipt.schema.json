@@ -105,6 +105,7 @@
       "properties": {
         "method": {"enum": ["verifier_extraction", "validated_extraction", "canonical_bytes"]},
         "extractor": {"$ref": "common.schema.json#/$defs/short_text"},
+        "extraction_id": {"description": "Durable source_extractions key; required at admission for verifier_extraction. Admission grants no promotion (SQL 17).", "$ref": "common.schema.json#/$defs/short_text"},
         "produced_by_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
         "validation_ref": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
       },

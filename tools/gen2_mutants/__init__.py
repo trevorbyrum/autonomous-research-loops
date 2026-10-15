@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from . import ddl_0a, store_0b_0d, router_1b, supervisor_1c, registries_1d, operator_1e_1f, workflow_2a, size_2r, gateway_client_2b, gateway_client_2b17, gateway_client_2b18, metrics_2qa, metrics_2qa_repair, metrics_identity, metrics_source, metrics_closure, metrics_binding, metrics_scope, metrics_2q7, metrics_2qt1, router_composition_2qb2, router_composition_2qb3, router_composition_2qb6, router_composition_2qb7, router_composition_2qb8, router_composition_2qb10, router_evidence_2qb9, router_commit_2qb11, replay_2qt3
 from .base import Mutation
-from . import validation_current_registry
+from . import validation_current_registry, own_extraction_receipts
 from . import accounting_2c1
 from . import assessments_2c2a
 from . import lifecycle_2c2b1
@@ -118,4 +118,5 @@ MUTATIONS: list[Mutation] = [
     *extractor_registry_2d4b3e2.MUTATIONS,
     *extraction_validations_v2.MUTATIONS,
     *validation_current_registry.MUTATIONS,
+    *own_extraction_receipts.MUTATIONS,
 ]

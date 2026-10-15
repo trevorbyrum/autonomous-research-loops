@@ -41,6 +41,8 @@ class ReceiptCase(AcquisitionCase):
 
     def admit(self):
         self.assertEqual(self.router.admit_reaccess(self.request())["status"], "admitted")
+        from gen2.tests.extraction_receipt_fixtures import seed
+        seed(self)
 
 
 class ReceiptTest(ReceiptCase):

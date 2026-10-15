@@ -26,6 +26,8 @@ class ContentDDLTest(relationships.RelationshipTest):
     def acquired(self, record, others=(), **changes):
         self.raw(source_version=changes.pop("source_version", "v4"), content_hash=h("e"),
             response_bytes=response(record, others), **changes)
+        from gen2.tests.extraction_receipt_fixtures import seed
+        seed(self)
 
     def content_receipt(self, tier, rid="ver_content1", **changes):
         version = changes.pop("version", "v4")

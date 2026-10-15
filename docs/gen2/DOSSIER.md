@@ -2512,3 +2512,104 @@ part. No receipt schema, helper, operand or assertion is changed in this part.
 Free-text validation_ref and /1 remain non-authoritative, and SQL 17 still
 fences every extraction-based load-bearing support. Fence replacement remains
 a separate following task.
+
+### 2d-4b3e2 consumers: re-estimate before code, 2026-10-15
+
+Against accepted latest-revision code `ad1cc4a` on gen2, read the complete
+continuation, all operator rulings, this dossier from §2d-4b3e onward, the
+named flow/adjudication/methodology authority and earlier slice evidence.
+The former 420-line estimate omits copying SQL 21's complete closed domain
+into an additive successor, independently preserving earlier diagnostics, and
+migrating shared raw receipt controls. Revised estimate: **about 850 handwritten
+lines**, excluding documentation and generated mutation-control/hash data.
+Split by receipt method and stop after the first part:
+
+1. **This dispatch, about 495 lines:** additive receipt-domain extension and
+   verifier-extraction guard 155; typed schema and fenced Router check 40;
+   shared verifier receipt basis fixtures and migration 100; isolated Router/raw
+   controls, readback/replay/conflict/rollback 135; paired mutants/trace and
+   catalog/scope evidence 65. The validated consumer remains pending.
+2. **Next part, about 355 lines:** successful bound /2 validation consumption
+   at Router/raw DDL, validated fixture migration, failed/integrity/same-family,
+   /1 and NULL-pin refusals, separately paired mutants and traces. Re-estimate
+   at dispatch. SQL 17 replacement remains a separate following task.
+
+Add optional typed `extraction.extraction_id`, interpreted as an immutable
+source_extractions key. New verifier_extraction receipts must name their own
+non-NULL-pinned extraction, matching exact topic/work/version/acquisition event,
+verifier lineage, declared canonical tool and extracting invocation, with output
+tier sufficient for the receipt. Resolve the consumed acquisition by the existing
+hash/call/time/route selectors. Existing SQL 18 missing-acquisition and SQL 19
+content-ceiling diagnostics retain precedence independently of trigger order.
+The Router check runs in the existing writer transaction after extraction writes;
+no new service.py authority or external work is added. Historical receipts remain
+readable; new missing/invented/foreign/unpinned bases refuse for every verdict.
+
+SQL 01–31 remain byte-unchanged. SQL 32 replaces only SQL 21's trigger with an
+otherwise byte-identical definition allowing the optional extraction_id member,
+then adds the verifier consumer. Preserve every decoded-name/member/span/numeral
+predicate. No stored column or JSON classification changes; review the catalog
+and explicitly repin both hashes. Update positive verifier fixtures with durable
+setup without weakening their assertions; inventory all positive validated
+controls explicitly as pending next part. Do not claim their /2 migration done.
+Free-text validation_ref and /1 confer no authority; **SQL 17 still fences every
+extraction-based load-bearing support**, including newly bound verifier receipts.
+
+Before commit run full gen2-test, trigger-order, composition, every edited-target
+and transitive edited-fixture mutant family with --only, plus all eight static
+gates. Trace each new pairing through its changed guard. Heavy runs wait for no
+active gen2-landing-* unit. Disposable snapshots copy .venv-gen2 with cp -a and
+touch their installed marker; never symlink or refresh during mutants. Evidence:
+private/evidence/2d-4b3e2-consumers/. No providers, live gen-1/8765, real database
+migration, protected-register edit or main merge.
+
+Implementation integration note: the additive domain successor has a distinct
+trigger name, so existing span predicate mutants now target its live definition
+with unchanged IDs, killers and controls. The trigger-order tool must preserve
+retired CREATE/DROP pairs in place and reverse installed triggers only; add a
+literal replacement regression. This is included in the first-part budget.
+
+**First consumer part implemented; requested stop, 2026-10-15.** The dispatch
+base is `81364d9` (accepted latest-revision code `ad1cc4a`). SQL 32 replaces
+SQL 21's installed domain trigger with an otherwise identical successor allowing
+optional extraction.extraction_id; a regression compares their complete bodies.
+It then requires new verifier_extraction receipts to consume a pinned durable
+own extraction bound to the selected acquisition, work/version, verifier,
+extracting invocation, canonical tool and sufficient output tier. EvidenceWriter
+independently checks after insertion within the existing transaction; refusal
+rolls back the receipt and successful effects. SQL 18/19 retain their diagnostic
+precedence in either trigger order. New missing, invented, foreign, unpinned,
+wrong-tool, insufficient-output and non-text references have isolated controls.
+
+Positive verifier fixtures now retain durable setup, with authenticated Router
+commits where the fixture uses Router admission. The authority, amendment and
+capture controls retain all their original assertions. The receipt-fixture audit
+explicitly leaves every positive validated_extraction /2 migration pending.
+All 26 new pairings have accepted path traces. The work-dimension mutant removes
+both redundant work checks; its unchanged killer retains the full FK/state oracle.
+Existing span mutants target the live successor without changing IDs or controls.
+The order tool preserves retired CREATE/DROP pairs and reverses installed guards.
+
+This part adds **474 handwritten repository lines plus 33 retained evidence-script
+lines: 507 total**, excluding documentation and generated control/hash data.
+SQL 01–31, service.py and the protected registers stay byte-unchanged. Catalog
+review proves the one intended domain replacement and added receipt guard, all
+columns unchanged, 37 JSON / 37 covered / zero pending and 504 scalar TEXT; both
+reviewed hashes are explicitly repinned. Validation results and the commit are
+recorded in private/evidence/2d-4b3e2-consumers/COMPLETION.md.
+
+**INCOMPLETE overall at this split.** The validated_extraction consumer still
+must require a successful, bound durable /2 validation and refuse failed,
+integrity-only/same-family, /1-only, unbound and NULL-pin bases; its fixture
+migration remains next. Free-text validation_ref and /1 grant no authority.
+**SQL 17 still fences every extraction-based load-bearing support**, including
+newly bound own-extraction receipts. Fence replacement remains separate work.
+
+The broad sweep exposed three old capture mutants masked by the new independent
+Router consumer and two rank-four mutants breaking fixture output construction.
+RouterGuardTest's existing capture isolation now stubs only the own-extraction
+consumer during substitution negatives; production-path controls keep it active.
+Receipt fixture outputs cap at full_text even under a widened input-view mutant.
+No old ID, control, assertion or production predicate changes. Corrected complete
+families, final full tests, traces and trigger-order results are retained in the
+completion evidence, with per-ID reconciliation against the broad sweep.

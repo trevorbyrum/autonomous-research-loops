@@ -54,6 +54,11 @@ class TriggerOrderToolTest(unittest.TestCase):
         self.assertEqual(trigger_order(rebuilt), ["t_third", "t_second", "t_first"])
         self.assertEqual(self.tool["check_rebuild"](DDL, rebuilt, CONTRACT), [])
 
+    def test_additive_trigger_replacement(self):
+        ddl = DDL + "DROP TRIGGER t_first;\n" + self.tool["TRIGGER"].search(DDL).group(0).replace("t_first", "t_successor")
+        rebuilt = self.tool["reverse_triggers"](ddl)
+        self.assertEqual(self.tool["check_rebuild"](ddl, rebuilt, CONTRACT), [])
+
     def test_a_rebuild_that_keeps_the_order_is_refused(self) -> None:
         """Without this, a rebuild that reversed nothing would pass trivially."""
         problems = self.tool["check_rebuild"](DDL, DDL, CONTRACT)
