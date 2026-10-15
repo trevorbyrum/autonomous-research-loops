@@ -74,6 +74,11 @@ execution-derived; station execution checking remains 2e2. SQL 29 now installs s
 pins. For comparison, both canonical tool identities must be registered under the validator extraction's
 pinned operator-approved revision; missing common membership refuses, without
 inheriting older mappings. Both families resolve under that one revision.
+SQL 31 and ExtractionRecords require this pin to equal the current registry revision when a new /2
+validation is admitted, checked inside the writer transaction after same-outcome
+extractions. An operator update therefore takes effect at admission, including
+updates after artifact authentication. Retained validations keep their original
+interpretation and identical committed-operation replay remains readable.
 Independent extraction requires different families there; a rename of the same
 tool or a whole family across historical pins cannot manufacture independence.
 Same-family replay permits byte equality or disagreement and remains integrity only, even across tool

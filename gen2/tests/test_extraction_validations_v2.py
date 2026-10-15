@@ -86,11 +86,10 @@ class V2Case(RecordCase):
             [("independent", 2), ("target", 1)])
         self.assertEqual(self.rows("PRAGMA foreign_key_check"), [])
 
-    def test_older_comparison_control(self):
+    def test_older_comparison_refused(self):
         self.registry(2, [("tool-a", "family-a"), ("tool-b", "family-b")])
         self.basis(target=self.extraction(extractor_registry_version=2))
-        self.assertEqual(self.send(self.verifier, "op_snapshot01", extraction_validations=[self.validation()])["status"], "committed")
-        self.assertEqual(self.result(), 1)
+        self.refuse(extraction_validations=[self.validation()])
 
     def test_renamed_integrity_control(self):
         self.registry(2, [("tool-a", "family-c")])

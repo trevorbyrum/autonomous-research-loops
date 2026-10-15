@@ -76,9 +76,10 @@ class DDLV2Test(V2Case):
         self.refuse(extraction_validations=[self.validation(comparison_evidence_ref={**self.evidence, "content_hash": self.output["content_hash"]})])
 
     def test_registered_validator_pin(self):
-        # Isolate the historical membership predicate from common membership's
-        # overlapping NULL refusal, only in this disposable in-memory store.
+        # Isolate historical membership from the common/current registry guards'
+        # overlapping NULL refusals, only in this disposable in-memory store.
         self.x("DROP TRIGGER extraction_validations_v2_comparison_registry")
+        self.x("DROP TRIGGER extraction_validations_v2_current_registry")
         self.basis()
         self.x("DROP TRIGGER source_extractions_immutable_u")
         self.x("UPDATE source_extractions SET extractor_registry_version=NULL WHERE extraction_id='independent'")

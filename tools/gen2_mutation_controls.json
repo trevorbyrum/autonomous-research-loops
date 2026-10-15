@@ -13461,6 +13461,48 @@
   ],
   "why": "Registers then identically replays revision 2 through _write's audit-detail comparison, with all-table unchanged-state readback including audit; the weakened comparison still accepts it."
  },
+ "2D4B3E2CURRENT-latest": {
+  "controls": [
+   "test_store_validation_current_registry.DDLCurrentRegistryTest.test_initial_control"
+  ],
+  "why": "Separate admitted /2 validation reaches the current-at-admission predicate; retained history stays pinned."
+ },
+ "2D4B3E2CURRENT-pin": {
+  "controls": [
+   "test_store_validation_current_registry.DDLCurrentRegistryTest.test_current_control"
+  ],
+  "why": "Separate admitted /2 validation reaches the current-at-admission predicate; retained history stays pinned."
+ },
+ "2D4B3E2CURRENT-router-dispatch": {
+  "controls": [
+   "test_validation_current_registry.RouterCurrentRegistryTest.test_current_control"
+  ],
+  "why": "Separate admitted /2 validation reaches the current-at-admission predicate; retained history stays pinned."
+ },
+ "2D4B3E2CURRENT-router-latest": {
+  "controls": [
+   "test_validation_current_registry.RouterCurrentRegistryTest.test_initial_control"
+  ],
+  "why": "Separate admitted /2 validation reaches the current-at-admission predicate; retained history stays pinned."
+ },
+ "2D4B3E2CURRENT-router-pin": {
+  "controls": [
+   "test_validation_current_registry.RouterCurrentRegistryTest.test_current_control"
+  ],
+  "why": "Separate admitted /2 validation reaches the current-at-admission predicate; retained history stays pinned."
+ },
+ "2D4B3E2CURRENT-router-validator": {
+  "controls": [
+   "test_validation_current_registry.RouterCurrentRegistryTest.test_initial_control"
+  ],
+  "why": "Separate admitted /2 validation reaches the current-at-admission predicate; retained history stays pinned."
+ },
+ "2D4B3E2CURRENT-validator": {
+  "controls": [
+   "test_store_validation_current_registry.DDLCurrentRegistryTest.test_current_control"
+  ],
+  "why": "Separate admitted /2 validation reaches the current-at-admission predicate; retained history stays pinned."
+ },
  "2D4B3E2V2-admission": {
   "by_hand": true,
   "controls": [

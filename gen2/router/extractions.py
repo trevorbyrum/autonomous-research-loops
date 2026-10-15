@@ -10,6 +10,7 @@ from gen2.router.boundary import Refusal
 
 
 class Rows(Protocol):
+    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
     def insert(self, table: str, row: Mapping[str, object]) -> None: ...
 
 
@@ -46,6 +47,8 @@ class ExtractionRecords:
                 ("extraction_validations_v2", "validation_id", "validator_invocation_id")):
             records = payload.get(table, [])
             for record in records:
+                if table == "extraction_validations_v2":
+                    self._require_current_registry(record)
                 row = {**record, attribution: inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now}
                 if table == "source_extractions":
                     row["topic_id"] = inv["topic_id"]
@@ -53,3 +56,12 @@ class ExtractionRecords:
             if records:
                 written[table] = [r[identity] for r in records]
         return written
+
+    def _require_current_registry(self, record: dict) -> None:
+        # Inside the writer fence, after same-outcome extractions. Retained
+        # operation replay returns before this new-admission check.
+        validators = self._core._store.select("source_extractions", {"extraction_id": record["validator_extraction_id"]})
+        pin = next((r["extractor_registry_version"] for r in validators), None)
+        current = max((r["registry_version"] for r in self._core._store.select("extractor_registry_revisions")), default=0)
+        if pin != current:
+            raise Refusal("payload_invalid", "validation /2 needs the current extractor registry revision")

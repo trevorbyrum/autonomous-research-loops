@@ -2428,3 +2428,87 @@ no active gen2-landing-* unit; no venv refresh, provider, live gen-1/8765 access
 real migration, protected-register edit or main merge occurred. F1 repair is
 **COMPLETE**; the already documented later receipt/SQL-17 work is unchanged.
 Commit and final evidence: private/evidence/2d-4b3e2-p2-repair-1/COMPLETION.md.
+
+### 2d-4b3e2 part 2 slice 2: design and re-estimate before code, 2026-10-15
+
+Against `fddac16` (accepted code `50cff2e`) on gen2, read the complete dispatch, all three operator
+rulings, this dossier from §2d-4b3e onward, slice-1 and F1 repair evidence,
+and the named flow/adjudication/methodology authority. The latest ruling
+supersedes the repair's older-comparison acceptance for **new** validations.
+The existing common interpretation remains the validator extraction's pin,
+but admission must now require that pin to equal the current registry revision.
+
+Re-estimate **about 900 handwritten lines**, including retained evidence scripts,
+excluding documentation and generated control/hash data. Split at the policy
+dependency and stop after the first part:
+
+1. **This dispatch, about 480 lines:** additive latest-revision DDL and fenced
+   ExtractionRecords admission 35; isolated Router/raw stale/current, merge,
+   history/replay/conflict, same-outcome and rollback/race controls 190;
+   predicate mutants, fixture isolation and registration 55; retained catalog,
+   transitive scope, trace and validation evidence scripts 200.
+2. **Next part, about 420 lines:** both durable receipt consumers and receipt
+   domain/schema extension 100; isolated invalid-basis and accepted Router/raw
+   controls 150; positive receipt-fixture migration 100; paired mutants/traces
+   70. Re-estimate that part at dispatch. SQL 17 replacement remains separate.
+
+Install ordered additive SQL 31; leave SQL 01–30 unchanged. Its INSERT guard
+requires the validator extraction to exist and pin `max(registry_version)`
+from the immutable operator registry. In ExtractionRecords, check the same
+relationship inside the existing writer transaction immediately before each
+successor insert, after any extractions in the outcome have been retained.
+No snapshot read during artifact authentication can substitute for this check:
+an operator merge between authentication and the writer fence takes effect.
+The existing common-membership and family guards still refuse a newly pinned
+same-family independent validation. Integrity-only and failed /2 attempts also
+require the current revision; /1 admission is unchanged.
+
+Retained validations continue reading the immutable validator extraction pin,
+without joining current registry state. Identical operation replay remains a
+read of the committed result after a registry update; a new validation ID or
+operation must pass current admission. Test merges with stale historically
+independent tools, current same-family refusal/integrity acceptance, and a
+current genuinely independent control. Keep a separate historical-readback
+control and transactional rollback assertion. Add predicate-level paired
+mutants with successful SQL/Python control traces, preserving prior pairings.
+
+No new column or JSON consumer is planned. Re-review the complete catalog and
+unchanged classifications, explicitly repinning both DDL/catalog hashes.
+BOUNDARIES and V-3 must name the current-at-admission rule and history exception.
+Both receipt consumers and their fixture migration remain pending at this split;
+free-text validation_ref and /1 provide no authority, and SQL 17 still fences
+every extraction-based load-bearing support. Run full gen2-test, trigger-order,
+composition, all edited-target/transitive-fixture mutant families with --only,
+and all eight static gates after landing-unit idle preflights. Use a copied
+.venv-gen2 in disposable evidence snapshots, never symlink or refresh it.
+Evidence: private/evidence/2d-4b3e2-part2-s2/COMPLETION.md. No providers, live
+gen-1/8765, real database migration, protected-register edits or main merge.
+
+**First part implemented; stop here, 2026-10-15.** Additive SQL 31 and
+ExtractionRecords independently require the validator extraction to pin the
+highest admitted operator registry revision for every new /2 record, including
+failed and integrity-only attempts. The Router checks within its existing
+writer transaction, after same-outcome extractions; an operator update after
+artifact authentication is observed. Historical target pins remain valid when
+both identities exist in the current comparison registry. Retained validations
+and their result-view interpretation are unchanged by later operator merges;
+identical-operation replay remains readable, while new stale bases refuse.
+
+Seven predicate mutants cover raw and Router selection, latest aggregation,
+pin equality and Router dispatch, with separate accepted controls and path
+traces. The formerly accepted older-comparison case now refuses atomically.
+Only explicitly named in-memory predicate-isolation fixtures remove overlapping
+guards. The catalog audit proves one added trigger, unchanged old objects and
+columns, 37 JSON / 37 covered / zero pending and 504 scalar TEXT; both reviewed
+hashes are repinned. SQL 01–30, service.py and the protected registers stay
+byte-unchanged. There are 214 handwritten repository additions and 263 retained
+evidence-script lines: **477**, within the split; docs and generated data are
+additional. Final validation, provenance and commit details are recorded in
+private/evidence/2d-4b3e2-part2-s2/COMPLETION.md.
+
+**INCOMPLETE overall at the requested split.** Both durable receipt consumers,
+their positive fixture migration and invalid-basis controls remain the next
+part. No receipt schema, helper, operand or assertion is changed in this part.
+Free-text validation_ref and /1 remain non-authoritative, and SQL 17 still
+fences every extraction-based load-bearing support. Fence replacement remains
+a separate following task.
