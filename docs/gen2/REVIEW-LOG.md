@@ -2619,3 +2619,19 @@ The post-2q Gate D is renumbered #5.
 - **Older target pins** stay valid as provenance, and both identities are compared under the current revision.
 - **Landing at ad1cc4a:** `gen2-check` green; `gen2-gateway` green.
 - **Next:** slice 2 part 2, both receipt consumers. SQL 17 stays.
+
+## 2026-10-15: 2d-4b3e2 consumers part 1 (`verifier_extraction` durable basis; SQL 32): round 1 BLOCK on R1 (landing gate)
+- **Astra** (`ecba52cc`, pinned dc81392; `private/reviews/gen2-2d-4b3e2-c1-astra-review-20261015.md`): **A PASS, B PASS (ROOT-CAUSE); C BLOCK.**
+- **What passed:**
+  - the receipt consumer binds a durable, pinned own extraction;
+  - the SQL 21 trigger was replaced by a successor that differs only in its name and the optional member;
+  - the trigger-order tool reverses all 321 installed triggers and is not weakened;
+  - SQL 17 is intact.
+- **R1 (MEDIUM):**
+  - `gen2_mutations.uncovered_triggers()` inventories textual CREATEs, including the retired SQL 21 trigger.
+  - The landing `gen2-check` exited 2 before **any** mutant ran.
+  - `--only` runs skip that global check.
+- **N1 (non-blocking):** the trigger-order tool prints 322; the installed count is 321.
+- **Landing at dc81392:** `gen2-check` exit 2 (R1); `gen2-gateway` green.
+- **Routed:** `docs/gen2/tasks/2d-4b3e2-c1-repair-1.md`, round 2 of 3, tooling only.
+- **New coder gate:** run the full mutation inventory whenever a trigger is added, replaced or retired.
