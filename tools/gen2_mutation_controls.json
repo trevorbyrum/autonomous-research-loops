@@ -11250,6 +11250,69 @@
   ],
   "why": "Literal supportive no-op, another adverse verdict, or equal primary/verifier ownership traverses the changed guard and retains its specified effects."
  },
+ "2D4ATTN-basis-required": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_attention.ExtractionAttentionTest.test_bound_control"
+  ],
+  "why": "Separate committed bound receipt, durable fenced receipt, or truthful missing-content receipt reaches the changed attention predicate."
+ },
+ "2D4ATTN-bound-exempt": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_attention.ExtractionAttentionTest.test_fenced"
+  ],
+  "why": "Separate committed bound receipt, durable fenced receipt, or truthful missing-content receipt reaches the changed attention predicate."
+ },
+ "2D4ATTN-canonical": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_attention.ExtractionAttentionTest.test_bound_control"
+  ],
+  "why": "Separate committed bound receipt, durable fenced receipt, or truthful missing-content receipt reaches the changed attention predicate."
+ },
+ "2D4ATTN-effects-planning": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_attention.ExtractionAttentionTest.test_missing_content"
+  ],
+  "why": "Separate committed bound receipt, durable fenced receipt, or truthful missing-content receipt reaches the changed attention predicate."
+ },
+ "2D4ATTN-exact-receipt": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_attention.ExtractionAttentionTest.test_same_outcome_control"
+  ],
+  "why": "Separate committed bound receipt, durable fenced receipt, or truthful missing-content receipt reaches the changed attention predicate."
+ },
+ "2D4ATTN-pending-classification": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_attention.ExtractionAttentionTest.test_missing_content"
+  ],
+  "why": "Separate committed bound receipt, durable fenced receipt, or truthful missing-content receipt reaches the changed attention predicate."
+ },
+ "2D4ATTN-planning": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_attention.ExtractionAttentionTest.test_fenced"
+  ],
+  "why": "Separate committed bound receipt, durable fenced receipt, or truthful missing-content receipt reaches the changed attention predicate."
+ },
+ "2D4ATTN-receipt-id": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_attention.ExtractionAttentionTest.test_fenced"
+  ],
+  "why": "Separate committed bound receipt, durable fenced receipt, or truthful missing-content receipt reaches the changed attention predicate."
+ },
+ "2D4ATTN-verdict": {
+  "by_hand": true,
+  "controls": [
+   "test_extraction_attention.ExtractionAttentionTest.test_bound_control"
+  ],
+  "why": "Separate committed bound receipt, durable fenced receipt, or truthful missing-content receipt reaches the changed attention predicate."
+ },
  "2D4B-acquirer": {
   "by_hand": true,
   "controls": [
@@ -12100,9 +12163,9 @@
  "2D4B3B-pending-classification": {
   "by_hand": true,
   "controls": [
-   "test_pending_extraction_support.PendingRouterTest.test_canonical_support_control"
+   "test_extraction_attention.ExtractionAttentionTest.test_missing_content"
   ],
-  "why": "An independently recorded canonical full-text receipt qualifies support; pending extraction declarations remain retained and do not clear attention."
+  "why": "Separate bound support or truthful missing access reaches the revised attention predicate without requiring an obsolete unbound hold."
  },
  "2D4B3B-pending-existence": {
   "by_hand": true,
@@ -12114,9 +12177,9 @@
  "2D4B3B-pending-hold": {
   "by_hand": true,
   "controls": [
-   "test_pending_extraction_support.PendingRouterTest.test_canonical_support_control"
+   "test_extraction_attention.ExtractionAttentionTest.test_bound_control"
   ],
-  "why": "An independently recorded canonical full-text receipt qualifies support; pending extraction declarations remain retained and do not clear attention."
+  "why": "Separate bound support or truthful missing access reaches the revised attention predicate without requiring an obsolete unbound hold."
  },
  "2D4B3B-pending-method-validated": {
   "by_hand": true,
@@ -14072,6 +14135,18 @@
   ],
   "why": "Separate admitted validated receipt reaches the changed consumer guard."
  },
+ "2D4B3E2VAL-router-independent-reference": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_independent_tier_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-independent-tier": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_independent_tier_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
  "2D4B3E2VAL-router-pin": {
   "controls": [
    "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
@@ -14167,6 +14242,174 @@
    "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
   ],
   "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E3-access-tier": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-basis": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-denominators": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-extractor": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-extractor_identity": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-gateway_call_ref": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-hash": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-independent-reference": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_independent_tier_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-independent-tier": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_independent_tier_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-negation": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-numeric_units": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-output-tier": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-own-method": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_history_control"
+  ],
+  "why": "Separate validated-extraction full-text promotion after a registry merge takes the opposite method through the basis view and consumer."
+ },
+ "2D4B3E3-own-reference": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-pin": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-qualifications": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-recorded-tier": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-reference-type": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-required-tier": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-retrieved_at": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-route": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-source_version": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-tier0": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-validation-method": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_own_control"
+  ],
+  "why": "Separate own-extraction full-text promotion takes the opposite method through the basis view and consumer."
+ },
+ "2D4B3E3-validation-reference": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-validation-success": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-verifier": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-work_id": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
  },
  "2Q-baseline-digest-unchecked": {
   "controls": [
@@ -23308,185 +23551,5 @@
    "test_store_history.RecordIdentityTest.test_work_identity_is_immutable"
   ],
   "why": "no other test enters trigger works_identity_immutable in a statement that succeeds; the killer does, and under the mutant too: the refusals sit in subTests, which go on; the accepted study_group_id UPDATE then runs"
- },
- "2D4B3E3-own-reference": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-validation-reference": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-validation-success": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-own-method": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_history_control"
-  ],
-  "why": "Separate validated-extraction full-text promotion after a registry merge takes the opposite method through the basis view and consumer."
- },
- "2D4B3E3-validation-method": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_own_control"
-  ],
-  "why": "Separate own-extraction full-text promotion takes the opposite method through the basis view and consumer."
- },
- "2D4B3E3-work_id": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-source_version": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-extractor_identity": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-verifier": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-extractor": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-pin": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-gateway_call_ref": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-retrieved_at": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-route": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-output-tier": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-recorded-tier": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-numeric_units": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-denominators": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-negation": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-qualifications": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-required-tier": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-access-tier": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-tier0": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-basis": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-reference-type": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-hash": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-independent-reference": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_independent_tier_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E3-independent-tier": {
-  "controls": [
-   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_independent_tier_control"
-  ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
- },
- "2D4B3E2VAL-router-independent-reference": {
-  "controls": [
-   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_independent_tier_control"
-  ],
-  "why": "Separate admitted validated receipt reaches the changed consumer guard."
- },
- "2D4B3E2VAL-router-independent-tier": {
-  "controls": [
-   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_independent_tier_control"
-  ],
-  "why": "Separate admitted validated receipt reaches the changed consumer guard."
  }
 }

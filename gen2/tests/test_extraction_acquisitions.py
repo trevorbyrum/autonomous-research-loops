@@ -84,7 +84,7 @@ class ExtractionRouterTest(unittest.TestCase):
                 self.assertEqual(out["status"], "committed", out)
                 self.assertEqual(json.loads(case.value("SELECT receipt FROM verification_receipts")), doc)
                 self.assertEqual(case.rows("SELECT response_bytes FROM source_acquisitions"), [(case.raw,)])
-                self.assertEqual(case.rows("SELECT count(*) FROM holds"), [(1,)])
+                self.assertEqual(case.rows("SELECT count(*) FROM holds"), [(0,)])
                 before = case.state(exclude=())
                 self.assertEqual(case.router.commit_outcome(case.env), {"status": "replayed", "receipt": out["receipt"]})
                 self.assertEqual(case.state(exclude=()), before)

@@ -2933,3 +2933,99 @@ access, real-database migration or main merge occurred. **This repair is
 COMPLETE**; the original task's deferred attention part remains separate.
 Commit identity, checks and retained artifacts are recorded in
 private/evidence/2d-4b3e3-repair-1/COMPLETION.md.
+
+### 2d-4b3e3 part 2 — pending-extraction attention (design before code, 2026-10-16)
+
+Read the continuation task in full, §2d-4b3e3 and repair-1, accepted SQL 34,
+SQL 32/33 consumers, Verification.write_holds, commit ordering, V-2/V-4 and
+the named private independence authorities. Re-estimate **about 440 handwritten
+lines**: attention/store read primitive and wiring 35; bound/fenced,
+missing-content, disagreement, same-outcome, replay/conflict/rollback tests 225;
+predicate mutants and registration 65; retained scope/control-path auditors
+115. Documentation and generated control records are additional. This fits
+one part below the approximately 500-line split; stop after this part. If
+additional work would cross that boundary, record it as a following part.
+
+Keep SQL 01–34 and promotion unchanged. Add a narrow read-only Store primitive
+for membership in SQL 34's bound_extraction_receipts view; the hold writer
+uses that exact receipt ID after insertion. Thus both output operands and the
+acquisition ceiling, exact lineage, pins and retained /2 interpretation remain
+canonical, without copying their predicates into attention. Supporting canonical
+or bound extraction receipts create no new verification hold. All other
+supporting extraction receipts retain the existing unbound-extraction cause.
+Cannot-assess always creates missing-content remediation, even with a bound
+basis; partially_supports and does_not_support always create disagreement
+attention. No support
+receipt clears an earlier hold, including earlier unbound remediation.
+
+The immutable operation receipt is built before its referenced evidence, so
+its hold-ID planning call must explicitly assume successful admission. Every
+new extraction receipt must subsequently pass SQL 32/33 and EvidenceWriter's
+checks inside the same writer fence; failed admission rolls back the entire
+operation. The actual hold writer does not assume admission: it reads SQL 34
+for the persisted receipt. Keep the ordinary hold_ids default on this durable
+path, and use the explicit admission-planning flag only at the composition
+root's existing receipt-building call. The two paths must agree for every
+committed Router operation, including extraction/validation records supplied
+in that same outcome. Historical fenced cases are tested through the actual
+hold writer over memory-only retained receipts, with ordinary Router refusal
+unchanged. Audit effects, ownership/deadlines, replay, and injected failure
+rollback remain required. Canonical capture stays unchanged.
+
+Run full gen2-test, trigger-order, composition, affected-family --only sweeps,
+and all eight static gates after idle gen2-landing-* preflights. No trigger
+changes are planned, so full uncovered-trigger inventory is not required;
+retain it as a cheap additional audit. Trace each new mutant's separate control
+through the changed predicate and preserve prior generated controls. No
+provider, live gen-1/8765, real migration, protected-register edit, environment
+refresh or main merge. No disposable snapshot is planned; any needed snapshot
+must copy .venv-gen2, never symlink it. Evidence:
+private/evidence/2d-4b3e3-part2/COMPLETION.md.
+
+**Implemented and validated; COMPLETE, 2026-10-16.** Verification now reads
+SQL 34 membership through a narrow read-only Store primitive, using the exact
+persisted receipt ID. Supporting canonical and bound extraction receipts add
+no verification hold. Historical fenced extraction support retains the exact
+unbound-extraction remediation cause. cannot_assess_at_required_tier always
+creates missing-content remediation, even with a bound basis; partially_supports
+and does_not_support create disagreement attention. New support clears no
+previous disagreement or remediation. SQL 01–34, promotion, both operand/output
+ceilings, retained registry interpretation and canonical capture are unchanged.
+
+The composition root explicitly plans hold IDs assuming successful admission;
+actual hold writes consume the durable SQL 34 predicate after receipt insertion.
+SQL 32/33 and Router admission still roll back invalid new bases. Same-outcome
+extraction/validation controls prove that receipt effects, stored holds and audit
+IDs agree even when the basis does not exist during planning. Both methods and
+all three supported tiers, fenced history, missing access, earlier disagreement,
+exact receipt selection, replay/conflict and rollback have controls. Three old
+assertion sites now expect no obsolete hold for already-bound receipts; capture
+quarantine and every other promotion/readback/replay assertion remain intact.
+The first full suite exposed two of those stale sites (four failures including
+inheritance/subtests); the corrected focused modules and a fresh full suite pass.
+
+Final checks: full gen2-test **4,116 tests, two existing skips**; trigger-order
+**322 installed triggers / 3,832 identical Store tests/subtests**; full composition
+**six tests**; full harness modules **29 tests**; all **1,404/1,404** selected mutants
+killed, **1,400** with separate passing controls and four unchanged documented
+exceptions, with a green **1,014-test Store and 12 file-target baselines**. The
+transitive audit requires 372 IDs and selects their complete families. All nine
+new predicates and two retargeted old attention predicates have separate passing
+control-path traces (**11/11 qualified**). Store mutants now reload service and
+Router fixtures so their changed query actually reaches the tested consumer.
+All 3,533 other old control records remain unchanged. The complete installed-
+trigger inventory has zero uncovered triggers; DDL and classifications are
+unchanged, requiring no repin. All eight static gates pass and are repeated
+after this final dossier note before commit.
+
+Actual size: **272 repository code/test/mutant additions plus 115 retained
+script lines = 387**, excluding documentation and generated control/hash data.
+This completes one part below the requested split; no further implementation
+part remains in **2d-4b3e**, which is now **COMPLETE**. No provider call, live
+gen-1/8765 access, real-database migration, protected-register edit, environment
+refresh, disposable environment symlink or main merge occurred. One initial
+AGENTS.md filename lookup incorrectly included ~/.agents; it returned no files
+and no contents were read there. This reading-scope deviation and all superseded
+failed/interrupted attempts are disclosed in the evidence, rather than claiming
+complete procedural compliance. Final source/venv/protected-file proof, commit
+and full logs: private/evidence/2d-4b3e3-part2/COMPLETION.md.

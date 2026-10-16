@@ -116,10 +116,17 @@ low-tier and failed extraction/validation records remain history.
 Historical unbound, free-text-only, /1, failed and integrity-only bases remain
 fenced with SQL 17's diagnostic. SQL 12 and EvidenceWriter's governed-capture
 checks remain canonical-only because extraction records supply no new governed
-quote/span binding. Attention is intentionally unchanged in this first part:
-bound extraction support still creates the old remediation hold; removing it
-remains 2d-4b3e3 part 2. Truthful insufficient access still creates missing-content
-remediation, and subsequent support never clears earlier disagreement.
+quote/span binding. Verification attention reads SQL 34 through the Store
+read primitive after receipt insertion: supporting bound extraction receipts
+create no unbound-extraction hold; fenced declarations retain that remediation.
+Truthful insufficient access always creates missing-content remediation, even
+with a bound basis. Verdicts partially_supports and does_not_support create
+disagreement attention. Support
+never clears earlier disagreement or remediation. The immutable operation
+receipt plans hold IDs assuming successful SQL 32/33 and Router admission in
+the same transaction, including same-outcome bases; failed admission leaves
+no effects. Stored holds, operation effects and audit IDs agree, replay adds
+nothing, and failures roll back all writes. Promotion gates are unchanged.
 
 SQL 23 begins the store-wide JSON member-name domain: decoded names are unique
 within each actual object under binary equality and contain no U+0000. NUL
@@ -200,9 +207,10 @@ and all V-4/V-8 requirements. Historical
 unbound declarations remain non-authoritative; new ones refuse admission.
 SQL 12's capture consumer and EvidenceWriter remain canonical-only: an
 extraction basis cannot preserve support against a later governed capture
-without a matching canonical receipt. Verification still creates the old
-remediation hold for admitted extraction support in this first part, using
-the producer's owner/deadline; adjusting that attention remains part 2.
+without a matching canonical receipt. Verification creates unbound-extraction
+remediation only for supporting extraction receipts outside SQL 34's bound
+basis view, using the producer's owner/deadline. Bound support creates no new
+verification hold.
 Later support never clears existing disagreement or remediation holds. Truthful insufficient-access receipts
 remain admissible and create the missing-content hold; inflated declarations are
 refused. Durable table-locator binding remains subsequent 2d-4b3 work.

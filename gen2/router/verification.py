@@ -10,6 +10,7 @@ from gen2.core import canonical
 
 class Rows(Protocol):
     def insert(self, table: str, row: Mapping[str, object]) -> None: ...
+    def bound_extraction_receipt(self, receipt_id: str) -> bool: ...
 
 
 class VerificationCore(Protocol):
@@ -21,11 +22,21 @@ class Verification:
     def __init__(self, core: VerificationCore) -> None:
         self._core = core
 
-    def hold_ids(self, payload: dict) -> list[str]:
-        return [self._hold_id(doc) for doc in payload["verification_receipts"] if self._needs_hold(doc)]
+    def hold_ids(self, payload: dict, *, admitted: bool = False) -> list[str]:
+        return [self._hold_id(doc) for doc in payload["verification_receipts"] if self._needs_hold(doc, admitted=admitted)]
 
-    def _needs_hold(self, doc: dict) -> bool:
-        return doc["verdict"] != "supports" or doc["extraction"]["method"] != "canonical_bytes"
+    def _needs_hold(self, doc: dict, *, admitted: bool = False) -> bool:
+        if doc["verdict"] != "supports":
+            return True
+        if doc["extraction"]["method"] == "canonical_bytes":
+            return False
+        # Receipt effects are planned before insertion. SQL 32/33 and the
+        # Router must admit each new basis later in this same transaction;
+        # otherwise no operation receipt or hold survives. Actual hold writes
+        # use the durable predicate, also for retained pre-consumer receipts.
+        if admitted:
+            return False
+        return not self._core._store.bound_extraction_receipt(doc["verification_receipt_id"])
 
     def _hold_id(self, doc: dict) -> str:
         return "hold_" + canonical.logical_hash({"verification_receipt_id": doc["verification_receipt_id"]})[7:]

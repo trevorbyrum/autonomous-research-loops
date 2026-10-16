@@ -56,9 +56,9 @@ PENDING = "test_pending_extraction_support."
 FENCE = "claims_accepted_support_bound_extraction"
 
 
-def pending(name, old, new, killer="PendingDDLTest.test_pending_methods", target="ddl", scope=FENCE):
+def pending(name, old, new, killer="PendingDDLTest.test_pending_methods", target="ddl", scope=FENCE, test_prefix=PENDING):
     mid = "2D4B3B-pending-" + name
-    MUTATIONS.append(Mutation(mid, "2d-4b3b-repair-1", name, (PENDING + killer,), old=old, new=new, target=target, scope=scope))
+    MUTATIONS.append(Mutation(mid, "2d-4b3b-repair-1", name, (test_prefix + killer,), old=old, new=new, target=target, scope=scope))
     CONTROLS[mid] = {"controls": [PENDING + ("PendingRouterTest.test_canonical_support_control" if target != "ddl" else "PendingDDLTest.test_canonical_support_control")],
         "why": "An independently recorded canonical full-text receipt qualifies support; pending extraction declarations remain retained and do not clear attention."}
 
@@ -72,10 +72,16 @@ for name, old in (("claim", "c.claim_id = NEW.claim_id"), ("revision", "c.claim_
     pending(name, old, "1 = 1", "PendingDDLTest.test_canonical_distractors")
 # The hold routing predicate appears in _needs_hold and pending classification;
 # distinguish their exact expressions so each counterfactual removes one guard.
-pending("hold", 'return doc["verdict"] != "supports" or doc["extraction"]["method"] != "canonical_bytes"',
-    'return doc["verdict"] != "supports"', "PendingRouterTest.test_pending_methods", target="gen2/router/verification.py", scope=None)
+pending("hold", 'return not self._core._store.bound_extraction_receipt(doc["verification_receipt_id"])',
+    'return False', 'ExtractionAttentionTest.test_fenced', target="gen2/router/verification.py", scope=None, test_prefix='test_extraction_attention.')
 pending("classification", 'pending = doc["verdict"] == "supports" and doc["extraction"]["method"] != "canonical_bytes"',
-    "pending = False", "PendingRouterTest.test_pending_methods", target="gen2/router/verification.py", scope=None)
+    "pending = False", 'ExtractionAttentionTest.test_fenced', target="gen2/router/verification.py", scope=None, test_prefix='test_extraction_attention.')
+# Bound controls now promote without remediation. Preserve the old fenced
+# attention oracles using retained pre-consumer receipts instead.
+for name, control in (('hold', 'test_bound_control'), ('classification', 'test_missing_content')):
+    mid = '2D4B3B-pending-' + name
+    CONTROLS[mid] = dict(controls=['test_extraction_attention.ExtractionAttentionTest.' + control],
+        why='Separate bound support or truthful missing access reaches the revised attention predicate without requiring an obsolete unbound hold.')
 
 mid = "2D4B3B-pending-capture"
 MUTATIONS.append(Mutation(mid, "2d-4b3b-repair-1", "pending receipt cannot preserve governed accepted support",

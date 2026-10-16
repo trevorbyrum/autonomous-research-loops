@@ -49,8 +49,7 @@ class PendingRouterTest(unittest.TestCase):
                     out = case.send(doc)
                     self.assertEqual(out["status"], "committed", out)
                     self.assertEqual(case.rows("SELECT access_tier, extraction_method, verdict FROM verification_receipts"), [(tier, method, "supports")])
-                    self.assertEqual(case.rows("SELECT hold_class, recoverability, required_authority, owner, clears_when FROM holds"),
-                        [("judgment", "needs_remediation", "primary", "primary:station-1", "independent verification with the required content")])
+                    self.assertEqual(case.rows("SELECT * FROM holds"), [])
                     held = case.rows("SELECT hold_id FROM holds")
                     self.assertEqual(out["receipt"]["effects"]["holds_created"], [h[0] for h in held])
                     before = case.state(exclude=())

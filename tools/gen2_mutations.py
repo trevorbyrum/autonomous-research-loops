@@ -146,7 +146,7 @@ FILE_TARGETS = {
                                "gen2.gateway_client.observe", "gen2.gateway_client.client"),   # capabilities, observe: gateway_fact_id (2b-repair-2)
     "gen2/store/compat.py": ("module", "gen2.store.compat"),
     "gen2/store/db.py": ("module", "gen2.store.db"),
-    "gen2/store/api.py": ("module", "gen2.store.api"),
+    "gen2/store/api.py": ("module", "gen2.store.api", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/accounting/__init__.py": ("module", "gen2.accounting", "gen2.router.accounting", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/accounting/reconciliation.py": ("module", "gen2.accounting.reconciliation"),
     "gen2/schema/export-bundle-v2.schema.json": ("attr", "test_reconciliation_bundle", "SCHEMA_PATH"),

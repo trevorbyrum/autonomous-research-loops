@@ -126,7 +126,8 @@ class CaptureTest(CaptureCase):
         attach(self, doc)
         before = self.state(exclude=())
         self.accepted(record, verification_receipts=[doc])
-        self.late_store(before, "quarantined", holds=1)
+        # The bound basis avoids remediation; governed capture still quarantines.
+        self.late_store(before, "quarantined", holds=0)
 
     def test_non_load_bearing(self):
         doc = self.receipt_document()

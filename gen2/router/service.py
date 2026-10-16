@@ -1146,7 +1146,7 @@ class Router:
             "admission": admission, "committed_at": now, "state_revision_before": topic["state_revision"], "state_revision_after": after,
             "validation": checked["validation"],
             "effects": {"evidence_revision": None, "research_ordinal": ordinal, "queue_transition": queue_transition, "lease_release": lease_release,
-                        "holds_created": [h["hold_id"] for h in payload["holds"]] + self._evidence_writer.quote_hold_ids(checked) + self._verification.hold_ids(payload), "retry_intent": None,
+                        "holds_created": [h["hold_id"] for h in payload["holds"]] + self._evidence_writer.quote_hold_ids(checked) + self._verification.hold_ids(payload, admitted=True), "retry_intent": None,
                         "trigger_identities": [identity for identity, _ in new_triggers], "outbox_event_ids": [o[0] for o in outbox],
                         "decision_receipt_ids": [d["decision_receipt_id"] for d in payload["decision_receipts"]], "audit_event_id": audit_id}},
             "payload_invalid")
