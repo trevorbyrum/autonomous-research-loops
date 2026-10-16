@@ -2685,3 +2685,15 @@ The post-2q Gate D is renumbered #5.
 - **Landing at 727dcda:** `gen2-check` green; `gen2-gateway` green.
 - **This is the first point where extraction-based support can become accepted support,** and only through a bound, tier-capped durable basis.
 - **Next:** 2d-4b3e3 part 2, the pending-extraction attention holds.
+
+## 2026-10-16: 2d-4b3e3 part 2 (pending-extraction attention): PASS on the first review. 2d-4b3e complete
+- **Astra** (`9d6551ab`, pinned 0e903ee; `private/reviews/gen2-2d-4b3e3-p2-astra-review-20261016.md`): **A, B and C all PASS, ROOT-CAUSE.** Quote: "2d-4b3e3 part 2 is ACCEPTED; 2d-4b3e is complete."
+- **The hold reads SQL 34's own view.** Attention consumes `bound_extraction_receipts` through a narrow Store read, so it inherits the same ceilings and lineage that promotion uses, with no second definition. A bound distractor can't exempt another receipt.
+- **What the change doesn't do:**
+  - The exemption is from the unbound-extraction hold only. It doesn't grant promotion.
+  - Missing content and disagreement attention are kept, and no path clears a hold.
+- **`service.py`:** one changed argument, now 1,443 of 1,500 lines.
+- **Process note:** the coder disclosed one out-of-scope filename lookup in `~/.agents`. It had no matches and read nothing.
+- **Landing at 0e903ee:** `gen2-check` green; `gen2-gateway` green.
+- **2d-4b3e is complete.** It delivered durable extraction and validation records, the operator tool registry, the latest-revision rule, both receipt consumers, bound-basis promotion with tier ceilings, and the aligned attention holds.
+- **Next:** 2d-4c (`docs/gen2/tasks/2d-4c.md`), attributed detailed V-8 check receipts (2d-4 part 3).
