@@ -2674,3 +2674,14 @@ The post-2q Gate D is renumbered #5.
 - **N1 (LOW):** the mutant control rationale strings overstate tier breadth.
 - **Landing at ba94b99:** `gen2-check` green; `gen2-gateway` green.
 - **Routed:** `docs/gen2/tasks/2d-4b3e3-repair-1.md`, round 2 of 3. The fix caps validated support by the target, the independent extraction and the acquisition ceilings, at the consuming rule.
+
+## 2026-10-16: 2d-4b3e3-repair-1, round 2: PASS. 2d-4b3e3 part 1 (SQL 17 replaced by bound-basis consumption) accepted
+- **Astra** (`055c092b`, pinned 727dcda; `private/reviews/gen2-2d-4b3e3-r2-astra-review-20261016.md`): **A, B and C all PASS. F1 closed (root cause), N1 closed.**
+- **The ceilings:**
+  - Validated support is capped by the minimum of the target extraction, the exact independent extraction and the acquisition content, applied at promotion to retained and new receipts alike.
+  - A sufficient distractor extraction can't stand in for the named operand.
+  - The Router refuses new over-tier validated receipts.
+- **Independent reproduction:** for each of the Router, raw DDL and reversed triggers, 3/3 insufficient cases are refused and 6/6 sufficient controls promote.
+- **Landing at 727dcda:** `gen2-check` green; `gen2-gateway` green.
+- **This is the first point where extraction-based support can become accepted support,** and only through a bound, tier-capped durable basis.
+- **Next:** 2d-4b3e3 part 2, the pending-extraction attention holds.
