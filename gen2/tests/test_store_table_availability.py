@@ -30,7 +30,7 @@ class TableDDLTest(content.relationships.RelationshipTest):
 
     def table_receipt(self, tier="bibliographic", **changes):
         content.ContentDDLTest.content_receipt(self, tier, method=self.METHOD,
-            extraction="inv_pppppppp" if self.METHOD == "canonical_bytes" else "inv_vvvvvvvv",
+            extraction="inv_vvvvvvvv" if self.METHOD == "verifier_extraction" else getattr(self, "validated_extractor", "inv_pppppppp"),
             validation="validation_unrecorded" if self.METHOD == "validated_extraction" else None, **changes)
 
     def refuse(self, **changes):
@@ -172,3 +172,24 @@ class ExtractionTableDDLTest(TableDDLTest):
 
 class ValidatedTableDDLTest(TableDDLTest):
     METHOD = "validated_extraction"
+
+    def test_insufficient(self):
+        super().test_insufficient()
+        # A validated target may be extracted by someone other than the acquirer.
+        # Preserve the old table guard's independent-extractor killer as well as
+        # its producer-acquired target cases; every operand remains admitted.
+        self.lease('lease_extract01', 3, scope='checkpoint')
+        self.invocation('inv_extract01', kind='checkpoint', lease='lease_extract01')
+        self.receipt('op_extract01', 'inv_extract01', lease='lease_extract01', gen=3, before=200000, kind='interim_transition')
+        self.acquired({'identity': 'rec-1'})
+        for table, where, changes in (
+                ('source_extractions', "extracting_invocation_id='inv_pppppppp'", dict(extraction_id='independent-target',
+                    extracting_invocation_id='inv_extract01', recorded_by_operation_id='op_extract01')),
+                ('extraction_validations_v2', '1', dict(validation_id='independent-target-validation', target_extraction_id='independent-target'))):
+            cur = self.db.execute('SELECT * FROM ' + table + ' WHERE ' + where + ' LIMIT 1')
+            row = {**dict(zip([d[0] for d in cur.description], cur.fetchone())), **changes}
+            self.x(f"INSERT INTO {table} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", *row.values())
+        self.validated_extractor = 'inv_extract01'
+        self.refuse()
+        self.table_receipt(spans=(PAGE,))
+        self.assertEqual(self.rows('PRAGMA foreign_key_check'), [])

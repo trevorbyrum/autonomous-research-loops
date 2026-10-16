@@ -197,7 +197,7 @@ class ContractWorld(RouterTestCase):
                 doc["extraction"].update(method="canonical_bytes", produced_by_invocation_id="inv_research01")
         if acquisition_producer is not None:
             from gen2.tests.extraction_receipt_fixtures import seed, attach
-            seed(self, verifier)
+            seed(self, verifier, acquisition_producer)
             attach(self, doc)
         own = {**empty_outcome("inv_verify01", "interim_transition"), "verification_receipts": [doc]}
         assert self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own))["status"] == "committed"

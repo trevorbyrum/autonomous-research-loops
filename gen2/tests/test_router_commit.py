@@ -335,7 +335,7 @@ class AuthorityTest(CommitCase):
         receipt["obtained_content_hash"] = source["content_hash"]
         receipt["checks"]["exact_quote"]["source_artifact_hash"] = source["content_hash"]
         from gen2.tests.extraction_receipt_fixtures import seed, attach
-        seed(self, verifier)
+        seed(self, verifier, self.grant)
         attach(self, receipt)
         cases = (
             ("the producer commits it", self.grant, receipt, "kind_not_permitted"),

@@ -2613,3 +2613,113 @@ Receipt fixture outputs cap at full_text even under a widened input-view mutant.
 No old ID, control, assertion or production predicate changes. Corrected complete
 families, final full tests, traces and trigger-order results are retained in the
 completion evidence, with per-ID reconciliation against the broad sweep.
+
+### 2d-4b3e2 consumers part 2: design and re-estimate before code, 2026-10-16
+
+Against dispatch `4d1ba11` (accepted consumers/trigger-inventory repair
+`0364453`) on gen2, read
+2d-4b3e2 in full, all three operator rulings, this dossier from §2d-4b3e onward,
+the named independence authority and consumers-part-1/repair evidence.
+Re-estimate **about 495 handwritten lines**: additive SQL 33 consumer 45;
+EvidenceWriter admission 40; shared durable validation fixtures/migration 85;
+isolated Router/raw controls and history/replay/conflict/rollback 175;
+predicate mutants/registration 75; retained audit/trace wrappers 75.
+Documentation and generated control/hash data are additional. Implement this
+first part and stop; **SQL 17 replacement remains the next task part**.
+If the slice grows materially beyond 500 lines, split the remaining work again.
+
+Keep the existing wire spelling extraction.validation_ref, but interpret it
+only as an exact extraction_validations_v2.validation_id. A nonempty string
+alone supplies no authority. Require its immutable result-view row to have
+method_succeeded = 1, with validator equal to the receipt verifier. Resolve the
+target extraction and require its exact topic/work/version/acquisition event/
+verifier lineage, declared extracting invocation and canonical tool, non-NULL
+registry pin and sufficient output tier. The admitted validation already binds
+its independent comparison extraction, both registered pins/families and the
+latest revision at validation admission. Do not compare retained validations
+to today's registry: later operator merges retain historical interpretation.
+Historical /1-only, failed, integrity-only/same-family, missing/invented,
+foreign-lineage and NULL-pin bases cannot satisfy the consumer.
+
+Install ordered additive SQL 33 without changing SQL 01–32. Its AFTER INSERT
+guard follows SQL 32's acquisition/content diagnostic precondition so SQL 18/19
+retain precedence in either trigger order. EvidenceWriter independently checks
+inside the existing writer transaction after receipt insertion and same-outcome
+record writes. No service.py change, new column or JSON classification is
+needed. Review the full catalog and explicitly repin both reviewed hashes.
+Migrate every positive validated receipt fixture to an already retained /2
+basis; attachment never creates a record during a receipt attempt. Preserve
+all old negative and promotion/hold assertions. Trace each new mutant's separate
+passing control through its changed code, and run the full mutation inventory
+without --only because SQL 33 adds a trigger, in addition to required targeted,
+composition, full test, order and eight static gates. Full inventory covers
+all edited-file and transitive shared-fixture families.
+
+SQL 17 remains byte-unchanged and fences every extraction-based load-bearing
+support. Free text and /1 remain non-authoritative; admission does not promote.
+Heavy runs wait for no active gen2-landing-* user unit. Any disposable snapshot
+copies .venv-gen2 with cp -a and touches its installed marker, never symlinks or
+refreshes it during mutation. Evidence: private/evidence/2d-4b3e2-consumers2/.
+No providers, live gen-1/8765, real migrations, protected-register edits or main
+merge are authorized or needed.
+
+**Consumer implemented and validated; requested stop, 2026-10-16.** SQL 33
+consumes only extraction_validation_results_v2.method_succeeded = 1 and binds
+the target to the receipt's acquisition, topic/work/version/verifier lineage,
+extracting invocation, canonical tool, non-NULL pin and sufficient output tier.
+EvidenceWriter independently computes the same /2 method-success predicate from
+the immutable table (Store reads tables, not views) and checks target bindings
+inside the writer transaction. New validation admission still obeys SQL 31;
+receipt readback/consumption preserves historical interpretation after a later
+registry merge. Free text and /1-only records supply no authority.
+
+All positive validated fixtures now retain successful independent /2 bases
+before receipt attempts, with capability-derived Router attribution where used.
+The table/span helpers retain the target's actual producer attribution rather
+than declaring it to be the verifier's own extraction. Original negative,
+receipt-mirror, hold, promotion, replay/conflict and rollback assertions remain.
+Both consumer paths have isolated invalid-basis tests and accepted tier/history
+controls. All 29 new predicate mutants have separate passing controls with
+retained path traces; their early probe kills all 29. SQL 01–32, service.py
+and the protected registers remain byte-unchanged. Catalog review finds exactly
+one added trigger and unchanged columns/classifications (37 JSON / 37 covered /
+zero pending; 504 scalar TEXT), with both hashes explicitly repinned.
+
+The slice adds **354 handwritten repository lines and 31 retained evidence
+script lines: 385 total**, excluding documentation and generated control/hash
+data. Stop after this consumer part. **SQL 17 still fences every extraction-based
+load-bearing support**; replacing that fence remains the next task part.
+Final gate results and commit identity will be retained in
+private/evidence/2d-4b3e2-consumers2/COMPLETION.md.
+
+The first complete mutation sweep killed 3,504/3,505; the sole invalid old
+pair was SQL 20's independent-extractor predicate. The migrated producer target
+was also the acquirer, so that validated killer no longer exercised independence
+from acquisition. Its existing test now retains all original cases and adds an
+admitted target from a third invocation, a successful /2 validation and the same
+insufficient-table refusal plus accepted page control. The old mutant ID,
+killers, controls and production predicates are unchanged. The isolated rerun
+kills it with both paired controls passing; fresh full gates follow this repair.
+
+**Final validation complete, 2026-10-16.** Fresh full gen2-test passes
+**4,080 tests with two existing skips**. Final trigger-order passes with
+**322 installed triggers reversed / 3,757 identical Store tests and subtests**.
+The complete composition module passes separately and in the final 219-test
+table/span/composition run. The final full make gen2-mutation, without --only,
+passes **3,505/3,505**, with all **3,488** separately paired mutants' controls
+passing, green 1,002-test Store and 25 file-target baselines, and every installed
+DDL trigger covered. All 29 new control traces qualify. All eight static gates
+pass; the final documentation receives one final static check before commit.
+The required --only sweep is reconciled per ID: 2,753 kills in the broad run,
+plus the corrected complete 20/20 table family, cover all 2,754 selected IDs.
+The earlier broad exit 1 is retained and is not described as a green run.
+All 3,476 old control entries remain unchanged.
+
+The source and venv bytes stayed frozen through the final full runs. Earlier
+interrupted/baseline-failing attempts and their diagnoses remain in evidence.
+Every heavy command had an idle landing-unit preflight; no repository snapshot,
+venv refresh, provider call, live gen-1/8765 access, real migration, protected
+register edit or main merge occurred. **COMPLETE for consumers part 2; stop
+here. SQL 17 replacement remains the next task part.** Commit, complete logs,
+catalog/fixture/control audits and provenance:
+private/evidence/2d-4b3e2-consumers2/COMPLETION.md.

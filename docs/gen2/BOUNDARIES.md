@@ -93,9 +93,16 @@ source_extractions row. Exact acquisition, work/version, verifier lineage,
 extracting invocation, canonical tool and sufficient output tier must bind.
 EvidenceWriter independently checks inside the writer transaction after receipt
 insertion, with rollback on refusal; SQL 18/19 retain their earlier diagnostics.
-Positive verifier receipt fixtures retain durable bases. The validated_extraction
-consumer and its /2 fixture migration remain pending; free-text validation_ref
-has no authority.
+SQL 33 requires validated_extraction receipts to consume a durable /2 validation
+with method_succeeded = 1 and the receipt's verifier. Its target must match the
+same acquisition, topic/work/version/verifier lineage, declared extracting
+invocation and canonical tool, non-NULL registry pin and sufficient output tier.
+EvidenceWriter independently checks these relationships inside the same writer
+transaction. validation_ref is an exact durable /2 ID; free text alone, /1-only,
+failed, integrity-only/same-family, invented, foreign-lineage and NULL-pin bases
+refuse. New validations obey SQL 31 at their admission; receipt consumption
+preserves retained interpretation after later operator registry changes.
+Positive controls for both extraction methods retain durable bases.
 `/1` results have no authority consumer and SQL 17 still fences all
 extraction-based load-bearing support.
 

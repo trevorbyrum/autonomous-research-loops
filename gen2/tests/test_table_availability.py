@@ -14,7 +14,7 @@ METHODS = ("canonical_bytes", "verifier_extraction", "validated_extraction")
 
 def document(case, method, tier, verdict="supports", spans=(TABLE,)):
     doc = extraction_document(case, method)
-    if method != "canonical_bytes":
+    if method == "verifier_extraction":
         doc["extraction"]["produced_by_invocation_id"] = case.verifier["invocation_id"]
     doc.update(access_tier=tier, verdict=verdict, cited_spans=list(spans))
     doc["requested_for"]["required_access_tier"] = tier

@@ -13994,6 +13994,180 @@
   ],
   "why": "Separate accepted successor record reaches the changed predicate; independence uses pinned families and SQL 17 remains fenced."
  },
+ "2D4B3E2VAL-extracting_invocation_id": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-extractor_identity": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-gateway_call_ref": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-pin": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-reference": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-retrieved_at": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-route": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-dispatch": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-event_id": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-extracting_invocation_id": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-extractor_identity": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-gateway_call_ref": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-independent": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-pin": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-reference": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-retrieved_at": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-route": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-source_version": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-success": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-target": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-tier": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-verifier_invocation_id": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-work_id": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-source_version": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-success": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-target": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-tier": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-verifier": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-work_id": {
+  "controls": [
+   "test_store_validated_extraction_receipts.ValidatedReceiptDDLTest.test_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

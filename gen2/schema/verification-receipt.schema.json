@@ -98,7 +98,7 @@
       }
     },
     "extraction": {
-      "description": "What the check read. The producer's selected summary or unvalidated extraction may not be what the verifier relies on (flow S4 step 8); authenticated canonical/cache bytes may be reused whoever acquired them (adjudication (b)5; Astra 0a review A6/B6). verifier_extraction is the verifier's own (produced_by = verifier, enforced in the store); validated_extraction cites its validation; canonical_bytes needs an authenticated acquisition (gateway_call_ref) and, in the store, a staged artifact with exactly the obtained hash.",
+      "description": "What the check read. The producer's selected summary or unvalidated extraction may not be what the verifier relies on (flow S4 step 8); authenticated canonical/cache bytes may be reused whoever acquired them (adjudication (b)5; Astra 0a review A6/B6). verifier_extraction is the verifier's own (produced_by = verifier, enforced in the store); validated_extraction must cite an exact durable successful extraction-validation/2 ID bound to the same acquisition and verifier; canonical_bytes needs an authenticated acquisition (gateway_call_ref) and, in the store, a staged artifact with exactly the obtained hash.",
       "type": "object",
       "additionalProperties": false,
       "required": ["method", "extractor", "produced_by_invocation_id", "validation_ref"],
@@ -107,7 +107,7 @@
         "extractor": {"$ref": "common.schema.json#/$defs/short_text"},
         "extraction_id": {"description": "Durable source_extractions key; required at admission for verifier_extraction. Admission grants no promotion (SQL 17).", "$ref": "common.schema.json#/$defs/short_text"},
         "produced_by_invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
-        "validation_ref": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
+        "validation_ref": {"description": "For validated_extraction, the exact durable extraction_validations_v2.validation_id; free text alone has no authority.", "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
       },
       "if": {"properties": {"method": {"const": "validated_extraction"}}},
       "then": {"properties": {"validation_ref": {"type": "string"}}}

@@ -188,6 +188,7 @@ class EvidenceWriter:
                 "verifier_invocation_id": doc["verifier_invocation_id"], "quote_check_id": doc["quote_check_id"], "verdict": doc["verdict"],
                 "receipt": doc, "verified_at": doc["verified_at"]})
             self._require_own_extraction(doc)
+            self._require_validated_extraction(doc)
         verification = self._core._write_verification_holds(payload, op_id, now)
         for doc in payload["decision_receipts"]:
             response, outcome = doc["provider_response"], doc["outcome"]
@@ -342,3 +343,23 @@ class EvidenceWriter:
                 or extraction["extractor_identity"] != doc["extraction"]["extractor"] or extraction["extractor_registry_version"] is None
                 or rank[extraction["supported_tier"]] < rank[doc["access_tier"]]):
             raise Refusal("payload_invalid", "receipt needs its verifier durable extraction")
+
+    def _require_validated_extraction(self, receipt: dict) -> None:
+        # Inside the existing writer fence, after same-outcome extractions.
+        if receipt["extraction"]["method"] != "validated_extraction":
+            return
+        validation = self._core._one("extraction_validations_v2", {"validation_id": receipt["extraction"]["validation_ref"]})
+        if validation is None or validation["method"] != "independent_extraction" or validation["policy_version"] != 2 or validation["outcome"] != "succeeded" or validation["validator_invocation_id"] != receipt["verifier_invocation_id"]:
+            raise Refusal("payload_invalid", "receipt needs its successful durable /2 validation")
+        rank = {"bibliographic": 1, "abstract": 2, "full_text": 3, "reproduced": 4}
+        acquisitions = [a for a in self._core._store.select("source_acquisitions", {
+            **receipt["source"], "verifier_invocation_id": receipt["verifier_invocation_id"], "content_hash": receipt["obtained_content_hash"]})
+            if a["gateway_call_ref"] == receipt["acquisition"]["gateway_call_ref"]
+            and a["retrieved_at"] == receipt["acquisition"]["retrieved_at"] and "gateway:" + a["lane"] == receipt["acquisition"]["route"]]
+        basis = self._core._one("source_extractions", {"extraction_id": validation["target_extraction_id"]})
+        if basis is None or not any(all(basis[k] == a[k] for k in
+                ('topic_id', 'work_id', 'source_version', 'event_id', 'verifier_invocation_id')) for a in acquisitions) or (
+                basis["topic_id"] != receipt["topic_id"] or basis["extracting_invocation_id"] != receipt["extraction"]["produced_by_invocation_id"]
+                or basis["extractor_identity"] != receipt["extraction"]["extractor"] or basis["extractor_registry_version"] is None
+                or rank[basis["supported_tier"]] < rank[receipt["access_tier"]]):
+            raise Refusal("payload_invalid", "receipt needs its successful durable /2 validation")

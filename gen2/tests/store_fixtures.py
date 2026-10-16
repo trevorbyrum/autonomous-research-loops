@@ -475,7 +475,7 @@ class StoreTestCase(unittest.TestCase):
         cols = {"verification_receipt_id": rid, "topic_id": TOPIC, "claim_id": claim[0], "claim_revision": claim[1], "work_id": work, "source_version": "v1",
                 "cited_spans": json.dumps(spans), "obtained_content_hash": obtained, "access_tier": tier, "use": use, "required_access_tier": required,
                 "acquisition": json.dumps(acquisition), "extraction_method": method, "extraction_invocation_id": extraction,
-                "extraction_validation_ref": validation, "producer_invocation_id": producer, "verifier_invocation_id": verifier,
+                "extraction_validation_ref": doc["extraction"]["validation_ref"] if method == "validated_extraction" else validation, "producer_invocation_id": producer, "verifier_invocation_id": verifier,
                 "quote_check_id": check_id, "verdict": verdict, "receipt": json.dumps(doc), "verified_at": T}
         cols.update(column_overrides or {})
         self.x(f"INSERT INTO verification_receipts ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())

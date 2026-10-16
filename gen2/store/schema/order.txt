@@ -37,3 +37,4 @@
 30-extraction-v2-member-domain.sql
 31-validation-current-registry.sql
 32-verifier-extraction-receipts.sql
+33-validated-extraction-receipts.sql
