@@ -2647,3 +2647,16 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` green: 4,039 tests; 321 triggers in reverse order; the full mutation run **without `--only`** killed 3,476/3,476.
   - `gen2-gateway` carried forward from dc81392, green.
 - **Next:** consumers part 2, the `validated_extraction` consumer. SQL 17 stays.
+
+## 2026-10-16: 2d-4b3e2 consumers part 2 (`validated_extraction` durable `/2` basis; SQL 33): PASS on the first review. Accepted
+- **Astra** (`c6be3338`, pinned 25141bc; `private/reviews/gen2-2d-4b3e2-c2-astra-review-20261016.md`): **A, B and C all PASS, ROOT-CAUSE.** There are no blocking or non-blocking findings.
+- **Binding:**
+  - The receipt consumes the validation's **target** extraction, which must be the declared extractor and tool.
+  - The validator must be the receipt's verifier, from an independent family.
+  - This is the correct V-3 separation.
+  - The Router and SQL predicates agree.
+  - A validation admitted while its revision was current stays consumable after a later merge, which is the retained-history rule. A stale validation admitted *new* is refused.
+- **SQL 17 is unchanged.**
+- **Landing at 25141bc:** `gen2-check` green; `gen2-gateway` green.
+- **2d-4b3e2 is complete.** It delivered the registry, the `/2` validations, the latest-revision rule and both receipt consumers.
+- **Next:** 2d-4b3e3 (`docs/gen2/tasks/2d-4b3e3.md`), which replaces SQL 17 with bound-basis consumption. This is the step that lets extraction-based support become authoritative.
