@@ -7,12 +7,15 @@ FROM verification_receipts r
 LEFT JOIN extraction_validation_results_v2 validation
   ON validation.validation_id = r.extraction_validation_ref
   AND validation.method_succeeded = 1 AND validation.validator_invocation_id = r.verifier_invocation_id
+LEFT JOIN source_extractions independent ON independent.extraction_id = validation.validator_extraction_id
 JOIN source_extractions basis ON
   (r.extraction_method = 'verifier_extraction'
     AND json_type(r.receipt, '$.extraction.extraction_id') = 'text'
     AND basis.extraction_id = json_extract(r.receipt, '$.extraction.extraction_id')
     AND basis.extracting_invocation_id = r.verifier_invocation_id)
-  OR (r.extraction_method = 'validated_extraction' AND basis.extraction_id = validation.target_extraction_id)
+  OR (r.extraction_method = 'validated_extraction' AND basis.extraction_id = validation.target_extraction_id
+    AND (CASE independent.supported_tier WHEN 'bibliographic' THEN 1 WHEN 'abstract' THEN 2 WHEN 'full_text' THEN 3 ELSE 0 END)
+      >= CASE r.access_tier WHEN 'bibliographic' THEN 1 WHEN 'abstract' THEN 2 WHEN 'full_text' THEN 3 ELSE 4 END)
 JOIN source_acquisition_content_tiers acquired
   ON acquired.topic_id = basis.topic_id AND acquired.work_id = basis.work_id
   AND acquired.source_version = basis.source_version AND acquired.event_id = basis.event_id

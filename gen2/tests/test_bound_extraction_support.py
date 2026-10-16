@@ -13,6 +13,7 @@ from gen2.tests.test_canonical_content_tiers import FULL, fixture
 from gen2.tests.test_pending_extraction_support import METHODS, load_claim, support_document
 from gen2.tests.test_own_extraction_receipts import OwnCases
 from gen2.tests.test_validated_extraction_receipts import ValidatedCases
+from gen2.tests.independent_tier_fixtures import independent_basis
 
 
 @contextmanager
@@ -111,6 +112,31 @@ class PromotionCases:
     def test_own_control(self):
         self.context('verifier_extraction'); self.store(); self.promote()
 
+    def test_independent_tier(self):
+        for required, independent in (('abstract', 'bibliographic'), ('full_text', 'bibliographic'), ('full_text', 'abstract')):
+            with self.subTest(required=required, independent=independent):
+                self.context('validated_extraction', required)
+                independent_basis(self.case, self.doc, independent)
+                self.assertEqual(self.case.value('SELECT supported_tier FROM source_extractions WHERE extraction_id=?', self.target), 'full_text')
+                self.assertEqual(self.case.value('SELECT recorded_tier_rank FROM source_acquisition_content_tiers'), 3)
+                # Retained receipts must be rechecked even when admission was
+                # formerly allowed. Raw admission still retains this history.
+                self.store(legacy=not self.RAW)
+                history = self.case.rows('SELECT * FROM extraction_validations_v2')
+                self.assertEqual(self.case.rows('SELECT * FROM bound_extraction_receipts'), [])
+                self.promote('rejected')
+                self.assertEqual(self.case.rows('SELECT * FROM extraction_validations_v2'), history)
+
+    def test_independent_tier_control(self):
+        for required, tiers in (('bibliographic', ('bibliographic', 'abstract', 'full_text')),
+                ('abstract', ('abstract', 'full_text')), ('full_text', ('full_text',))):
+            for independent in tiers:
+                with self.subTest(required=required, independent=independent):
+                    self.context('validated_extraction', required)
+                    independent_basis(self.case, self.doc, independent)
+                    self.store(); self.promote()
+                    self.assertEqual(self.case.rows('SELECT verification_receipt_id FROM bound_extraction_receipts'), [(self.doc['verification_receipt_id'],)])
+
     def test_history_control(self):
         self.context('validated_extraction')
         tools = self.case.rows('SELECT extractor_identity FROM extractor_tools')
@@ -158,7 +184,8 @@ class PromotionCases:
                     elif field in ('unpinned', 'tier'):
                         self.case.x('DROP TRIGGER source_extractions_immutable_u')
                         column, value = ('extractor_registry_version', None) if field == 'unpinned' else ('supported_tier', 'bibliographic')
-                        self.case.x('UPDATE source_extractions SET ' + column + '=?', value)
+                        basis = self.target if method == 'validated_extraction' else self.doc['extraction']['extraction_id']
+                        self.case.x('UPDATE source_extractions SET ' + column + '=? WHERE extraction_id=?', value, basis)
                     elif field == 'tool': self.doc['extraction']['extractor'] = 'other-tool'
                     else:
                         if method == 'verifier_extraction':

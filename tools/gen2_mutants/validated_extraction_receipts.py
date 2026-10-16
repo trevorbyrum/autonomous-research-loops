@@ -41,6 +41,11 @@ for field, killer in (('extracting_invocation_id', 'extractor'), ('extractor_ide
     change('router-' + field, killer, f'basis["{field}"] != receipt["extraction"]["{rhs}"]', 'False', P)
 change('router-pin', 'unpinned', 'basis["extractor_registry_version"] is None', 'False', P)
 change('router-tier', 'tier', 'rank[basis["supported_tier"]] < rank[receipt["access_tier"]]', 'False', P)
+change('router-independent-reference', 'independent_tier', '{"extraction_id": validation["validator_extraction_id"]}',
+    '{"extraction_id": validation["target_extraction_id"]}', P)
+change('router-independent-tier', 'independent_tier', 'rank[independent["supported_tier"]] < rank[receipt["access_tier"]]', 'False', P)
+for name in ('router-independent-reference', 'router-independent-tier'):
+    CONTROLS['2D4B3E2VAL-' + name]['controls'] = [ROUTER + 'independent_tier_control']
 keys = "('topic_id', 'work_id', 'source_version', 'event_id', 'verifier_invocation_id')"
 for field, killer in (('work_id', 'work'), ('source_version', 'version'), ('verifier_invocation_id', 'verifier'), ('event_id', 'call')):
     replacement = '(' + ', '.join(repr(k) for k in ('topic_id', 'work_id', 'source_version', 'event_id', 'verifier_invocation_id') if k != field) + ')'

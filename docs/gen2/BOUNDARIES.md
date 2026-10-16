@@ -97,8 +97,8 @@ SQL 33 requires validated_extraction receipts to consume a durable /2 validation
 with method_succeeded = 1 and the receipt's verifier. Its target must match the
 same acquisition, topic/work/version/verifier lineage, declared extracting
 invocation and canonical tool, non-NULL registry pin and sufficient output tier.
-EvidenceWriter independently checks these relationships inside the same writer
-transaction. validation_ref is an exact durable /2 ID; free text alone, /1-only,
+EvidenceWriter independently checks these relationships and caps receipt access
+by the exact validator extraction output tier inside the same writer transaction. validation_ref is an exact durable /2 ID; free text alone, /1-only,
 failed, integrity-only/same-family, invented, foreign-lineage and NULL-pin bases
 refuse. New validations obey SQL 31 at their admission; receipt consumption
 preserves retained interpretation after later operator registry changes.
@@ -108,7 +108,11 @@ basis through bound_extraction_receipts. A load-bearing supports receipt may
 authorize promotion through its verifier's own pinned extraction, or an exact
 successful independent /2 validation, with all SQL 32/33 relationships intact.
 That same receipt must meet the claim's required tier and performed V-8 checks,
-with no tier-0 alarm and sufficient extraction output and recorded content.
+with no tier-0 alarm. Validated authority is capped by both the target and exact
+independent extraction output tiers and the acquired record content ceiling,
+including retained receipts. Own extraction keeps its own output/acquisition
+cap. A success label or adjudication cannot waive either operand ceiling;
+low-tier and failed extraction/validation records remain history.
 Historical unbound, free-text-only, /1, failed and integrity-only bases remain
 fenced with SQL 17's diagnostic. SQL 12 and EvidenceWriter's governed-capture
 checks remain canonical-only because extraction records supply no new governed
@@ -190,8 +194,9 @@ existing receipt insert transaction, including raw inserts. Nonblank means
 17.0.0 White_Space and Default_Ignorable_Code_Point (DOSSIER repair-1 cites
 the pinned standard). Whitespace/format-only bodies grant no content tier.
 SQL 34 replaces SQL 17's fence only for receipts consuming their own pinned
-extraction or a successful independent /2 validation with sufficient output
-and recorded content, load-bearing use and all V-4/V-8 requirements. Historical
+extraction or a successful independent /2 validation with sufficient target
+and exact independent output tiers and recorded content, load-bearing use
+and all V-4/V-8 requirements. Historical
 unbound declarations remain non-authoritative; new ones refuse admission.
 SQL 12's capture consumer and EvidenceWriter remain canonical-only: an
 extraction basis cannot preserve support against a later governed capture

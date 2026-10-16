@@ -357,9 +357,15 @@ class EvidenceWriter:
             if a["gateway_call_ref"] == receipt["acquisition"]["gateway_call_ref"]
             and a["retrieved_at"] == receipt["acquisition"]["retrieved_at"] and "gateway:" + a["lane"] == receipt["acquisition"]["route"]]
         basis = self._core._one("source_extractions", {"extraction_id": validation["target_extraction_id"]})
+        self._require_independent_extraction_tier(validation, receipt, rank)
         if basis is None or not any(all(basis[k] == a[k] for k in
                 ('topic_id', 'work_id', 'source_version', 'event_id', 'verifier_invocation_id')) for a in acquisitions) or (
                 basis["topic_id"] != receipt["topic_id"] or basis["extracting_invocation_id"] != receipt["extraction"]["produced_by_invocation_id"]
                 or basis["extractor_identity"] != receipt["extraction"]["extractor"] or basis["extractor_registry_version"] is None
                 or rank[basis["supported_tier"]] < rank[receipt["access_tier"]]):
+            raise Refusal("payload_invalid", "receipt needs its successful durable /2 validation")
+
+    def _require_independent_extraction_tier(self, validation: dict, receipt: dict, rank: dict) -> None:
+        independent = self._core._one("source_extractions", {"extraction_id": validation["validator_extraction_id"]})
+        if independent is None or rank[independent["supported_tier"]] < rank[receipt["access_tier"]]:
             raise Refusal("payload_invalid", "receipt needs its successful durable /2 validation")

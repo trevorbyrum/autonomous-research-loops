@@ -2830,3 +2830,106 @@ the old unbound-extraction remediation hold. Removing that obsolete attention,
 while retaining truthful missing-content holds and earlier disagreement, remains
 part 2 (about 200 lines, to be re-estimated before code). Commit and complete
 logs/audits: private/evidence/2d-4b3e3/COMPLETION.md.
+
+### 2d-4b3e3-repair-1 — two-operand validated-support ceiling
+
+**Design and re-estimate before code, 2026-10-16.** Read Astra's review of
+ba94b99 and its retained tier-matrix source/results. F1 is a consumption gap:
+the successful /2 comparison names an independent extraction, but SQL 34 reads
+only the target's output tier. A successful semantic-agreement assessment
+cannot supply content absent from either operand. Validated receipt authority
+must be capped by the minimum of the exact target output tier, the exact
+validator extraction output tier, and the recorded acquisition content tier.
+The own-extraction path retains its existing output/acquisition ceiling.
+
+Edit **undeployed SQL 34 in place**, as this repair explicitly permits. Its
+bound-receipt view will resolve validation.validator_extraction_id to the exact
+source_extractions row and require that row's tier to cover receipt access on
+the validated branch. The installed promotion trigger already consumes that
+view for the same receipt; retained validations and receipts therefore receive
+the new ceiling without rewriting history or relying on admission. Add the
+same independent-output comparison to EvidenceWriter's validated receipt check
+inside its current transaction. SQL 01–33, especially SQL 31's current-at-
+admission rule, stay unchanged. Raw historical receipts can remain stored but
+cannot acquire authority above either operand. Low-tier and failed extraction/
+validation records remain history. No success, adjudication or later registry
+change waives either ceiling; retained registry interpretation stays intact.
+Canonical capture and the already accepted retirement/binding rules stay intact.
+
+Re-estimate **about 240 handwritten lines**: SQL 34 and Router checks 15;
+asymmetric promotion/history and receipt tests 130; paired predicate mutants
+and corrected N1 rationale strings 25; retained audit/control-trace scripts 70.
+Documentation and regenerated classification/control records are additional.
+No split is needed for this repair; the original task's pending-attention part
+remains outside it. Fix test_bindings to lower only the selected target/own
+basis, then add independent-only cases. Admit low-tier independent outputs and
+semantic comparisons through authenticated Router commits, leaving the target
+and acquisition at full text. Test all three insufficient tier pairs through
+Router and raw promotion, including already retained receipts; reverse-order
+execution must preserve those refusals. Equal/higher-tier independent controls
+must promote. Isolate the Router admission comparison with SQL receipt guards
+removed, as in the existing receipt suite. Pair each new comparison mutant
+with a separate accepted control and retain its qualified path trace. Correct
+the two method mutants' rationale to describe their actual opposite-method,
+full-text controls and regenerate records.
+
+Before committing: full gen2-test, gen2-trigger-order, full composition,
+affected-family --only sweeps, complete uncovered-trigger inventory, and all
+eight static gates. Review the unchanged table/JSON classification and explicitly
+repin catalog and ordered-DDL hashes. Check no gen2-landing-* user unit is active
+before every heavy run. Any disposable snapshot copies .venv-gen2 with cp -a;
+no provider calls, live gen-1/8765 access, real-database migration, protected
+register edits or main merge. Evidence and COMPLETION.md belong under
+private/evidence/2d-4b3e3-repair-1/.
+
+**Repair implemented and validated, 2026-10-16.** Edited undeployed SQL 34
+in place. Its view resolves the exact validator_extraction_id and requires
+that independent output to cover receipt access, in addition to the target
+output and exact acquired-record ceiling. The unchanged promotion trigger
+consumes this view for retained receipts. EvidenceWriter applies the same
+independent-output cap through a small transaction-local helper. SQL 01–33,
+including SQL 31, the own-extraction cap, retained registry interpretation,
+canonical capture, service.py and the protected registers remain unchanged.
+Low-tier extraction/comparison history remains retained; successful comparison
+or adjudication supplies no missing tier. The earlier attention split remains
+outside this repair.
+
+The fixture now admits asymmetric independent outputs and semantic comparisons
+through ordinary authenticated Router commits. test_bindings lowers only the
+selected target/own basis. Three insufficient pairs refuse promotion across
+Router, raw and reversed-trigger paths with full-text targets and acquisitions;
+six sufficient pairs per path promote. The retained matrix records **9/9
+refusals and 18/18 accepted controls**, and Router admission refuses the three
+new over-tier receipts. Four new exact-reference/tier mutants have separate
+passing controls; all **30/30** retained control-path traces qualify. N1's two
+method-control rationales now accurately describe opposite-method full-text
+controls; all other **3,529** prior entries are unchanged.
+
+Final validation: full gen2-test **4,106 tests, two existing skips**; full
+trigger-order **322 installed triggers / 3,832 identical Store tests/subtests**;
+full composition **6 tests**; the fresh complete selected sweep **785/785
+killed**, **782** with separate passing controls and three existing documented
+exceptions, with green **1,014-test Store and seven file-target baselines**.
+The transitive audit requires 169 IDs and selects complete affected families.
+The full installed-trigger inventory has zero uncovered triggers across all
+322 live definitions. All eight static gates pass and are repeated after this
+final documentation update. Catalog review finds only the basis view changed:
+all table columns, 37 covered JSON columns, zero pending and 504 scalar TEXT
+classifications are unchanged; both catalog and ordered-DDL hashes were
+explicitly repinned.
+
+Superseded records remain in evidence: the first Router expression exceeded
+the complexity limit and was extracted into the small helper; the first broad
+sweep was **784/785**, with one invalid cross-join mutant whose control duplicated
+rows. That mutant now selects the wrong exact operand, preserving cardinality;
+its fresh probe and complete 785-mutant rerun pass. Interrupted full runs are
+not credited; the final full run uses the final frozen source and inventory.
+
+Actual size is **91 repository code/test/mutant lines plus 339 retained audit
+script lines: 430 total**, conservatively counting reused auditors and excluding
+documentation/generated records. No snapshot or environment refresh was needed.
+Heavy runs had idle landing-unit preflights. No provider calls, live gen-1/8765
+access, real-database migration or main merge occurred. **This repair is
+COMPLETE**; the original task's deferred attention part remains separate.
+Commit identity, checks and retained artifacts are recorded in
+private/evidence/2d-4b3e3-repair-1/COMPLETION.md.

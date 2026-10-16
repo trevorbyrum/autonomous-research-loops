@@ -9,6 +9,7 @@ from gen2.tests import store_fixtures as sf
 from gen2.tests.test_canonical_content_tiers import FULL, fixture
 from gen2.tests.test_extraction_acquisitions import extraction_document
 from gen2.tests.test_own_extraction_receipts import OwnCases
+from gen2.tests.independent_tier_fixtures import independent_basis
 
 
 class ValidatedCases:
@@ -146,6 +147,20 @@ class ValidatedCases:
 
 
 class ValidatedReceiptRouterTest(ValidatedCases, unittest.TestCase):
+    def test_independent_tier(self):
+        for n, (required, independent) in enumerate((('abstract', 'bibliographic'), ('full_text', 'bibliographic'), ('full_text', 'abstract'))):
+            with self.subTest(required=required, independent=independent):
+                self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = required
+                independent_basis(self.case, self.doc, independent, 'low' + str(n))
+                self.assertEqual(self.case.value('SELECT supported_tier FROM source_extractions WHERE extraction_id=?', self.target), 'full_text')
+                self.assertEqual(self.case.value('SELECT recorded_tier_rank FROM source_acquisition_content_tiers'), 3)
+                self.refuse()
+
+    def test_independent_tier_control(self):
+        self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'full_text'
+        independent_basis(self.case, self.doc, 'full_text')
+        self.test_full_text_control()
+
     def test_replay_conflict_rollback(self):
         before = self.case.state(exclude=())
         self.case.faults['in_transaction:end'] = RuntimeError('after validated receipt')

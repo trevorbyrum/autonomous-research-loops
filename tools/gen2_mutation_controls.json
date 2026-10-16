@@ -23331,13 +23331,13 @@
   "controls": [
    "test_store_bound_extraction_support.BoundPromotionDDLTest.test_history_control"
   ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+  "why": "Separate validated-extraction full-text promotion after a registry merge takes the opposite method through the basis view and consumer."
  },
  "2D4B3E3-validation-method": {
   "controls": [
    "test_store_bound_extraction_support.BoundPromotionDDLTest.test_own_control"
   ],
-  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+  "why": "Separate own-extraction full-text promotion takes the opposite method through the basis view and consumer."
  },
  "2D4B3E3-work_id": {
   "controls": [
@@ -23464,5 +23464,29 @@
    "test_store_bound_extraction_support.BoundPromotionDDLTest.test_control"
   ],
   "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-independent-reference": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_independent_tier_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E3-independent-tier": {
+  "controls": [
+   "test_store_bound_extraction_support.BoundPromotionDDLTest.test_independent_tier_control"
+  ],
+  "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
+ },
+ "2D4B3E2VAL-router-independent-reference": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_independent_tier_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
+ },
+ "2D4B3E2VAL-router-independent-tier": {
+  "controls": [
+   "test_validated_extraction_receipts.ValidatedReceiptRouterTest.test_independent_tier_control"
+  ],
+  "why": "Separate admitted validated receipt reaches the changed consumer guard."
  }
 }

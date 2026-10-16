@@ -20,8 +20,14 @@ change('validation-success', 'validation.method_succeeded = 1', '1 = 1', 'unboun
 change('own-method', "r.extraction_method = 'verifier_extraction'", '0', 'control', also=())
 # Over-restrictive method mutants use a different accepted method as control.
 CONTROLS['2D4B3E3-own-method']['controls'] = [RAW + 'history_control']
+CONTROLS['2D4B3E3-own-method']['why'] = 'Separate validated-extraction full-text promotion after a registry merge takes the opposite method through the basis view and consumer.'
 change('validation-method', "r.extraction_method = 'validated_extraction'", '0', 'history_control')
 CONTROLS['2D4B3E3-validation-method']['controls'] = [RAW + 'own_control']
+CONTROLS['2D4B3E3-validation-method']['why'] = 'Separate own-extraction full-text promotion takes the opposite method through the basis view and consumer.'
+change('independent-reference', 'independent.extraction_id = validation.validator_extraction_id', 'independent.extraction_id = validation.target_extraction_id', 'independent_tier')
+change('independent-tier', "CASE independent.supported_tier WHEN 'bibliographic' THEN 1 WHEN 'abstract' THEN 2 WHEN 'full_text' THEN 3 ELSE 0 END", '3', 'independent_tier')
+for name in ('independent-reference', 'independent-tier'):
+    CONTROLS['2D4B3E3-' + name]['controls'] = [RAW + 'independent_tier_control']
 for field, rhs in (('work_id', 'r.work_id'), ('source_version', 'r.source_version'),
         ('extractor_identity', "json_extract(r.receipt, '$.extraction.extractor')")):
     change(field, 'basis.' + field + ' = ' + rhs, '1 = 1', 'bindings')
