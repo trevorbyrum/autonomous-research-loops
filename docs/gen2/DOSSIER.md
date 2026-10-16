@@ -3029,3 +3029,159 @@ and no contents were read there. This reading-scope deviation and all superseded
 failed/interrupted attempts are disclosed in the evidence, rather than claiming
 complete procedural compliance. Final source/venv/protected-file proof, commit
 and full logs: private/evidence/2d-4b3e3-part2/COMPLETION.md.
+
+### 2d-4c: attributed detailed V-8 records (design and re-estimate; stopped)
+
+Design before code against `528494011286ba7b4c5c5a4fb1de1ae002bfa203` on
+`gen2`, 2026-10-16. Read task 2d-4c, this dossier's §2d-4 and accepted
+2d-3 quote-protection/capture work, V-4/V-8, SQL 03's receipt and promotion
+predicates, SQL 34 in full, and the named private flow architecture,
+adjudication and methodology synthesis in full. **INCOMPLETE: design only.**
+The task's Required 4 explicitly requires stopping after DOSSIER when the
+authority leaves a design choice open. No implementation part starts here.
+
+**Open question requiring an operator ruling.** What retained evidence and
+method-specific conditions make each of `numeric_units`, `denominators`,
+`negation` and `qualifications` a performed check, including a justified
+`not_applicable`? Is an attributed, versioned verifier assessment with its
+evidence sufficient, and must `not_applicable` retain an explicit reason and
+the context examined? Alternatively, must some kinds use a specified
+deterministic procedure or a prescribed observation/comparison artifact?
+The required record fields settle attribution and binding, but do not settle
+this minimum evidence or applicability policy. Choosing it determines which
+records can satisfy V-4 and cannot be supplied silently by the coder.
+
+Flow S4 step 4 and adjudication (c) suggestion 2 require the four independent
+checks; S4 step 8 and adjudication (b) resolution 5 settle exact source/claim
+bindings, acquisition lineage and role separation. Methodology §4 distinguishes
+claim-level verification from tier-0 screening and warns about numeric and
+negation limitations. V-8 permits `not_applicable` and adjudicated performed
+failures while prohibiting unperformed load-bearing support; V-4 rechecks
+performance at consumption. None specifies the evidence contract for these
+four assessments or an applicability rationale requirement. These are limits
+of the named authority, not a claim about every private design record.
+
+**Recommendation, pending that ruling.** Approve one initial closed,
+versioned attributed-assessment method. Require a retained, topic-authorized,
+hash-authenticated evidence artifact for every performed outcome (`succeeded`,
+`failed`, `not_applicable`), recording the assessment, method/version and
+examined context. Require an explicit reason for `not_applicable`; absence
+of a recognized token alone must not establish applicability. Numeric/unit
+assessments should identify the quantities and unit interpretation; denominator
+assessments the population/base; negation assessments the polarity and scope;
+qualification assessments the limiting context. These are recommended report
+contents, not store-proven scientific correctness or approved new rubrics.
+Keep `not_checked` and `unavailable` truthful and non-authorizing; evidence of
+an access failure is not evidence of a completed substantive check.
+
+The accepted matcher in `gen2/router/quote_matching.py` supplies
+`quote-protection/5`, `decimal-expression/2`, `english-negation/3` and
+`si9-2022+clinical/2`. Its lexical output can be retained as supplementary
+evidence with those versions. It protects quote fidelity and diagnostics;
+it does not establish a correct denominator, negation scope, unit
+interpretation or adequate surrounding qualifications. Do not manufacture a
+V-8 success or `not_applicable` from a quote match or an empty token list.
+
+**Conditional structural design.** Once the operator settles that policy:
+
+- Add immutable detailed-check records in ordered additive DDL after SQL 34,
+  with `-- trace:` markers. Each record carries an ID, one of the four kinds,
+  one of the task's five outcomes, exact claim revision, topic/work/source
+  version, examined artifact identity, complete cited-span binding, method
+  and version, evidence references, and actual performing invocation,
+  committing operation and time. Retain additional examined context spans
+  separately from the exact cited-span list, so examining context does not
+  rewrite the citation. Apply the accepted span/locator domain, including
+  decoded unique member names and exact integral offsets.
+- Derive attribution from the authenticated committing verification
+  invocation; require contract admission, the claim's topic and a performer
+  distinct from its actual producer. Authenticate retained source/evidence
+  bytes outside the writer lock through existing C-9 handling; recheck
+  immutable bindings and write inside the existing commit transaction.
+  Canonical source identity and any consumed extraction/acquisition must
+  agree with the receipt's own basis; do not equate canonical source bytes
+  with extraction output bytes. DDL independently binds the declared rows;
+  it does not certify execution, semantic truth or artifact hash truth.
+- Add explicit per-kind receipt references. A load-bearing `supports` or
+  `partially_supports` receipt must consume a matching durable record for
+  every successful/applicable-exempt check. A performed failure used through
+  adjudication must also have its attributed record: an invented failure
+  label must not stand in for performing a check. Any supplied reference,
+  including on an unsuccessful verdict, must resolve and match kind,
+  outcome, claim revision, full cited spans, artifact and verifier. Missing
+  or foreign bindings refuse atomically. Unsuccessful verdicts may continue
+  reporting `not_checked`/`unavailable` without claiming performance.
+- Resolve the wire vocabulary explicitly in the successor receipt design:
+  SQL 03 and the current schema use `checked_ok`/`checked_problem`; the task
+  requires durable outcomes `succeeded`/`failed`. Authoritative receipt
+  check outcomes must equal record outcomes exactly. Retain historical
+  receipt bytes and distinguish any legacy summary projection from the
+  authoritative detailed outcome; never implement equality by silently
+  accepting those spellings as interchangeable. Account for SQL 03's
+  installed CHECK constraints, SQL 21/32's closed object shapes and the
+  versioned schema when implementing this representation. This is concrete
+  compatibility work included below, not an in-place rewrite of history.
+- Use one exact durable-binding relation at receipt admission and at each
+  promotion consumer, with an independent Router check. SQL 03's successor
+  must require a qualifying receipt for the claim's own load-bearing flag
+  and tier. SQL 34's successor must require the same receipt to have both
+  its SQL 32/33 bound extraction basis and its detailed checks. Separate
+  receipts cannot pool qualifications. Preserve acquired-content ceilings,
+  both validated output ceilings, required/obtained tiers, load-bearing use,
+  tier-0 rules, contract admission and canonical-only governed captures.
+  Adjudication cannot waive an absent or unperformed check. Historical
+  self-declarations remain readable and supply no new detailed-check
+  authority. This dispatch changes none of those existing consumers.
+- Put logic in a narrow Router collaborator; `service.py` receives wiring
+  only under DEBT-036. Register new JSON columns in the closed member-name
+  inventory and guard them before admission; repin both DDL hashes whenever
+  DDL changes. Replay uses the existing committed-operation boundary,
+  conflicting IDs refuse, and failures roll back records, receipts, holds
+  and operation effects together.
+
+**Re-estimate and split before implementation.** The old approximately
+300-line estimate omits raw-DDL parity, receipt vocabulary compatibility,
+both promotion consumers and the shared positive-fixture conversion.
+Conditional estimate: **about 1,900 handwritten implementation/test/mutant
+lines**, excluding documentation and generated controls. Re-estimate each
+dispatch and split again if its concrete scope exceeds approximately 500:
+
+1. **First part, about 480 lines:** durable record admission only (ordered
+   DDL/member guards 115, schema 45, collaborator/wiring 95, Router/raw-DDL
+   record tests 165, paired mutants/integration 60). Records grant no new
+   receipt or promotion authority. Stop after this first implementation part.
+2. **About 480 lines:** explicit successor receipt representation and
+   optional record references, exact binding when present, legacy readback,
+   schema/domain compatibility, Router/raw tests and paired mutants. Keep
+   activation of mandatory detailed consumption for the last part.
+3. **About 460 lines:** audit and convert positive load-bearing Router,
+   raw-DDL, quote, acquisition and extraction receipt fixtures, including
+   shared/transitively imported fixtures and their paired controls. Prove
+   the conversion preserves the intended accepted paths before activation.
+4. **About 480 lines:** mandatory receipt consumption and both promotion
+   consumers, same-receipt/non-pooling tests, adjudication refusal,
+   replay/conflict/rollback, historical-receipt controls and predicate
+   mutants with control-path traces. No intermediate part claims the whole
+   V-8 requirement is implemented.
+
+**Validation and evidence.** For every kind, Router and raw-DDL matrices
+must cover every outcome, missing records, foreign claim/revision/span/source/
+verifier, producer performance, outcome mismatch and accepted controls.
+Promotion needs canonical and both extraction methods with and without
+records, preserved tier/use/tier-0/bound-basis failures, historical records,
+and attempted adjudication of unperformed checks. Audit every positive
+load-bearing receipt fixture; a schema example that names record IDs is not
+proof those records exist in a durable fixture. Keep replay/conflict/rollback
+and predicate-mutant accepted-path traces explicit.
+
+Before committing, run the task's full gen2-test, trigger-order and composition
+module, affected `--only` families (including transitive shared-fixture
+controls), and all eight named static gates. Any trigger addition/replacement/
+retirement also requires the full uncovered-trigger inventory or full
+gen2-mutation. This design-only dispatch edits no such file or fixture and
+has no affected mutation family or hash repin. Wait for no active
+`gen2-landing-*` unit before heavy runs; copy `.venv-gen2` with `cp -a` into
+any disposable snapshot. Evidence and COMPLETION.md belong in
+`/home/trevor/work/research-loops-public/private/evidence/2d-4c/`.
+The operator's evidence/applicability ruling is required before part 1;
+the entire 2d-4c brief remains **INCOMPLETE**.
