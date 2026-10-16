@@ -2660,3 +2660,17 @@ The post-2q Gate D is renumbered #5.
 - **Landing at 25141bc:** `gen2-check` green; `gen2-gateway` green.
 - **2d-4b3e2 is complete.** It delivered the registry, the `/2` validations, the latest-revision rule and both receipt consumers.
 - **Next:** 2d-4b3e3 (`docs/gen2/tasks/2d-4b3e3.md`), which replaces SQL 17 with bound-basis consumption. This is the step that lets extraction-based support become authoritative.
+
+## 2026-10-16: 2d-4b3e3 part 1 (SQL 34 replaces SQL 17): round 1 BLOCK on F1
+- **Astra** (`ed3418c1`, pinned ba94b99; `private/reviews/gen2-2d-4b3e3-astra-review-20261016.md`): **A BLOCK, B PASS, C BLOCK; MITIGATION while F1 remains.**
+- **What passed:**
+  - trigger retirement;
+  - same-receipt gate binding, confirmed by 20 mixed-set probes that refused;
+  - the target and acquisition ceilings;
+  - `reproduced` is unreachable;
+  - SQL 12 and the canonical `EvidenceWriter` capture are unchanged;
+  - historical registry interpretation.
+- **F1 (HIGH):** validated support is capped only by the **target** extraction's tier, never by the independent extraction's. A successful `/2` with a bibliographic-only independent output promotes a full-text claim. All 9 insufficient pairs promote, through the Router, raw DDL and reversed order. SQL 17 had hidden this.
+- **N1 (LOW):** the mutant control rationale strings overstate tier breadth.
+- **Landing at ba94b99:** `gen2-check` green; `gen2-gateway` green.
+- **Routed:** `docs/gen2/tasks/2d-4b3e3-repair-1.md`, round 2 of 3. The fix caps validated support by the target, the independent extraction and the acquisition ceilings, at the consuming rule.
