@@ -2635,3 +2635,15 @@ The post-2q Gate D is renumbered #5.
 - **Landing at dc81392:** `gen2-check` exit 2 (R1); `gen2-gateway` green.
 - **Routed:** `docs/gen2/tasks/2d-4b3e2-c1-repair-1.md`, round 2 of 3, tooling only.
 - **New coder gate:** run the full mutation inventory whenever a trigger is added, replaced or retired.
+
+## 2026-10-16: 2d-4b3e2-c1-repair-1, round 2: PASS. Consumers part 1 (`verifier_extraction`) accepted
+- **Astra** (`9dde41fe`, pinned 0364453; `private/reviews/gen2-2d-4b3e2-c1-r2-astra-review-20261015.md`): **A, B and C all PASS.**
+- **R1 closed (root cause).** `tools/gen2_ddl_triggers.py` builds the final installed-trigger inventory from a fresh in-memory apply, and coverage and reversal share it.
+  - Independent probes match all 321 installed triggers.
+  - An uncovered live guard is still reported, even next to misleading commented `DROP` text.
+  - Stripping the mutations reports all 321 guards.
+- **N1 closed.** The installed count is now reported.
+- **Landing at 0364453:**
+  - `gen2-check` green: 4,039 tests; 321 triggers in reverse order; the full mutation run **without `--only`** killed 3,476/3,476.
+  - `gen2-gateway` carried forward from dc81392, green.
+- **Next:** consumers part 2, the `validated_extraction` consumer. SQL 17 stays.
