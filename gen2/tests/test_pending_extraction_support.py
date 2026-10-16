@@ -56,7 +56,7 @@ class PendingRouterTest(unittest.TestCase):
                     before = case.state(exclude=())
                     self.assertEqual(case.router.commit_outcome(case.env)["status"], "replayed")
                     self.assertEqual(case.state(exclude=()), before)
-                    self.promote(case, "rejected")
+                    self.promote(case, "committed")
 
     def test_canonical_support_control(self):
         with fixture(FULL) as case:
@@ -91,8 +91,11 @@ class PendingRouterTest(unittest.TestCase):
 class PendingDDLTest(ContentDDLTest):
     def pending(self, method="validated_extraction", tier="full_text"):
         self.x("INSERT INTO claims SELECT claim_id, 2, topic_id, text_ref, producer_invocation_id, 1, ?, 'provisional', created_at FROM claims WHERE revision = 1", tier)
-        self.content_receipt(tier, method=method, claim=("clm_00000001", 2), use="load_bearing",
-            extraction="inv_vvvvvvvv" if method == "verifier_extraction" else "inv_pppppppp", validation="validation_unrecorded")
+        from unittest.mock import patch
+        from gen2.tests.test_bound_extraction_support import historical
+        with historical(self), patch("gen2.tests.extraction_receipt_fixtures.attach", side_effect=lambda c, d: d):
+            self.content_receipt(tier, method=method, claim=("clm_00000001", 2), use="load_bearing",
+                extraction="inv_vvvvvvvv" if method == "verifier_extraction" else "inv_pppppppp", validation="validation_unrecorded")
 
     def promote(self):
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 2")

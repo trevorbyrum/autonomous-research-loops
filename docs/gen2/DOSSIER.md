@@ -2723,3 +2723,110 @@ register edit or main merge occurred. **COMPLETE for consumers part 2; stop
 here. SQL 17 replacement remains the next task part.** Commit, complete logs,
 catalog/fixture/control audits and provenance:
 private/evidence/2d-4b3e2-consumers2/COMPLETION.md.
+
+### 2d-4b3e3: bound-basis promotion, design and re-estimate before code (2026-10-16)
+
+Dispatch HEAD on gen2 follows accepted SQL 32/33 consumers. Read the task,
+all three operator rulings, this dossier from §2d-4b3e onward, SQL 17 and its
+§2d-4b3b-repair-1 design, the installed-trigger mechanism, SQL 12/32/33,
+V-1–V-8 and the named private independence authorities. The earlier 310-line
+estimate omits historical-receipt predicate isolation, same-receipt V-4
+qualification, installed-trigger retirement and control-path evidence.
+Re-estimate **about 690 handwritten lines**, excluding documentation and
+generated control/hash data. Split and stop after the first part:
+
+1. **This dispatch, about 490 lines:** ordered SQL 34 basis consumption and
+   SQL 17 retirement 85; Router/raw historical-basis and promotion controls,
+   V-4/check/tier refusal, replay/conflict/rollback and existing promotion
+   fixture updates 250; predicate mutants/registration 90; retained catalog,
+   fixture/scope/control-path audit wrappers 65.
+2. **Following part, about 200 lines:** remove the obsolete unbound-extraction
+   attention classification for newly admitted bound support; missing-content,
+   disagreement, receipt/audit hold effects and replay/rollback tests; paired
+   attention mutants and traces. Re-estimate at dispatch. This first part
+   deliberately retains the current remediation holds even for bound support;
+   the complete task remains INCOMPLETE until attention is adjusted.
+
+SQL 01–33 stay byte-unchanged. Add SQL 34, dropping SQL 17's trigger and
+installing a distinctly named successor so the accepted installed-trigger
+inventory/reversal mechanism sees only the live definition. A read-only view
+resolves each extraction receipt's exact durable basis: own pinned extraction
+for verifier_extraction, or the exact successful independent /2 validation's
+target for validated_extraction. Recheck topic/work/version, verifier and
+extracting invocation, canonical tool, non-NULL pin, acquisition hash/call/time/
+route, extraction output tier and recorded-content ceiling. Preserve historical
+validation interpretation; never join the latest registry at consumption.
+The existing SQL 32/33 and EvidenceWriter admission guards stay intact.
+
+The successor keeps SQL 17's activation and unbound-extraction diagnostic.
+Its qualifying receipt must itself be canonical or consume that bound basis,
+with the same claim/revision, supports verdict and load-bearing use. Extraction
+qualification also reads the claim's own required tier and the receipt's
+performed V-8 checks, preventing a low/sampled bound receipt from lending its
+basis to another historical unbound receipt. SQL 03 remains independently
+responsible for V-4 and contract admission. No new basis waives tier-0 handling,
+quote checks, role separation, standing, or any other existing guard.
+Historical missing/free-text-only,/1-only, failed and integrity-only receipts
+remain readable but cannot supply extraction authority. Newly submitted ones
+still refuse at Router/raw admission. Historical fixtures temporarily remove only the SQL 32/33 admission consumers
+to seed old declarations, preserving all other constraints and restoring their
+exact definitions. The promotion fixture installs and asserts the requested
+live view and complete trigger definitions/order, including mutants and reversal.
+
+SQL 12 and EvidenceWriter's governed-capture consumers remain canonical-only:
+a retained extraction/output does not supply a new governed quote/span domain,
+and cannot preserve accepted support against an unmatched later capture.
+Audit every promotion fixture using extraction methods and record the exact
+positive/negative purpose rather than silently converting a historical negative
+into a newly bound control. Trace every new mutant's separate accepted path.
+Run full gen2-test, trigger-order, composition, full uncovered-trigger inventory
+(or full gen2-mutation), affected/transitive-fixture --only families and all
+eight required static gates. Each heavy run waits for no active gen2-landing-*
+unit. No environment refresh, provider/live gateway/8765, real migration,
+protected-register edit or main merge. Disposable snapshots, if needed, copy
+.venv-gen2 with cp -a, never symlink it. Evidence:
+/home/trevor/work/research-loops-public/private/evidence/2d-4b3e3/COMPLETION.md.
+
+**First part implemented and validated; requested stop, 2026-10-16.**
+SQL 34 retires SQL 17's installed trigger and consumes the exact SQL 32/33
+basis through bound_extraction_receipts. Both methods promote at bibliographic,
+abstract and full-text tiers only with their own bound receipt, sufficient
+output/recorded content, load-bearing use, performed V-8 checks and no tier-0
+alarm. Historical unbound, /1-only, failed and integrity-only declarations stay
+fenced. Retained /2 interpretation survives later operator registry merges.
+SQL 12 and EvidenceWriter's governed-capture consumers stay canonical-only.
+
+The promotion fixture asserts the requested complete trigger definitions/order
+and basis view, including mutants, instrumentation and reversed installation.
+Raw counterfactuals explicitly isolate consuming predicates from admission;
+foreign acquisitions retain matching record identities and sufficient output
+so another guard cannot mask their binding refusals. The receipt/promotion
+fixture audit retains every old negative oracle; the formerly fenced Router
+positive now promotes because it already carries a durable basis. Its existing
+hold assertions remain unchanged pending the next part. All 3,505 prior control
+records are unchanged, and 26 new pairings have accepted control-path traces.
+
+Validation passes: full gen2-test **4,100 tests, two existing skips**;
+trigger-order **322 installed triggers / 3,821 identical Store tests/subtests**;
+full composition; all **183/183** selected mutants killed with separate controls
+passing and a green 1,012-test Store baseline; the full uncovered-trigger
+inventory (the task's permitted alternative to full gen2-mutation); and all
+eight static gates. Final dossier notes receive the static gates again before
+commit. Initial failed/interrupted attempts and fixture diagnoses remain in
+evidence and are superseded by these final green runs.
+
+This part adds **389 handwritten repository lines plus 75 retained evidence
+script lines: 464 total**, excluding documentation and generated control/hash
+data. Catalog review proves one retired trigger, one successor and one added
+view, with unchanged columns/classifications (37 JSON / 37 covered / zero
+pending; 504 scalar TEXT), and both reviewed hashes explicitly repinned.
+SQL 01–33, service.py and the protected registers remain byte-unchanged.
+Source and non-cache venv bytes stayed frozen through final validation; no
+snapshot or environment refresh was needed. Heavy runs had idle landing-unit
+preflights. No providers, live gen-1/8765, real migration or main merge occurred.
+
+**INCOMPLETE overall; stop after this first part.** Bound support still creates
+the old unbound-extraction remediation hold. Removing that obsolete attention,
+while retaining truthful missing-content holds and earlier disagreement, remains
+part 2 (about 200 lines, to be re-estimated before code). Commit and complete
+logs/audits: private/evidence/2d-4b3e3/COMPLETION.md.

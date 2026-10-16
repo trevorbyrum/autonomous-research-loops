@@ -53,7 +53,7 @@ change("unicode-space-set", "char(9) || '-' || char(13) || char(32,133,160,5760)
 change("unicode-ignorable-set", "char(173,847,1564)", "char(65)", "shapes", scope=None)
 
 PENDING = "test_pending_extraction_support."
-FENCE = "claims_accepted_support_pending_extraction"
+FENCE = "claims_accepted_support_bound_extraction"
 
 
 def pending(name, old, new, killer="PendingDDLTest.test_pending_methods", target="ddl", scope=FENCE):
