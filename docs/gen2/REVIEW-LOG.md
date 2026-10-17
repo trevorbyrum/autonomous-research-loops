@@ -2755,3 +2755,14 @@ The post-2q Gate D is renumbered #5.
   - `gen2-check` green: 4,200 tests; 334 triggers / 3,967 reversal outcomes; 3,604/3,604 mutants.
   - `gen2-gateway` green: 413 mutants.
 - **Next:** 2d-4c part 3, positive-fixture conversion.
+
+## 2026-10-17: 2d-4c part 3a (extraction receipt fixtures converted to attributed `/2`): PASS on the first review. Accepted
+- **Astra** (`22db54b3`, pinned 9416fd6, audit 4d98d83; `private/reviews/gen2-2d-4c-p3a-astra-review-20261017.md`): **A, B and C all PASS, ROOT-CAUSE within the authorized slice.**
+- **The 3a/3b split is truthful.** Pending conversions are assigned to 3b, not hidden behind "historical" labels.
+- **Fixture records come only through Router authentication.** There is no raw insert or bypass, and no IDs are manufactured at submission.
+- **Each record binds the receipt's actual operands,** including the validated **target** output. Distinct canonical, target, validator and comparison bytes are kept separate from the byte-equal controls.
+- **No production, DDL, pin or control-record change.**
+- **NB1 (audit precision):** `AuthorityTest.test_a_producer_cannot_verify_its_own_work` ends in an accepted load-bearing receipt, so it is a real pending positive. It belongs to part 3b's checklist.
+- **Process note (disclosed by Astra):** its first AGENTS filename search covered `/home/trevor/work`, outside scope. No files were opened. Reviewer task prompts now limit AGENTS lookup to the repository.
+- **Landing at 9416fd6:** `gen2-check` green (4,206 tests; 334 triggers / 4,011 reversal outcomes; 3,604/3,604 mutants). `gen2-gateway` is carried forward from 927b32d, since no production change was made.
+- **Next:** 2d-4c part 3b.
