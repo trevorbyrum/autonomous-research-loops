@@ -3385,3 +3385,87 @@ byte-equal validated control, qualified branch traces and assertion-only killers
 Production and optional-reference scope are unchanged. Gate counts, per-module
 catalog evidence, footprint and execution disclosures are retained in
 private/evidence/2d-4c-p2-repair-1/COMPLETION.md.
+
+#### 2d-4c part 3 — re-estimate (before code)
+
+2026-10-17, on `gen2`, against accepted `89401a7`, `6c145ae` and repair
+`927b32d`. Read the complete task, operator ruling, both continuations, this
+section including the repair note, accepted admission/binding code, shared
+`ddl_fixtures.restore_triggers`, and Astra's part-2 round-2 acceptance.
+Repository-only AGENTS.md lookup found none. No production change is needed.
+
+**Audit before code.** Receipt construction has four roots: raw
+`store_fixtures.StoreTestCase.verify` (including `seed_every_table` history),
+Router `test_router_commit.AuthorityTest.verification_receipt`, Router
+`test_canonical_receipt_admission.ReceiptCase.document`, and quote
+`test_governed_quotes.QuotesCase.receipt_document` (schema-example based).
+`extraction_receipt_fixtures.seed/seed_validation/attach` supplies shared admitted
+extractions, not detailed checks. Trace both local imports and module-level
+imports; do not treat the small raw wrapper modules as independent fixtures.
+The concrete audit list is:
+
+- Canonical/acquisition/content: `test_canonical_receipt_admission`,
+  `test_canonical_content_tiers`, `test_extraction_acquisitions`,
+  `test_extraction_content_tiers`, `test_store_canonical_receipts`,
+  `test_store_content_tiers`, `test_store_extraction_acquisitions`, and
+  `test_store_extraction_content_tiers`.
+- Quote/capture/verdict: `canonical_quotes_fixtures`, `test_governed_quotes`,
+  `test_capture_support`, `test_quote_attention`, `test_verification_attention`,
+  `test_store_governed_quotes`, `test_store_capture_support` and the raw
+  adjudication/hold classes imported from the attention modules.
+- Own/validated/promotion/attention: `test_own_extraction_receipts`,
+  `test_validated_extraction_receipts`, `test_bound_extraction_support`,
+  `test_extraction_attention`, `test_store_own_extraction_receipts`,
+  `test_store_validated_extraction_receipts`, `test_store_bound_extraction_support`,
+  plus `test_pending_extraction_support` (Router positives and raw historical
+  unbound declarations). `independent_tier_fixtures` changes validation operands.
+- Table/span controls: `test_table_availability`, `test_span_domain`,
+  `test_exact_spans`, `test_store_table_availability`, `test_store_span_domain`,
+  `test_store_exact_spans`; each has canonical/own/validated consumers.
+- Global raw admission/promotion: `test_store_ddl_evidence.VerificationTest`,
+  `ContractAdmittedSupportTest`, and `store_fixtures.verify` callers above.
+  History/replacement/JSON consumers inherit `store_fixtures` through
+  `test_store_history`, `test_store_json_rollout`, `test_store_json_completion`,
+  `test_store_json_member_domain` and `test_store_observation_domain`.
+- Already detailed: `test_detailed_check_receipts.ReferenceCases` and its raw
+  wrapper `test_store_detailed_check_receipts`; retain explicit optional-reference,
+  single-reference, legacy readback and byte-equal selector controls. These are
+  historical/optional-admission experiments, not converted mandatory consumers.
+  `test_store_fixture_order` transitively instantiates the raw receipt fixture.
+- Non-positive matches: `test_detailed_checks`, `test_extraction_records`,
+  `test_extraction_validations_v2`, `test_extractor_registry` assert no receipts;
+  `router_fixtures`, `test_router_amendments`, `test_store_ddl_export` supply
+  infrastructure or commit receipts. Frozen router-mixin snapshots and schema
+  examples remain explicit historical structural controls, not admitted receipts.
+
+The private static inventory retains **41 direct-match modules**, their owner
+classes/functions and receipt locations, the complete import graph, and each
+paired mutant's killers/controls. First-slice imports reach **16 modules**;
+**133 directly affected mutants** require the complete `2D4ATTN`, `2D4B3B`,
+`2D4B3E2OWN`, `2D4B3E2VAL`, `2D4B3E3` and `2D4C2` --only families. Recompute
+this closure after edits. A receipt-free import is still included for gate
+selection. Unconverted positive fixtures are pending, never relabeled historical.
+
+**Honest full estimate: about 1,050 handwritten lines**, excluding documentation
+and generated data: shared record/basis builders 150, Router canonical/quote/
+span/table conversion 270, global raw conversion/isolation 230, extraction and
+promotion wiring 80, admission/promotion/discrimination regressions 220, retained
+private audit/trace drivers 100. This is well above 500; split and implement only
+**part 3a, extraction consumer fixtures**, estimated **480 lines**: admitted
+record helper 100, own/validated/promotion/attention wiring and explicit historical
+controls 80, focused binding/promotion/operand tests 190, private audit/trace
+checks 110. Stop after this coherent sub-part; the remaining audit groups belong
+to part 3b and must be re-estimated before conversion.
+
+Seed real attributed assessments through Router admission under unmutated DDL
+before restoring the requested catalog with `restore_triggers`. Bind each kind's
+performed outcome to the actual claim/source/spans/verifier and selected output;
+retain evidence and explicit applicability reasons. Attach existing admitted
+records without hidden writes at receipt submission, preserving rollback/replay
+snapshots. Keep `/1` unbound/history/isolation probes explicit, and keep existing
+byte-equal controls separate from distinct canonical/target/validator operand
+experiments. Prove unchanged accepted promotions and paired-control reachability
+with traces. Run every required gate and record counts/footprint/deviations in
+private/evidence/2d-4c-part3/COMPLETION.md. Mandatory consumption and promotion
+changes stay OFF; production code/DDL/pins remain untouched. A production need
+would stop this dispatch. No trigger edit is planned.
