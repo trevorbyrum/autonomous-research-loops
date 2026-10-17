@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
+from gen2.tests.ddl_fixtures import restore_triggers
 from gen2.tests.test_canonical_content_tiers import FULL, fixture
 from gen2.tests.test_extraction_acquisitions import extraction_document
 from gen2.tests.test_own_extraction_receipts import OwnCases
@@ -31,12 +32,8 @@ class ValidatedCases:
         self.doc = extraction_document(self.case, 'validated_extraction')
         self.validation = self.doc['extraction']['validation_ref']
         self.target, self.independent = self.case.rows('SELECT target_extraction_id, validator_extraction_id FROM extraction_validations_v2')[0]
-        with sqlite3.connect(':memory:') as reference:
-            reference.executescript(sf.DDL_TEXT)
-            sql = reference.execute("SELECT sql FROM sqlite_schema WHERE name='verification_receipts_validated_extraction'").fetchone()[0]
-        self.case.x('DROP TRIGGER verification_receipts_validated_extraction')
-        if self.RAW:
-            self.case.x(sql)
+        restore_triggers(self.case, sf.DDL_TEXT,
+            omit=() if self.RAW else ('verification_receipts_validated_extraction',))
 
     def refuse(self):
         before = self.case.state()

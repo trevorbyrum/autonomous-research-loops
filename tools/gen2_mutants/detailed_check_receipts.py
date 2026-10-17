@@ -1,4 +1,6 @@
 """Optional receipt bindings: independent Router/SQL predicates and controls."""
+from dataclasses import replace
+
 from .base import Mutation
 
 MUTATIONS, CONTROLS = [], {}
@@ -38,6 +40,16 @@ for name, old, killer in (('topic', 'row["topic_id"] != doc["topic_id"]', 'topic
         ('report', 'any(report[k] != v for k, v in expected.items())', 'claim')):
     add('router-' + name, killer, old, 'False', target=p)
 add('router-missing', 'missing', '{"check_id": entry["record_id"]}', '{}', target=p, control='one_reference_control')
+
+for target, name, old in (('ddl', 'validated-selector', 'SELECT target_extraction_id FROM extraction_validations_v2'),
+        (p, 'router-validated-selector', 'validations[0]["target_extraction_id"]')):
+    add(name, 'distinct_validated_wrong_basis', old, old.replace('target_extraction_id', 'validator_extraction_id'),
+        target=target, control='validated_equal_control')
+    prefix = RAW if target == 'ddl' else ROUTER
+    MUTATIONS[-1] = replace(MUTATIONS[-1], killers=(*MUTATIONS[-1].killers, prefix + 'distinct_validated_target'))
+    CONTROLS['2D4C2-' + name]['why'] = (
+        'Separate byte-equal validated-extraction receipt executes the target-selection branch; '
+        'it remains admitted with the validator selector. Distinct canonical/target/validator bytes discriminate the killers.')
 
 for field, killer in (('kind', 'kind'), ('outcome', 'outcome'), ('claim_revision', 'revision'),
         ('cited_spans', 'spans'), ('work_id', 'work'), ('source_version', 'version'), ('source_artifact_hash', 'source')):

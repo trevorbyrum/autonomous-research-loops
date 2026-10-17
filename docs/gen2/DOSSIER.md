@@ -3371,3 +3371,17 @@ unchanged during the last control-pair refinement. Evidence and COMPLETION.md:
 private/evidence/2d-4c-part2/. No provider calls, real-database migration, gen-1/live
 gateway access, protected-register edits or main merge occurred. AGENTS.md lookup
 stayed inside the repository; no disposable checkout or venv symlink was created.
+
+**Part 2 Gate C repair 1 (2026-10-17).** C1 is repaired at fixture setup:
+one shared helper restores the complete requested trigger definitions/order after
+unmutated seeding, then asserts the actual SQLite catalog. Reset regressions cover
+normal/reversed order and dropped/mutated definitions. Actual order probes cover
+14 modules / 25 fixture classes; all nine defeated reseeding owners are repaired,
+including the two additional extraction-record fixtures found in the family audit.
+C2 now distinguishes canonical, target and independent-validator byte identities
+under `semantic_agreement`, with one optional reference per kind in both matrices.
+Router and SQL target-to-validator selector mutants each have a separate surviving
+byte-equal validated control, qualified branch traces and assertion-only killers.
+Production and optional-reference scope are unchanged. Gate counts, per-module
+catalog evidence, footprint and execution disclosures are retained in
+private/evidence/2d-4c-p2-repair-1/COMPLETION.md.

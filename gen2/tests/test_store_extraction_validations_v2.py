@@ -3,6 +3,8 @@ import json
 import sqlite3
 from unittest.mock import patch
 
+from gen2.tests.ddl_fixtures import restore_triggers
+
 from gen2.store import db
 from gen2.tests import store_fixtures as fx
 from gen2.tests.test_extraction_validations_v2 import V2Case
@@ -22,6 +24,7 @@ class DDLV2Test(V2Case):
         for _, _, sql in objects:
             self.x(sql)
         self.assertEqual(self.rows(self.query), objects)
+        restore_triggers(self, fx.DDL_TEXT)
 
     def send(self, grant=None, op="op_record0001", **sections):
         if "extraction_validations" not in sections:

@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
+from gen2.tests.ddl_fixtures import restore_triggers
 
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_canonical_content_tiers import FULL, fixture
@@ -51,13 +52,13 @@ class PromotionCases:
         with sqlite3.connect(':memory:') as reference:
             reference.executescript(sf.DDL_TEXT)
             objects = reference.execute("SELECT type, name, sql FROM sqlite_schema WHERE type='trigger' OR name='bound_extraction_receipts' ORDER BY rowid").fetchall()
-        for name, in self.case.rows("SELECT name FROM sqlite_schema WHERE type='trigger'"):
-            self.case.x('DROP TRIGGER ' + name)
         self.case.x('DROP VIEW bound_extraction_receipts')
-        for _, _, sql in objects:
-            self.case.x(sql)
-        actual = self.case.rows("SELECT type, name, sql FROM sqlite_schema WHERE type='trigger' OR name='bound_extraction_receipts' ORDER BY rowid")
-        self.assertEqual(actual, objects)
+        for kind, _, sql in objects:
+            if kind == 'view':
+                self.case.x(sql)
+        restore_triggers(self.case, sf.DDL_TEXT)
+        self.assertEqual(self.case.value("SELECT sql FROM sqlite_schema WHERE name='bound_extraction_receipts'"),
+            next(sql for kind, _, sql in objects if kind == 'view'))
 
     def clone(self, table, changes, where=''):
         if table == 'source_acquisitions' and changes.get('provider_record_id') == 'other-record':

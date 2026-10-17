@@ -7,6 +7,7 @@ from unittest.mock import patch
 from gen2.core import canonical
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
+from gen2.tests.ddl_fixtures import restore_triggers
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_canonical_receipt_admission import ReceiptCase
 from gen2.tests.test_detailed_checks import CheckCase, KINDS, OUTCOMES
@@ -27,13 +28,8 @@ class ReferenceCases:
                 self.doc['checks'][k] = 'checked_ok'
             self.records = [self.make_record(k) for k in KINDS]
             self.assertEqual(self.commit_records(self.records)['status'], 'committed')
-        for name in ('verification_receipts_detailed_domain', 'verification_receipts_detailed_binding', 'verification_receipts_span_domain_v3'):
-            self.x('DROP TRIGGER ' + name)
-            if self.RAW or name != 'verification_receipts_detailed_binding':
-                with sqlite3.connect(':memory:') as reference:
-                    reference.executescript(sf.DDL_TEXT)
-                    found = reference.execute('SELECT sql FROM sqlite_schema WHERE name=?', (name,)).fetchone()
-                    if found: self.x(found[0])
+        restore_triggers(self, sf.DDL_TEXT,
+            omit=() if self.RAW else ('verification_receipts_detailed_binding',))
 
     def make_record(self, kind, outcome='succeeded'):
         r = self.record(kind=kind, outcome=outcome, **self.doc['claim'], cited_spans=self.doc['cited_spans'],
@@ -121,6 +117,66 @@ class ReferenceCases:
             self.doc['extraction'] = basis
             self.doc['verification_receipt_id'] = 'ver_' + method
             self.assertEqual(self.submit()['status'], 'committed')
+
+    def test_validated_equal_control(self):
+        from gen2.tests.test_extraction_acquisitions import extraction_document
+        self.doc['extraction'] = extraction_document(self, 'validated_extraction')['extraction']
+        self.test_control()
+
+    def distinct_validated(self):
+        target_ref = self.artifact(b'Target extraction: distinct retained representation.')
+        validator_ref = self.artifact(b'Independent extraction: equivalent meaning, distinct bytes.')
+        self.assertEqual(len({self.source['content_hash'], target_ref['content_hash'], validator_ref['content_hash']}), 3)
+        validation = self.store.select('extraction_validations_v2')[0]
+        def extraction(key, identity, ref):
+            row = self.store.select('source_extractions', {'extraction_id': validation[key]})[0]
+            return {**{k: v for k, v in row.items() if k not in
+                ('topic_id', 'extracting_invocation_id', 'recorded_by_operation_id', 'created_at')},
+                'extraction_id': identity, 'output_ref': ref}
+        target = extraction('target_extraction_id', 'distinct-target', target_ref)
+        validator = extraction('validator_extraction_id', 'distinct-validator', validator_ref)
+        def commit(grant, op, refs, **sections):
+            payload = {**empty_outcome(grant['invocation_id'], 'interim_transition'), **sections}
+            out = self.router.commit_outcome(self.envelope(grant, op, payload, refs=refs))
+            self.assertEqual(out['status'], 'committed', out)
+        commit(self.producer, 'op_distincttarget', [target_ref], source_extractions=[target])
+        v = {k: val for k, val in validation.items() if k not in
+            ('validator_invocation_id', 'recorded_by_operation_id', 'created_at')}
+        v.update(validation_id='distinct-validation', target_extraction_id=target['extraction_id'],
+            validator_extraction_id=validator['extraction_id'], comparison='semantic_agreement', comparison_evidence_ref=validator_ref)
+        records = []
+        for basis, ref in (('target', target_ref), ('validator', validator_ref)):
+            for kind in KINDS:
+                record = self.record(kind=kind, **self.doc['claim'], cited_spans=self.doc['cited_spans'], examined_artifact_ref=ref)
+                record['check_id'] = basis + '-' + kind
+                records.append(record)
+        commit(self.verifier, 'op_distinctvalidation', [validator_ref, *[r['evidence_ref'] for r in records]],
+            source_extractions=[validator], extraction_validations_v2=[v], detailed_check_records=records)
+        self.doc['extraction'].update(method='validated_extraction', extractor=target['extractor_identity'],
+            produced_by_invocation_id=self.producer['invocation_id'], validation_ref=v['validation_id'])
+
+    def single_validated_reference(self, kind, basis):
+        self.doc['verification_receipt_id'] = 'ver_' + basis + '_' + kind
+        self.doc['detailed_checks'] = {k: {'outcome': 'succeeded'} for k in KINDS}
+        self.doc['detailed_checks'][kind]['record_id'] = kind if basis == 'canonical' else basis + '-' + kind
+
+    def test_distinct_validated_target(self):
+        self.distinct_validated()
+        for kind in KINDS:
+            with self.subTest(kind=kind):
+                self.single_validated_reference(kind, 'target')
+                out = self.submit()
+                self.assertEqual(out['status'], 'committed', out)
+                self.assertEqual(self.store.select('verification_receipts',
+                    {'verification_receipt_id': self.doc['verification_receipt_id']})[0]['receipt'], self.doc)
+
+    def test_distinct_validated_wrong_basis(self):
+        self.distinct_validated()
+        for kind in KINDS:
+            for basis in ('canonical', 'validator'):
+                with self.subTest(kind=kind, basis=basis):
+                    self.single_validated_reference(kind, basis)
+                    self.rejected_reference()
 
     def test_extraction_artifact(self):
         from gen2.tests.test_extraction_acquisitions import extraction_document

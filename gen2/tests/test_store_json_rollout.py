@@ -7,6 +7,8 @@ import json
 import sqlite3
 from unittest.mock import patch
 
+from gen2.tests.ddl_fixtures import restore_triggers
+
 from gen2.store import api, db
 from gen2.tests import store_fixtures as fx
 
@@ -33,10 +35,7 @@ class RolloutPairs:
             fx.StoreTestCase.setUp(self)
             self.populate_every_table()
         self.reader = api.adopt_in_memory(self.db)
-        for name, in self.rows("SELECT name FROM sqlite_schema WHERE type='trigger' AND tbl_name=?", self.table):
-            self.x(f'DROP TRIGGER {name}')
-        for _, sql in objects:
-            self.x(sql)
+        restore_triggers(self, fx.DDL_TEXT)
         self.assertEqual(self.rows("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=? ORDER BY rowid", self.table), objects)
         self.columns = [r[1] for r in self.rows(f'PRAGMA table_info({self.table})')]
         row = self.x(f'SELECT rowid,* FROM {self.table} ORDER BY rowid LIMIT 1').fetchone()

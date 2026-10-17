@@ -3,6 +3,8 @@ import json
 import sqlite3
 from unittest.mock import patch
 
+from gen2.tests.ddl_fixtures import restore_triggers
+
 from gen2.store import api, db
 from gen2.tests import store_fixtures as fx
 
@@ -26,6 +28,7 @@ class ObservationDomainTest(fx.StoreTestCase):
         self.x('DROP TABLE search_observations')
         for _, sql in objects:
             self.x(sql)
+        restore_triggers(self, fx.DDL_TEXT)
         self.assertEqual(self.rows("SELECT name,sql FROM sqlite_schema WHERE tbl_name='search_observations' AND sql IS NOT NULL ORDER BY rowid"), objects)
         self.row = dict(observation_id='obs_domain001', invocation_id='inv_aaaaaaaa', topic_id=fx.TOPIC,
             request_identity=fx.h('4'), attempt=1, lane='crossref', request=json.loads(fx.FIND_REQUEST), obligation_ids=[],

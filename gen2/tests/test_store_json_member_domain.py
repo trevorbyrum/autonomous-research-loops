@@ -3,6 +3,8 @@ import json
 import sqlite3
 from unittest.mock import patch
 
+from gen2.tests.ddl_fixtures import restore_triggers
+
 from gen2.store import api, db
 from gen2.tests import store_fixtures as fx, test_store_extraction_records as extraction, test_store_governed_quotes as quote
 
@@ -108,10 +110,7 @@ class QuoteTest(DomainPairs, fx.StoreTestCase):
             self.populate_every_table()
             self.receipt('op_verify0001', 'inv_vvvvvvvv', lease='lease_vvvvvvvv', gen=2, before=50)
         self.reader = api.adopt_in_memory(self.db)
-        for name, in self.rows("SELECT name FROM sqlite_schema WHERE type='trigger' AND tbl_name='quote_checks'"):
-            self.x(f'DROP TRIGGER {name}')
-        for _, sql in objects:
-            self.x(sql)
+        restore_triggers(self, fx.DDL_TEXT)
         self.assertEqual(self.rows("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='quote_checks' ORDER BY rowid"), objects)
         self.x('SAVEPOINT quote_template')
         quote.DDLTest.raw(self)

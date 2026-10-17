@@ -3,6 +3,8 @@ import json
 import sqlite3
 from unittest.mock import patch
 
+from gen2.tests.ddl_fixtures import restore_triggers
+
 from gen2.store import db
 from gen2.tests import store_fixtures as fx
 
@@ -20,6 +22,7 @@ class DDLCheckTest(RecordMatrix, CheckCase):
         self.x('DROP TABLE detailed_check_records')
         for sql, in objects:
             self.x(sql)
+        restore_triggers(self, fx.DDL_TEXT)
 
     def send(self, record, grant=None, op='op_detailcheck1'):
         self.x('SAVEPOINT detailed_record')

@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
+from gen2.tests.ddl_fixtures import restore_triggers
 from gen2.tests.test_canonical_content_tiers import FULL, fixture
 from gen2.tests.test_extraction_acquisitions import extraction_document, send
 
@@ -21,15 +22,8 @@ class OwnCases:
         self.addCleanup(context.__exit__, None, None, None)
         self.doc = extraction_document(self.case, 'verifier_extraction')
         self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'bibliographic'
-        if self.RAW:
-            with sqlite3.connect(':memory:') as reference:
-                reference.executescript(sf.DDL_TEXT)
-                sql = reference.execute("SELECT sql FROM sqlite_schema WHERE name = 'verification_receipts_own_extraction'").fetchone()[0]
-            self.case.x('DROP TRIGGER verification_receipts_own_extraction')
-            self.case.x(sql)
-        else:
-            # Independently exercise the Router check, after SQL 18/19 admission.
-            self.case.x('DROP TRIGGER verification_receipts_own_extraction')
+        restore_triggers(self.case, sf.DDL_TEXT,
+            omit=() if self.RAW else ('verification_receipts_own_extraction',))
 
     def submit(self):
         if not self.RAW:

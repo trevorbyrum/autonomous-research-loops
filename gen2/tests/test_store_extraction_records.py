@@ -3,6 +3,8 @@ import json
 import sqlite3
 from unittest.mock import patch
 
+from gen2.tests.ddl_fixtures import restore_triggers
+
 from gen2.store import db
 from gen2.tests import store_fixtures, test_extraction_records as records
 
@@ -23,6 +25,7 @@ class DDLTest(records.RecordTest):
         for _, _, sql in objects:
             self.db.execute(sql)
         self.assertEqual(self.db.execute(query).fetchall(), objects)
+        restore_triggers(self, store_fixtures.DDL_TEXT)
 
     def send(self, grant=None, op="op_record0001", **sections):
         grant = grant or self.extractor

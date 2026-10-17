@@ -23928,5 +23928,17 @@
    "test_detailed_checks.AuthenticationRegressionTest.test_recorded_bytes_control"
   ],
   "why": "A fresh operation reuses authenticated recorded bytes with no result_refs; both examined and evidence paths are entered before the writer lock."
+ },
+ "2D4C2-validated-selector": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_validated_equal_control"
+  ],
+  "why": "Separate byte-equal validated-extraction receipt executes the target-selection branch; it remains admitted with the validator selector. Distinct canonical/target/validator bytes discriminate the killers."
+ },
+ "2D4C2-router-validated-selector": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_validated_equal_control"
+  ],
+  "why": "Separate byte-equal validated-extraction receipt executes the target-selection branch; it remains admitted with the validator selector. Distinct canonical/target/validator bytes discriminate the killers."
  }
 }
