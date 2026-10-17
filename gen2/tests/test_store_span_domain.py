@@ -50,6 +50,7 @@ DUPLICATES = (
 
 
 class SpanDDLTest(TableDDLTest):
+    ATTRIBUTED = False  # Pending raw span/exact conversion; never a historical positive.
     # Inherited table tests run in their own module; these isolate the domain.
     test_table_control = test_non_table_control = test_lower_table_control = None
     test_insufficient = test_mixed = test_cannot_assess = test_lineage = None

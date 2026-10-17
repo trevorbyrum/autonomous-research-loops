@@ -3865,3 +3865,98 @@ all eight static gates; retain the unchanged full trigger inventory as well.
 Wait for no user/system gen2-landing-* activity before heavy runs. Any disposable
 venv uses cp -a. Evidence, exact audit/counts/footprint/deviations and COMPLETION.md:
 private/evidence/2d-4c-part3d/. No private file is committed.
+
+**Part 3d implementation (selected raw table group), 2026-10-17.**
+TableDDLTest, ExtractionTableDDLTest and ValidatedTableDDLTest now consume `/2`
+receipts with real Router-admitted assessments. A test-only bridge adopts the
+same disposable raw store, makes its existing independent verifier live/running,
+and aligns the queue revision with the raw operation history. Under unmutated
+DDL it authenticates real examined bytes and retained assessment evidence through
+the accepted seed_checks helper: four distinct PAGE/TABLE/ordered mixed/BEA
+bindings, twelve performed-kind/outcome records each, 48 records per fixture.
+restore_triggers restores the complete requested definitions/order before the
+subject. Receipt insertion only selects existing records with attach_checks.
+The helpers and AttributedReceiptCase opt-in remain unchanged; no implementation
+is forked. SpanDDLTest's explicit opt-out keeps all six raw span/exact owners
+pending, never reclassifies their positives as historical.
+
+Raw acquisition response rows retain their relationship-counterfactual purpose:
+they do not claim transport authentication or that varied responses actually hash
+to the fixed examined artifact. The newly referenced examined source/output bytes
+and retained assessment evidence are authenticated. Full-text promotion controls
+also use response bytes equal to that artifact. Ordinary extraction outputs are
+byte equal and claim no artifact-selector discrimination; the accepted 3a
+distinct-output experiment remains the separate proof. The store binds recorded
+relationships, not scientific truth. Explicit `/1` acquisition-diagnostic refusal
+operands retain isolation; no accepted pending positive is moved to history.
+
+All 13 original test method definitions (12 base methods and the validated
+independent-target override) retain their assertions, except canonical JSON
+serialization of the same mixed-span tuple. Four new regressions cover 42
+accepted receipt writes (including six rolled-back captures), three full-text
+support promotions, three foreign-span refusals with complete-state snapshots,
+three truthful unperformed receipts/promotion refusals and three exact catalog
+comparisons. Distinct spans receive disjoint records; tiers remain explicit.
+Downgrade-to-/1 and collapsed-span counterfactuals each produce nine assertion
+failures and zero errors. The first regression attempt guessed a promotion
+message; its three regex failures are retained without passing credit, and the
+final assertion uses the existing V-4 diagnostic.
+
+The nine-module transitive fixture closure selects 52 direct mutant IDs, expanded
+to 54 in the three complete 2D4B3D/2D4B3DR1/2D4B3DR2 prefixes. All 54 are killed
+with passing paired controls over green 1,075-Store/one-file-target baselines.
+All 148 affected predicate/control pairings qualify through 15 passing controls;
+four direct converted controls also trace changed fixture lines and successful
+SQL entries, including promotion. All 3,604 mutation-control records are unchanged.
+The complete unchanged inventory has 334 installed triggers, zero uncovered.
+
+Footprint: **188 repository code additions / nine removals**, plus **240 retained
+private Python driver lines**, including reused infrastructure: **428 additions
+against 495 estimated**, 67 under, excluding documentation/generated evidence.
+Wiring/bridge is 88 against 160, regressions 100 against 110, private drivers 240
+against 225. The documentation-only pre-code estimate commit preceded functional
+gates; required functional gates cover the implementation candidate before its
+commit. Evidence preserves that timing rather than claiming a pre-code test run.
+Production, DDL, schema, pins and promotion policy are unchanged. Mandatory
+consumption/promotion activation remains **OFF**. No production need was found.
+
+**Exactly what is still pending for part 3e or later:** the six raw span/exact
+owners; quote/capture/verdict roots/attention consumers and raw quote/capture/
+adjudication owners; StoreTestCase.verify/populate_every_table, VerificationTest,
+ContractAdmittedSupportTest, raw canonical/content/acquisition/extraction-content,
+PendingDDLTest's accepted canonical/distractor receipts, history/replacement/JSON/
+member/observation consumers; both ImpactTest ContractWorld.verify positives
+(compatible-work completion/promotion and protocol-change fencing). HoldDDLTest
+remains hold-only. The private AUDIT.md names all classes/modules/callers. Part 3
+is incomplete; its final sub-part must inventory all receipt-builder call sites
+and show no pending positive. This slice stops after the raw table group.
+
+**Follow-up constraint for the pending span audit.** A validation-time probe of
+the existing canonical helper refuses the raw span/exact-span accepted integer
+operands 9007199254740993 and 9223372036854775809. The next pre-code audit must
+resolve their exact expression without rounding or silently relabelling pending
+positives historical; this limited probe does not exhaust fixture expressions
+or establish that production must change. The selected raw table group has no
+such operand. No production change was needed or attempted here. Exact probe
+results are retained in private/evidence/2d-4c-part3d/pending-precision-audit.json.
+
+**Reading-record correction.** Initial long output truncated some earlier part-2
+notes; targeted rereads completed them during validation. The complete task,
+all part-3 audit/implementation notes, accepted fixture code and named 3c review
+were read before code. Evidence discloses this timing rather than treating the
+initial truncated output as a complete read of every earlier note.
+
+**Part 3d validated before implementation commit.** Full gen2-test passes
+**4,220 tests, two existing skips**, in **3,213.458 seconds**. Trigger-order
+passes **334 triggers / 4,084 identical Store tests/subtests**; full composition
+passes **six tests**. The complete affected-family sweep kills **54/54** mutants,
+all with passing paired controls, over green **1,075-Store/one-file-target**
+baselines. All eight static gates pass and are repeated after this note. All four
+code files retain their tested hashes. Commands, source/audit/trace inventories,
+counts, footprint, deviations and commits are retained in
+private/evidence/2d-4c-part3d/COMPLETION.md. No provider call, real-database
+migration, gen-1/live-gateway access, protected-register edit, private commit,
+push or main merge occurred. AGENTS.md lookup stayed inside the repository;
+no manual disposable snapshot or venv symlink was created. This completes the
+selected raw table group only; the pending groups and precision constraint above
+remain for the next pre-code audit. Part 4 stays **OFF**. Stop after this slice.

@@ -1,9 +1,16 @@
 """Isolated raw table guards; literal operands prove relationships, not transport."""
 import json
 import sqlite3
+from unittest.mock import patch
 
+from gen2.core import canonical
+from gen2.store import db
 from gen2.tests import test_store_content_tiers as content
-from gen2.tests.store_fixtures import h
+from gen2.tests import store_fixtures as sf
+from gen2.tests import raw_detailed_receipt_fixtures as detailed
+from gen2.tests.ddl_fixtures import restore_triggers
+from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
+from gen2.tests.store_fixtures import h, TOPIC, T
 
 TABLE = {"start": 0, "end": 5, "locator": {"kind": "table", "value": "Table 1"}}
 PAGE = {"start": 5, "end": 9, "locator": {"kind": "page", "value": "2"}}
@@ -13,20 +20,62 @@ class TableDDLTest(content.relationships.RelationshipTest):
     test_binding = test_verifier = test_immutable = test_control = None
     test_relationships = test_relationship_controls = test_natural_key = None
     METHOD = "canonical_bytes"
+    ATTRIBUTED = True
     acquired = content.ContentDDLTest.acquired
     distractor = content.ContentDDLTest.distractor
     observation2 = content.ContentDDLTest.observation2
 
     def setUp(self):
-        super().setUp()
-        self.artifact(size=512)
-        self.source(version="v4")
+        with patch.object(sf, 'DDL_TEXT', db.schema_text() if self.ATTRIBUTED else sf.DDL_TEXT):
+            super().setUp()
+        if not self.ATTRIBUTED:  # Span/exact-span owners remain pending conversion.
+            self.artifact(size=512)
+            self.source(version="v4")
+            return
+        self.assessments = detailed.RawAssessmentFixture(self, content.response(content.FULL))
+        ref = self.assessments.source
+        self.x("INSERT INTO artifacts (content_hash,size_bytes,media_type,staged_at) VALUES (?,?,?,?)",
+            ref['content_hash'], ref['size_bytes'], ref['media_type'], T)
+        self.x("INSERT INTO artifact_topics VALUES (?,?,'inv_pppppppp',?)", ref['content_hash'], TOPIC, T)
+        self.source(version='v4')
+        bea = {**TABLE, 'locator': dict(kind='table', value='table:bea:NIPA:T10101')}
+        for spans in ((TABLE,), (PAGE,), (PAGE, TABLE), (bea,)):
+            seed_checks(self.assessments, dict(topic_id=TOPIC,
+                claim=dict(claim_id='clm_00000001', claim_revision=1),
+                source=dict(work_id='wrk_00000001', source_version='v4'), cited_spans=list(spans),
+                obtained_content_hash=ref['content_hash'], extraction=dict(method='canonical_bytes'),
+                verifier_invocation_id='inv_vvvvvvvv', checks=self.CHECKS_OK))
+        restore_triggers(self, sf.DDL_TEXT)
 
-    def verify(self, *args, spans=(TABLE,), **changes):
+    def source(self, **changes):
+        if self.ATTRIBUTED:
+            changes.setdefault('digest', self.assessments.source['content_hash'])
+        super().source(**changes)
+
+    def raw(self, **changes):
+        if self.ATTRIBUTED and changes.get('content_hash') == h('e'):
+            changes['content_hash'] = self.assessments.source['content_hash']
+        super().raw(**changes)
+
+    def verify(self, *args, spans=(TABLE,), historical=False, **changes):
         changes["obtained"] = changes.pop("obtained_override", changes["obtained"])
+        if self.ATTRIBUTED and changes['obtained'] == h('e'):
+            changes['obtained'] = self.assessments.source['content_hash']
         changes["receipt_overrides"]["cited_spans"] = list(spans)
         changes["column_overrides"]["cited_spans"] = json.dumps(spans)
-        super().verify(*args, **changes)
+        original = self.x
+        def insert(sql, *params):
+            if self.ATTRIBUTED and sql.startswith('INSERT INTO verification_receipts ('):
+                cols = sql.split('(', 1)[1].split(')', 1)[0].split(', ')
+                row = dict(zip(cols, params)); doc = json.loads(row['receipt'])
+                if historical: historical_receipt(doc)
+                else: attach_checks(self.assessments, doc)
+                for key, value in (('receipt', doc), ('cited_spans', doc['cited_spans']), ('acquisition', doc['acquisition'])):
+                    row[key] = canonical.canonical_bytes(value).decode()
+                params = tuple(row[col] for col in cols)
+            return original(sql, *params)
+        with patch.object(self, 'x', side_effect=insert):
+            super().verify(*args, **changes)
 
     def table_receipt(self, tier="bibliographic", **changes):
         content.ContentDDLTest.content_receipt(self, tier, method=self.METHOD,
@@ -43,7 +92,7 @@ class TableDDLTest(content.relationships.RelationshipTest):
         self.acquired(content.FULL)
         self.table_receipt("full_text", spans=(PAGE, TABLE))
         self.assertEqual(self.rows("SELECT cited_spans, access_tier, extraction_method FROM verification_receipts"),
-            [(json.dumps((PAGE, TABLE)), "full_text", self.METHOD)])
+            [(canonical.canonical_bytes((PAGE, TABLE)).decode(), "full_text", self.METHOD)])
         self.assertEqual(self.rows("PRAGMA foreign_key_check"), [])
 
     def test_non_table_control(self):
@@ -113,7 +162,7 @@ class TableDDLTest(content.relationships.RelationshipTest):
                     if changes:
                         self.acquired({"identity": "rec-1"})
                     with self.assertRaisesRegex(sqlite3.IntegrityError, "must consume its admitted acquisition"):
-                        self.table_receipt(**changes)
+                        self.table_receipt(historical=True, **changes)  # /1 acquisition-diagnostic isolation.
                     self.assertEqual(self.rows("SELECT * FROM verification_receipts"), [])
                 finally:
                     self.x("ROLLBACK TO table_diagnostic")
