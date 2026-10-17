@@ -3721,3 +3721,80 @@ Production, DDL, schema and pins stay unchanged; stop if production work is need
 Mandatory consumption and promotion changes stay **OFF**. Evidence and exact
 remaining audit: private/evidence/2d-4c-part3c/COMPLETION.md. This split does not
 finish part 3; stop after the selected Router group set.
+
+**Part 3c implementation (selected Router group set), 2026-10-17.**
+PendingRouterTest, TableRouterTest, SpanRouterTest and ExactSpanRouterTest now
+opt into the accepted attributed fixture path. Bound claims and each accepted
+span variant receive real Router-admitted records before subject snapshots;
+submission only attaches existing rows. The manual borrowed-work/version table
+owner also opts in. The shared record/binding helpers are reused unchanged, and
+both new reseeding owners use restore_triggers after unmutated admission.
+Production, DDL, schema, pins and all 3,604 mutation-control records are unchanged.
+Mandatory consumption and promotion changes remain **OFF**.
+
+Four existing Router classes cover 15 methods, 13 with accepted receipt controls.
+All original assertions across the four edited modules' 18 existing methods
+(including three unchanged raw PendingDDLTest methods) survive; the exponent
+assertion adds its explicit decoded binding while retaining the same acceptance
+and stored-exponent expectations. Malformed span/duplicate/NUL probes keep their
+original defects and diagnostics. Distinct page, table, mixed and exponent spans
+receive distinct records. Ordinary byte-equal method controls make no artifact
+selector discrimination claim; the accepted four-distinct-hash 3a regression
+remains the separate source/target/validator/comparison experiment.
+
+Five new regressions exercise 39 accepted receipts, six bound promotions across
+three methods/two tiers, three foreign-span refusals with matching accepted
+controls, and both exact reversed/mutated/dropped requested catalogs. The accepted
+independent readback oracle checks every kind's binding, retained authenticated
+assessment evidence, verifier/producer separation and recording operation.
+Two counterfactuals fail at assertions with zero errors: downgrading bound
+receipts to `/1` (six failures), and collapsing distinct spans (nine failures).
+An earlier span-downgrade probe produced KeyErrors and receives no evidence credit.
+
+The 19-module transitive import/control closure selects 133 direct IDs, expanded
+to 181 mutants in seven complete prefixes. All 181 are killed, with separate
+passing controls, over a green 1,071-test Store/two file-target baseline.
+All 133 predicate/control pairings qualify through 20 paired controls; five
+additional converted controls have successful SQL-entry traces and independently
+checked hits in the changed seeding/building functions. Full unchanged trigger
+inventory: 334 installed, zero uncovered guards.
+
+Footprint: **171 repository code additions / 29 removals**, plus **294 retained
+private Python driver lines**, including reused infrastructure: **465 additions
+against 495 estimated**, 30 below estimate, excluding documentation/generated
+evidence. Wiring is 84/160 estimated, regressions 87/100, private drivers 294/235;
+the private overrun is included, not excluded from the total. Initial discovery
+imported TestCase classes and was interrupted; module
+aliases prevent duplicate discovery. The next regression run exposed short
+fixture IDs; those were corrected. A prematurely started gate run was stopped
+and retained without full-gate credit. Five final new regressions and eight
+retained regressions pass. Private AUDIT.md records all attempts and limits.
+
+**Exactly what is still pending for part 3d or later:** raw table/span/exact-span
+owners; quote/capture/verdict roots and consumers (including raw quote/capture/
+adjudication owners and the independent hold-only owner audit); StoreTestCase.verify
+and populate_every_table, raw admission/promotion/canonical/content/acquisition,
+PendingDDLTest's accepted canonical/distractor receipts and history/replacement/JSON
+consumers; both ContractWorld.verify amendment
+positives (compatible-work completion/promotion and ImpactTest protocol-change
+fencing). These remain pending positives, never historical relabelings. The
+private inventory names their modules, classes and amendment methods. Existing
+explicit `/1` unbound/refusal/history and optional-reference controls retain their
+purposes. This slice does not finish part 3; part 4 activation also remains pending.
+The fixture-order audit is already detailed through ReferenceCases' four
+Router-admitted records; its import-closure coverage does not make it a pending
+global-raw positive. No pending `/1` positive is reclassified by this correction.
+
+**Part 3c validated before implementation commit.** Full gen2-test passes
+**4,216 tests, two existing skips**, in 3,088.921 seconds. Trigger-order passes
+**334 triggers / 4,062 identical Store tests and subtests** in both orders;
+composition passes **six tests**. The complete affected-family sweep is
+**181/181 killed**, each with a separate passing control; all eight static
+gates pass and are repeated after this note. All five code files retain their
+tested hashes. Commands, landing-unit checks, counts, traces, audit, footprint,
+attempts and commits are retained in private/evidence/2d-4c-part3c/COMPLETION.md.
+No provider call, real-database migration, gen-1/live-gateway access,
+protected-register edit, private commit or main merge occurred. AGENTS.md lookup
+stayed inside the repository; no manual disposable snapshot or venv symlink was
+created. This completes **the selected Router slice only**. Stop here; part 3d
+or later must convert the pending positives above, and part 4 remains OFF.

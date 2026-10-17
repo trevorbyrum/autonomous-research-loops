@@ -1,9 +1,15 @@
 """Pending declarations are retained but never qualify load-bearing support."""
 import sqlite3
 import unittest
+from contextlib import contextmanager
 
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.test_canonical_content_tiers import IDENTITY, FULL, fixture, document
+from gen2.tests.test_canonical_content_tiers import IDENTITY, FULL, attributed_fixture, document
+from gen2.tests.test_canonical_receipt_admission import AttributedReceiptCase, ReceiptCase
+from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
+from gen2.tests.ddl_fixtures import restore_triggers
+from gen2.tests import store_fixtures as sf
+from gen2.store import db
 from gen2.tests.test_store_content_tiers import ContentDDLTest
 
 METHODS = ("verifier_extraction", "validated_extraction")
@@ -27,7 +33,26 @@ def support_document(case, method, tier):
     if method == "validated_extraction":
         doc["extraction"]["validation_ref"] = "validation_unrecorded"
     from gen2.tests.extraction_receipt_fixtures import attach
-    return attach(case, doc)
+    attach(case, doc)
+    if isinstance(case, AttributedReceiptCase):
+        attach_checks(case, doc)
+    return doc
+
+
+@contextmanager
+def bound_fixture(record, tier='full_text'):
+    with attributed_fixture(record) as case:
+        restore_triggers(case, db.schema_text())
+        try:
+            load_claim(case, tier)
+            doc = ReceiptCase.document(case)
+            doc['claim']['claim_id'] = 'clm_loadbear1'
+            # Ordinary extraction outputs equal these canonical bytes. The
+            # distinct-output regression separately checks artifact selection.
+            seed_checks(case, doc)
+        finally:
+            restore_triggers(case, sf.DDL_TEXT)
+        yield case
 
 
 class PendingRouterTest(unittest.TestCase):
@@ -43,8 +68,7 @@ class PendingRouterTest(unittest.TestCase):
     def test_pending_methods(self):
         for method in METHODS:
             for tier in ("abstract", "full_text"):
-                with self.subTest(method=method, tier=tier), fixture({**FULL, "abstract": "Recorded abstract"}) as case:
-                    load_claim(case, tier)
+                with self.subTest(method=method, tier=tier), bound_fixture({**FULL, "abstract": "Recorded abstract"}, tier) as case:
                     doc = support_document(case, method, tier)
                     out = case.send(doc)
                     self.assertEqual(out["status"], "committed", out)
@@ -58,8 +82,7 @@ class PendingRouterTest(unittest.TestCase):
                     self.promote(case, "committed")
 
     def test_canonical_support_control(self):
-        with fixture(FULL) as case:
-            load_claim(case, "full_text")
+        with bound_fixture(FULL) as case:
             self.assertEqual(case.send(support_document(case, "validated_extraction", "full_text"))["status"], "committed")
             held = case.rows("SELECT * FROM holds")
             doc = support_document(case, "canonical_bytes", "full_text")
@@ -69,8 +92,7 @@ class PendingRouterTest(unittest.TestCase):
             self.assertEqual(case.rows("SELECT * FROM holds"), held)
 
     def test_hold_rollback(self):
-        with fixture(FULL) as case:
-            load_claim(case, "full_text")
+        with bound_fixture(FULL) as case:
             before = case.state(exclude=())
             case.faults["in_transaction:end"] = RuntimeError("after pending extraction hold")
             with self.assertRaisesRegex(RuntimeError, "after pending extraction hold"):
@@ -78,8 +100,7 @@ class PendingRouterTest(unittest.TestCase):
             self.assertEqual(case.state(exclude=()), before)
 
     def test_blank_cannot_promote(self):
-        with fixture({**FULL, "text": "\f\u00a0\u2029"}) as case:
-            load_claim(case, "full_text")
+        with bound_fixture({**FULL, "text": "\f\u00a0\u2029"}) as case:
             self.assertEqual(case.send(support_document(case, "canonical_bytes", "full_text"))["status"], "rejected")
             out = case.router.commit_outcome(case.envelope(case.producer, "op_promote001",
                 {**empty_outcome("inv_capture001", "interim_transition"), "claim_promotions": [{"claim_id": "clm_loadbear1", "revision": 1}]}))

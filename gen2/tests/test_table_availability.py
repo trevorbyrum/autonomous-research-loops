@@ -1,9 +1,14 @@
 """Recorded table access through disposable Router stores; no providers execute."""
 import json
 import unittest
+from contextlib import contextmanager
 
 from gen2.tests import test_canonical_content_tiers as content
-from gen2.tests.test_canonical_receipt_admission import ReceiptCase
+from gen2.tests.test_canonical_receipt_admission import AttributedReceiptCase, ReceiptCase
+from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
+from gen2.tests.ddl_fixtures import restore_triggers
+from gen2.tests import store_fixtures as sf
+from gen2.store import db
 from gen2.tests.test_extraction_acquisitions import extraction_document
 from gen2.tests.test_store_table_availability import TABLE, PAGE
 from gen2.tests.test_reaccess_admission import RAW, STAMP
@@ -12,12 +17,34 @@ from gen2.tests.router_fixtures import TOPIC, empty_outcome
 METHODS = ("canonical_bytes", "verifier_extraction", "validated_extraction")
 
 
-def document(case, method, tier, verdict="supports", spans=(TABLE,)):
+def seed_spans(case, bindings=((TABLE,), (PAGE,), (PAGE, TABLE))):
+    restore_triggers(case, db.schema_text())
+    try:
+        for spans in bindings:
+            doc = ReceiptCase.document(case)
+            doc['cited_spans'] = list(spans)
+            # Byte-equal ordinary outputs share this exact binding; no
+            # source/target/validator discrimination is claimed here.
+            seed_checks(case, doc)
+    finally:
+        restore_triggers(case, sf.DDL_TEXT)
+
+
+@contextmanager
+def span_fixture(record, coverage='searched_ok', others=(), *, bindings=((TABLE,), (PAGE,), (PAGE, TABLE))):
+    with content.attributed_fixture(record, coverage, others) as case:
+        seed_spans(case, bindings)
+        yield case
+
+
+def document(case, method, tier, verdict="supports", spans=(TABLE,), *, detailed=True):
     doc = extraction_document(case, method)
     if method == "verifier_extraction":
         doc["extraction"]["produced_by_invocation_id"] = case.verifier["invocation_id"]
     doc.update(access_tier=tier, verdict=verdict, cited_spans=list(spans))
     doc["requested_for"]["required_access_tier"] = tier
+    if detailed:
+        attach_checks(case, doc)
     return doc
 
 
@@ -29,6 +56,7 @@ class TableRouterTest(unittest.TestCase):
         self.assertIn("table citation requires recorded full-text availability", out["detail"])
         self.assertEqual(case.state(), before)
         control = {**doc, "cited_spans": [PAGE]}
+        attach_checks(case, control)
         self.assertEqual(case.send(control)["status"], "committed")
 
     def test_insufficient_and_mixed(self):
@@ -37,12 +65,12 @@ class TableRouterTest(unittest.TestCase):
                     ({"identity": content.IDENTITY, "abstract": "Recorded abstract"}, "abstract")):
                 for verdict in ("supports", "partially_supports", "does_not_support"):
                     for spans in ((TABLE,), (PAGE, TABLE)):
-                        with self.subTest(method=method, tier=tier, verdict=verdict, spans=spans), content.fixture(record) as case:
+                        with self.subTest(method=method, tier=tier, verdict=verdict, spans=spans), span_fixture(record) as case:
                             self.refuse(case, document(case, method, tier, verdict, spans))
 
     def test_controls_readback_replay(self):
         for method in METHODS:
-            with self.subTest(method=method), content.fixture(content.FULL) as case:
+            with self.subTest(method=method), span_fixture(content.FULL) as case:
                 doc = document(case, method, "full_text", spans=(PAGE, TABLE))
                 out = case.send(doc)
                 self.assertEqual(out["status"], "committed", out)
@@ -56,10 +84,11 @@ class TableRouterTest(unittest.TestCase):
         for method in METHODS:
             for record, tier in (({"identity": content.IDENTITY}, "bibliographic"),
                     ({"identity": content.IDENTITY, "abstract": "Recorded abstract"}, "abstract")):
-                with self.subTest(method=method, tier=tier), content.fixture(record) as case:
+                with self.subTest(method=method, tier=tier), span_fixture(record) as case:
                     doc = document(case, method, tier, "cannot_assess_at_required_tier")
                     doc["requested_for"]["required_access_tier"] = "full_text"
                     doc["checks"].update(numeric_units="unavailable", denominators="unavailable", negation="not_checked", qualifications="unavailable")
+                    attach_checks(case, doc)
                     out = case.send(doc)
                     self.assertEqual(out["status"], "committed", out)
                     self.assertEqual(json.loads(case.value("SELECT receipt FROM verification_receipts")), doc)
@@ -75,7 +104,7 @@ class TableRouterTest(unittest.TestCase):
                 "method": "GetData", "query": {"TableName": "T10101"}}, "searched_ok", "bibliographic"))
         for method in METHODS:
             for record, coverage, tier in scenarios:
-                with self.subTest(method=method, record=record), content.fixture(record, coverage,
+                with self.subTest(method=method, record=record), span_fixture(record, coverage,
                         [{**content.FULL, "identity": "doi:10.1/other"}]) as case:
                     self.refuse(case, document(case, method, tier))
 
@@ -86,7 +115,7 @@ class TableRouterTest(unittest.TestCase):
                     response = json.loads(RAW)
                     response["records"] = [{"identity": content.IDENTITY}, {**content.FULL, "identity": "doi:10.1/other"}]
                     response["lanes"][0]["retrieved"].append("doi:10.1/other")
-                    case = ReceiptCase()
+                    case = AttributedReceiptCase()
                     case.RESPONSE = json.dumps(response).encode()
                     case.setUp()
                     try:
@@ -102,6 +131,7 @@ class TableRouterTest(unittest.TestCase):
                         self.assertEqual(case.router.commit_outcome(case.envelope(case.producer, "op_other0001", payload,
                             refs=[case.source]))["status"], "committed")
                         case.admit()
+                        seed_spans(case)
                         self.assertEqual(case.router.admit_reaccess(case.request(work_id=work, source_version=version,
                             event_id="rev_other0001"))["status"], "admitted")
                         self.assertEqual(sorted(case.rows("SELECT recorded_tier_rank FROM source_acquisition_content_tiers")), [(1,), (3,)])
@@ -111,7 +141,7 @@ class TableRouterTest(unittest.TestCase):
 
     def test_rollback_and_conflict(self):
         for method in METHODS:
-            with self.subTest(method=method), content.fixture(content.FULL) as case:
+            with self.subTest(method=method), span_fixture(content.FULL) as case:
                 doc = document(case, method, "full_text")
                 before = case.state(exclude=())
                 case.faults["in_transaction:end"] = RuntimeError("after table receipt")
@@ -127,7 +157,7 @@ class TableRouterTest(unittest.TestCase):
 
     def test_tier_diagnostic(self):
         for method in METHODS:
-            with self.subTest(method=method), content.fixture({"identity": content.IDENTITY}) as case:
+            with self.subTest(method=method), span_fixture({"identity": content.IDENTITY}) as case:
                 before = case.state()
                 out = case.send(document(case, method, "full_text"))
                 self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)

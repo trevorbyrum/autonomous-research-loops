@@ -3,7 +3,8 @@ import json
 import unittest
 
 from gen2.tests.test_store_span_domain import BAD, DUPLICATES
-from gen2.tests.test_table_availability import content, document, METHODS, PAGE
+from gen2.tests.test_table_availability import content, document, METHODS, PAGE, span_fixture
+from gen2.tests.detailed_receipt_fixtures import attach_checks
 from gen2.tests.router_fixtures import empty_outcome
 
 
@@ -12,21 +13,22 @@ class SpanRouterTest(unittest.TestCase):
         for method in METHODS:
             for predicate, cases in BAD.items():
                 for spans in cases:
-                    with self.subTest(method=method, predicate=predicate, spans=spans), content.fixture({"identity": content.IDENTITY}) as case:
-                        doc = document(case, method, "bibliographic", spans=spans)
+                    with self.subTest(method=method, predicate=predicate, spans=spans), span_fixture({"identity": content.IDENTITY}, bindings=((PAGE,),)) as case:
+                        doc = document(case, method, "bibliographic", spans=spans, detailed=False)
                         before = case.state()
                         out = case.send(doc)
                         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
                         self.assertIn("/cited_spans", out["detail"])
                         self.assertEqual(case.state(), before)
                         doc["cited_spans"] = [PAGE]
+                        attach_checks(case, doc)
                         self.assertEqual(case.send(doc)["status"], "committed")
                         self.assertEqual(json.loads(case.value("SELECT receipt FROM verification_receipts")), doc)
 
     def test_duplicate_pairs_at_payload_boundary(self):
         for method in METHODS:
             for spans in DUPLICATES + (None,):
-                with self.subTest(method=method, spans=spans), content.fixture({"identity": content.IDENTITY}) as case:
+                with self.subTest(method=method, spans=spans), span_fixture({"identity": content.IDENTITY}, bindings=((PAGE,),)) as case:
                     doc = document(case, method, "bibliographic", spans=(PAGE,))
                     # Stage actual duplicate bytes; a Python dict would lose the defect.
                     payload = {**empty_outcome("inv_verify0001", "interim_transition"), "verification_receipts": [doc]}

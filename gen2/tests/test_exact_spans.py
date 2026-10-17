@@ -3,13 +3,13 @@ import json
 import unittest
 
 from gen2.tests import test_store_exact_spans as raw
-from gen2.tests.test_table_availability import content, document, METHODS, PAGE
+from gen2.tests.test_table_availability import content, document, METHODS, PAGE, span_fixture
 from gen2.tests.router_fixtures import empty_outcome
 
 
 class ExactSpanRouterTest(unittest.TestCase):
-    def stage(self, case, method, numeral=None, transform=lambda d: d):
-        doc = document(case, method, "bibliographic", spans=(PAGE,))
+    def stage(self, case, method, numeral=None, transform=lambda d: d, *, binding_spans=(PAGE,)):
+        doc = document(case, method, "bibliographic", spans=binding_spans)
         payload = {**empty_outcome("inv_verify0001", "interim_transition"), "verification_receipts": [doc]}
         env = case.envelope(case.verifier, "op_verify001", payload)
         if numeral is not None: doc["cited_spans"] = "__RAW_SPANS__"
@@ -30,7 +30,7 @@ class ExactSpanRouterTest(unittest.TestCase):
             '"cited_spans\\u0000suffix":' + page + ',"cited_spans":[{"start":0,"end":5,"locator":{"kind":"table","value":"T"}}]'), "NUL in object member name")]
         for method in METHODS:
             for numeral, transform, detail in cases:
-                with self.subTest(method=method, numeral=numeral), content.fixture({"identity": content.IDENTITY}) as case:
+                with self.subTest(method=method, numeral=numeral), span_fixture({"identity": content.IDENTITY}, bindings=((PAGE,),)) as case:
                     before = case.state()
                     out = self.stage(case, method, numeral, transform)
                     self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
@@ -42,6 +42,8 @@ class ExactSpanRouterTest(unittest.TestCase):
 
     def test_canonical_exponent_control(self):
         for method in METHODS:
-            with self.subTest(method=method), content.fixture({"identity": content.IDENTITY}) as case:
-                self.assertEqual(self.stage(case, method, raw.numeric("start", "1e30"))["status"], "committed")
+            with self.subTest(method=method), span_fixture({"identity": content.IDENTITY},
+                    bindings=((PAGE,), ({**PAGE, 'start': 1e30},))) as case:
+                self.assertEqual(self.stage(case, method, raw.numeric("start", "1e30"),
+                    binding_spans=({**PAGE, 'start': 1e30},))["status"], "committed")
                 self.assertIn('"start":1e+30', case.value("SELECT cited_spans FROM verification_receipts"))
