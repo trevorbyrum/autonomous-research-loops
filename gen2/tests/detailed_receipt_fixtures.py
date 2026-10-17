@@ -45,7 +45,7 @@ def seed_checks(case, doc):
                 assessment=f'Attributed fixture assessment of {kind}: {outcome}.',
                 applicability_reason='Qualitative fixture assertion; this aspect is outside its scope.'
                     if outcome == 'not_applicable' else '')
-            identity = 'fixture-' + canonical.logical_hash(report)[7:63]
+            identity = 'fixture-' + canonical.logical_hash([case.verifier['invocation_id'], report])[7:63]
             evidence = case.artifact(canonical.canonical_bytes(report), 'application/json')
             records.append(dict(check_id=identity, assessment=report, evidence_ref=evidence))
     payload = {**empty_outcome(case.verifier['invocation_id'], 'interim_transition'),

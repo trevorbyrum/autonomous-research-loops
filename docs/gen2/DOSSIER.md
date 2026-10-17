@@ -3586,3 +3586,73 @@ Mandatory detailed consumption and promotion changes stay **OFF**. Production,
 DDL and pins remain untouched; stop and report if production work is required.
 Evidence: private/evidence/2d-4c-part3b/, including the full pending audit and
 honest footprint/deviations. Stop after this slice; part 3c and part 4 remain.
+
+**Part 3b implementation (fixture conversion only), 2026-10-17.** Six existing
+consumer classes now use attributed `/2` positives: ReceiptTest,
+OtherAcquirerReceiptTest, ContentRouterTest, ExtractionRouterTest,
+ExtractionContentRouterTest and NB1's AuthorityTest accepted support. The first
+five opt into AttributedReceiptCase/attributed_fixture; unfinished consumers keep
+their explicit pending base fixture. Records are admitted through the existing
+3a helpers, before subject snapshots; both new reseeding owners restore the
+requested trigger definitions/order through `restore_triggers`. Receipt building
+only selects existing records. Production, DDL, schema, hash pins and all 3,604
+mutation-control records are unchanged; mandatory consumption/promotion changes
+remain **OFF**.
+
+The same-report/new-verifier positive exposed a fixture-ID collision: seed_checks
+now includes the performing invocation in its deterministic fixture ID. Reports,
+authenticated evidence and exact binding are unchanged. The canonical sender uses
+the actual verifier invocation. The reused readback oracle now selects named
+claim/source keys rather than depending on JSON member order. Authority's four
+existing refusal operands and acquisition refusals remain explicit `/1` isolation
+controls. All existing assertions in the 77 methods of edited modules survive.
+
+Five new regressions cover nine method/tier promotion-and-rollback combinations,
+three distinct replacement-verifier combinations, six historical/optional
+promotions with an actually empty detailed-record store, NB1's retained evidence,
+and both reseeding owners' exact reversed/dropped/mutated catalogs. The existing
+six 3a regressions also pass, including distinct canonical/target/validator/
+comparison bytes; ordinary byte-equal controls claim no selector discrimination.
+
+**Audit correction and pending scope.** ContractWorld.verify in
+`test_router_amendments` also admits genuine load-bearing supports via the
+authority-root builder. Its ImpactTest compatible-work completion/promotion and
+protocol-change fencing controls are pending positives, not infrastructure-only
+or historical. The earlier part-3 audit description was too broad. This dispatch
+selected NB1's own accepted control before code; carry these two additional
+callers explicitly into part 3c alongside PendingRouterTest, table/span/exact,
+quote/capture/verdict and global raw/history/JSON owners. Re-estimate part 3c
+before code; this slice does not complete part 3 or activate part 4.
+
+Footprint: **207 handwritten repository additions / 35 removals**, plus **235
+retained private Python driver lines** (including reused infrastructure): **442
+additions against the 470-line slice estimate**, excluding documentation and
+generated evidence. No generated repository data changes. Private AUDIT.md and
+the before/after AST inventories record all converted/historical/pending owners.
+The initial regression run exposed the sender/oracle/catalog-setup errors above;
+its failure log is retained without passing credit. Two overly broad tracing
+attempts were interrupted and retained. Trace scope cuts the CommitCase import
+edge that does not execute NB1, while the full affected-family gate retains all
+1,164 directly affected IDs / 2,181 expanded IDs across 71 prefixes and 72 modules.
+All **136/136 receipt-consumer pairings** qualify through 22 retained passing
+controls; all six newly converted accepted controls also have direct fixture-line
+and successful SQL-entry traces. The first explicit authority instrumentation
+attempt failed catalog identity during setup; the final driver adopts production
+DDL before restoring instrumentation with the accepted helper. That failed trace
+attempt is retained without credit. The unchanged full inventory has **334
+triggers, zero uncovered guards**.
+
+**Part 3b validated before implementation commit.** Full gen2-test passes
+**4,211 tests, two existing skips**, in 2,825.404 seconds. Trigger-order passes
+**334 triggers / 4,034 identical Store tests/subtests** in both orders; the full
+composition module passes **six tests**. The complete affected-family --only
+sweep kills **2,181/2,181** mutants over green **1,066-test Store / 14 file-target
+baselines**: 2,173 separate passing controls, three existing in-killer accepted
+cases and five unchanged documented exceptions. All eight static gates pass and
+are repeated after this note. All eight code files match their tested hashes.
+Final counts, commits, source/trace audits and deviations are retained in
+private/evidence/2d-4c-part3b/COMPLETION.md. No provider call, real-database
+migration, gen-1/runtime/8765 access, protected-register edit, main merge or
+manual disposable snapshot/venv symlink occurred. This completes **the selected
+part 3b slice only**; part 3c conversion (including the two amendment positives)
+and part 4 activation remain pending. Stop here.

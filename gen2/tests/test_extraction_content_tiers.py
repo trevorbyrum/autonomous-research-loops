@@ -3,7 +3,7 @@ import json
 import unittest
 
 from gen2.tests import test_canonical_content_tiers as content
-from gen2.tests.test_canonical_receipt_admission import ReceiptCase
+from gen2.tests.test_canonical_receipt_admission import AttributedReceiptCase
 from gen2.tests.test_extraction_acquisitions import extraction_document, send
 from gen2.tests.test_pending_extraction_support import METHODS
 from gen2.tests.test_reaccess_admission import RAW, STAMP
@@ -30,7 +30,7 @@ class ExtractionContentRouterTest(unittest.TestCase):
         for method in METHODS:
             for record, tier in (({"identity": content.IDENTITY, "title": "Fixture"}, "bibliographic"),
                     ({"identity": content.IDENTITY, "abstract": "Fixture abstract"}, "abstract"), (content.FULL, "full_text")):
-                with self.subTest(method=method, tier=tier), content.fixture(record) as case:
+                with self.subTest(method=method, tier=tier), content.attributed_fixture(record) as case:
                     doc = document(case, method, tier)
                     out = send(case, doc)
                     self.assertEqual(out["status"], "committed", out)
@@ -47,7 +47,7 @@ class ExtractionContentRouterTest(unittest.TestCase):
                     ({"identity": content.IDENTITY, "abstract": "Fixture abstract"}, "full_text", "abstract"),
                     ({**content.FULL, "reproduced": True, "access_tier": "reproduced"}, "reproduced", "full_text")):
                 for verdict in ("supports", "partially_supports", "does_not_support", "cannot_assess_at_required_tier"):
-                    with self.subTest(method=method, tier=tier, verdict=verdict), content.fixture(record) as case:
+                    with self.subTest(method=method, tier=tier, verdict=verdict), content.attributed_fixture(record) as case:
                         self.refuse(case, method, tier, control, verdict)
 
     def test_record_and_route(self):
@@ -57,17 +57,17 @@ class ExtractionContentRouterTest(unittest.TestCase):
             ({"identity": content.IDENTITY}, "searched_ok", ({**content.FULL, "identity": "doi:10.1/other"},), "bibliographic"))
         for method in METHODS:
             for record, coverage, others, control in scenarios:
-                with self.subTest(method=method, record=record, coverage=coverage), content.fixture(record, coverage, others) as case:
+                with self.subTest(method=method, record=record, coverage=coverage), content.attributed_fixture(record, coverage, others) as case:
                     self.refuse(case, method, "full_text", control)
 
     def test_unicode(self):
         for method in METHODS:
             for field, tier in (("abstract", "abstract"), ("text", "full_text")):
                 for value in ("\v\f\u00a0\u2029", "\u200b\u200d\ufeff\U000e0100", "", " \t\r\n"):
-                    with self.subTest(method=method, field=field, value=repr(value)), content.fixture({"identity": content.IDENTITY, "kind": "full_text", field: value}) as case:
+                    with self.subTest(method=method, field=field, value=repr(value)), content.attributed_fixture({"identity": content.IDENTITY, "kind": "full_text", field: value}) as case:
                         self.refuse(case, method, tier, "bibliographic")
                 for value in ("\u200b.\U000e0100", "\f\u00a0文\u2029"):
-                    with self.subTest(method=method, field=field, value=value), content.fixture({"identity": content.IDENTITY, "kind": "full_text", field: value}) as case:
+                    with self.subTest(method=method, field=field, value=value), content.attributed_fixture({"identity": content.IDENTITY, "kind": "full_text", field: value}) as case:
                         self.assertEqual(send(case, document(case, method, tier))["status"], "committed")
 
     def test_other_work_same_response(self):
@@ -76,7 +76,7 @@ class ExtractionContentRouterTest(unittest.TestCase):
                 response = json.loads(RAW)
                 response["records"] = [{"identity": content.IDENTITY}, {**content.FULL, "identity": "doi:10.1/other"}]
                 response["lanes"][0]["retrieved"].append("doi:10.1/other")
-                case = ReceiptCase()
+                case = AttributedReceiptCase()
                 case.RESPONSE = json.dumps(response).encode()
                 case.setUp()
                 try:
@@ -96,7 +96,7 @@ class ExtractionContentRouterTest(unittest.TestCase):
 
     def test_rollback_and_conflict(self):
         for method in METHODS:
-            with self.subTest(method=method), content.fixture(content.FULL) as case:
+            with self.subTest(method=method), content.attributed_fixture(content.FULL) as case:
                 before = case.state(exclude=())
                 case.faults["in_transaction:end"] = RuntimeError("after extraction ceiling")
                 with self.assertRaisesRegex(RuntimeError, "after extraction ceiling"):

@@ -33,8 +33,10 @@ class ConvertedFixtureTest(unittest.TestCase):
             row = case.store.select('detailed_check_records', {'check_id': entry['record_id']})[0]
             report = row['assessment']
             self.assertEqual((report['kind'], report['outcome']), (kind, entry['outcome']))
-            self.assertEqual((report['claim_id'], report['claim_revision']), tuple(doc['claim'].values()))
-            self.assertEqual((report['work_id'], report['source_version']), tuple(doc['source'].values()))
+            self.assertEqual((report['claim_id'], report['claim_revision']),
+                (doc['claim']['claim_id'], doc['claim']['claim_revision']))
+            self.assertEqual((report['work_id'], report['source_version']),
+                (doc['source']['work_id'], doc['source']['source_version']))
             self.assertEqual(report['cited_spans'], doc['cited_spans'])
             self.assertEqual(report['examined_artifact_ref'], expected_ref)
             self.assertEqual(report['source_artifact_hash'], case.source['content_hash'])

@@ -2,8 +2,9 @@
 import json
 import unittest
 
-from gen2.tests.test_canonical_content_tiers import FULL, fixture, document
-from gen2.tests.test_canonical_receipt_admission import ReceiptCase
+from gen2.tests.test_canonical_content_tiers import FULL, attributed_fixture as fixture
+from gen2.tests.test_canonical_receipt_admission import ReceiptCase, AttributedReceiptCase
+from gen2.tests.detailed_receipt_fixtures import attach_checks, historical_receipt
 from gen2.tests.test_pending_extraction_support import METHODS
 from gen2.tests.router_fixtures import empty_outcome
 
@@ -14,19 +15,24 @@ def send(case, doc):
     return case.router.commit_outcome(case.env)
 
 
-def extraction_document(case, method):
-    doc = document(case, "bibliographic")
+def extraction_document(case, method, *, detailed=True):
+    doc = ReceiptCase.document(case)
+    doc['access_tier'] = doc['requested_for']['required_access_tier'] = 'bibliographic'
     doc["extraction"].update(method=method,
         produced_by_invocation_id=case.verifier["invocation_id"] if method == "verifier_extraction" else case.ACQUIRER,
         validation_ref="validation_unrecorded" if method == "validated_extraction" else None)
     doc["verifier_invocation_id"] = case.verifier["invocation_id"]
     doc["verifier_capability_id"] = case.verifier["capability_id"]
     from gen2.tests.extraction_receipt_fixtures import attach
-    return attach(case, doc)
+    attach(case, doc)
+    if detailed and isinstance(case, AttributedReceiptCase):
+        attach_checks(case, doc)
+    return doc
 
 
 class ExtractionRouterTest(unittest.TestCase):
     def refuse(self, case, doc):
+        historical_receipt(doc)  # /1 isolates the existing acquisition predicate.
         before = case.state()
         out = send(case, doc)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
@@ -36,10 +42,10 @@ class ExtractionRouterTest(unittest.TestCase):
     def test_missing(self):
         for method in METHODS:
             with self.subTest(method=method):
-                case = ReceiptCase()
+                case = AttributedReceiptCase()
                 case.setUp()
                 try:
-                    self.refuse(case, extraction_document(case, method))
+                    self.refuse(case, extraction_document(case, method, detailed=False))
                     case.admit()
                     self.assertEqual(send(case, extraction_document(case, method))["status"], "committed")
                 finally:
@@ -59,7 +65,7 @@ class ExtractionRouterTest(unittest.TestCase):
                     elif name == "verifier":
                         self.assertEqual(case.finish(case.verifier, "op_oldver001")["status"], "committed")
                         case.verifier = case.started("inv_otherver1", "verification")
-                        doc = extraction_document(case, method)
+                        doc = extraction_document(case, method, detailed=False)
                     elif name == "hash":
                         doc["obtained_content_hash"] = case.artifact(b"Other input")["content_hash"]
                     else:

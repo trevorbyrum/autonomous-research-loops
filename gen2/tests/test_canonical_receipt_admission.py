@@ -1,8 +1,13 @@
 """Canonical receipts consume literal trusted exchanges, inside Router commits."""
 import json
+from unittest.mock import patch
 
 from gen2.tests.router_fixtures import TOPIC, empty_outcome
 from gen2.tests.test_reaccess_admission import AcquisitionCase, STAMP
+from gen2.store import db
+from gen2.tests import store_fixtures as sf
+from gen2.tests.ddl_fixtures import restore_triggers
+from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
 
 
 class ReceiptCase(AcquisitionCase):
@@ -28,7 +33,7 @@ class ReceiptCase(AcquisitionCase):
             "adjudication": None, "verdict": "supports", "verified_at": STAMP}
 
     def send(self, doc=None, op="op_verify001"):
-        payload = {**empty_outcome("inv_verify0001", "interim_transition"), "verification_receipts": [doc or self.document()]}
+        payload = {**empty_outcome(self.verifier['invocation_id'], "interim_transition"), "verification_receipts": [doc or self.document()]}
         self.env = self.envelope(self.verifier, op, payload)
         return self.router.commit_outcome(self.env)
 
@@ -45,7 +50,40 @@ class ReceiptCase(AcquisitionCase):
         seed(self)
 
 
-class ReceiptTest(ReceiptCase):
+class AttributedReceiptCase(ReceiptCase):
+    """Converted owner; base ReceiptCase's other consumers remain pending 3c."""
+    def setUp(self):
+        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
+            super().setUp()
+        restore_triggers(self, sf.DDL_TEXT)
+
+    def document(self):
+        doc = super().document()
+        doc.update(verifier_invocation_id=self.verifier['invocation_id'],
+            verifier_capability_id=self.verifier['capability_id'])
+        attach_checks(self, doc)
+        return doc
+
+    def admit(self):
+        # Seed before snapshots, then restore requested mutations and order.
+        restore_triggers(self, db.schema_text())
+        try:
+            super().admit()
+            doc = ReceiptCase.document(self)
+            doc.update(verifier_invocation_id=self.verifier['invocation_id'],
+                verifier_capability_id=self.verifier['capability_id'])
+            seed_checks(self, doc)
+        finally:
+            restore_triggers(self, sf.DDL_TEXT)
+
+    def rejected(self, doc=None):
+        # Explicit /1 isolation of acquisition refusals, never a positive basis.
+        doc = doc or ReceiptCase.document(self)
+        historical_receipt(doc)
+        super().rejected(doc)
+
+
+class ReceiptTest(AttributedReceiptCase):
     def test_control(self):
         self.admit()
         out = self.send()
@@ -97,7 +135,7 @@ class ReceiptTest(ReceiptCase):
         self.assertEqual(self.send()["status"], "committed")
 
 
-class OtherAcquirerReceiptTest(ReceiptCase):
+class OtherAcquirerReceiptTest(AttributedReceiptCase):
     ACQUIRER = "inv_other0001"
     EVENT_ID = "rev_other0001"
     test_control = ReceiptTest.test_control
