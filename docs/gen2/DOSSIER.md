@@ -3656,3 +3656,68 @@ migration, gen-1/runtime/8765 access, protected-register edit, main merge or
 manual disposable snapshot/venv symlink occurred. This completes **the selected
 part 3b slice only**; part 3c conversion (including the two amendment positives)
 and part 4 activation remain pending. Stop here.
+
+#### 2d-4c part 3c — re-estimate (before code)
+
+2026-10-17, on `gen2` at `3e87590`. Read the whole task, constraints,
+operator ruling and every continuation; this entire section and all part 3
+audit/implementation notes; accepted `9416fd6`/`1bfb9a9` fixtures and shared
+helpers; and Astra's accepted part-3b review. Repository-only AGENTS.md lookup
+found none. The remainder still needs a split; no pending positive becomes
+historical to reduce the estimate.
+
+**Concrete remaining estimate: 1,140 handwritten additions**, including retained
+private drivers, excluding documentation/generated data: PendingRouter bound
+claim and Router table/span/exact-span setup/wiring 160; raw table/span/exact-span
+authenticated seeding and literal-JSON isolation 150; quote/capture/verdict and
+raw adjudication/hold owners 180; global raw admission/promotion/history/
+replacement/JSON owners 220; the two ContractWorld.verify amendment positives
+50; independent binding/tier/promotion/catalog regressions 240; audit/trace/gate
+drivers 140. Raw fixtures currently use literal artifact hashes; their conversion
+requires authenticated bytes and Router admission, not invented record IDs.
+Span fixtures also require separate admitted bindings for their different
+accepted spans, including the exponent control. This is well above 500.
+
+**Implement only the first coherent group set, part 3c: Router pending-bound,
+table, span and exact-span consumers.** Estimate **495 additions**: scoped
+AttributedReceiptCase/attributed_fixture opt-in and pre-snapshot seeding 90;
+bound-claim setup and four consumer wiring changes 70; binding/promotion/tier/
+span-discrimination/rollback/catalog regressions 100; retained private audit,
+trace and gate drivers (including reused infrastructure) 235. Reuse seed_checks,
+assessment_binding, attach_checks and restore_triggers without forking them.
+Admission happens under unmutated DDL; restore the complete requested trigger
+catalog before the subject runs. Receipt submission only selects admitted rows.
+Malformed span probes keep their original defect and a separately bound accepted
+control. Distinct accepted spans get distinct record IDs; ordinary byte-equal
+method controls do not claim to distinguish source/target/validator bytes.
+Retain the accepted distinct-output regression for that separate claim.
+
+Audit disposition after this slice is planned as follows:
+
+- Convert PendingRouterTest's four bound receipt/promotion/rollback paths and
+  TableRouterTest, SpanRouterTest and ExactSpanRouterTest, including their paired
+  accepted controls. Preserve the same accepted promotions and content tiers.
+- Already converted: part 3a extraction/validation/bound-promotion/attention
+  owners and raw wrappers; part 3b canonical/acquisition/content Router consumers
+  and NB1 authority support. Preserve their accepted assertions and bindings.
+- Still pending for **part 3d or later**: all raw table/span/exact-span owners;
+  QuotesCase, CanonicalQuotesCase, CaptureCase, quote/verdict attention consumers
+  and raw quote/capture/adjudication/hold owners; StoreTestCase.verify and
+  populate_every_table, VerificationTest, ContractAdmittedSupportTest, raw
+  canonical/content/acquisition/pending/history/replacement/JSON consumers; both
+  ContractWorld.verify amendment callers (compatible completion/promotion and
+  ImpactTest protocol-change fencing). None is credited as converted here.
+- Existing explicit `/1` unbound/refusal/history, optional-reference experiments,
+  frozen mixin snapshots and schema examples remain historical/structural
+  controls. Raw pending declarations stay explicit unbound controls; their
+  accepted canonical/distractor receipts remain pending conversion.
+
+Recompute affected mutation families over the complete transitive import closure;
+retain qualified predicate/control and direct converted-path traces. Run full
+gen2-test, trigger-order, composition and all eight static gates before the
+implementation commit. Check user/system landing units before heavy runs.
+No snapshot is planned; any disposable venv must be copied with cp -a.
+Production, DDL, schema and pins stay unchanged; stop if production work is needed.
+Mandatory consumption and promotion changes stay **OFF**. Evidence and exact
+remaining audit: private/evidence/2d-4c-part3c/COMPLETION.md. This split does not
+finish part 3; stop after the selected Router group set.
