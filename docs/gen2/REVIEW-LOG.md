@@ -2697,3 +2697,13 @@ The post-2q Gate D is renumbered #5.
 - **Landing at 0e903ee:** `gen2-check` green; `gen2-gateway` green.
 - **2d-4b3e is complete.** It delivered durable extraction and validation records, the operator tool registry, the latest-revision rule, both receipt consumers, bound-basis promotion with tier ceilings, and the aligned attention holds.
 - **Next:** 2d-4c (`docs/gen2/tasks/2d-4c.md`), attributed detailed V-8 check receipts (2d-4 part 3).
+
+## 2026-10-17: 2d-4c design stop and operator ruling
+- **Sol** (`868fed66`, `5009d9b`) stopped after the design, as the brief requires. The open question was what evidence makes each of the four V-8 checks performed, and whether `not_applicable` needs a reason.
+- **Re-estimate:** about 1,900 lines, split into four parts. Part 1 is record admission, part 2 the successor receipt references, part 3 the fixture conversion, and part 4 mandatory consumption at promotion.
+- **Operator ruling (Trevor): an attributed assessment with retained evidence.**
+  - Every performed outcome needs a hash-authenticated evidence artifact recording the assessment, the method version and the examined context.
+  - `not_applicable` needs an explicit reason.
+  - Quote-matcher tokens count only as supplementary evidence.
+- **Process note:** the coder disclosed an out-of-scope AGENTS.md lookup in an ancestor directory. It is the second such disclosure, so the brief now limits AGENTS.md lookup to the repository.
+- **Dispatched:** part 1, record admission.
