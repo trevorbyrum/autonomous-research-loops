@@ -3798,3 +3798,70 @@ protected-register edit, private commit or main merge occurred. AGENTS.md lookup
 stayed inside the repository; no manual disposable snapshot or venv symlink was
 created. This completes **the selected Router slice only**. Stop here; part 3d
 or later must convert the pending positives above, and part 4 remains OFF.
+
+#### 2d-4c part 3d — re-estimate (before code)
+
+2026-10-17, on `gen2` at `3d09787`. Read the whole task, constraints,
+operator ruling and every continuation; all of §2d-4c including the part 3
+audit/implementation notes; accepted `9416fd6`, `1bfb9a9`, `d140c23`, the
+shared detailed/DDL helpers and explicit AttributedReceiptCase opt-in; and
+Astra's accepted 3c review. Repository-only AGENTS.md lookup found none.
+Valid bound support prevents a new missing-basis hold; it never clears an
+existing hold. ExtractionAttentionTest retains the fenced-basis matrix.
+
+**Remaining estimate: 1,090 handwritten additions**, excluding documentation
+and generated evidence: raw table admission bridge/wiring 160; raw span/exact
+literal bindings 170; quote/capture/verdict and raw adjudication 180; global
+raw admission/promotion/canonical/content/acquisition/pending/history/
+replacement/JSON 220; both ContractWorld.verify amendment positives 50;
+independent regressions 170; retained audit/trace/gate drivers 140. The raw
+owners still use literal hash labels and zero-duration leases; authenticated
+record admission requires real examined bytes and a live verifier. This is
+well above 500, so split again; no pending positive is relabelled historical.
+
+**Implement only part 3d: the raw table owner group**, TableDDLTest,
+ExtractionTableDDLTest and ValidatedTableDDLTest. Estimate **495 additions**:
+raw-to-Router assessment bridge and authenticated examined bytes 95; scoped
+raw-table wiring and preservation of refusal diagnostics 65; independent
+binding/tier/promotion/rollback/catalog regressions 110; retained private
+inventory/trace/gate drivers, including reused infrastructure, 225. Raw span
+and exact-span subclasses explicitly stay pending on their existing base
+path. This is a scope opt-in, following AttributedReceiptCase, not historical
+reclassification. Stop after this coherent group set.
+
+Reuse seed_checks, assessment_binding, attach_checks, historical_receipt and
+restore_triggers; do not fork them. Admit all performed kinds/outcomes and
+separate PAGE/TABLE/ordered mixed-span bindings through Router under unmutated
+DDL before subject snapshots, then restore requested trigger definitions and
+order. Raw INSERTs only select those admitted records. Preserve raw relational
+content/acquisition counterfactuals and their diagnostics; their recorded
+response bytes do not claim transport authentication. Authenticate the actual
+examined source/output bytes independently. Ordinary byte-equal extraction
+outputs claim no artifact-selector discrimination; keep the accepted distinct
+source/target/validator/comparison experiment. Retain explicit /1 refusal and
+legacy controls and the same accepted tiers/promotions. Every claimed pair
+must have distinct operands and accepted paths must have traces.
+
+**Exactly what remains pending after this slice:** raw SpanDDLTest,
+ExtractionSpanDDLTest, ValidatedSpanDDLTest, ExactSpanDDLTest,
+ExtractionExactSpanDDLTest and ValidatedExactSpanDDLTest; QuotesCase,
+CanonicalQuotesCase, CaptureCase and their quote/capture/verdict attention
+consumers and raw quote/capture/adjudication owners; StoreTestCase.verify and
+populate_every_table, VerificationTest, ContractAdmittedSupportTest, raw
+canonical/content/acquisition/extraction-content owners, PendingDDLTest's
+accepted canonical/distractor receipts, and history/replacement/JSON/member/
+observation consumers; both ImpactTest ContractWorld.verify amendment positives
+(compatible-work completion/promotion and protocol-change fencing). HoldDDLTest
+stays a hold-only owner. Already converted 3a/3b/3c consumers and explicit
+historical/optional/schema controls retain their accepted purposes. Part 3
+will remain incomplete; its final sub-part must supply the repository-wide
+receipt-builder inventory showing no pending positive.
+
+No production, DDL, schema or hash-pin change; stop and report if required.
+Mandatory consumption and promotion changes stay **OFF**. Recompute full
+transitive import/control closure and expand affected --only families. Before
+the implementation commit run full gen2-test, trigger-order, composition and
+all eight static gates; retain the unchanged full trigger inventory as well.
+Wait for no user/system gen2-landing-* activity before heavy runs. Any disposable
+venv uses cp -a. Evidence, exact audit/counts/footprint/deviations and COMPLETION.md:
+private/evidence/2d-4c-part3d/. No private file is committed.
