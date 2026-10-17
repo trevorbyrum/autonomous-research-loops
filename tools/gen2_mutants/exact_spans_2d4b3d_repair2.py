@@ -10,7 +10,7 @@ def change(name, old, new, killer):
     mid = "2D4B3DR2-" + name
     MUTATIONS.append(Mutation(mid, "2d-4b3d-repair-2", name,
         tuple(t + k for t in TESTS for k in (killer if isinstance(killer, tuple) else (killer,))),
-        old=old, new=new, scope="verification_receipts_span_domain_v2"))
+        old=old, new=new, scope="verification_receipts_span_domain_v3"))
     CONTROLS[mid] = {"controls": [t + "exact_control" for t in TESTS],
         "why": "Separately admitted page receipts retain Unicode/NUL locator values, bibliographic access and the ordinary integer offsets under this predicate mutation."}
 

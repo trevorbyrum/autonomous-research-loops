@@ -28,7 +28,18 @@
     "verified_at"
   ],
   "properties": {
-    "receipt_version": {"const": "verification-receipt/1"},
+    "receipt_version": {"enum": ["verification-receipt/1", "verification-receipt/2"]},
+    "detailed_checks": {
+      "description": "Version 2 attributed outcomes; record_id is optional until part 4. checks retains an explicitly checked legacy summary projection, never a record outcome alias.",
+      "type": "object", "additionalProperties": false,
+      "required": ["numeric_units", "denominators", "negation", "qualifications"],
+      "properties": {
+        "numeric_units": {"$ref": "#/$defs/detailed_check"},
+        "denominators": {"$ref": "#/$defs/detailed_check"},
+        "negation": {"$ref": "#/$defs/detailed_check"},
+        "qualifications": {"$ref": "#/$defs/detailed_check"}
+      }
+    },
     "verification_receipt_id": {"$ref": "common.schema.json#/$defs/verification_receipt_id"},
     "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
     "claim": {
@@ -172,6 +183,31 @@
     "verified_at": {"$ref": "common.schema.json#/$defs/timestamp"}
   },
   "allOf": [
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"qualifications":{"properties":{"outcome":{"const":"unavailable"}}}}}}},"then":{"properties":{"checks":{"properties":{"qualifications":{"const":"unavailable"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"qualifications":{"properties":{"outcome":{"const":"not_checked"}}}}}}},"then":{"properties":{"checks":{"properties":{"qualifications":{"const":"not_checked"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"qualifications":{"properties":{"outcome":{"const":"not_applicable"}}}}}}},"then":{"properties":{"checks":{"properties":{"qualifications":{"const":"not_applicable"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"qualifications":{"properties":{"outcome":{"const":"failed"}}}}}}},"then":{"properties":{"checks":{"properties":{"qualifications":{"const":"checked_problem"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"qualifications":{"properties":{"outcome":{"const":"succeeded"}}}}}}},"then":{"properties":{"checks":{"properties":{"qualifications":{"const":"checked_ok"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"negation":{"properties":{"outcome":{"const":"unavailable"}}}}}}},"then":{"properties":{"checks":{"properties":{"negation":{"const":"unavailable"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"negation":{"properties":{"outcome":{"const":"not_checked"}}}}}}},"then":{"properties":{"checks":{"properties":{"negation":{"const":"not_checked"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"negation":{"properties":{"outcome":{"const":"not_applicable"}}}}}}},"then":{"properties":{"checks":{"properties":{"negation":{"const":"not_applicable"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"negation":{"properties":{"outcome":{"const":"failed"}}}}}}},"then":{"properties":{"checks":{"properties":{"negation":{"const":"checked_problem"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"negation":{"properties":{"outcome":{"const":"succeeded"}}}}}}},"then":{"properties":{"checks":{"properties":{"negation":{"const":"checked_ok"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"denominators":{"properties":{"outcome":{"const":"unavailable"}}}}}}},"then":{"properties":{"checks":{"properties":{"denominators":{"const":"unavailable"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"denominators":{"properties":{"outcome":{"const":"not_checked"}}}}}}},"then":{"properties":{"checks":{"properties":{"denominators":{"const":"not_checked"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"denominators":{"properties":{"outcome":{"const":"not_applicable"}}}}}}},"then":{"properties":{"checks":{"properties":{"denominators":{"const":"not_applicable"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"denominators":{"properties":{"outcome":{"const":"failed"}}}}}}},"then":{"properties":{"checks":{"properties":{"denominators":{"const":"checked_problem"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"denominators":{"properties":{"outcome":{"const":"succeeded"}}}}}}},"then":{"properties":{"checks":{"properties":{"denominators":{"const":"checked_ok"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"numeric_units":{"properties":{"outcome":{"const":"unavailable"}}}}}}},"then":{"properties":{"checks":{"properties":{"numeric_units":{"const":"unavailable"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"numeric_units":{"properties":{"outcome":{"const":"not_checked"}}}}}}},"then":{"properties":{"checks":{"properties":{"numeric_units":{"const":"not_checked"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"numeric_units":{"properties":{"outcome":{"const":"not_applicable"}}}}}}},"then":{"properties":{"checks":{"properties":{"numeric_units":{"const":"not_applicable"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"numeric_units":{"properties":{"outcome":{"const":"failed"}}}}}}},"then":{"properties":{"checks":{"properties":{"numeric_units":{"const":"checked_problem"}}}}}},
+    {"if":{"required":["detailed_checks"],"properties":{"detailed_checks":{"properties":{"numeric_units":{"properties":{"outcome":{"const":"succeeded"}}}}}}},"then":{"properties":{"checks":{"properties":{"numeric_units":{"const":"checked_ok"}}}}}},
+    {
+      "if": {"properties": {"receipt_version": {"const": "verification-receipt/2"}}},
+      "then": {"required": ["detailed_checks"]},
+      "else": {"not": {"required": ["detailed_checks"]}}
+    },
     {
       "description": "Load-bearing support verdicts get independent numeric/denominator/negation/qualification checks (flow S4 step 4). A truthful cannot_assess / does_not_support may report unperformed or unavailable checks (Astra 0a review A6).",
       "if": {"properties": {"requested_for": {"properties": {"use": {"const": "load_bearing"}}}, "verdict": {"enum": ["supports", "partially_supports"]}}},
@@ -236,6 +272,13 @@
     }
   ],
   "$defs": {
+    "detailed_check": {
+      "type": "object", "additionalProperties": false, "required": ["outcome"],
+      "properties": {
+        "outcome": {"enum": ["succeeded", "failed", "not_applicable", "not_checked", "unavailable"]},
+        "record_id": {"$ref": "common.schema.json#/$defs/short_text"}
+      }
+    },
     "check_status": {
       "description": "checked_ok / checked_problem: performed; not_applicable: the claim has no such element; not_checked: not attempted; unavailable: could not be performed with the content obtained (A6: explicit, never silently treated as a pass).",
       "enum": ["checked_ok", "checked_problem", "not_applicable", "not_checked", "unavailable"]

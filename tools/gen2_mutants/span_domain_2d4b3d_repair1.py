@@ -1,7 +1,7 @@
 """Paired predicate counterfactuals for the raw receipt discriminator domain."""
 from .base import Mutation
 
-SCOPE = "verification_receipts_span_domain_v2"
+SCOPE = "verification_receipts_span_domain_v3"
 TESTS = tuple("test_store_span_domain." + cls + ".test_" for cls in
     ("SpanDDLTest", "ExtractionSpanDDLTest", "ValidatedSpanDDLTest"))
 MUTATIONS, CONTROLS = [], {}

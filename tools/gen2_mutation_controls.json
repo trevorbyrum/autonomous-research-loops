@@ -23754,5 +23754,179 @@
    "test_store_history.RecordIdentityTest.test_work_identity_is_immutable"
   ],
   "why": "no other test enters trigger works_identity_immutable in a statement that succeeds; the killer does, and under the mutant too: the refusals sit in subTests, which go on; the accepted study_group_id UPDATE then runs"
+ },
+ "2D4C2-id": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-topic": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-verifier": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-kind": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-outcome": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-claim": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-revision": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-spans": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-work": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-version": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-source": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-artifact": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-extraction-output": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_extraction_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-domain": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-legacy-shape": {
+  "controls": [
+   "test_store_detailed_check_receipts.ReferenceDDLTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-topic": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-verifier": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-artifact": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-report": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-missing": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_one_reference_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-kind": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-outcome": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-claim_revision": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-cited_spans": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-work_id": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-source_version": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-router-source_artifact_hash": {
+  "controls": [
+   "test_detailed_check_receipts.ReferenceRouterTest.test_control"
+  ],
+  "why": "Separate admitted /2 receipt traverses this binding/domain predicate with exact recorded operands."
+ },
+ "2D4C2-examined-auth": {
+  "controls": [
+   "test_detailed_checks.AuthenticationRegressionTest.test_recorded_bytes_control"
+  ],
+  "why": "A fresh operation reuses authenticated recorded bytes with no result_refs; both examined and evidence paths are entered before the writer lock."
+ },
+ "2D4C2-evidence-auth": {
+  "controls": [
+   "test_detailed_checks.AuthenticationRegressionTest.test_recorded_bytes_control"
+  ],
+  "why": "A fresh operation reuses authenticated recorded bytes with no result_refs; both examined and evidence paths are entered before the writer lock."
  }
 }

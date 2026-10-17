@@ -3311,3 +3311,63 @@ shared positive receipt fixture changes. Validation uses all task gates,
 transitive affected-family selection, full uncovered-trigger inventory and
 separate passing controls with traces for every new mutant. Evidence goes to
 private/evidence/2d-4c-part2/; no private inputs are committed.
+
+
+**Part 2 implemented and validated, 2026-10-17.**
+`verification-receipt/2` retains the legacy `checks` summaries and adds a closed
+`detailed_checks` object with all four kinds. Each entry supplies an exact durable
+outcome and an optional `record_id`. Schema, Router and SQL explicitly check the
+projection `succeeded -> checked_ok`, `failed -> checked_problem`, with the other
+three spellings unchanged. A referenced record's outcome equals the detailed
+outcome exactly; legacy spellings are refused there. `/1` retains its original
+shape and readback, and cannot silently carry `/2` fields.
+
+SQL 37 replaces the installed span guard with v3, preserving its span/locator/
+numeral predicates and changing only the root member allowance for `/2`. Two new
+guards enforce the successor domain and exact optional references: kind, outcome,
+topic, claim revision, entire ordered cited-span array including locators,
+canonical work/version/hash and performing verifier. Examined bytes bind to the
+obtained canonical artifact, own extraction output, or validated target extraction
+output according to the receipt's actual basis. DetailedChecks independently
+checks these relationships inside the existing writer transaction. Wiring admits
+same-operation records before their receipts; service.py is 1,448 lines. Tests
+include distinct canonical/extraction bytes, replay, conflict and atomic rollback.
+These checks bind recorded relationships, never certify scientific correctness.
+
+No JSON columns were added; the existing receipt member guards cover nested
+successor fields. Both ordered-DDL and SQLite-catalog hashes are repinned. SQL 03,
+SQL 34 and promotion collaborators are unchanged. Optional references apply to any
+verdict; absent references remain admissible. **Mandatory consumption and promotion
+changes remain OFF.** Positive-fixture conversion and activation remain parts 3/4;
+this completes part 2, not the whole 2d-4c requirement.
+
+Astra's NB1 now has focused Router regressions for corrupt already-recorded
+examined bytes, corrupt previously recorded evidence omitted from result_refs,
+and a check-ID collision under a fresh operation. Accepted controls accompany
+these cases; refusals preserve substantive table state apart from rejection audit.
+
+Validation: full gen2-test **4,191 tests, two existing skips** (45 new tests);
+full trigger-order **334 installed triggers / 3,949 identical Store tests/subtests**;
+composition **six tests**, focused modules **90 tests**, and all eight static gates.
+The transitive affected-family sweep kills **2,091/2,091** mutants with green
+**1,049-test Store and 18 file-target baselines**. It retains 2,078 separate passing
+controls, nine existing accepted cases inside killers and four existing documented
+exceptions. All **29 new mutants** have separate passing controls and qualified
+traces. One extraction control was tightened to traverse the extraction branch;
+the complete new family was rerun **29/29** with that final pairing. All **3,573**
+prior control records are unchanged. Full installed-trigger inventory: zero
+uncovered; complete mutant inventory: 3,602. Static gates are repeated after this
+note before committing.
+
+Footprint: **464 handwritten repository additions**, against 500 estimated, plus
+**85 unchanged copied span-guard lines**, against 85 anticipated: **549 total
+non-generated additions**. Another **135 retained helper-script lines**, mostly
+reused from part 1, give a conservative total of 684. Generated controls, hash data
+and documentation are additional. The guard rename also required two existing
+span-mutant scopes and three test oracles to follow v3. No history-table or metrics
+ledger change was needed. Superseded fixture/control attempts and stopped early
+runs are retained without passing credit; the final product code/tests remained
+unchanged during the last control-pair refinement. Evidence and COMPLETION.md:
+private/evidence/2d-4c-part2/. No provider calls, real-database migration, gen-1/live
+gateway access, protected-register edits or main merge occurred. AGENTS.md lookup
+stayed inside the repository; no disposable checkout or venv symlink was created.

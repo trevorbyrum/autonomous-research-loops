@@ -1,0 +1,224 @@
+"""Optional /2 references bind recorded relationships, never semantic truth."""
+import copy
+import json
+import sqlite3
+from unittest.mock import patch
+
+from gen2.core import canonical
+from gen2.store import db
+from gen2.tests import store_fixtures as sf
+from gen2.tests.router_fixtures import empty_outcome
+from gen2.tests.test_canonical_receipt_admission import ReceiptCase
+from gen2.tests.test_detailed_checks import CheckCase, KINDS, OUTCOMES
+
+
+class ReferenceCases:
+    RAW = False
+    record = CheckCase.record
+
+    def setUp(self):
+        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
+            super().setUp()
+            self.admit()
+            self.doc = self.document()
+            self.doc['receipt_version'] = 'verification-receipt/2'
+            self.doc['detailed_checks'] = {k: dict(outcome='succeeded', record_id=k) for k in KINDS}
+            for k in KINDS:
+                self.doc['checks'][k] = 'checked_ok'
+            self.records = [self.make_record(k) for k in KINDS]
+            self.assertEqual(self.commit_records(self.records)['status'], 'committed')
+        for name in ('verification_receipts_detailed_domain', 'verification_receipts_detailed_binding', 'verification_receipts_span_domain_v3'):
+            self.x('DROP TRIGGER ' + name)
+            if self.RAW or name != 'verification_receipts_detailed_binding':
+                with sqlite3.connect(':memory:') as reference:
+                    reference.executescript(sf.DDL_TEXT)
+                    found = reference.execute('SELECT sql FROM sqlite_schema WHERE name=?', (name,)).fetchone()
+                    if found: self.x(found[0])
+
+    def make_record(self, kind, outcome='succeeded'):
+        r = self.record(kind=kind, outcome=outcome, **self.doc['claim'], cited_spans=self.doc['cited_spans'],
+            applicability_reason='Qualitative fixture; this aspect is inapplicable.')
+        r['check_id'] = kind
+        return r
+
+    def commit_records(self, records, op="op_referencechecks"):
+        payload = {**empty_outcome(self.verifier['invocation_id'], 'interim_transition'), 'detailed_check_records': records}
+        return self.router.commit_outcome(self.envelope(self.verifier, op, payload, refs=[r['evidence_ref'] for r in records]))
+
+    def submit(self):
+        if not self.RAW:
+            return self.send(self.doc, op="op_" + self.doc["verification_receipt_id"])
+        d = self.doc
+        values = [d['verification_receipt_id'], d['topic_id'], d['claim']['claim_id'], d['claim']['claim_revision'],
+            d['source']['work_id'], d['source']['source_version'], d['cited_spans'], d['obtained_content_hash'],
+            d['access_tier'], d['requested_for']['use'], d['requested_for']['required_access_tier'], d['acquisition'],
+            d['extraction']['method'], d['extraction']['produced_by_invocation_id'], d['extraction']['validation_ref'],
+            d['producer_invocation_id'], d['verifier_invocation_id'], d['quote_check_id'], d['verdict'], d, d['verified_at']]
+        try:
+            self.x('INSERT INTO verification_receipts VALUES (' + ','.join('?' * len(values)) + ')',
+                *[canonical.canonical_bytes(v).decode() if isinstance(v, (dict, list)) else v for v in values])
+            return {'status': 'committed'}
+        except sqlite3.IntegrityError as exc:
+            return {'status': 'rejected', 'detail': str(exc)}
+
+    def rejected_reference(self):
+        before = self.state()
+        result = self.submit()
+        self.assertEqual(result['status'], 'rejected', result)
+        self.assertIn('receipt detailed check binding', result['detail'])
+        self.assertEqual(self.state(), before)
+
+    def corrupt(self, field, value):
+        self.x('DROP TRIGGER IF EXISTS detailed_check_records_immutable_u')
+        for kind in KINDS:
+            original = self.store.select('detailed_check_records', {'check_id': kind})[0]
+            if field in ('topic_id', 'performer_invocation_id'):
+                self.x('UPDATE detailed_check_records SET ' + field + '=? WHERE check_id=?', value, kind)
+            else:
+                self.x('UPDATE detailed_check_records SET assessment=json_set(assessment, ?, json(?)) WHERE check_id=?',
+                    '$.' + field, json.dumps(value), kind)
+            self.rejected_reference()
+            self.x('UPDATE detailed_check_records SET topic_id=?, performer_invocation_id=?, assessment=? WHERE check_id=?',
+                original['topic_id'], original['performer_invocation_id'], canonical.canonical_bytes(original['assessment']).decode(), kind)
+
+    def test_control(self):
+        self.assertEqual(self.submit()['status'], 'committed')
+        self.assertEqual(self.store.select('verification_receipts')[0]['receipt'], self.doc)
+        self.assertEqual(self.rows('PRAGMA foreign_key_check'), [])
+        self.assertEqual(self.value('SELECT status FROM claims'), 'provisional')
+
+    def test_one_reference_control(self):
+        for kind in KINDS[1:]:
+            del self.doc['detailed_checks'][kind]['record_id']
+        self.test_control()
+
+    def test_missing(self):
+        for kind in KINDS:
+            self.doc['detailed_checks'] = {k: {'outcome': 'succeeded'} for k in KINDS}
+            self.doc['detailed_checks'][kind]['record_id'] = 'absent'
+            self.rejected_reference()
+
+    def test_claim(self): self.corrupt('claim_id', 'clm_foreign01')
+    def test_revision(self): self.corrupt('claim_revision', 2)
+    def test_kind(self): self.corrupt('kind', 'invented')
+    def test_outcome(self): self.corrupt('outcome', 'failed')
+    def test_work(self): self.corrupt('work_id', 'wrk_foreign01')
+    def test_version(self): self.corrupt('source_version', 'v2')
+    def test_source(self): self.corrupt('source_artifact_hash', 'sha256:' + '0' * 64)
+    def test_artifact(self): self.corrupt('examined_artifact_ref.content_hash', 'sha256:' + '1' * 64)
+    def test_verifier(self): self.corrupt('performer_invocation_id', self.producer['invocation_id'])
+    def test_topic(self): self.corrupt('topic_id', 'fleet-a:t2')
+
+    def test_spans(self):
+        span = self.doc['cited_spans'][0]
+        for spans in ([{**span, 'end': 6}], [{**span, 'locator': {'kind': 'section', 'value': 'Elsewhere'}}], [span, span]):
+            self.corrupt('cited_spans', spans)
+
+    def test_extraction_control(self):
+        from gen2.tests.test_extraction_acquisitions import extraction_document
+        for method in ('verifier_extraction', 'validated_extraction'):
+            basis = extraction_document(self, method)['extraction']
+            self.doc['extraction'] = basis
+            self.doc['verification_receipt_id'] = 'ver_' + method
+            self.assertEqual(self.submit()['status'], 'committed')
+
+    def test_extraction_artifact(self):
+        from gen2.tests.test_extraction_acquisitions import extraction_document
+        for method in ('verifier_extraction', 'validated_extraction'):
+            self.doc['extraction'] = extraction_document(self, method)['extraction']
+            self.doc['verification_receipt_id'] = 'ver_' + method
+            self.test_artifact()
+
+
+    def distinct_extraction(self):
+        ref = self.artifact(b'Distinct extracted fixture text')
+        row = self.store.select('source_extractions', {'extracting_invocation_id': self.verifier['invocation_id']})[0]
+        record = {k: v for k, v in row.items() if k not in ('topic_id', 'extracting_invocation_id', 'recorded_by_operation_id', 'created_at')}
+        record.update(extraction_id='distinct-output', output_ref=ref)
+        records = [self.record(kind=k, **self.doc['claim'], cited_spans=self.doc['cited_spans'], examined_artifact_ref=ref) for k in KINDS]
+        for r in records:
+            r['check_id'] = r['assessment']['kind'] + '-distinct'
+            self.doc['detailed_checks'][r['assessment']['kind']]['record_id'] = r['check_id']
+        payload = {**empty_outcome(self.verifier['invocation_id'], 'interim_transition'),
+            'source_extractions': [record], 'detailed_check_records': records}
+        refs = [ref, *[r['evidence_ref'] for r in records]]
+        out = self.router.commit_outcome(self.envelope(self.verifier, 'op_distinctbasis', payload, refs=refs))
+        self.assertEqual(out['status'], 'committed', out)
+        self.doc['extraction'].update(method='verifier_extraction', extraction_id='distinct-output',
+            extractor=record['extractor_identity'], produced_by_invocation_id=self.verifier['invocation_id'])
+
+    def test_distinct_extraction_control(self):
+        self.distinct_extraction()
+        self.test_control()
+
+    def test_extraction_wrong_basis(self):
+        self.distinct_extraction()
+        self.x('DROP TRIGGER detailed_check_records_immutable_u')
+        for r in self.store.select('detailed_check_records'):
+            if r['check_id'].endswith('-distinct'):
+                report = r['assessment']
+                report['examined_artifact_ref'] = self.source
+                self.x('UPDATE detailed_check_records SET assessment=? WHERE check_id=?', canonical.canonical_bytes(report).decode(), r['check_id'])
+        self.rejected_reference()
+
+
+    def test_domain(self):
+        for change in ('missing', 'extra', 'null', 'legacy', 'projection', 'version', 'v1'):
+            original = copy.deepcopy(self.doc)
+            if change == 'missing': del self.doc['detailed_checks']['negation']
+            if change == 'extra': self.doc['detailed_checks']['invented'] = {'outcome': 'succeeded'}
+            if change == 'null': self.doc['detailed_checks']['negation']['record_id'] = None
+            if change == 'legacy': self.doc['detailed_checks']['negation']['outcome'] = 'checked_ok'
+            if change == 'projection': self.doc['detailed_checks']['negation']['outcome'] = 'not_applicable'
+            if change == 'version': self.doc['receipt_version'] = 'verification-receipt/99'
+            if change == 'v1': self.doc['receipt_version'] = 'verification-receipt/1'
+            before = self.state()
+            self.assertEqual(self.submit()['status'], 'rejected', change)
+            self.assertEqual(self.state(), before)
+            self.doc = original
+
+    def test_outcomes_optional_legacy(self):
+        for outcome, summary in zip(OUTCOMES, ('checked_ok', 'checked_problem', 'not_applicable', 'not_checked', 'unavailable')):
+            self.doc['verdict'] = 'does_not_support'
+            records = [self.make_record(k, outcome) for k in KINDS]
+            for r in records:
+                r['check_id'] += '-' + outcome
+                kind = r['assessment']['kind']
+                self.doc['detailed_checks'][kind] = {'outcome': outcome, 'record_id': r['check_id']}
+                self.doc['checks'][kind] = summary
+            self.assertEqual(self.commit_records(records, 'op_records_' + outcome)['status'], 'committed')
+            self.doc['verification_receipt_id'] = 'ver_outcome_' + outcome
+            self.assertEqual(self.submit()['status'], 'committed', outcome)
+        self.doc['verdict'] = 'supports'
+        for kind in KINDS:
+            self.doc['checks'][kind] = 'checked_ok'
+            self.doc['detailed_checks'][kind] = {'outcome': 'succeeded'}
+        self.doc['verification_receipt_id'] = 'ver_optional001'
+        self.assertEqual(self.submit()['status'], 'committed')  # Optional even for success.
+        self.doc['verification_receipt_id'] = 'ver_legacy001'
+        self.doc['receipt_version'] = 'verification-receipt/1'
+        del self.doc['detailed_checks']
+        self.assertEqual(self.submit()['status'], 'committed')
+        self.assertEqual(self.store.select('verification_receipts', {'verification_receipt_id': 'ver_legacy001'})[0]['receipt'], self.doc)
+
+
+class ReferenceRouterTest(ReferenceCases, ReceiptCase):
+    def test_same_commit_replay_rollback(self):
+        for r in self.records:
+            r['check_id'] += '-new'
+            self.doc['detailed_checks'][r['assessment']['kind']]['record_id'] = r['check_id']
+        payload = {**empty_outcome(self.verifier['invocation_id'], 'interim_transition'),
+            'detailed_check_records': self.records, 'verification_receipts': [self.doc]}
+        env = self.envelope(self.verifier, 'op_combinedrefs', payload, refs=[r['evidence_ref'] for r in self.records])
+        before = self.state(exclude=())
+        self.faults['in_transaction:evidence'] = RuntimeError('combined rollback')
+        with self.assertRaisesRegex(RuntimeError, 'combined rollback'):
+            self.router.commit_outcome(env)
+        self.assertEqual(self.state(exclude=()), before)
+        self.faults.clear()
+        self.assertEqual(self.router.commit_outcome(env)['status'], 'committed')
+        before = self.state(exclude=())
+        self.assertEqual(self.router.commit_outcome(env)['status'], 'replayed')
+        self.assertEqual(self.state(exclude=()), before)
+        self.doc['detailed_checks']['negation']['record_id'] = 'missing'
+        self.assertEqual(self.send(self.doc, op='op_combinedrefs')['reason'], 'operation_id_conflict')

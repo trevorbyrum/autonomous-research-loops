@@ -1059,9 +1059,10 @@ class Router:
         self._fault("in_transaction:receipt")
         self._write_final_effects(ordinal, inv, env, lease_release, lease_id, now, final)
         extraction_records = self._extractions.write(payload, inv, env["operation_id"], now)
+        detailed_records = self._detailed_checks.write(payload, inv, env["operation_id"], now)
         written = self._write_evidence(env, inv, checked, now, new_triggers, outbox)
+        written.update(detailed_records)
         written.update(extraction_records)
-        written.update(self._detailed_checks.write(payload, inv, env["operation_id"], now))
         self._fault("in_transaction:evidence")
         self._store.insert("audit_events", {"audit_event_id": audit_id, "at": now, "kind": "commit_outcome", "topic_id": inv["topic_id"],
                                             "invocation_id": inv["invocation_id"], "operation_id": env["operation_id"],

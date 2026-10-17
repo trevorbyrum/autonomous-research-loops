@@ -41,3 +41,4 @@
 34-bound-extraction-support.sql
 35-detailed-check-records.sql
 36-detailed-check-member-domain.sql
+37-detailed-check-receipts.sql

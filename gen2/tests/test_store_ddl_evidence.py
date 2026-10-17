@@ -270,7 +270,7 @@ class VerificationTest(StoreTestCase):
         with no exact-quote status, is refused like an explicit null."""
         # Isolate SQL 03's NULL-sensitive checks; SQL 21 independently refuses
         # missing schema members before those checks (test_store_exact_spans).
-        self.x("DROP TRIGGER verification_receipts_span_domain_v2")
+        self.x("DROP TRIGGER verification_receipts_span_domain_v3")
         self.recorded_verification_basis()
         with self.assertRaises(sqlite3.IntegrityError):
             self.verify("ver_00000001", checks=dict(self.CHECKS_OK, numeric_units="checked_problem"), drop=("adjudication",))

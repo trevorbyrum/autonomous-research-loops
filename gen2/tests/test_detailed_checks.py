@@ -162,3 +162,43 @@ class RouterCheckTest(RecordMatrix, CheckCase):
         with self.assertRaisesRegex(RuntimeError, 'after detailed check'):
             self.send(record, op='op_detailfault1')
         self.assertEqual(self.state(exclude=()), before)
+
+
+class AuthenticationRegressionTest(CheckCase):
+    def recorded(self):
+        record = self.record()
+        self.assertEqual(self.send(record)['status'], 'committed')
+        return record
+
+    def retry_without_refs(self, record):
+        record['check_id'] = 'fresh-check'
+        env = self.env(record, op='op_freshcheck1')
+        env['result_refs'] = []
+        return env
+
+    def test_recorded_bytes_control(self):
+        record = self.recorded()
+        self.assertEqual(self.router.commit_outcome(self.retry_without_refs(record))['status'], 'committed')
+
+    def corruption(self, field):
+        record = self.recorded()
+        ref = record['assessment']['examined_artifact_ref'] if field == 'examined' else record['evidence_ref']
+        original = self.spool.read
+        self.spool.read = lambda digest, **kw: b'corrupt' if digest == ref['content_hash'] else original(digest, **kw)
+        env, before = self.retry_without_refs(record), self.state()
+        result = self.router.commit_outcome(env)
+        self.assertEqual(result['status'], 'rejected', result)
+        self.assertIn('hash', result['detail'])
+        self.assertEqual(self.state(), before)
+
+    def test_recorded_examined_corrupt(self): self.corruption('examined')
+    def test_recorded_evidence_omitted_corrupt(self): self.corruption('evidence')
+
+    def test_fresh_operation_collision(self):
+        record = self.recorded()
+        before = self.state()
+        result = self.send(self.record(outcome='failed'), op='op_newcollision')
+        self.assertEqual(result['status'], 'rejected', result)
+        self.assertIn('UNIQUE', result['detail'])
+        self.assertEqual(self.state(), before)
+        self.assertEqual(self.store.select('detailed_check_records')[0]['assessment'], record['assessment'])
