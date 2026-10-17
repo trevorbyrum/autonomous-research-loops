@@ -39,3 +39,5 @@
 32-verifier-extraction-receipts.sql
 33-validated-extraction-receipts.sql
 34-bound-extraction-support.sql
+35-detailed-check-records.sql
+36-detailed-check-member-domain.sql

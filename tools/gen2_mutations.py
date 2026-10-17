@@ -128,6 +128,7 @@ from gen2_ddl_triggers import installed_triggers  # noqa: E402
 # ("disk",): a file only children run (a script started by path); the
 # mutant exists only in the child tree.
 FILE_TARGETS = {
+    "gen2/router/detailed_checks.py": ("module", "gen2.router.detailed_checks", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/router/observations.py": ("module", "gen2.router.observations", "gen2.router.service", "gen2.tests.router_fixtures"),
     "tools/gen2_json_member_domain.py": ("disk",),
     "gen2/router/extractions.py": ("module", "gen2.router.extractions", "gen2.router.service", "gen2.tests.router_fixtures"),

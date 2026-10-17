@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/detailed-check-record.schema.json",
+  "$comment": "flow: S4 steps 4/8 | boundaries: Router; Verifier | invariants: V-8; C-9; C-11 | note: DOSSIER 2d-4c part 1; operator ruling 2026-10-17. Relationships and attributed assessments only; no receipt authority.",
+  "type": "object", "additionalProperties": false,
+  "required": ["check_id", "assessment", "evidence_ref"],
+  "properties": {
+    "check_id": {"$ref": "common.schema.json#/$defs/local_id"},
+    "assessment": {"$ref": "#/$defs/assessment"},
+    "evidence_ref": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/artifact_ref"}]}
+  },
+  "allOf": [{"if": {"properties": {"assessment": {"properties": {"outcome": {"enum": ["succeeded", "failed", "not_applicable"]}}}}},
+    "then": {"properties": {"evidence_ref": {"$ref": "common.schema.json#/$defs/artifact_ref"}}}}],
+  "$defs": {
+    "assessment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["claim_id", "claim_revision", "work_id", "source_version", "source_artifact_hash", "examined_artifact_ref", "cited_spans", "context_spans", "kind", "outcome", "method", "assessment", "context_examined", "applicability_reason"],
+      "properties": {
+        "claim_id": {"$ref": "common.schema.json#/$defs/claim_id"},
+        "claim_revision": {"$ref": "common.schema.json#/$defs/revision"},
+        "work_id": {"$ref": "common.schema.json#/$defs/work_id"},
+        "source_version": {"$ref": "common.schema.json#/$defs/short_text"},
+        "source_artifact_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+        "examined_artifact_ref": {"$ref": "common.schema.json#/$defs/artifact_ref"},
+        "cited_spans": {"$ref": "verification-receipt.schema.json#/properties/cited_spans"},
+        "context_spans": {"type": "array", "maxItems": 50, "items": {"$ref": "verification-receipt.schema.json#/properties/cited_spans/items"}},
+        "kind": {"enum": ["numeric_units", "denominators", "negation", "qualifications"]},
+        "outcome": {"enum": ["succeeded", "failed", "not_applicable", "not_checked", "unavailable"]},
+        "method": {"const": "attributed-assessment/1"},
+        "assessment": {"type": "string"},
+        "context_examined": {"type": "string", "description": "Per kind: quantities and unit interpretation; population/base; polarity and scope; limiting context. Attributed prose, never mechanically certified."},
+        "applicability_reason": {"type": "string"}
+      },
+      "allOf": [
+        {"if": {"properties": {"outcome": {"enum": ["succeeded", "failed", "not_applicable"]}}},
+          "then": {"properties": {"assessment": {"pattern": "[^\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\u00ad\u034f\u061c\u115f-\u1160\u17b4-\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufff8\ud82f\udca0-\ud82f\udca3\ud834\udd73-\ud834\udd7a\udb40\udc00-\udb43\udfff]"}, "context_examined": {"pattern": "[^\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\u00ad\u034f\u061c\u115f-\u1160\u17b4-\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufff8\ud82f\udca0-\ud82f\udca3\ud834\udd73-\ud834\udd7a\udb40\udc00-\udb43\udfff]"}}}},
+        {"if": {"properties": {"outcome": {"const": "not_applicable"}}},
+          "then": {"properties": {"applicability_reason": {"pattern": "[^\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\u00ad\u034f\u061c\u115f-\u1160\u17b4-\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufff8\ud82f\udca0-\ud82f\udca3\ud834\udd73-\ud834\udd7a\udb40\udc00-\udb43\udfff]"}}}}
+      ]
+    }
+  }
+}

@@ -3224,3 +3224,52 @@ mutation families (including service/schema/tool targets and transitive fixture
 imports), and separate accepted control traces for new predicates. Only repository
 AGENTS.md lookup is used (none found). No disposable snapshot is planned; if
 needed its venv will be copied. Evidence: private/evidence/2d-4c-part1/.
+
+**Part 1 implemented and validated, 2026-10-17.** SQL 35 retains immutable
+`attributed-assessment/1` reports with an independently attributed committing
+verifier, exact claim revision, canonical source identity, separate examined
+artifact, cited spans and additional context spans. Performed outcomes need a
+retained evidence artifact containing the complete report; not_applicable also
+needs an explicit reason. Assessment/context/reason presence uses SQL 16's
+recorded-nonblank/1+ucd17.0.0 rule. SQL 21's span object, locator and exact numeral
+expression is reused byte for byte for both arrays. These are structural and
+relationship checks, never certification of execution or scientific correctness.
+
+DetailedChecks authenticates examined/evidence bytes outside the writer lock,
+compares the retained evidence report, then rechecks claim/source/producer
+relationships and writes inside the existing fenced transaction. service.py adds
+only four wiring lines (1,447 total). SQL 36 guards the two new JSON columns;
+the reviewed catalog now has 39 covered JSON columns, zero pending and 509 scalar
+TEXT classifications. Both ordered-DDL and SQLite-catalog hashes are repinned.
+SQL 01–34, receipt representations, promotion and the tier/use/bound-basis/tier-0
+gates are unchanged. New records have no receipt or promotion authority;
+**parts 2–4 remain deferred**, and the whole 2d-4c requirement is not complete.
+
+Final functional validation: full gen2-test **4,146 tests, two existing skips**;
+trigger-order **332 installed triggers / 3,929 identical Store tests/subtests**;
+full composition **six tests**. The complete affected-family --only sweep kills
+**3,053/3,053** mutants with green **1,029-test Store and 23 file-target baselines**:
+3,037 separate passing controls, 11 existing accepted cases inside killers and
+five unchanged documented exceptions. All **29 new mutants** have separate
+passing controls and qualified control-path traces. All **3,544 prior control
+records** remain unchanged. The full installed-trigger inventory has zero
+uncovered guards. Eight static gates pass and are repeated after this note.
+
+Actual footprint is **605 non-generated repository additions**, above the
+495-line estimate; raw-DDL isolation/member tests and shared history/catalog
+oracles account for the overrun. Another **134 retained script lines**, mostly
+reused validation drivers/auditors, give a conservative 739-line total. Generated
+guards, catalog/control data and documentation are additional. This stops at the
+first logical implementation part; no successor receipt or consumer work starts.
+
+Superseded attempts are retained and not credited: initial fixture/schema-wrapper
+errors; the required committed metrics-ledger checkpoint and a two-line tool-size
+overflow; stale whole-store/catalog oracles; and a new-mutant probe with one
+masked verifier-topic case and four malformed duplicate predicates. Artifact
+catalog setup now uses a stable topic owner to isolate verifier attribution;
+valid aggregate predicates preserve the four duplicate-mutant controls. A later
+control-reason clarification changes no mutation definition or control binding.
+Final source, scope, hashes, logs and commit are in
+private/evidence/2d-4c-part1/COMPLETION.md. No provider call, live gen-1/8765 access,
+real-database migration, protected-register edit, environment refresh, venv
+symlink or main merge occurred; AGENTS.md lookup stayed inside this repository.

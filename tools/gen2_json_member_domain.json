@@ -9,6 +9,8 @@
     "decision_receipts.answer",
     "decision_receipts.receipt",
     "decision_specs.document",
+    "detailed_check_records.assessment",
+    "detailed_check_records.evidence_ref",
     "export_delivery_receipts.receipt",
     "extraction_validations.comparison_evidence_ref",
     "extraction_validations_v2.comparison_evidence_ref",
@@ -138,6 +140,11 @@
     "decision_specs.provider",
     "decision_specs.spec_hash",
     "decision_specs.spec_id",
+    "detailed_check_records.check_id",
+    "detailed_check_records.created_at",
+    "detailed_check_records.performer_invocation_id",
+    "detailed_check_records.recorded_by_operation_id",
+    "detailed_check_records.topic_id",
     "dossiers.content_hash",
     "dossiers.created_at",
     "dossiers.document_ref",
@@ -545,6 +552,6 @@
     "works.study_group_id",
     "works.work_id"
   ],
-  "schema_sha256": "9c1244111312c7ef039a2004e7af3f26265c07ace33674c602e7de25c7e2ffcb",
-  "ddl_sha256": "182aa390e29eda83c7bc063a5c593d52992c0485ff316a19e868e4b93c1c1e76"
+  "schema_sha256": "b73353a4efe7a5c4589c95449ba7a6d53abad6b59f601943fd480f9ef3a57b83",
+  "ddl_sha256": "d36dfb15248a0c506c0fcbbc123787b913160d9dfc6b6aed9f321235910f5332"
 }

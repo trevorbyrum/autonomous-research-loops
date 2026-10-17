@@ -1,0 +1,44 @@
+{
+  "fixture": {
+    "schema": "detailed-check-record.schema.json",
+    "expect": "valid",
+    "tests": "V-8: attributed assessment proposal; no receipt authority"
+  },
+  "instance": {
+    "check_id": "check-1",
+    "assessment": {
+      "claim_id": "clm_00000001",
+      "claim_revision": 1,
+      "work_id": "wrk_00000001",
+      "source_version": "v1",
+      "source_artifact_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "examined_artifact_ref": {
+        "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size_bytes": 10,
+        "media_type": "text/plain"
+      },
+      "cited_spans": [
+        {
+          "start": 0,
+          "end": 10,
+          "locator": {
+            "kind": "paragraph",
+            "value": "1"
+          }
+        }
+      ],
+      "context_spans": [],
+      "kind": "denominators",
+      "outcome": "succeeded",
+      "method": "attributed-assessment/1",
+      "assessment": "The denominator is all 20 participants.",
+      "context_examined": "Population: all 20 enrolled participants; no exclusions.",
+      "applicability_reason": ""
+    },
+    "evidence_ref": {
+      "content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "size_bytes": 800,
+      "media_type": "application/json"
+    }
+  }
+}

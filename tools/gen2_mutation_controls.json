@@ -14411,6 +14411,209 @@
   ],
   "why": "Separate bound promotions at all three attainable tiers read the basis view and pass the consuming trigger."
  },
+ "2D4C1-artifacts": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-assessment-i-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_member_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-assessment-i-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_member_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-assessment-u-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_member_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-assessment-u-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_member_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-claim": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-committer": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-contract": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-domain": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-evidence-equality": {
+  "by_hand": true,
+  "controls": [
+   "test_detailed_checks.RouterCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-evidence_ref-i-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_member_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-evidence_ref-i-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_member_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-evidence_ref-u-duplicate": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_member_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-evidence_ref-u-nul": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_member_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-immutable_d": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-immutable_u": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-kind": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-operation-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-parent": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-producer": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-revision": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-router-source-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_detailed_checks.RouterCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-source-producer": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-spans": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-version": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
+ "2D4C1-work": {
+  "by_hand": true,
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_control"
+  ],
+  "why": "Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table."
+ },
  "2Q-baseline-digest-unchecked": {
   "controls": [
    "test_metrics_ratchet.BaselineFileTest.test_the_first_rebaseline_records_one_and_a_second_changes_nothing"

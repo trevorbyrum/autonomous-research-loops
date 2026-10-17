@@ -26,6 +26,7 @@
     "exports"
   ],
   "properties": {
+    "detailed_check_records": {"type": "array", "maxItems": 64, "items": {"$ref": "detailed-check-record.schema.json"}},
     "source_extractions": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/source_extraction"}},
     "extraction_validations_v2": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/extraction_validation_v2"}},
     "extraction_validations": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/extraction_validation"}},

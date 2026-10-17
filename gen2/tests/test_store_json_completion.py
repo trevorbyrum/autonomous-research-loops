@@ -152,6 +152,7 @@ class CoverageTest(unittest.TestCase):
         final = {table + '.' + column for table, column, *_ in COLUMNS}
         self.assertEqual(len(final), 22)
         self.assertEqual(set(manifest['covered']), final | {
+            'detailed_check_records.assessment', 'detailed_check_records.evidence_ref',
             'extraction_validations.comparison_evidence_ref', 'extraction_validations_v2.comparison_evidence_ref', 'quote_checks.match_result',
             'search_observations.continuation', 'search_observations.obligation_ids', 'search_observations.request', 'source_extractions.output_ref',
             'amendment_impacts.document', 'audit_events.detail', 'config_bundles.document', 'contract_revisions.document',

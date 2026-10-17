@@ -690,6 +690,13 @@ class StoreTestCase(unittest.TestCase):
             self.x("INSERT INTO extraction_validations VALUES ('val-fixture', 'ext-target', 'inv_vvvvvvvv', 'ext-independent', 'independent_extraction', 1, 'succeeded', 'byte_equal', ?, 'op_extractval', ?)", ref, T)
             if "extraction_validations_v2" in self.tables():
                 self.x("INSERT INTO extraction_validations_v2 SELECT validation_id, target_extraction_id, validator_invocation_id, validator_extraction_id, method, 2, outcome, comparison, comparison_evidence_ref, recorded_by_operation_id, created_at FROM extraction_validations")
+        if "detailed_check_records" in self.tables():
+            report = {"claim_id": "clm_00000001", "claim_revision": 1, "work_id": "wrk_00000001", "source_version": "v1",
+                "source_artifact_hash": h("7"), "examined_artifact_ref": json.loads(ref),
+                "cited_spans": [{"start": 0, "end": 1, "locator": {"kind": "paragraph", "value": "1"}}], "context_spans": [],
+                "kind": "numeric_units", "outcome": "not_checked", "method": "attributed-assessment/1",
+                "assessment": "", "context_examined": "", "applicability_reason": ""}
+            self.x("INSERT INTO detailed_check_records VALUES ('check-history', ?, 'inv_vvvvvvvv', ?, NULL, 'op_extractval', ?)", TOPIC, json.dumps(report), T)
         self.quote_check("qc-1")
         self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway="gw-call:1")
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1")
