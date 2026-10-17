@@ -115,9 +115,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_out
 - location: engine:gen2/router/service.py
-- limit: 21
-- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core. Task 2d-4b2 adds one acquisition admission collaborator (17 to 18) and only constructor/schema/public-delegate wiring. Task 2d-4b3e1 adds one ExtractionRecords collaborator (18 to 19), with only construction, authentication/write delegation and audit-result wiring. JSON2 adds one Observations collaborator (19 to 20), moving observation admission out of service.py and retaining its existing transaction writer. Task 2d-4b3e2 adds one ExtractorRegistry collaborator (20 to 21); service adds only construction/schema and operator/admission delegates.
-- task: 2d-4b3e2 part 1
+- limit: 22
+- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core. Task 2d-4b2 adds one acquisition admission collaborator (17 to 18) and only constructor/schema/public-delegate wiring. Task 2d-4b3e1 adds one ExtractionRecords collaborator (18 to 19), with only construction, authentication/write delegation and audit-result wiring. JSON2 adds one Observations collaborator (19 to 20), moving observation admission out of service.py and retaining its existing transaction writer. Task 2d-4b3e2 adds one ExtractorRegistry collaborator (20 to 21); service adds only construction/schema and operator/admission delegates. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only.
+- task: 2d-4c part 1
 
 ### ML-0014
 - action: admit
@@ -183,9 +183,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/router/boundary.py
-- limit: 13
-- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority. Task 2d-4b3e1 adds one caller (10 to 11), reusing the existing staged-artifact authentication and typed refusal paths. JSON2 adds Observations (11 to 12), reusing normalization and observation checks before the existing writer transaction. Task 2d-4b3e2 adds ExtractorRegistry (12 to 13), reusing normalization and typed refusals for audited operator admission.
-- task: 2d-4b3e2 part 1
+- limit: 14
+- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority. Task 2d-4b3e1 adds one caller (10 to 11), reusing the existing staged-artifact authentication and typed refusal paths. JSON2 adds Observations (11 to 12), reusing normalization and observation checks before the existing writer transaction. Task 2d-4b3e2 adds ExtractorRegistry (12 to 13), reusing normalization and typed refusals for audited operator admission. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only.
+- task: 2d-4c part 1
 
 ### ML-0025
 - action: budget
@@ -507,9 +507,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/core/canonical.py
-- limit: 18
-- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity, and 2d-4b added the pure acquisition validator (15 to 16). Task 2d-4b2 adds the admission adapter (16 to 17), comparing trusted attempted-request octets with the existing canonical serializer; no second hashing or serialization mechanism. JSON2 adds Observations (17 to 18), using the same logical-member checks and exact-byte SHA-256 helper.
-- task: 2d-4b3e1-json2
+- limit: 19
+- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity, and 2d-4b added the pure acquisition validator (15 to 16). Task 2d-4b2 adds the admission adapter (16 to 17), comparing trusted attempted-request octets with the existing canonical serializer; no second hashing or serialization mechanism. JSON2 adds Observations (17 to 18), using the same logical-member checks and exact-byte SHA-256 helper. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only.
+- task: 2d-4c part 1
 
 ### ML-0078
 - action: admit
@@ -872,3 +872,81 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - target: engine|reach|gen2/router/service.py->gen2/router/extractor_registry.py
 - reason: The operator registry collaborator validates and audits immutable tool snapshots through the existing Router boundary and writer; service adds only construction and delegation. New reach is through that collaborator and its established boundary helpers, with no provider or execution authority.
 - task: 2d-4b3e2 part 1
+
+### ML-0139
+- action: admit
+- target: engine|edge|gen2/router/detailed_checks.py->gen2/core/canonical.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0140
+- action: admit
+- target: engine|edge|gen2/router/detailed_checks.py->gen2/router/boundary.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0141
+- action: admit
+- target: engine|edge|gen2/router/detailed_checks.py->gen2/router/extractions.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0142
+- action: admit
+- target: engine|edge|gen2/router/service.py->gen2/router/detailed_checks.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0143
+- action: admit
+- target: engine|file|gen2/router/detailed_checks.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0144
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/detailed_checks.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0145
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/detailed_checks.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0146
+- action: admit
+- target: engine|reach|gen2/router/detailed_checks.py->gen2/core/canonical.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0147
+- action: admit
+- target: engine|reach|gen2/router/detailed_checks.py->gen2/core/instants.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0148
+- action: admit
+- target: engine|reach|gen2/router/detailed_checks.py->gen2/core/pagination.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0149
+- action: admit
+- target: engine|reach|gen2/router/detailed_checks.py->gen2/router/boundary.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0150
+- action: admit
+- target: engine|reach|gen2/router/detailed_checks.py->gen2/router/extractions.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1
+
+### ML-0151
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/detailed_checks.py
+- reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
+- task: 2d-4c part 1

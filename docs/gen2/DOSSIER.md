@@ -3185,3 +3185,42 @@ any disposable snapshot. Evidence and COMPLETION.md belong in
 `/home/trevor/work/research-loops-public/private/evidence/2d-4c/`.
 The operator's evidence/applicability ruling is required before part 1;
 the entire 2d-4c brief remains **INCOMPLETE**.
+
+#### 2d-4c part 1 — operator ruling and re-estimate (2026-10-17; before code)
+
+The task's 2026-10-17 operator ruling approves the recommendation above and
+settles the evidence/applicability question. Re-estimate this dispatch at
+**about 495 handwritten lines**: ordered DDL 155, schema 50, collaborator and
+wiring 65, Router/raw record matrices 170, paired mutants/integration 55.
+Generated member guards, catalog classifications, hashes and control records
+are additional. Stop after durable admission; parts 2–4 remain deferred.
+
+Use one closed `attributed-assessment/1` report, retained as the immutable
+record's assessment JSON. It contains kind/outcome, exact claim revision,
+work/source version and canonical source hash, the separate examined artifact
+reference, cited spans, additional context spans, assessment text, kind-specific
+context description and an explicit applicability reason (nonempty for
+not_applicable). `context_examined` describes quantities/unit interpretation,
+population/base, polarity/scope or limiting context according to kind; the store
+checks its presence, never whether the prose is scientifically adequate.
+Performed outcomes require a topic-authorized evidence artifact whose parsed
+JSON equals that complete report, so its assessment, method/version, context
+and bindings cannot drift from the record. Lexical diagnostics may be retained
+as supplementary artifacts; none is interpreted as performing a check.
+Unperformed outcomes may retain evidence but supply no performance authority.
+
+The two new JSON columns are `assessment` and nullable `evidence_ref`; classify
+both and generate additive member-domain guards. Raw DDL independently checks
+the closed report domain, exact integral span/locator domain, authorized artifact
+metadata, claim/source/topic, independent contract verifier and operation
+attribution. Router authenticates examined and evidence bytes outside the writer
+lock and checks report equality, then writes within the existing fenced commit.
+A canonical source identity and examined extraction bytes remain separate;
+receipt-specific acquisition/extraction matching belongs to the later consumer.
+No receipt schema, fixture, SQL 03/34 consumer or promotion authority changes.
+
+Validation: full task gates, full installed-trigger inventory, complete affected
+mutation families (including service/schema/tool targets and transitive fixture
+imports), and separate accepted control traces for new predicates. Only repository
+AGENTS.md lookup is used (none found). No disposable snapshot is planned; if
+needed its venv will be copied. Evidence: private/evidence/2d-4c-part1/.
