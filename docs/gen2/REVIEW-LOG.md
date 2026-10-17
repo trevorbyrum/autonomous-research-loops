@@ -2737,3 +2737,21 @@ The post-2q Gate D is renumbered #5.
 - **Non-blocking:** none.
 - **Landing at 6c145ae:** `gen2-check` green; `gen2-gateway` green.
 - **Next:** 2d-4c-p2-repair-1 (Sol), with an audit of the same reseed pattern in 7 other modules.
+
+## 2026-10-17: 2d-4c-p2-repair-1 (receipt-reference test experiments): round 2 PASS. 2d-4c part 2 is ACCEPTED
+- **Astra** (`a5243b02`, pinned 927b32d; `private/reviews/gen2-2d-4c-p2-r2-astra-review-20261017.md`):
+  - **C PASS. A and B retained.**
+  - **ROOT-CAUSE test repairs**; production unchanged.
+- **C1 closed.**
+  - `restore_triggers` rebuilds the complete requested catalog in requested order and asserts it.
+  - With restoration made a no-op, the reset regression fails by assertion.
+  - Astra independently reproduced all **14 modules / 25 classes:** 2 of 25 kept exact reversal before the repair, 25 of 25 after.
+  - The nine defeated reseed owners are confirmed and repaired.
+- **Earlier acceptances.** **421 focused raw-DDL tests** pass in both real normal order and real reversed order, covering the extraction, JSON rollout/member/completion, observation, detailed-record and receipt families.
+  - **No previously accepted claim exposed an order-sensitive failure.**
+  - Their earlier reversal-coverage gap is now closed.
+- **C2 closed.** Distinct canonical, target and validator bytes in both matrices; Router and SQL selector mutants die by assertion; separate validated controls survive, with traces.
+- **Landing at 927b32d:**
+  - `gen2-check` green: 4,200 tests; 334 triggers / 3,967 reversal outcomes; 3,604/3,604 mutants.
+  - `gen2-gateway` green: 413 mutants.
+- **Next:** 2d-4c part 3, positive-fixture conversion.
