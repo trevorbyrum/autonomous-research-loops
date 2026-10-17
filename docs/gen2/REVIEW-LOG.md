@@ -2723,3 +2723,17 @@ The post-2q Gate D is renumbered #5.
 - **NB1 (coverage):** add regressions for corrupt recorded bytes, evidence left out of `result_refs`, and an ID collision under a new operation. Reviewer probes passed all three, and no defect was found. This is owned by part 2.
 - **Landing at 89401a7:** `gen2-check` green; `gen2-gateway` green.
 - **Next:** 2d-4c part 2, successor receipt references, optional and not yet mandatory.
+
+## 2026-10-17: 2d-4c part 2 (verification-receipt/2, optional detailed-check refs; SQL 37): round 1 BLOCK (Gate C)
+- **Astra** (`29714aac`, pinned 6c145ae; `private/reviews/gen2-2d-4c-p2-astra-review-20261017.md`):
+  - **A PASS.** Exact relational binding; the explicit `succeeded→checked_ok` / `failed→checked_problem` projection gave 400 verdicts with zero divergence across schema, Router validator, collaborator and raw DDL; span guard v3 is text-identical apart from rename and root allowance; `service.py` is wiring only (1,448).
+  - **B PASS.**
+  - **C BLOCK.**
+- **Production is ROOT-CAUSE at its optional-binding scope.**
+- **Blocking findings (both experiment construction, charter class (e)):**
+  - **C1:** `ReferenceCases.setUp` reseeds from normal DDL and reinstalls three guards in a fixed order. The reversed run had the same 334-trigger order, so the raw receipt cases had no reversed-order credit.
+  - **C2:** the validated-extraction fixture uses equal canonical, target and validator hashes. A target→validator selector swap passed all 21 Router and all 20 raw receipt tests.
+- **Astra's catalog-asserting probes:** the unmodified code passes in both orders, and the distinct-output cases kill both selector swaps (5 assertion failures each). **No production escape was shown.**
+- **Non-blocking:** none.
+- **Landing at 6c145ae:** `gen2-check` green; `gen2-gateway` green.
+- **Next:** 2d-4c-p2-repair-1 (Sol), with an audit of the same reseed pattern in 7 other modules.
