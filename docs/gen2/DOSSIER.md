@@ -3960,3 +3960,68 @@ push or main merge occurred. AGENTS.md lookup stayed inside the repository;
 no manual disposable snapshot or venv symlink was created. This completes the
 selected raw table group only; the pending groups and precision constraint above
 remain for the next pre-code audit. Part 4 stays **OFF**. Stop after this slice.
+
+#### 2d-4c part 3e — re-estimate (before code)
+
+2026-10-17, on `gen2` at `880c020`. Read the whole task, Constraints,
+operator ruling and every continuation, including the OPEN OPERATOR DECISION;
+all of this section and its part 3 audit/implementation notes; accepted
+`9416fd6`, `1bfb9a9`, `d140c23`, `1faacfb` and their shared fixtures; and
+Astra's complete 3d review. Repository-only AGENTS.md lookup found none.
+The precision gap is an open production-domain decision: no rounding, domain
+narrowing or activation is authorized here.
+
+**Remaining estimate: 980 handwritten additions**, excluding documentation
+and generated evidence: Router quote/capture/verdict admission and binding
+wiring 115; raw quote/capture/adjudication authenticated setup 130; global raw
+admission/promotion/canonical/content/acquisition/pending/history/replacement/
+JSON/member/observation conversion 200; both amendment positives 45; focused
+binding/promotion/attention/catalog regressions 150; retained audit/trace/gate
+drivers 270; six raw span/exact owners 70 (provisional, blocked by the operator
+decision, not an implementable estimate). The actionable remainder is 910,
+well above 500. **Split again; implement only the Router quote/capture/verdict
+group in part 3e**, estimated **495 additions**: wiring 115, independent
+binding/promotion/attention/catalog regressions 110, retained private drivers
+270, including reused infrastructure. Stop after this coherent group set.
+
+Convert CanonicalQuotesCase's admitted quote root and the inherited CaptureCase,
+CaptureTest/RouterGuardTest, quote AttentionCase/AttentionTest/SharedOwnerTest/
+RouterGuardTest, and verdict AttentionCase/AttentionTest/SharedOwnerTest.
+AdmissionTest's accepted extraction receipt uses CanonicalQuotesCase too.
+Bare QuotesCase has only receipt refusals; keep those explicit `/1` isolation
+controls, and preserve quote-only tests. No pending positive becomes historical.
+
+Reuse seed_checks, assessment_binding, attach_checks and restore_triggers.
+Admit real assessments under unmutated DDL before receipt snapshots, including
+each distinct claim revision and ordered single/multiple-span binding. Building
+or submitting a receipt only selects admitted records. After reseeding, restore
+the exact requested trigger definitions/order, including subject-local drops.
+Reattach after a legitimate revision/span/method/outcome change; explicit `/1`
+refusals continue isolating the original guard. Keep the same promotions, full
+text tier, holds, replay/conflict and rollback behavior. Distinct revisions and
+span arrays must consume disjoint record sets. Ordinary byte-equal extraction
+controls claim no artifact-selector discrimination; the accepted distinct-output
+experiment retains that separate responsibility.
+
+**Exactly what remains pending after this slice:** raw quote DDLTest,
+CaptureDDLTest and AdjudicationDDLTest (HoldDDLTest stays hold-only);
+StoreTestCase.verify/populate_every_table, VerificationTest,
+ContractAdmittedSupportTest, raw canonical/content/acquisition/extraction-content
+owners, PendingDDLTest's accepted canonical/distractor receipts, all raw
+history/replacement/JSON/member/observation consumers; both ImpactTest callers
+of ContractWorld.verify (compatible completion/promotion and protocol fencing).
+Also pending, **blocked by the operator decision and untouched**: SpanDDLTest,
+ExtractionSpanDDLTest, ValidatedSpanDDLTest, ExactSpanDDLTest,
+ExtractionExactSpanDDLTest and ValidatedExactSpanDDLTest. Previously converted
+owners and explicit historical/optional/schema controls retain their purposes.
+
+Back the dispositions with a repository-wide receipt-builder call-site inventory
+and full transitive import/control closure. Run full gen2-test, trigger-order,
+composition, every affected complete --only family and the eight static gates
+before the implementation commit; retain passing control traces and unchanged
+trigger inventory. Wait for no active user/system gen2-landing-* units before
+heavy runs. Any disposable venv is copied with cp -a. No production, DDL, schema
+or pin change; stop and report a new representability gap or production need.
+Mandatory consumption and promotion changes remain **OFF**; part 4 is blocked.
+Evidence and exact pending inventory: private/evidence/2d-4c-part3e/COMPLETION.md.
+This documentation-only estimate commit precedes implementation and its gates.
