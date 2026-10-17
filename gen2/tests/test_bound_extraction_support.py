@@ -8,6 +8,7 @@ from unittest.mock import patch
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
 from gen2.tests.ddl_fixtures import restore_triggers
+from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
 
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_canonical_content_tiers import FULL, fixture
@@ -42,9 +43,10 @@ class PromotionCases:
         with patch.object(sf, 'DDL_TEXT', db.schema_text()):
             context = fixture({**FULL, 'abstract': 'Recorded abstract'})
             self.case = context.__enter__()
+            load_claim(self.case, tier)
+            self.doc = support_document(self.case, method, tier)
+            seed_checks(self.case, self.doc)
         self.addCleanup(context.__exit__, None, None, None)
-        load_claim(self.case, tier)
-        self.doc = support_document(self.case, method, tier)
         self.target, self.independent = self.case.rows('SELECT target_extraction_id, validator_extraction_id FROM extraction_validations_v2')[0]
         # Seed authenticated operands under production DDL, then install exactly
         # the requested live view/trigger (mutants, trace instrumentation and
@@ -74,12 +76,12 @@ class PromotionCases:
 
     def store(self, legacy=False):
         if legacy:
+            historical_receipt(self.doc)
             with historical(self.case):
                 out = OwnCases.submit(type('Raw', (), dict(RAW=True, case=self.case, doc=self.doc))())
-        elif self.RAW:
-            out = OwnCases.submit(self)
         else:
-            out = self.case.send(self.doc)
+            attach_checks(self.case, self.doc)
+            out = OwnCases.submit(self) if self.RAW else self.case.send(self.doc)
         self.assertEqual(out['status'], 'committed', out)
 
     def promote(self, expected='committed'):

@@ -7,6 +7,7 @@ from gen2.tests.test_bound_extraction_support import PromotionCases
 from gen2.tests.test_pending_extraction_support import METHODS
 from gen2.tests.test_validated_extraction_receipts import ValidatedCases
 from gen2.tests.independent_tier_fixtures import independent_basis
+from gen2.tests.detailed_receipt_fixtures import attach_checks
 
 
 class ExtractionAttentionTest(unittest.TestCase):
@@ -47,6 +48,7 @@ class ExtractionAttentionTest(unittest.TestCase):
                 self.doc.update(access_tier='abstract', verdict='cannot_assess_at_required_tier')
                 self.doc['checks'].update(numeric_units='not_checked', denominators='unavailable',
                     negation='not_checked', qualifications='unavailable')
+                attach_checks(self.case, self.doc)
                 out = self.case.send(self.doc)
                 self.assertTrue(self.case.store.bound_extraction_receipt(self.doc['verification_receipt_id']))
                 ids = [r[0] for r in self.case.rows('SELECT hold_id FROM holds')]
@@ -121,6 +123,7 @@ class ExtractionAttentionTest(unittest.TestCase):
                     self.doc.update(verification_receipt_id='ver_canonical1')
                     self.doc['extraction'] = dict(method='canonical_bytes', extractor='canonical/1',
                         produced_by_invocation_id=self.case.ACQUIRER, validation_ref=None)
+                    attach_checks(self.case, self.doc)
                     self.effects(self.case.send(self.doc), [])
                     self.assertEqual(self.case.rows('SELECT * FROM holds'), held)
 

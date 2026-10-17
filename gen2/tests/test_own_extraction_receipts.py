@@ -4,9 +4,11 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 
+from gen2.core import canonical
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
 from gen2.tests.ddl_fixtures import restore_triggers
+from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt
 from gen2.tests.test_canonical_content_tiers import FULL, fixture
 from gen2.tests.test_extraction_acquisitions import extraction_document, send
 
@@ -19,8 +21,9 @@ class OwnCases:
         with patch.object(sf, 'DDL_TEXT', db.schema_text()):
             context = fixture(FULL)
             self.case = context.__enter__()
+            self.doc = extraction_document(self.case, 'verifier_extraction')
+            seed_checks(self.case, self.doc)
         self.addCleanup(context.__exit__, None, None, None)
-        self.doc = extraction_document(self.case, 'verifier_extraction')
         self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'bibliographic'
         restore_triggers(self.case, sf.DDL_TEXT,
             omit=() if self.RAW else ('verification_receipts_own_extraction',))
@@ -32,15 +35,17 @@ class OwnCases:
         try:
             self.case.x("INSERT INTO verification_receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 d['verification_receipt_id'], d['topic_id'], d['claim']['claim_id'], d['claim']['claim_revision'],
-                d['source']['work_id'], d['source']['source_version'], json.dumps(d['cited_spans']), d['obtained_content_hash'],
-                d['access_tier'], d['requested_for']['use'], d['requested_for']['required_access_tier'], json.dumps(d['acquisition']),
+                d['source']['work_id'], d['source']['source_version'], canonical.canonical_bytes(d['cited_spans']).decode(), d['obtained_content_hash'],
+                d['access_tier'], d['requested_for']['use'], d['requested_for']['required_access_tier'], canonical.canonical_bytes(d['acquisition']).decode(),
                 d['extraction']['method'], d['extraction']['produced_by_invocation_id'], d['extraction']['validation_ref'],
-                d['producer_invocation_id'], d['verifier_invocation_id'], d['quote_check_id'], d['verdict'], json.dumps(d), d['verified_at'])
+                d['producer_invocation_id'], d['verifier_invocation_id'], d['quote_check_id'], d['verdict'], canonical.canonical_bytes(d).decode(), d['verified_at'])
             return {'status': 'committed'}
         except sqlite3.IntegrityError as exc:
             return {'status': 'rejected', 'detail': str(exc)}
 
     def refuse(self):
+        # Historical /1 operands isolate the existing extraction predicate.
+        historical_receipt(self.doc)
         before = self.case.state()
         out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)

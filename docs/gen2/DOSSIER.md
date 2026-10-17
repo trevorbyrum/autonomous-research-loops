@@ -3395,7 +3395,7 @@ section including the repair note, accepted admission/binding code, shared
 Repository-only AGENTS.md lookup found none. No production change is needed.
 
 **Audit before code.** Receipt construction has four roots: raw
-`store_fixtures.StoreTestCase.verify` (including `seed_every_table` history),
+`store_fixtures.StoreTestCase.verify` (including `populate_every_table` history),
 Router `test_router_commit.AuthorityTest.verification_receipt`, Router
 `test_canonical_receipt_admission.ReceiptCase.document`, and quote
 `test_governed_quotes.QuotesCase.receipt_document` (schema-example based).
@@ -3469,3 +3469,57 @@ with traces. Run every required gate and record counts/footprint/deviations in
 private/evidence/2d-4c-part3/COMPLETION.md. Mandatory consumption and promotion
 changes stay OFF; production code/DDL/pins remain untouched. A production need
 would stop this dispatch. No trigger edit is planned.
+
+**Part 3a implementation, 2026-10-17 (fixture conversion only).** The own and
+validated receipt mixins, bound promotion mixin and inherited extraction-attention
+fixture now supply `/2` receipts with real, admitted records for every performed
+kind. This reaches seven existing Router/raw consumer classes in seven modules;
+three raw wrappers inherit the change without edits. A test-only helper admits
+all twelve kind/performed-outcome combinations through Router authentication,
+retains exact assessment evidence and applicability reasons, and attaches existing
+records without submission-time writes. Source, examined bytes, claim revision,
+full spans and independent verifier remain bound by accepted production code.
+
+Existing extraction refusal and unbound/corrupt promotion operands explicitly
+remain `/1` historical isolation controls. Attention's canonical fallback
+reattaches records, and changed unperformed summaries receive matching detailed
+outcomes. Raw INSERTs now serialize receipt objects, spans and acquisition JSON
+canonically, matching the already admitted reports. All assertions in the 58
+existing edited-module test methods are unchanged; three bodies add explicit
+fixture conversion calls. New regressions exercise retained evidence, performed
+failure/exemption, all promotion tiers, distinct canonical/target/validator/
+comparison bytes, optional and historical consumption, and requested catalogs
+with reversal plus dropped/mutated definitions. Every reseeding owner still uses
+`restore_triggers`; no production trigger is changed.
+
+The final scope expansion selects **181 mutants in seven prefixes**, adding the
+older `2D4-` family when completing the six directly affected generator families.
+Qualified accepted-path traces cover **133/133 directly affected pairings**, using
+20 distinct passing controls; bound-view controls record returned rows separately
+from successful trigger entries and Python changed-line/direct-guard arcs. All
+3,604 existing mutation-control records remain unchanged. Private evidence keeps
+the complete import/control mapping and the converted/historical/pending audit.
+
+Footprint: **263 handwritten repository additions / 10 removals**, plus **188
+retained private Python driver lines**, including reused tracing infrastructure:
+**451 additions against the 480-line slice estimate**, excluding documentation;
+no generated repository data changes. Stopped attempts exposed overlong fixture
+IDs and noncanonical raw JSON; the trace driver also needed view observations,
+raw-control selection by target rather than filename, and tuple normalization
+when reloading JSON. None is credited as a passing gate. No production change was
+needed. **Part 3b remains pending**, as does part 4 mandatory consumption and
+promotion activation; both activation changes remain OFF.
+
+**Part 3a validated before implementation commit.** Full gen2-test passes
+**4,206 tests, two existing skips**; trigger-order checks **334 triggers / 4,011
+identical Store tests/subtests** in both orders; composition passes **six tests**.
+The complete seven-prefix affected-family sweep kills **181/181 mutants**, all
+with separate passing controls, over a green **1,061-test Store baseline**.
+All eight static gates pass and are repeated after this final note. The unchanged
+full trigger inventory has **zero uncovered** guards. Focused execution passes
+110 tests plus the separately added performed-outcome regression (111 total).
+All six code files retain the exact tested source hashes. Evidence, audit,
+commits, gate logs, footprint and deviations are retained in
+private/evidence/2d-4c-part3/COMPLETION.md. No provider call, real-database migration,
+gen-1/runtime/8765 access, protected-register edit, main merge or disposable
+checkout/venv symlink occurred. This completes **part 3a only**; stop here.

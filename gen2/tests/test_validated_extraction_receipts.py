@@ -7,6 +7,7 @@ from unittest.mock import patch
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
 from gen2.tests.ddl_fixtures import restore_triggers
+from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt
 from gen2.tests.test_canonical_content_tiers import FULL, fixture
 from gen2.tests.test_extraction_acquisitions import extraction_document
 from gen2.tests.test_own_extraction_receipts import OwnCases
@@ -28,14 +29,17 @@ class ValidatedCases:
         with patch.object(sf, 'DDL_TEXT', db.schema_text()):
             context = fixture(FULL)
             self.case = context.__enter__()
+            self.doc = extraction_document(self.case, 'validated_extraction')
+            seed_checks(self.case, self.doc)
         self.addCleanup(context.__exit__, None, None, None)
-        self.doc = extraction_document(self.case, 'validated_extraction')
         self.validation = self.doc['extraction']['validation_ref']
         self.target, self.independent = self.case.rows('SELECT target_extraction_id, validator_extraction_id FROM extraction_validations_v2')[0]
         restore_triggers(self.case, sf.DDL_TEXT,
             omit=() if self.RAW else ('verification_receipts_validated_extraction',))
 
     def refuse(self):
+        # Historical /1 operands isolate the existing validation predicate.
+        historical_receipt(self.doc)
         before = self.case.state()
         out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)
@@ -69,6 +73,7 @@ class ValidatedCases:
                 self.refuse()
 
     def test_missing(self):
+        historical_receipt(self.doc)
         self.doc['extraction']['validation_ref'] = None
         before = self.case.state()
         self.assertEqual(self.submit()['status'], 'rejected')
