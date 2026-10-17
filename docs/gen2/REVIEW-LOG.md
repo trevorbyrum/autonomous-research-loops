@@ -2777,3 +2777,12 @@ The post-2q Gate D is renumbered #5.
 - **The 3c pending list is truthful,** including the two amendment callers. Astra's own inspection of receipt builders found no omitted pending positive.
 - **Landing at 1bfb9a9:** `gen2-check` green (4,211 tests; 334 triggers / 4,034 reversal outcomes; 3,604/3,604 mutants). `gen2-gateway` is carried forward from 927b32d, since no production change was made.
 - **Next:** 2d-4c part 3c.
+
+## 2026-10-17: 2d-4c part 3c (Router pending-bound, table, span and exact-span receipt fixtures): PASS on the first review. Accepted
+- **Astra** (`f166f7bc`, pinned d140c23, audit 3fe2059; `private/reviews/gen2-2d-4c-p3c-astra-review-20261017.md`): **A, B and C all PASS, ROOT-CAUSE.** No findings.
+- **Span discrimination.** PAGE, TABLE, mixed spans and the decoded exponent each get a distinct admitted record. Table refusal controls reattach records after the change to PAGE. The `start=1e30` exponent control survives.
+- **Equal-byte controls get no selector credit.** The unchanged four-distinct-artifact experiment supplies that evidence.
+- **Clarification:** valid bound support avoids a new missing-basis hold. It never clears an existing one. `ExtractionAttentionTest` owns the fenced matrix.
+- **The 3d pending list is honest,** with no omitted positive owner.
+- **Landing at d140c23:** `gen2-check` green (5,502 s). `gen2-gateway` is carried forward from 927b32d.
+- **Next:** 2d-4c part 3d.
