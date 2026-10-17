@@ -3273,3 +3273,41 @@ Final source, scope, hashes, logs and commit are in
 private/evidence/2d-4c-part1/COMPLETION.md. No provider call, live gen-1/8765 access,
 real-database migration, protected-register edit, environment refresh, venv
 symlink or main merge occurred; AGENTS.md lookup stayed inside this repository.
+
+
+#### 2d-4c part 2 — re-estimate (before code)
+
+2026-10-17, against `28fec14` and accepted part 1 `89401a7`; read the whole
+task, operator ruling, part 1 notes/code and Astra's NB1. Estimate **500
+handwritten lines**: additive SQL domain/binding 80, schema compatibility 45,
+collaborator/wiring 55, Router/raw tests including NB1 230, paired mutants 65,
+history/hash/control integration 25. Also retain an approximately 85-line exact
+copy of the installed SQL 32 span guard when replacing its root member shape;
+generated control data and documentation are additional. This is the optional
+reference slice only; fixture conversion and mandatory consumption remain
+parts 3/4. Re-split if implementation reveals materially greater scope.
+
+Exact representation: `verification-receipt/2` retains the existing `checks`
+summary and requires a closed `detailed_checks` object with all four kind keys.
+Each entry has an authoritative-vocabulary `outcome` and an optional `record_id`
+(nonempty string; omission means no reference). An explicit checked mapping is
+`succeeded -> checked_ok`, `failed -> checked_problem`, with the other three
+spellings identical; reject inconsistent pairs, legacy spellings in outcomes,
+and detailed fields on `/1`. Never rewrite retained `/1` JSON. Optional references
+must resolve with exact kind/outcome, topic, claim revision, complete ordered
+cited spans including locators, canonical source identity and verifier. The
+examined artifact must be the obtained canonical artifact, own extraction output,
+or validated target extraction output according to the receipt's actual basis.
+No new JSON columns; the existing receipt member guards cover nested members.
+
+Files: `gen2/store/schema/37-detailed-check-receipts.sql` and `order.txt`,
+`gen2/schema/verification-receipt.schema.json`, `gen2/router/detailed_checks.py`
+and wiring-only `service.py`; new `test_detailed_check_receipts.py` and
+`test_store_detailed_check_receipts.py`, NB1 in `test_detailed_checks.py`,
+`test_store_history.py`; `tools/gen2_mutants/detailed_check_receipts.py`, mutant
+registration/control files and the two hash pins. Metrics ledger/baseline only
+if the existing gates require attributable admission. No promotion consumer or
+shared positive receipt fixture changes. Validation uses all task gates,
+transitive affected-family selection, full uncovered-trigger inventory and
+separate passing controls with traces for every new mutant. Evidence goes to
+private/evidence/2d-4c-part2/; no private inputs are committed.
