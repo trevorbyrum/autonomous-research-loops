@@ -2786,3 +2786,25 @@ The post-2q Gate D is renumbered #5.
 - **The 3d pending list is honest,** with no omitted positive owner.
 - **Landing at d140c23:** `gen2-check` green (5,502 s). `gen2-gateway` is carried forward from 927b32d.
 - **Next:** 2d-4c part 3d.
+
+## 2026-10-17: 2d-4c part 3d (raw table receipt fixtures): PASS on the first review. Accepted, with an operator decision raised
+- **Astra** (`95f9c5f5`, pinned 1faacfb, audit 2f192d3; `private/reviews/gen2-2d-4c-p3d-astra-review-20261017.md`): **A, B and C all PASS, ROOT-CAUSE.** No blocking findings.
+- **Raw records are real.** `RawAssessmentFixture` admits 48 real records per owner through Router commits under unmutated DDL. The raw tests still exercise SQL admission, with further Router commits prohibited.
+- **The four regressions:**
+  - span/tier matrix;
+  - foreign-span refusal and matching promotion;
+  - no invented references for unperformed outcomes;
+  - exact catalog restoration.
+- **Counterfactuals all fail by assertion:** `/1` downgrade (9), collapsed spans (9), removed binding trigger (3), reset catalog (3).
+- **NB1, NEEDS A DESIGN DECISION (escalated to the operator).** **The store accepts spans for which the Router cannot admit an exact matching detailed record.**
+  - Astra probed the production Router with literal bytes:
+    - 9007199254740991 commits;
+    - 9007199254740993 and 9223372036854775809 are refused as `payload_invalid` under C-13.
+  - Unmutated DDL accepts and promotes both values across all three methods.
+  - **The cause is two accepted contracts meeting:** the 2d-4b3d exact integral span domain (no maximum) and C-13 canonical JSON.
+  - **The operator decides:**
+    - any amendment to the span domain or the canonical representation;
+    - how it treats retained data.
+  - **Until then:** do not close the raw-span conversion and do not activate part 4.
+- **Landing at 1faacfb:** `gen2-check` green (4,220 tests; 334 triggers / 4,084 reversal outcomes; 3,604/3,604 mutants). `gen2-gateway` is carried forward from 927b32d.
+- **Next:** 2d-4c part 3e, the non-span groups.
