@@ -2,7 +2,10 @@
 import json
 from unittest.mock import patch
 
+from gen2.store import db
 from gen2.tests.canonical_quotes_fixtures import CanonicalQuotesCase
+from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
+from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
 
 
 class CaptureCase(CanonicalQuotesCase):
@@ -15,11 +18,26 @@ class CaptureCase(CanonicalQuotesCase):
         out = self.send([], grant=self.capture_grant, refs=[ref], claims=[{"claim_id": "clm_quote00001", "revision": revision,
             "text_ref": ref, "load_bearing": True, "required_access_tier": "full_text"}])
         self.assertEqual(out["status"], "committed", out)
+        # Retain subject-local drops as well as the requested mutations/order.
+        requested = self.rows(TRIGGERS)
+        restore_triggers(self, db.schema_text())
+        try:
+            doc = self.receipt_document(detailed=False)
+            doc['claim']['claim_revision'] = revision
+            single = doc['cited_spans']
+            for spans in (single, [*single, dict(start=0, end=1, locator=dict(kind='section', value='Results'))]):
+                doc['cited_spans'] = spans
+                seed_checks(self, doc)
+        finally:
+            ddl = db.schema_text() + '\n' + '\n'.join('DROP TRIGGER "' + n + '";' for n, _ in self.rows(TRIGGERS))
+            ddl += '\n' + '\n'.join(sql + ';' for _, sql in requested)
+            restore_triggers(self, ddl)
 
     def operands(self, revision=2):
         doc = self.receipt_document()
         doc["claim"]["claim_revision"] = revision
         doc["requested_for"]["use"] = "load_bearing"
+        attach_checks(self, doc)
         return self.record(claim_revision=revision), doc
 
     def promote(self, revision=2, accepted=True):
@@ -32,6 +50,7 @@ class CaptureCase(CanonicalQuotesCase):
             "accepted_support" if accepted else "provisional")
 
     def refuse(self, records, doc, revision=2):
+        historical_receipt(doc)  # Explicit /1 capture-guard refusal isolation.
         before = self.state(exclude=())
         out = self.send(records, verification_receipts=[doc])
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
@@ -114,6 +133,7 @@ class CaptureTest(CaptureCase):
         doc["extraction"].update(method="verifier_extraction", produced_by_invocation_id="inv_verify0001")
         from gen2.tests.extraction_receipt_fixtures import attach
         attach(self, doc)
+        attach_checks(self, doc)
         self.accepted(record, verification_receipts=[doc])
         self.promote(accepted=False)
 
@@ -124,6 +144,7 @@ class CaptureTest(CaptureCase):
         doc["extraction"].update(method="verifier_extraction", produced_by_invocation_id="inv_verify0001")
         from gen2.tests.extraction_receipt_fixtures import attach
         attach(self, doc)
+        attach_checks(self, doc)
         before = self.state(exclude=())
         self.accepted(record, verification_receipts=[doc])
         # The bound basis avoids remediation; governed capture still quarantines.
@@ -171,6 +192,7 @@ class CaptureTest(CaptureCase):
         record, doc = self.operands()
         second = self.record(claim_revision=2, check_id="qck_second0001", quoted_text="{", span_start=0, span_end=1)
         doc["cited_spans"].append({"start": 0, "end": 1, "locator": {"kind": "section", "value": "Results"}})
+        attach_checks(self, doc)
         self.assertEqual(self.send([record, second], verification_receipts=[doc])["status"], "committed")
         self.promote()
 
@@ -235,6 +257,7 @@ class CaptureTest(CaptureCase):
         if multiple:
             records.append(self.record(claim_revision=2, check_id="qck_second0001", quoted_text="{", span_start=0, span_end=1))
             doc["cited_spans"].append({"start": 0, "end": 1, "locator": {"kind": "section", "value": "Results"}})
+        attach_checks(self, doc)
         before = self.state(exclude=())
         self.assertEqual(self.send(records, verification_receipts=[doc])["status"], "committed")
         self.assertEqual(self.rows("SELECT * FROM governed_captures_blocked"), [])

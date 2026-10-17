@@ -4025,3 +4025,88 @@ or pin change; stop and report a new representability gap or production need.
 Mandatory consumption and promotion changes remain **OFF**; part 4 is blocked.
 Evidence and exact pending inventory: private/evidence/2d-4c-part3e/COMPLETION.md.
 This documentation-only estimate commit precedes implementation and its gates.
+
+**Part 3e implementation (selected Router quote/capture/verdict group),
+2026-10-17.** CanonicalQuotesCase now seeds authenticated attributed assessments
+under unmutated DDL using the accepted helpers. CaptureCase seeds distinct
+single/mixed-span bindings for each new claim revision, then restores the exact
+requested trigger definitions/order, including subject-local drops. Receipt
+building only selects admitted records. The four fixture layers reach six
+concrete classes with accepted receipts: AdmissionTest, CaptureTest and its
+RouterGuardTest, quote AttentionTest, and verdict AttentionTest/SharedOwnerTest.
+Quote-only and refusal-only consumers preserve their roles. Explicit `/1`
+capture/adjudication refusal operands retain the original guard isolation;
+no pending positive has been relabelled historical.
+
+All 132 original assertion-call ASTs in the five edited existing files survive
+unchanged. Five new regressions cover 15 accepted receipt writes, six full-text
+promotions, foreign-revision binding refusal with substantive-state preservation,
+truthful unperformed attention without invented references, and three requested
+trigger-catalog comparisons. Two capture owners also preserve subject-local
+drops across later reseeding. Revisions 2/3 and single/ordered mixed spans use
+three disjoint four-record sets. Existing hold, replay and rollback assertions
+remain. Downgrading to `/1` causes four assertion failures; collapsing spans
+causes one, both with zero errors. These are negative experiments, not green
+application tests. Byte-equal ordinary extraction outputs claim no artifact
+selector discrimination; the accepted distinct-output experiment is unchanged.
+
+The six-module transitive fixture closure selects 54 directly affected IDs,
+expanded to 526 mutants in 32 complete prefixes. All 526 are killed: 525 have
+separate passing controls and one retains its existing in-killer accepted case,
+over green 1,080-Store/five-file-target baselines. All 54 directly affected
+predicate/control pairings qualify through 23 passing controls. Seven explicit
+converted paths also have changed-fixture-function hits and successful SQL
+entries. The schema control records the actual loaded JSON schema and accepted
+validation call. All 3,604 mutation-control records remain unchanged; the full
+unchanged trigger inventory is 334 installed, zero uncovered.
+
+The repository-wide inventory retains 256 textual matches in 62 files, plus
+55 candidate test modules with enclosing symbols and the complete test import
+graph; 285 candidate builder calls are retained explicitly across 45 modules. Adding the population-root search exposed eight modules missed by the
+receipt-name-only scan. The pending global group explicitly includes the
+population setups in branch-window, obligation, registry, semantic, lifecycle,
+source-artifact, JSON rollout and JSON member tests; none is credited as
+converted. ObservationDomainTest writes observations, no verification receipts;
+HoldDDLTest remains hold-only. These are non-receipt classifications, not
+historical relabelling of positives. The private inventory lists all 30 generated
+JSON rollout/completion owner names as pending population consumers.
+
+**Exactly what remains pending:** the six untouched raw SpanDDLTest/
+ExtractionSpanDDLTest/ValidatedSpanDDLTest and ExactSpanDDLTest/
+ExtractionExactSpanDDLTest/ValidatedExactSpanDDLTest owners, **blocked by the
+OPEN OPERATOR DECISION**; raw quote DDLTest, CaptureDDLTest and
+AdjudicationDDLTest; StoreTestCase.verify/populate_every_table, VerificationTest,
+ContractAdmittedSupportTest, raw canonical/content/acquisition/extraction-content
+owners, PendingDDLTest's accepted canonical/distractor receipts and every
+history/replacement/JSON/member/population consumer listed in the private
+AUDIT.md and COMPLETION.md; both ImpactTest ContractWorld.verify amendment
+positives (compatible completion/promotion and protocol-change fencing).
+No production, DDL, schema, pins or promotion policy changed. Mandatory
+consumption and promotion changes stay **OFF**; part 4 remains blocked.
+
+Footprint: **158 repository code additions / nine removals**, plus **295
+retained private Python driver lines**, including reused infrastructure:
+**453 additions against 495 estimated**, 42 under, excluding documentation and
+generated evidence. Wiring is 48/115, regressions 110/110, private drivers
+295/270. The documentation-only estimate commit preceded code and functional
+gates. Initial focused/regression runs passed. Trace-only repairs addressed
+instrumentation before Store adoption, JSON-schema observation and fragment
+lookup; superseded logs are retained without passing credit. No repository code
+changed during those repairs. Direct older design-authority/V-4/V-8 rereads were
+completed during validation, after code; required task/dossier/accepted-fixture/
+3d-review reads preceded code. No production need or new representability gap
+was found in the selected group. Stop after this split; part 3 is incomplete.
+
+**Part 3e validated before implementation commit.** Full gen2-test passes
+**4,225 tests, two existing skips**, in **3,241.873 seconds**. Trigger-order
+passes **334 installed triggers / 4,098 identical Store tests/subtests**;
+composition passes **six tests**; affected complete families kill **526/526**
+mutants with the controls/baselines described above. All eight static gates pass
+and are repeated after this note. All six code files retain their tested hashes.
+Evidence, exact pending owners, inventories, attempts, counts, footprint and
+commits: private/evidence/2d-4c-part3e/COMPLETION.md. No provider calls, real-database
+migration, gen-1/live-service/8765 access, protected-register edit, private commit,
+push or main merge occurred. AGENTS.md lookup stayed inside the repository;
+no manual disposable snapshot or venv symlink was created. This completes only
+the selected Router group; raw/global/amendment positives remain pending and
+the six raw-span owners plus part 4 remain blocked by the operator decision.

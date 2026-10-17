@@ -5,6 +5,7 @@ NLI checks are literal historical fixtures, never executed by a provider.
 import json
 
 from gen2.tests.router_fixtures import TOPIC
+from gen2.tests.detailed_receipt_fixtures import historical_receipt
 from gen2.tests.test_capture_support import CaptureCase
 from gen2.tests.test_store_capture_support import CaptureDDLTest
 
@@ -124,6 +125,7 @@ class RouterGuardTest(AttentionCase):
             self.x("DROP TRIGGER " + trigger)  # isolate Router guards from DDL
 
     def refuse_adjudication(self, doc):
+        historical_receipt(doc)  # Explicit /1 isolation of the byte-adjudication guard.
         before = self.state(exclude=())
         out = self.send([], verification_receipts=[{**doc, "adjudication": ADJ}])
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)

@@ -64,6 +64,7 @@ class QuotesCase(Workflow):
         return json.loads(raw)
 
     def receipt_document(self, status="matched", verdict="supports"):
+        """Explicit /1 refusal fixture; admitted support uses CanonicalQuotesCase."""
         path = Path(__file__).resolve().parents[1] / "schema/examples/verification-receipt/valid-load-bearing-full-text.json"
         doc = json.loads(path.read_text())["instance"]
         doc.update(verification_receipt_id="ver_quote00001", topic_id=TOPIC,

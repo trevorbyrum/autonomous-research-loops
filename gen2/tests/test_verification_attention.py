@@ -10,6 +10,7 @@ from unittest.mock import patch
 from gen2.tests.router_fixtures import TOPIC
 from gen2.tests.store_fixtures import StoreTestCase, T
 from gen2.tests.canonical_quotes_fixtures import CanonicalQuotesCase
+from gen2.tests.detailed_receipt_fixtures import attach_checks
 
 HOLD = "hold_6937eef24b17d742001c84e3a97f10290ae7ee206ea1a34b5f606ff2c4792dda"
 
@@ -40,6 +41,7 @@ class AttentionCase(CanonicalQuotesCase):
         if missing:
             doc["access_tier"] = "abstract"
             doc["checks"].update(numeric_units="not_checked", denominators="unavailable", negation="not_checked", qualifications="unavailable")
+        attach_checks(self, doc)
         out = self.commit(doc)
         self.assertEqual(self.rows("SELECT hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, "
             "owner, deadline_at, clears_when, created_at, created_by_operation_id, cleared_at FROM holds"), [(
