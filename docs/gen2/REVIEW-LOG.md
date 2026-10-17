@@ -2766,3 +2766,14 @@ The post-2q Gate D is renumbered #5.
 - **Process note (disclosed by Astra):** its first AGENTS filename search covered `/home/trevor/work`, outside scope. No files were opened. Reviewer task prompts now limit AGENTS lookup to the repository.
 - **Landing at 9416fd6:** `gen2-check` green (4,206 tests; 334 triggers / 4,011 reversal outcomes; 3,604/3,604 mutants). `gen2-gateway` is carried forward from 927b32d, since no production change was made.
 - **Next:** 2d-4c part 3b.
+
+## 2026-10-17: 2d-4c part 3b (canonical, acquisition and content receipt fixtures, plus the NB1 authority control): PASS on the first review. Accepted
+- **Astra** (`29bcfbe6`, pinned 1bfb9a9, audit 58608e6; `private/reviews/gen2-2d-4c-p3b-astra-review-20261017.md`): **A, B and C all PASS, ROOT-CAUSE.** No findings, blocking or non-blocking.
+- **The opt-in conversion is scoped.** The optional-reference, legacy and byte-equal experiments keep their original fixtures.
+- **Fixture correctness.**
+  - The shared sender now uses the actual verifier invocation, which fixes the replacement-verifier path.
+  - The readback oracle no longer depends on JSON member order.
+- **NB1.** All four producer and verifier refusal cases are preserved, and the accepted control is converted.
+- **The 3c pending list is truthful,** including the two amendment callers. Astra's own inspection of receipt builders found no omitted pending positive.
+- **Landing at 1bfb9a9:** `gen2-check` green (4,211 tests; 334 triggers / 4,034 reversal outcomes; 3,604/3,604 mutants). `gen2-gateway` is carried forward from 927b32d, since no production change was made.
+- **Next:** 2d-4c part 3c.
