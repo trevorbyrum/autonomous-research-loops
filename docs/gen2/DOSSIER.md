@@ -3523,3 +3523,66 @@ commits, gate logs, footprint and deviations are retained in
 private/evidence/2d-4c-part3/COMPLETION.md. No provider call, real-database migration,
 gen-1/runtime/8765 access, protected-register edit, main merge or disposable
 checkout/venv symlink occurred. This completes **part 3a only**; stop here.
+
+#### 2d-4c part 3b — re-estimate (before code)
+
+2026-10-17, on `gen2` at `8cc01c2`. Read the entire task (constraints,
+operator ruling and every continuation), this section including the part 3
+audit and part 3a notes, accepted `9416fd6` helpers and Astra's first 3a review.
+Repository-only AGENTS.md lookup found none. NB1 is a pending **positive**:
+`AuthorityTest.test_a_producer_cannot_verify_its_own_work` ends with accepted
+load-bearing support and must acquire admitted records while preserving its
+four distinct authority refusals.
+
+The prior 570-line remainder was subtraction, not a concrete implementation
+estimate. Re-audit separates Router owners from raw owners: converting the
+canonical base indiscriminately would change unfinished table/span and optional
+reference experiments, and raw owners need authenticated bytes rather than
+invented record IDs. **Remaining estimate: 970 handwritten lines**, excluding
+documentation/generated data: canonical/acquisition/content Router wiring 100,
+shared fixture isolation 120, authority NB1 30, quote/capture/verdict (including
+raw adjudication/hold owners) 150, table/span operands 100, global raw admission/
+promotion/history conversion 170, discrimination/promotion regressions 200,
+private audit/trace drivers 100. This is well above 500; split again.
+
+**Implement only part 3b: canonical/acquisition/content Router consumers plus
+the authority-root positive**, estimated **470 handwritten additions**: explicit
+converted Router owner and acquisition/content wiring 120, authenticated seeding
+and requested-catalog restoration 70, NB1 authority conversion 30, binding/tier/
+promotion/rollback/discrimination regressions 150, retained private audit/trace
+drivers 100. Reuse `seed_checks`, `assessment_binding`, `attach_checks` and
+`restore_triggers`; do not copy their implementation. An explicit converted
+owner keeps unfinished consumers on their pending fixture, never reclassifies
+them as historical. Seed before subject snapshots, under production DDL, then
+restore the requested trigger catalog. Submission only attaches existing rows.
+
+Concrete audit/disposition for this split:
+
+- Convert `ReceiptTest`, `OtherAcquirerReceiptTest`, `ContentRouterTest`,
+  `ExtractionRouterTest`, `ExtractionContentRouterTest`, and NB1's accepted
+  authority control. Preserve their accepted tiers, replay/rollback and refusal
+  assertions; prove canonical/own/validated promotions and distinct selected
+  bytes in focused regressions. The extraction acquisition/content fixtures'
+  misleading "pending" prose does not make their accepted receipts historical.
+- Pending **part 3c**: `PendingRouterTest` (its bound accepted promotions),
+  `TableRouterTest`, `SpanRouterTest`, `ExactSpanRouterTest`; quote root
+  `QuotesCase`, `CanonicalQuotesCase`, `CaptureCase`, both attention owners and
+  their raw wrappers/adjudication/hold classes; global `StoreTestCase.verify`,
+  `VerificationTest`, `ContractAdmittedSupportTest`, raw canonical/content/
+  acquisition/table/span owners and raw pending/history/JSON/replacement owners.
+- Already converted part 3a: own/validated/bound-promotion/extraction-attention
+  owners and raw wrappers. Keep their completed coverage intact.
+- Retain explicit `/1` authority/acquisition refusal operands and existing legacy,
+  optional-reference, frozen-mixin and schema examples as historical/structural
+  controls. Pending positives above remain pending; no historical relabeling.
+
+Recompute the full transitive import/control closure after edits, expand every
+affected generator family, and qualify accepted paired-control traces. Run the
+full gen2-test, trigger-order, composition and all eight static gates before the
+implementation commit; retain full trigger inventory even though no trigger
+change is planned. Wait for no user/system `gen2-landing-*` activity before heavy
+runs. No snapshot is planned; any disposable venv must use `cp -a`.
+Mandatory detailed consumption and promotion changes stay **OFF**. Production,
+DDL and pins remain untouched; stop and report if production work is required.
+Evidence: private/evidence/2d-4c-part3b/, including the full pending audit and
+honest footprint/deviations. Stop after this slice; part 3c and part 4 remain.
