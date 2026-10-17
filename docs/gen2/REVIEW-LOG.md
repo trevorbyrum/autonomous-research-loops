@@ -2707,3 +2707,19 @@ The post-2q Gate D is renumbered #5.
   - Quote-matcher tokens count only as supplementary evidence.
 - **Process note:** the coder disclosed an out-of-scope AGENTS.md lookup in an ancestor directory. It is the second such disclosure, so the brief now limits AGENTS.md lookup to the repository.
 - **Dispatched:** part 1, record admission.
+
+## 2026-10-17: 2d-4c part 1 (attributed durable V-8 check records; SQL 35/36): PASS on the first review. Accepted
+- **Astra** (`bd0ba616`, pinned 89401a7; `private/reviews/gen2-2d-4c-p1-astra-review-20261017.md`): **A, B and C all PASS, ROOT-CAUSE for the admission slice.**
+- **Operator-ruling fidelity:**
+  - every performed outcome needs evidence and nonblank assessment and context;
+  - `not_applicable` also needs a reason;
+  - default-ignorable-only text is refused;
+  - the evidence report must equal the recorded assessment;
+  - quote-matcher methods are rejected.
+- **Attribution:**
+  - The performer comes from the committing invocation and is never declared.
+  - The performer must be an independent, contract-admitted verifier.
+  - Self-performance by the claim producer or the source producer is refused.
+- **NB1 (coverage):** add regressions for corrupt recorded bytes, evidence left out of `result_refs`, and an ID collision under a new operation. Reviewer probes passed all three, and no defect was found. This is owned by part 2.
+- **Landing at 89401a7:** `gen2-check` green; `gen2-gateway` green.
+- **Next:** 2d-4c part 2, successor receipt references, optional and not yet mandatory.
