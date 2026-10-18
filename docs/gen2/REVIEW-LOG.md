@@ -2840,3 +2840,19 @@ The post-2q Gate D is renumbered #5.
   - **NB2:** the fixture-preservation wording overstates; classes can coalesce.
   - **NB3:** the remaining CI coverage is explicitly unfinished.
 - **Next:** ci-2-repair-1, queued behind ci-cd-2 (one coder at a time).
+
+## 2026-10-18: ci-cd-2 std v1.2 (ci-cd draft PRs #13–#15, stacked on #12): round 1 BLOCK (#15, Gates A and C)
+- **Astra** (`6ad71c48`; `private/reviews/gen2-ci-cd-2-astra-review-20261018.md`).
+- **Per PR:**
+  - **#13 modes** (`0276dcc`): PASS as the scoped first layer.
+  - **#14** (`4908993`): S1, an empty second-execution JUnit marked complete. Fixed in #15.
+  - **#15** (`34db1c9`): **BLOCK.**
+- **Scalar backward compatibility PASS** across ten normalized lifecycle/evidence snapshots versus v1.1, including sub-agent-router and ci-cd's own Jenkinsfile.
+- **Blocking (both HIGH, ROOT-CAUSE):**
+  - **B1:** the interlock doesn't revalidate target freshness after its evidence lookup. A target move during the final observation still yields SUCCESS with a stale `target_sha`.
+  - **B2:** nightly evidence substitutes for integration on the mode label alone. A genuine nightly `smoke` record passed a PR whose integration workload never ran.
+- **Non-blocking:**
+  - **N1 (MITIGATION):** live qualification is outstanding.
+  - **N2:** a consumer-aware release/rollback checklist is needed.
+  - **N3:** the library is pinned to tag `v1.0.0` (PR #11), so a merge alone doesn't activate it. A release tag plus JCasC repoint is an operator step.
+- **Next:** ci-cd-2-repair-1, queued behind ci-2-repair-1.
