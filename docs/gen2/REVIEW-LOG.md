@@ -2867,3 +2867,19 @@ The post-2q Gate D is renumbered #5.
 - **B3:** the committed sharding and skip regressions catch the injected dedup defect.
 - **The partial default stays a MITIGATION pending operator acceptance.** The quota worker budget is ROOT-CAUSE.
 - **Next:** a PR from `sol/ci-2` into gen2 for the operator to merge.
+
+## 2026-10-18: ci-cd-2-repair-1 (std v1.2, ci-cd #13 c4753df / #14 d154fe9 / #15 70f782a): round 2 PASS. Ready for operator merge
+- **Astra** (`5e2266d3`; `private/reviews/gen2-ci-cd-2-r2-astra-review-20261018.md`): **the complete stack PASSES. B1 and B2 are closed at their root; S1 is preserved.**
+- **B1:** the interlock re-fetches target HEAD and rereads the queue and evidence around the lookup.
+  - The round-1 race (a move inside the final observation) now fails closed with "target HEAD changed during integration lookup".
+  - An unavailable target and a throwing SCM read also fail closed.
+- **B2:** only completed integration-mode evidence qualifies. The smaller-nightly, omitted-fallback and same-name/different-work substitutions are all refused.
+- **Scalar compatibility is unchanged.** #14 isn't a standalone release, because S1 is fixed only in #15.
+- **Operator activation steps** (report, "Operator activation and post-merge qualification steps"):
+  1. Record the current state.
+  2. Merge #12 → #13 → #14 → #15.
+  3. Create a new immutable tag, `v1.2.0`.
+  4. Repoint JCasC to the tag.
+  5. Run the qualification checklist.
+  6. Run a first gen2 consumer branch.
+  7. Use the rollback plan if any drill fails.
