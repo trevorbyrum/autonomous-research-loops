@@ -2808,3 +2808,16 @@ The post-2q Gate D is renumbered #5.
   - **Until then:** do not close the raw-span conversion and do not activate part 4.
 - **Landing at 1faacfb:** `gen2-check` green (4,220 tests; 334 triggers / 4,084 reversal outcomes; 3,604/3,604 mutants). `gen2-gateway` is carried forward from 927b32d.
 - **Next:** 2d-4c part 3e, the non-span groups.
+
+## 2026-10-18: 2d-4c part 3e (Router quote/capture/verdict receipt fixtures): PASS on the first review. Accepted
+- **Astra** (`ad4b81ca`, pinned 2bf8bbe, audit 2165cfa; `private/reviews/gen2-2d-4c-p3e-astra-review-20261018.md`): **A, B and C all PASS, ROOT-CAUSE at slice and family level.**
+- **Gate B, against the 2026-10-17 ruling:** attributed assessments supply every detailed outcome. Lexical quote protection never substitutes for them.
+- **Coverage:**
+  - six consumer classes converted;
+  - all 132 original assertion-call ASTs unchanged;
+  - both reseeding owners use `restore_triggers`;
+  - the six raw-span owners are untouched and still pending, awaiting the 2^53−1 cap implementation.
+- **NB1 (bookkeeping):** the active pending-status summaries should say "cap implementation pending", not "open operator decision". Owned by the next 2d-4c continuation.
+- **Landing at 2bf8bbe:** `gen2-check` green locally (5,619 s). `gen2-gateway` is carried forward.
+- **Jenkins:** branch build #6 on 2bf8bbe was **aborted at the 50-minute limit**, as expected. The fix is task ci-2.
+- **Next (operator, 2026-10-18):** **ci-2**. Then the span-cap production slice, the remaining part 3 conversions, and part 4.
