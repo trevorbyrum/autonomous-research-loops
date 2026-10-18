@@ -67,3 +67,19 @@
   - the identity comparison;
   - any platform change requests;
   - deviations.
+
+## Amendment (2026-10-18, orchestrator): proceed on image `:1` while `:2` is pending
+**Fresh probe:** `sol/ci-2` at `9008299` (Jenkinsfile v2 on `:2`). Build #1 failed in 8.6 s. `docker image inspect ci-py312-noble:2` failed on cir, then pull access was denied.
+- **Image `:2` is not deployed.** Building it on cir is the operator's step (ci-cd runbook `images/py312-noble`, "Trevor's post-merge cir rebuild"). This has been requested.
+
+**Until `:2` exists, implement and measure everything that doesn't need PostgreSQL on image `:1`:**
+- push/T0 mode;
+- the split full-engine modes (unit, trigger-order, full mutation), each within the limit;
+- the worker budget from the CPU quota;
+- `cleanWorkspace` / `recordIdentity`;
+- the gateway no-DB mode, if it runs on `:1`. Determine this; don't assume it.
+- the identity comparison for the engine modes.
+
+The image switch to `:2`, the gateway DB mode and the hash-locked psycopg install go in a follow-up once `:2` is confirmed on cir. Keep them ready on the branch if useful, but **off** the default path.
+
+Every push of `sol/ci-2` should produce a green, in-limit build for what it runs.
