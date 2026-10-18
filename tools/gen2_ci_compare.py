@@ -18,24 +18,24 @@ def read(path):
     return json.loads(path.read_text())
 
 
-def inventory(root: Path, filename: str) -> set[str]:
-    expected, observed = None, set()
+def inventory(root: Path, filename: str) -> Counter:
+    expected, observed = None, Counter()
     found = list(root.rglob(filename))
     if not found:
         raise ValueError(f"missing {filename} in {root}")
     for path in found:
         report = read(path)
-        full, selected = set(report["expected"]), report["selected"]
-        if len(full) != len(report["expected"]) or len(set(selected)) != len(selected):
+        full, selected = Counter(report["expected"]), Counter(report["selected"])
+        if filename == "engine-mutation-inventory.json" and (any(n != 1 for n in full.values()) or any(n != 1 for n in selected.values())):
             raise ValueError(f"duplicate inventory identities in {path}")
         if expected is not None and full != expected:
             raise ValueError(f"different full inventories at {path}")
-        if not set(selected) <= full or observed & set(selected):
+        if selected - full or observed.keys() & selected.keys():
             raise ValueError(f"unknown or repeated shard identities in {path}")
         observed.update(selected)
         expected = full
     if not expected or expected != observed:
-        raise ValueError(f"incomplete shard coverage for {filename}: missing {sorted(expected - observed)}")
+        raise ValueError(f"incomplete shard coverage for {filename}: missing {dict(expected - observed)}")
     return expected
 
 
@@ -47,11 +47,11 @@ def collect(root: Path, sha: str) -> dict:
     expected_tests = inventory(root, "engine-unit-inventory.json")
     mutants = inventory(root, "engine-mutation-inventory.json")
     outcomes = [outcome for path in root.rglob("engine-unit-outcomes.json") for outcome in read(path)]
-    parents = {item["id"] for item in outcomes if item["id"] in expected_tests}
+    parents = Counter(item["id"] for item in outcomes if item["id"] in expected_tests)
     if parents != expected_tests or any(item["outcome"] != "pass" for item in outcomes):
         raise ValueError(f"unit outcomes missing or non-passing in {root}")
     cases = [read(path) for path in root.glob("**/mutants/*.json")]
-    if len(cases) != len(mutants) or {case["id"] for case in cases} != mutants:
+    if len(cases) != len(mutants) or {case["id"] for case in cases} != set(mutants):
         raise ValueError(f"mutant outcomes missing or duplicated in {root}")
     if any(case["verdict"] != "KILLED" for case in cases):
         raise ValueError(f"non-killed mutants in {root}")

@@ -67,11 +67,20 @@ class Outcomes(unittest.TextTestResult):
     def __init__(self, *args):
         super().__init__(*args)
         self.outcomes = []
-        self.completed = set()
+        self.current_id = None
+        self.current_recorded = False
+        self.current_subtests = []
+
+    def startTest(self, test):
+        self.current_id = test.id()
+        self.current_recorded = False
+        self.current_subtests = []
+        super().startTest(test)
 
     def observed(self, test, outcome, detail=None):
         self.outcomes.append({"id": test.id(), "outcome": outcome, "detail": detail})
-        self.completed.add(test.id())
+        if test.id() == self.current_id:
+            self.current_recorded = True
 
     def addSuccess(self, test):
         self.observed(test, "pass")
@@ -99,13 +108,13 @@ class Outcomes(unittest.TextTestResult):
 
     def addSubTest(self, test, subtest, err):
         outcome = "pass" if err is None else "fail" if issubclass(err[0], test.failureException) else "error"
+        self.current_subtests.append(outcome)
         self.observed(subtest, outcome)
         super().addSubTest(test, subtest, err)
 
     def stopTest(self, test):
-        if test.id() not in self.completed:
+        if not self.current_recorded:
             errors = {item.id() for item, _ in self.errors}
-            children = [item for item in self.outcomes if item["id"].startswith(test.id() + " ")]
-            outcome = "error" if test.id() in errors or any(item["outcome"] == "error" for item in children) else "fail"
+            outcome = "error" if test.id() in errors or "error" in self.current_subtests else "fail"
             self.observed(test, outcome)
         super().stopTest(test)

@@ -117,3 +117,18 @@ class ExhaustivePartitionTest(unittest.TestCase):
             unittest.defaultTestLoader.loadTestsFromTestCase(Case))
         self.assertFalse(result.wasSuccessful())
         self.assertEqual([item["outcome"] for item in result.outcomes], ["fail", "fail"])
+
+    def test_reexported_test_occurrences_are_preserved_in_partitions_and_outcomes(self):
+        class Case(unittest.TestCase):
+            calls = 0
+
+            def test_reexported(self):
+                type(self).calls += 1
+                with self.subTest(case="same identity"):
+                    self.assertEqual(type(self).calls, 1)
+        suite = unittest.TestSuite([Case("test_reexported"), Case("test_reexported")])
+        self.assertEqual(len(list(tests(partition(suite, (1, 1))))), 2)
+        result = unittest.TextTestRunner(stream=io.StringIO(), resultclass=Outcomes).run(suite)
+        self.assertEqual(result.testsRun, 2)
+        self.assertFalse(result.wasSuccessful())
+        self.assertEqual([item["outcome"] for item in result.outcomes], ["pass", "pass", "fail", "fail"])

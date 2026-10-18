@@ -121,8 +121,8 @@ A new runtime dependency is an architecture change. It needs a `third_party` gra
 ## ci-2 amendment: current Jenkins path and prepared gateway environment
 
 The October 18 amendment uses `ci-py312-noble:1` while the operator builds `:2`
-on cir. Jenkins runs `make gen2-ci-default`: T0 plus the full trigger-order
-suite, with `cleanWorkspace` and `recordIdentity`. Other engine modes have
+on cir. Jenkins runs `make gen2-ci-default`: T0, the full trigger-order suite,
+and unit partition 1/8, with `cleanWorkspace` and `recordIdentity`. Other engine modes have
 independent Make targets; the deployed library cannot select them separately.
 This result is not full acceptance. See [CI-RUNNER.md](CI-RUNNER.md) for mode
 commands, quota budgeting, expected identities and platform prerequisites.

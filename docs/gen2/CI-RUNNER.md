@@ -3,7 +3,8 @@
 The October 18 amendment permits image `ci-py312-noble:1` until the operator
 builds and confirms `:2` on cir. The default Jenkinsfile uses `:1`, synchronous
 workspace cleanup, recorded library/source/image identities, T0 and the complete
-trigger-order suite. This is not a full engine or full-acceptance verdict.
+trigger-order suite plus fixed engine-unit partition 1/8. This is not a full
+engine or full-acceptance verdict; the other seven unit partitions remain required.
 
 ## Commands and coverage
 
@@ -29,6 +30,9 @@ an aggregate acceptance result is possible. Mutation partitions retain global
 coverage checks (unlike legacy `--only`), and repeat the complete baselines.
 `--only` and sharding cannot be combined. Empty shards fail. The inventory
 reports contain the complete expected identities and the assigned identities.
+Unit discovery is a multiset: existing re-exported TestCase occurrences retain
+their original multiplicities, and all occurrences of a class stay together.
+Comparison requires those counts exactly. Mutation IDs remain unique.
 The unit and trigger-order runners also emit test/subtest outcomes and JUnit;
 the mutation runner emits per-mutant test sets, verdicts and baseline outcomes.
 
@@ -64,8 +68,8 @@ with several sequential commands would still share that timeout.
 
 | Trigger | Current result | Required full-acceptance path |
 | --- | --- | --- |
-| Branch push, including `gen2` and task branches | T0 + trigger-order at the branch checkout | Separate engine shards at that same pin |
-| Ready PR creation/update | T0 + trigger-order at the platform's PR merge checkout | Separate engine shards at the executed merge pin, invalidated by target updates |
+| Branch push, including `gen2` and task branches | T0 + trigger-order + unit partition 1/8 at the branch checkout | Separate engine shards at that same pin |
+| Ready PR creation/update | T0 + trigger-order + unit partition 1/8 at the platform's PR merge checkout | Separate engine shards at the executed merge pin, invalidated by target updates |
 | Draft PR | Platform does not build it | No acceptance claim |
 | Integration/nightly/manual mode selection | Not exposed to consumers | Platform-owned opt-in trigger and aggregation |
 
@@ -83,7 +87,7 @@ integration behavior from the approved v1.2 plan. A later push must not abort an
 in-progress integration backstop. Generic platform sharding is deferred; no
 library shard API or implementation is requested here. Repository partition
 arguments can be explicit per-mode scalar commands if needed after measurement.
-Until v1.2 is deployed, the default branch/PR result is T0 + trigger-order; the
+Until v1.2 is deployed, the default branch/PR result is T0 + trigger-order + unit partition 1/8; the
 remaining engine modes cannot be measured separately in Jenkins. The planned
 v1.1 source also explicitly excludes modes/schedules from its API.
 No commit-footer, build-number, branch-name or temporary-Jenkinsfile scheme is

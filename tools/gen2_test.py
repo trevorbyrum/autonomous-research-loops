@@ -58,14 +58,24 @@ def main() -> int:
             print(f"gen2-test: the whole verbose output is kept in {log}")
             suite = unittest.defaultTestLoader.discover(str(ROOT / "gen2" / "tests"), pattern="test_*.py")
             expected = [test.id() for test in tests(suite)]
-            if len(set(expected)) != len(expected) or not expected:
-                raise ValueError("test discovery is empty or has duplicate identities")
+            # Existing discovery includes re-exported TestCase classes. Keep
+            # every occurrence, as the original runner does; comparison uses
+            # multisets rather than silently deduplicating or refusing them.
+            if not expected:
+                raise ValueError("test discovery is empty")
             suite = partition(suite, args.shard)
             selected = [test.id() for test in tests(suite)]
             if not selected:
                 raise ValueError("test shard is empty")
             record("engine-unit-inventory.json", {"expected": expected, "selected": selected, "shard": args.shard})
-            result = unittest.TextTestRunner(stream=tee, verbosity=2, resultclass=Outcomes).run(suite)
+            # Tests launch counterfactual/partial harnesses of their own. Those
+            # child runs must not publish into this invocation's evidence.
+            directory = os.environ.pop("GEN2_CI_EVIDENCE", None)
+            try:
+                result = unittest.TextTestRunner(stream=tee, verbosity=2, resultclass=Outcomes).run(suite)
+            finally:
+                if directory is not None:
+                    os.environ["GEN2_CI_EVIDENCE"] = directory
             record("engine-unit-outcomes.json", result.outcomes)
             junit("engine-unit", result.outcomes)
             print(f"gen2-test: {'passed' if result.wasSuccessful() else 'FAILED'}; the whole verbose output is kept in {log}")
