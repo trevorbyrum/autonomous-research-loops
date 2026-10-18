@@ -42,7 +42,8 @@ def junit(name: str, outcomes: list[dict], properties: dict | None = None) -> No
         case = ET.SubElement(suite, "testcase", name=outcome["id"], classname=label)
         status = outcome["outcome"]
         if status in ("skip", "expected_failure"):
-            ET.SubElement(case, "skipped", message=outcome.get("detail") or status)
+            detail = outcome.get("detail")
+            ET.SubElement(case, "skipped", message=status if detail is None else detail)
         elif status != "pass":
             ET.SubElement(case, "error" if status == "error" else "failure", message=status)
     ET.ElementTree(suite).write(Path(directory) / (name + ".xml"), encoding="utf-8", xml_declaration=True)

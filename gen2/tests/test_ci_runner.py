@@ -208,6 +208,21 @@ class OutcomeReportingTest(unittest.TestCase):
             EVIDENCE.junit("engine-unit", outcomes)
         return root
 
+    def test_only_skipped_subtests_keep_empty_reasons_and_a_passing_parent(self):
+        class Case(unittest.TestCase):
+            def test_skips(self):
+                with self.subTest(i=1): self.skipTest("")
+                with self.subTest(i=2): self.skipTest("exact second reason")
+        result = unittest.TextTestRunner(stream=io.StringIO(), resultclass=Outcomes).run(Case("test_skips"))
+        self.assertTrue(result.wasSuccessful())
+        self.assertEqual([x["outcome"] for x in result.outcomes], ["skip", "skip", "pass"])
+        self.assertEqual([x["detail"] for x in result.outcomes], ["", "exact second reason", None])
+        root = self.collect_fixture("empty-reason", [Case("test_skips").id()], result.outcomes)
+        self.assertTrue(COMPARE.collect(root, "pin")["unit"])
+        xml = ET.parse(root / "engine-unit.xml")
+        self.assertEqual([x.get("message") for x in xml.findall(".//skipped")], ["", "exact second reason"])
+        self.assertEqual(xml.findall(".//failure") + xml.findall(".//error"), [])
+
     def test_skips_preserve_unittest_junit_and_comparison_verdicts(self):
         class Case(unittest.TestCase):
             def test_subtests(self):
