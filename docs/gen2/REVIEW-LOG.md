@@ -2856,3 +2856,14 @@ The post-2q Gate D is renumbered #5.
   - **N2:** a consumer-aware release/rollback checklist is needed.
   - **N3:** the library is pinned to tag `v1.0.0` (PR #11), so a merge alone doesn't activate it. A release tag plus JCasC repoint is an operator step.
 - **Next:** ci-cd-2-repair-1, queued behind ci-2-repair-1.
+
+## 2026-10-18: ci-2-repair-1 (sol/ci-2 9b98090): round 2 PASS. ci-2 accepted for merge (operator merges)
+- **Astra** (`ad10d982`; `private/reviews/gen2-ci-2-r2-astra-review-20261018.md`): **Gates A and C PASS.** B1, B2 and B3 closed; NB1 and NB2 handled; no weakening.
+- **B1:** with the old methods restored, the committed suite fails by assertion (4 failures, 0 errors).
+- **B2:**
+  - Jenkins #6 (SUCCESS, 36 min 50 s) prints **PARTIAL ACCEPTANCE — NOT FULL ACCEPTANCE** before and after execution.
+  - The structured record carries `acceptance: partial` / `full_acceptance: false` with SHA, tree, mode and shard.
+  - The disclosure is published in the Jenkins test report.
+- **B3:** the committed sharding and skip regressions catch the injected dedup defect.
+- **The partial default stays a MITIGATION pending operator acceptance.** The quota worker budget is ROOT-CAUSE.
+- **Next:** a PR from `sol/ci-2` into gen2 for the operator to merge.
