@@ -2821,3 +2821,22 @@ The post-2q Gate D is renumbered #5.
 - **Landing at 2bf8bbe:** `gen2-check` green locally (5,619 s). `gen2-gateway` is carried forward.
 - **Jenkins:** branch build #6 on 2bf8bbe was **aborted at the 50-minute limit**, as expected. The fix is task ci-2.
 - **Next (operator, 2026-10-18):** **ci-2**. Then the span-cap production slice, the remaining part 3 conversions, and part 4.
+
+## 2026-10-18: ci-2 (Jenkins routine runner, first slice; branch sol/ci-2 51f8b01): round 1 BLOCK (Gates A and C)
+- **Astra** (`d0f5f52a`; `private/reviews/gen2-ci-2-astra-review-20261018.md`).
+- **These PASS:**
+  - the independent same-pin comparison of every CI-executed mode at 3fc5acf;
+  - unit and mutation partition conservation;
+  - scope (no `gen2/` production, workflow or infrastructure change; no private content).
+- **Classification:**
+  - the quota-based worker budget is ROOT-CAUSE;
+  - **the partial default CI execution is a MITIGATION** until std v1.2 and image `:2`, **pending operator acceptance.**
+- **Blocking findings:**
+  - **B1:** a skipped subtest fabricates a parent `fail` and a JUnit `<failure>`. Reporting semantics only; no real failure is masked.
+  - **B2:** a green build doesn't declare PARTIAL ACCEPTANCE or the omitted work in its executed output and evidence.
+  - **B3:** `test_ci_runner.py` misses skips and the loss of repeated identities under nontrivial sharding. An injected dedup-at-`total>1` defect passed all 12 tests while dropping 25 repeats.
+- **Non-blocking:**
+  - **NB1:** JUnit lacks SHA and shard properties.
+  - **NB2:** the fixture-preservation wording overstates; classes can coalesce.
+  - **NB3:** the remaining CI coverage is explicitly unfinished.
+- **Next:** ci-2-repair-1, queued behind ci-cd-2 (one coder at a time).
