@@ -35,10 +35,8 @@ gen2-ci: gen2-venv
 # The currently deployed library has one execution. Keep the long modes
 # independently runnable for v1.2. Only the declared unit partition runs here;
 # all eight partitions (or the unsharded target) are required for full units.
-gen2-ci-default:
-	$(MAKE) gen2-ci GEN2_CI_MODE=push GEN2_CI_SHARD=1/1
-	$(MAKE) gen2-ci-trigger-order
-	$(MAKE) gen2-ci-unit GEN2_CI_SHARD=1/8
+gen2-ci-default: gen2-venv
+	$(PYTHON) tools/gen2_ci.py --mode default
 
 gen2-ci-unit:
 	$(MAKE) gen2-ci GEN2_CI_MODE=engine-unit

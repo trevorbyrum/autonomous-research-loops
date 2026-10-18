@@ -16,11 +16,64 @@ import sys
 import time
 from pathlib import Path
 
-from gen2_ci_evidence import shard_spec, write_json
+from gen2_ci_evidence import junit, shard_spec, write_json
 from gen2_workers import cpu_budget, mutation_workers
 
 ROOT = Path(__file__).resolve().parent.parent
 MODES = ("push", "engine-unit", "engine-trigger-order", "engine-mutation", "gateway-no-db", "gateway-db", "gateway-mutants")
+PARTIAL_BANNER = "PARTIAL ACCEPTANCE — NOT FULL ACCEPTANCE"
+DEFAULT_WORK = (("push", (1, 1)), ("engine-trigger-order", (1, 1)), ("engine-unit", (1, 8)))
+
+
+def default_run(out: Path) -> int:
+    """Execute and disclose the fixed, partial branch/PR workload."""
+    destination = out / "default-1-of-1"
+    destination.mkdir(parents=True, exist_ok=False)
+    scope = {"schema": "gen2-ci-scope/v1", "acceptance": "partial", "full_acceptance": False,
+             "banner": PARTIAL_BANNER, "mode": "default", "shard": [1, 1],
+             "checkout_sha": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}"),
+             "source_dirty": bool(git("status", "--porcelain", "--untracked-files=no")),
+             "ran": ["T0", "complete trigger-order", "units 1/8"],
+             "omitted": ["unit partitions 2–8/8", "all mutation work", "all gateway modes"],
+             "executions": [{"mode": mode, "shard": shard, "status": "not_run"}
+                            for mode, shard in DEFAULT_WORK], "status": "running"}
+    def publish():
+        write_json(destination / "scope.json", scope)
+        print(PARTIAL_BANNER, flush=True)
+        print("Scope: " + "; ".join(scope["ran"]) + ". Omitted: " + "; ".join(scope["omitted"]), flush=True)
+        print("GEN2_CI_SCOPE " + json.dumps(scope, sort_keys=True), flush=True)
+        # cfg.junit is the deployed platform's supported consumer summary API.
+        # Keep the disclosure visible in Jenkins' test names, even on failure.
+        with_directory = os.environ.get("GEN2_CI_EVIDENCE")
+        os.environ["GEN2_CI_EVIDENCE"] = str(destination.resolve())
+        try:
+            junit("acceptance-scope", [{"id": PARTIAL_BANNER + ": " + "; ".join(scope["ran"]) +
+                  ". Omitted: " + "; ".join(scope["omitted"]),
+                  "outcome": "pass" if scope["status"] == "pass" else "error"}], scope)
+        finally:
+            if with_directory is None:
+                os.environ.pop("GEN2_CI_EVIDENCE", None)
+            else:
+                os.environ["GEN2_CI_EVIDENCE"] = with_directory
+    publish()
+    started = time.monotonic()
+    try:
+        for execution in scope["executions"]:
+            execution["status"] = "running"
+            write_json(destination / "scope.json", scope)
+            index, total = execution["shard"]
+            code = subprocess.call([sys.executable, str(Path(__file__).resolve()), "--mode", execution["mode"],
+                                    "--shard", f"{index}/{total}", "--out", str(out.resolve())], cwd=ROOT)
+            execution.update(status="pass" if code == 0 else "fail", exit_code=code)
+            if code:
+                return code
+        scope["status"] = "pass"
+        return 0
+    finally:
+        if scope["status"] != "pass":
+            scope["status"] = "fail"
+        scope["duration_s"] = time.monotonic() - started
+        publish()
 
 
 def command(mode: str, shard: tuple[int, int]) -> list[str]:
@@ -49,10 +102,14 @@ def gateway_dependency() -> dict:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--mode", choices=MODES, default="push")
+    parser.add_argument("--mode", choices=(*MODES, "default"), default="push")
     parser.add_argument("--shard", type=shard_spec, default=(1, 1))
     parser.add_argument("--out", type=Path, default=ROOT / "build/ci-evidence")
     args = parser.parse_args(argv)
+    if args.mode == "default":
+        if args.shard != (1, 1):
+            parser.error("default scope does not support sharding")
+        return default_run(args.out)
     invocation = command(args.mode, args.shard)
     destination = args.out / f"{args.mode}-{args.shard[0]}-of-{args.shard[1]}"
     destination.mkdir(parents=True, exist_ok=False)

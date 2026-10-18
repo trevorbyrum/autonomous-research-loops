@@ -21,12 +21,25 @@ def record(name: str, value: object) -> None:
         write_json(Path(directory) / name, value)
 
 
-def junit(name: str, outcomes: list[dict]) -> None:
+def junit(name: str, outcomes: list[dict], properties: dict | None = None) -> None:
     if not (directory := os.environ.get("GEN2_CI_EVIDENCE")):
         return
-    suite = ET.Element("testsuite", name=name, tests=str(len(outcomes)))
+    identity = Path(directory) / "run.json"
+    metadata = json.loads(identity.read_text()) if identity.exists() else {}
+    metadata.update(properties or {})
+    context = {key: metadata[key] for key in
+               ("checkout_sha", "tree", "source_dirty", "mode", "shard", "acceptance", "banner", "ran", "omitted")
+               if key in metadata}
+    label = name
+    if "mode" in context and "shard" in context:
+        index, total = context["shard"]
+        label += f" [mode={context['mode']} shard={index}/{total} sha={context.get('checkout_sha', 'unknown')}]"
+    suite = ET.Element("testsuite", name=label, tests=str(len(outcomes)))
+    props = ET.SubElement(suite, "properties")
+    for key, value in context.items():
+        ET.SubElement(props, "property", name=key, value=value if isinstance(value, str) else json.dumps(value))
     for outcome in outcomes:
-        case = ET.SubElement(suite, "testcase", name=outcome["id"], classname=name)
+        case = ET.SubElement(suite, "testcase", name=outcome["id"], classname=label)
         status = outcome["outcome"]
         if status in ("skip", "expected_failure"):
             ET.SubElement(case, "skipped", message=outcome.get("detail") or status)
@@ -56,7 +69,8 @@ def tests(suite):
 
 
 def partition(suite, shard: tuple[int, int]) -> unittest.TestSuite:
-    # Keep a class together: no extra class fixture transitions or ordering changes.
+    # Keep all occurrences of a class in one shard, in discovery-relative order.
+    # Filtering can coalesce fixture transitions when intervening classes vanish.
     return unittest.TestSuite(test for test in tests(suite) if in_shard(
         test.__class__.__module__ + "." + test.__class__.__qualname__, shard))
 
@@ -95,6 +109,8 @@ class Outcomes(unittest.TextTestResult):
         super().addError(test, err)
 
     def addSkip(self, test, reason):
+        if getattr(test, "test_case", None) is not None and test.test_case.id() == self.current_id:
+            self.current_subtests.append("skip")
         self.observed(test, "skip", reason)
         super().addSkip(test, reason)
 
@@ -114,7 +130,11 @@ class Outcomes(unittest.TextTestResult):
 
     def stopTest(self, test):
         if not self.current_recorded:
-            errors = {item.id() for item, _ in self.errors}
-            outcome = "error" if test.id() in errors or "error" in self.current_subtests else "fail"
+            # unittest suppresses addSuccess after a subtest skip as well as
+            # after a failure/error. Derive this occurrence's parent outcome
+            # from its subtests, never earlier occurrences of the same ID.
+            outcome = ("error" if "error" in self.current_subtests else
+                       "fail" if "fail" in self.current_subtests else
+                       "pass" if "skip" in self.current_subtests else "fail")
             self.observed(test, outcome)
         super().stopTest(test)

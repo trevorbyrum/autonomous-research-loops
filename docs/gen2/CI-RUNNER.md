@@ -18,7 +18,7 @@ the authority for the executed checkout and branch head versus PR merge.
 | Mode | Workload | Partition |
 | --- | --- | --- |
 | `push` (default) | sqlite, boundaries, size, schemas, DDL, catalog consistency, metrics, debt, locators, supported source | One execution |
-| `engine-unit` | Full unittest discovery through the existing verbose runner | Classes assigned by SHA-256 modulo shard count; class fixtures and within-class order retained |
+| `engine-unit` | Full unittest discovery through the existing verbose runner | Classes assigned by SHA-256 modulo shard count; all class occurrences stay together in discovery-relative order |
 | `engine-trigger-order` | Original and reversed store suites, with the unchanged rebuild and outcome gates | One execution |
 | `engine-mutation` | Full inventory, global integrity checks, all unmutated loading-mode baselines, killers, controls and child attestation | Mutant IDs assigned by SHA-256 modulo shard count |
 | `gateway-no-db` | Existing full gateway discovery without a DSN | One execution; requires psycopg even without PostgreSQL |
@@ -33,6 +33,9 @@ reports contain the complete expected identities and the assigned identities.
 Unit discovery is a multiset: existing re-exported TestCase occurrences retain
 their original multiplicities, and all occurrences of a class stay together.
 Comparison requires those counts exactly. Mutation IDs remain unique.
+Filtering can coalesce class/module fixture transitions when intervening classes
+are assigned elsewhere. Class placement does not promise identical fixture
+transitions for arbitrary suites; the unsharded sequence remains unchanged.
 The unit and trigger-order runners also emit test/subtest outcomes and JUnit;
 the mutation runner emits per-mutant test sets, verdicts and baseline outcomes.
 
@@ -143,6 +146,29 @@ not compare durations or machine-specific paths as a substitute for outcomes.
 Any actual identity differences, including unstable subtest names, are reported
 rather than normalised away. CI qualification and the shadow window remain
 separate later work.
+
+## Default result disclosure
+
+`make gen2-ci-default` prints **PARTIAL ACCEPTANCE — NOT FULL ACCEPTANCE**
+before execution and again at completion, including failure. Its fixed scope is
+T0, complete trigger-order and units 1/8. Unit partitions 2–8/8, all mutation
+work and all gateway modes are omitted. A green result covers only that scope.
+`default-1-of-1/scope.json` records the planned scope, actual per-mode execution
+statuses and source SHA/tree; `GEN2_CI_SCOPE` retains it in the console.
+`acceptance-scope.xml` publishes the banner and scope as a Jenkins-visible test
+summary through `standardPipeline(junit: ...)`. This reporting case is not an
+additional acceptance test. Every workload JUnit carries source SHA/tree,
+dirty state, mode and shard properties from its colocated `run.json`, with
+mode/shard/SHA also in the suite/class label for the Jenkins test UI.
+
+The deployed std revision `64e873b141093025b7d68edad79dacfd5f43eda9`
+has no consumer status-description interface. Request for ci-cd-2: provide an
+opt-in, bounded consumer coverage/status description, visible on the completed
+build and linked commit status, bound to the controller's executed source and
+the consumer mode/shard scope. Preserve non-passing execution/publication
+results. This branch uses the supported JUnit interface and console evidence;
+it does not set Jenkins descriptions or change the platform. The drafted,
+unmerged std v1.2 PRs #13–#15 do not establish deployed capability.
 
 ## v1.2 command mapping
 
