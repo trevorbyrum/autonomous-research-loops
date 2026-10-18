@@ -132,7 +132,11 @@ Compare full local evidence to the exhaustive CI shard evidence with:
 ```
 
 The comparison rejects missing or repeated shards, incomplete test or mutant
-identities, non-passing outcomes, inconsistent baselines, and mixed source pins.
+identities, failed invocations, actual test failures/errors, inconsistent
+baselines, and mixed source pins. Existing intentional unittest skips and
+expected failures remain recorded outcomes: their identities, multiplicities
+and skip reasons must match the independent reference exactly. A new or changed
+skip therefore fails equality; this does not authorise any new test skip.
 It compares test/subtest identity/outcome multisets, exact mutant identities and
 killer/control outcomes, both trigger orders, and unmutated baselines. It does
 not compare durations or machine-specific paths as a substitute for outcomes.

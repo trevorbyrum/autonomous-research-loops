@@ -48,8 +48,13 @@ def collect(root: Path, sha: str) -> dict:
     mutants = inventory(root, "engine-mutation-inventory.json")
     outcomes = [outcome for path in root.rglob("engine-unit-outcomes.json") for outcome in read(path)]
     parents = Counter(item["id"] for item in outcomes if item["id"] in expected_tests)
-    if parents != expected_tests or any(item["outcome"] != "pass" for item in outcomes):
-        raise ValueError(f"unit outcomes missing or non-passing in {root}")
+    # Original unittest semantics include declared skips/expected failures.
+    # Keep them as outcomes, including exact skip reasons. main compares their
+    # complete multisets against the independent reference, so a new/changed
+    # skip never silently replaces a pass. Actual failures remain inconsistent
+    # with a successful invocation and are rejected here.
+    if parents != expected_tests or any(item["outcome"] not in {"pass", "skip", "expected_failure"} for item in outcomes):
+        raise ValueError(f"unit outcomes missing or failed in {root}")
     cases = [read(path) for path in root.glob("**/mutants/*.json")]
     if len(cases) != len(mutants) or {case["id"] for case in cases} != set(mutants):
         raise ValueError(f"mutant outcomes missing or duplicated in {root}")
