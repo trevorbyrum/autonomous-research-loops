@@ -40,6 +40,7 @@ TESTS = ROOT / "gen2" / "tests"
 if str(ROOT / "tools") not in sys.path:
     sys.path.append(str(ROOT / "tools"))
 from gen2_ddl_triggers import installed_triggers  # noqa: E402 (script and path-loaded tool)
+from gen2_ci_evidence import junit, record  # noqa: E402
 
 TRIGGER = re.compile(r"CREATE TRIGGER (\w+)\b.*?\nEND;\n", re.DOTALL)
 
@@ -149,7 +150,12 @@ def main() -> int:
     problems = check_rebuild(ddl, rebuilt, fx.CONNECTION_TEXT)
     if not problems:
         normal = run_suite(fx, ddl)
-        problems = compare(normal, run_suite(fx, rebuilt))
+        reversed_ = run_suite(fx, rebuilt)
+        record("trigger-order-outcomes.json", {"original": normal, "reversed": reversed_})
+        junit("trigger-order", [{"id": order + ":" + name, "outcome": "pass" if outcome == "pass" else "fail"}
+                                for order, outcomes in (("original", normal), ("reversed", reversed_))
+                                for name, outcome in outcomes.items()])
+        problems = compare(normal, reversed_)
     for problem in problems:
         print(f"TRIGGER ORDER CHECK FAILURE: {problem}", file=sys.stderr)
     if problems:

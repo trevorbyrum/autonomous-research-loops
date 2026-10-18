@@ -13,11 +13,48 @@ GEN2_VENV ?= .venv-gen2
 PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
+GEN2_TEST_ARGS ?=
+GEN2_MUTATION_ARGS ?=
+GEN2_CI_MODE ?= push
+GEN2_CI_SHARD ?= 1/1
+GEN2_GATEWAY_MODE ?= all
 
 .PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-source gen2-metrics gen2-metrics-rebaseline gen2-metrics-admit gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
 gen2-check: gen2-sqlite gen2-boundaries gen2-source gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
+
+.PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-trigger-order gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db gen2-ci-gateway-mutants
+# T0 is deliberately separate from full acceptance. No acceptance verdict is
+# inferred from this target. Full local gen2-check remains exhaustive.
+gen2-push: gen2-sqlite gen2-boundaries gen2-size gen2-schemas gen2-ddl gen2-catalog-check gen2-metrics gen2-debt gen2-locators gen2-source
+
+gen2-ci: gen2-venv
+	$(PYTHON) tools/gen2_ci.py --mode $(GEN2_CI_MODE) --shard $(GEN2_CI_SHARD)
+
+# The currently deployed library has one execution. Keep the long modes
+# independently runnable for v1.2; T0 + complete trigger-order fit this path.
+gen2-ci-default:
+	$(MAKE) gen2-ci GEN2_CI_MODE=push GEN2_CI_SHARD=1/1
+	$(MAKE) gen2-ci-trigger-order
+
+gen2-ci-unit:
+	$(MAKE) gen2-ci GEN2_CI_MODE=engine-unit
+
+gen2-ci-trigger-order:
+	$(MAKE) gen2-ci GEN2_CI_MODE=engine-trigger-order GEN2_CI_SHARD=1/1
+
+gen2-ci-mutation:
+	$(MAKE) gen2-ci GEN2_CI_MODE=engine-mutation
+
+gen2-ci-gateway-no-db:
+	$(MAKE) gen2-ci GEN2_CI_MODE=gateway-no-db GEN2_CI_SHARD=1/1
+
+gen2-ci-gateway-db:
+	$(MAKE) gen2-ci GEN2_CI_MODE=gateway-db GEN2_CI_SHARD=1/1
+
+gen2-ci-gateway-mutants:
+	$(MAKE) gen2-ci GEN2_CI_MODE=gateway-mutants GEN2_CI_SHARD=1/1
 
 # (Re)built when either lock changes; `venv --clear` starts from an empty
 # environment, and `--no-deps` means the locks must list every transitive
@@ -115,7 +152,7 @@ gen2-catalog-check: gen2-venv
 # (tools/gen2_test.py; GEN2_TEST_LOG names it). No pipe: the exit status is
 # unittest's own.
 gen2-test: gen2-venv
-	$(PYTHON) tools/gen2_test.py
+	$(PYTHON) tools/gen2_test.py $(GEN2_TEST_ARGS)
 
 # The whole store suite again with every trigger re-created in reverse order;
 # every test and subtest must have the same outcome (task 0b cleanup 2: no
@@ -127,7 +164,7 @@ gen2-trigger-order: gen2-venv
 # tools/gen2_mutations.py) is removed in memory and its named tests must fail
 # (task 0a-repair: fixes must be mutation-testable).
 gen2-mutation: gen2-venv
-	$(PYTHON) tools/gen2_mutations.py
+	$(PYTHON) tools/gen2_mutations.py $(GEN2_MUTATION_ARGS)
 
 # Size rules (charter "Size rules"; task 2r): fails on a hand-written gen-2
 # file over 1,500 lines (generated files are exempt only by the reasoned list
@@ -156,4 +193,19 @@ gen2-auth-demo: gen2-venv
 # interpreter ($(PYTHON_BOOTSTRAP)), not the gen-2 venv, and needs PostgreSQL server
 # binaries; not part of gen2-check. Exit status is the checks' own: no pipe.
 gen2-gateway:
-	$(PYTHON_BOOTSTRAP) tools/gen2_gateway_check.py
+	$(PYTHON_BOOTSTRAP) tools/gen2_gateway_check.py --mode $(GEN2_GATEWAY_MODE)
+
+# Prepared, opt-in only: the ci-2 amendment keeps gateway dependency provisioning
+# and DB execution off the default path until image :2 is confirmed on cir.
+.PHONY: gen2-gateway-venv gen2-gateway-ci
+gen2-gateway-venv: .venv-gateway-ci/.installed
+
+.venv-gateway-ci/.installed: gateway/requirements-ci.txt
+	$(PYTHON_BOOTSTRAP) -m venv --clear .venv-gateway-ci
+	.venv-gateway-ci/bin/python -m pip install --no-input --disable-pip-version-check --require-hashes --no-deps --only-binary=:all: -r gateway/requirements-ci.txt
+	.venv-gateway-ci/bin/python -m pip check
+	.venv-gateway-ci/bin/python -c "import psycopg; print(psycopg.__version__, psycopg.pq.version())"
+	touch $@
+
+gen2-gateway-ci: gen2-gateway-venv
+	.venv-gateway-ci/bin/python tools/gen2_gateway_check.py --mode $(GEN2_GATEWAY_MODE)

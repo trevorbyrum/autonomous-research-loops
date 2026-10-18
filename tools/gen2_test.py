@@ -19,6 +19,8 @@ import time
 import unittest
 from pathlib import Path
 
+from gen2_ci_evidence import Outcomes, junit, partition, record, shard_spec, tests
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -40,6 +42,11 @@ class Tee:
 
 
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--shard", type=shard_spec, default=(1, 1))
+    args = parser.parse_args()
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     log = Path(os.environ.get("GEN2_TEST_LOG") or Path(tempfile.gettempdir()) / "gen2-test-logs" / f"gen2-test-{stamp}.log")
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -50,7 +57,17 @@ def main() -> int:
         try:
             print(f"gen2-test: the whole verbose output is kept in {log}")
             suite = unittest.defaultTestLoader.discover(str(ROOT / "gen2" / "tests"), pattern="test_*.py")
-            result = unittest.TextTestRunner(stream=tee, verbosity=2).run(suite)
+            expected = [test.id() for test in tests(suite)]
+            if len(set(expected)) != len(expected) or not expected:
+                raise ValueError("test discovery is empty or has duplicate identities")
+            suite = partition(suite, args.shard)
+            selected = [test.id() for test in tests(suite)]
+            if not selected:
+                raise ValueError("test shard is empty")
+            record("engine-unit-inventory.json", {"expected": expected, "selected": selected, "shard": args.shard})
+            result = unittest.TextTestRunner(stream=tee, verbosity=2, resultclass=Outcomes).run(suite)
+            record("engine-unit-outcomes.json", result.outcomes)
+            junit("engine-unit", result.outcomes)
             print(f"gen2-test: {'passed' if result.wasSuccessful() else 'FAILED'}; the whole verbose output is kept in {log}")
         finally:
             sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__  # before the log closes: nothing may write to it afterwards
