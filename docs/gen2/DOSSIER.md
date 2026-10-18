@@ -4110,3 +4110,52 @@ push or main merge occurred. AGENTS.md lookup stayed inside the repository;
 no manual disposable snapshot or venv symlink was created. This completes only
 the selected Router group; raw/global/amendment positives remain pending and
 the six raw-span owners plus part 4 remain blocked by the operator decision.
+
+
+#### 2d-4c span-offset cap — re-estimate (before code)
+
+2026-10-18, branch `gen2`. Read the entire task, both operator rulings and
+all continuations; this section and the accepted 2d-4b3d exact span-domain
+notes; SQL 21/32/37, C-13, boundary.py and Astra's complete 3d review.
+Repository-only AGENTS.md lookup found none. The 2026-10-18 operator ruling
+amends the formerly unbounded span domain and settles NB1: start/end values
+are at most 9,007,199,254,740,991, with no rounding and no live migration.
+
+Estimate **495 handwritten additions**, including retained private drivers:
+ordered replacement guards 180 (including about 140 copied existing guard
+lines), schema/Router admission 25, fixture turnover 25, boundary/parity and
+exact-binding tests 145, paired predicate mutants/registration 40, private
+scope/inventory/trace/gate drivers 80. Documentation, generated controls and
+the two hash pins are additional. This is one coherent production slice;
+re-estimate and split before expanding materially beyond this budget.
+
+Files: new `gen2/store/schema/38-span-offset-cap.sql` and `order.txt`;
+`gen2/schema/verification-receipt.schema.json` (also supplies detailed-record
+cited/context spans and outcome spans by reference); `gen2/router/boundary.py`
+and `detailed_checks.py`; existing raw/Router span and exact-span test files;
+new span-cap test modules and `tools/gen2_mutants/span_cap.py`; inventory and
+control registration/data; both DDL/catalog hash pins. Quote-check offsets
+already have the same schema maximum and byte-range admission. Locator values
+are schema strings, not numeric offsets: numeric locator inputs stay refusals,
+and digit strings remain labels. No invented numeric locator representation.
+
+Replace the two installed receipt/detailed-record span guards through ordered
+DDL, preserving their names, decoded-name rules, exact integrality/minima,
+locator domain and diagnostics. Compare preserved decimal numeral text by its
+normalized significant-digit length and lexicographic value against the cap;
+never convert offsets to REAL or round them. Schema maxima and independent
+Router checks cover receipt spans and both assessment arrays. Existing
+above-cap positives become boundary refusals; exact-limit controls replace
+their accepted role without historical relabeling.
+
+Prove the literal matrix (limit-1, limit, limit+1, both NB1 values, negative,
+zero, decimal/exponent and extreme-exponent cases) in schemas, Router and raw
+DDL, across all three receipt methods and both trigger orders. Store-admitted
+spans must parse under C-13 and bind exactly to an admitted detailed record.
+Reseeding uses restore_triggers. Add separate passing predicate controls and
+control-path traces. Run full gen2-test, trigger-order, composition, complete
+affected --only families over transitive imports, full uncovered-trigger
+inventory, gen2-gateway, all static gates, and repin both hashes. Check user
+and system landing units before heavy runs; copy any snapshot venv with cp -a.
+Evidence and COMPLETION.md: private/evidence/2d-4c-cap/. Mandatory consumption
+and promotion changes remain OFF; remaining part-3 conversion is separate.
