@@ -3,6 +3,8 @@ import json
 import sqlite3
 from unittest.mock import patch
 
+from gen2.core import canonical
+from gen2.tests.detailed_receipt_fixtures import attach_checks
 from gen2.tests.test_store_table_availability import TableDDLTest, PAGE
 
 DOMAIN = "cited spans must match the receipt schema domain"
@@ -50,12 +52,44 @@ DUPLICATES = (
 
 
 class SpanDDLTest(TableDDLTest):
-    ATTRIBUTED = False  # Pending raw span/exact conversion; never a historical positive.
     # Inherited table tests run in their own module; these isolate the domain.
     test_table_control = test_non_table_control = test_lower_table_control = None
     test_insufficient = test_mixed = test_cannot_assess = test_lineage = None
     test_diagnostics = test_tier_diagnostic = test_recorded_evidence = None
     test_bea_table_identity = test_readback_conflict_rollback = None
+
+    def assessment_bindings(self):
+        # Accepted values across the domain/exact-numeral controls, seeded
+        # before restoring requested DDL. Equivalent spellings share a binding.
+        from gen2.tests.span_cap_cases import LIMIT, NUMERALS, admitted, literal, exact_value
+        bindings = list(super().assessment_bindings()) + [[PAGE] * 2, [PAGE] * 50,
+            [span(start=0, end=1)], [span(start=LIMIT, end=LIMIT)], [span(start=9, end=1)]]
+        bindings += [[PAGE, locator(kind='line')], [locator(kind='line'), PAGE]]
+        bindings += [[locator(kind=k)] for k in ('section', 'figure', 'paragraph', 'line')]
+        bindings += [[locator(value=v)] for v in (' ', '\0', '字' * 500,
+            'a\0' + '字' * 498, 'é e\u0301\0value')]
+        bindings += [[span(**{key: value})] for key, values in
+            (('start', (0, 1, LIMIT)), ('end', (1, LIMIT))) for value in values]
+        cap_bindings = [exact_value(literal(key, n)) for key in ('start', 'end')
+            for n in NUMERALS if admitted(key, n)]
+        bindings += cap_bindings
+        # Admit only the subject's declared accepted operands. A generic
+        # manually opened owner retains the complete catalog for probes.
+        if self._testMethodName not in ('runTest', 'test_schema_edges'):
+            bindings = {
+                'test_all_spans': [[PAGE, PAGE]],
+                'test_cap_matrix': cap_bindings,
+                'test_cap_control': [[span(start=LIMIT, end=LIMIT)]],
+                'test_start_exact': [[span(start=1)]],
+                'test_end_exact': [[span(end=1)]],
+                'test_start_negative': [[span(start=0)]],
+                'test_end_negative': [[span(end=1)]],
+                'test_late_numeral': [[PAGE, PAGE]],
+                'test_numeric_controls': [[span(start=v)] for v in (0, 1, 5, LIMIT)],
+                'test_over_cap_refusals': [[span(start=LIMIT)], [span(end=LIMIT)]],
+                'test_exact_control': [[locator(value='é e\u0301\0value')]],
+            }.get(self._testMethodName, [[PAGE]])
+        return list({canonical.canonical_bytes(s): s for s in bindings}.values())
 
     def setUp(self):
         super().setUp()
@@ -70,8 +104,18 @@ class SpanDDLTest(TableDDLTest):
         self.assertEqual(self.rows("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='verification_receipts' ORDER BY rowid"),
             [(name, sql) for name, sql in objects if name not in removed])
 
-    def insert(self, spans, transform=lambda doc: doc):
+    def insert(self, spans, transform=lambda doc: doc, *, historical=False):
         raw = spans if isinstance(spans, str) else json.dumps(spans)
+        if not historical:
+            # Retain the literal /1 guard experiment, then its current /2
+            # positive with the same exact decoded spans. SQL 37 binds the
+            # canonical array text written by Router, including member order.
+            self.x('SAVEPOINT literal_compatibility')
+            try:
+                self.insert(raw, historical=True)
+            finally:
+                self.x('ROLLBACK TO literal_compatibility')
+                self.x('RELEASE literal_compatibility')
         original = self.x
 
         def inject(sql, *params):
@@ -79,21 +123,27 @@ class SpanDDLTest(TableDDLTest):
                 cols = sql.split("(", 1)[1].split(")", 1)[0].split(", ")
                 row = dict(zip(cols, params))
                 doc = json.loads(row["receipt"])
-                doc["cited_spans"] = "__RAW_SPANS__"
-                row["receipt"] = transform(json.dumps(doc).replace('"__RAW_SPANS__"', raw))
-                row["cited_spans"] = raw
+                if historical:
+                    doc["cited_spans"] = "__RAW_SPANS__"
+                    row["receipt"] = transform(json.dumps(doc).replace('"__RAW_SPANS__"', raw))
+                    row["cited_spans"] = raw
+                else:
+                    doc['cited_spans'] = canonical.parse_json_strict(raw)
+                    attach_checks(self.assessments, doc)
+                    row['receipt'] = canonical.canonical_bytes(doc).decode()
+                    row['cited_spans'] = canonical.canonical_bytes(doc['cited_spans']).decode()
                 params = tuple(row[col] for col in cols)
             return original(sql, *params)
 
         with patch.object(self, "x", side_effect=inject):
-            self.table_receipt(spans=(PAGE,))
+            self.table_receipt(spans=(PAGE,), historical=True)
 
     def pair(self, bad, control=(PAGE,), diagnostic=DOMAIN, transform=lambda doc: doc):
         self.x("SAVEPOINT domain_pair")
         try:
             before = self.rows("SELECT * FROM verification_receipts")
             with self.assertRaisesRegex(sqlite3.IntegrityError, diagnostic):
-                self.insert(bad, transform)
+                self.insert(bad, transform, historical=True)
             self.assertEqual(self.rows("SELECT * FROM verification_receipts"), before)
             self.insert(control)
             self.assertEqual(json.loads(self.rows("SELECT cited_spans FROM verification_receipts")[0][0]), list(control))
@@ -122,7 +172,7 @@ class SpanDDLTest(TableDDLTest):
                             self.assertEqual(canonical.parse_json_strict(retained), json.loads(raw))
                         else:
                             before = self.rows('SELECT * FROM verification_receipts')
-                            with self.assertRaisesRegex(sqlite3.IntegrityError, DOMAIN): self.insert(raw)
+                            with self.assertRaisesRegex(sqlite3.IntegrityError, DOMAIN): self.insert(raw, historical=True)
                             self.assertEqual(self.rows('SELECT * FROM verification_receipts'), before)
                     finally:
                         self.x('ROLLBACK TO cap')

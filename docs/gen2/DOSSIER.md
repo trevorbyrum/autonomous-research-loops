@@ -4444,3 +4444,89 @@ inventory gate is triggered; retain the unchanged full inventory. Wait for no
 active user/system gen2-landing-* unit before heavy runs. Any snapshot venv uses
 cp -a. Evidence and current exact next steps: private/evidence/2d-4c-part3f/,
 with COMPLETION.md and PROGRESS.md. This estimate commit precedes code/gates.
+
+
+**Part 3f implementation (selected six raw span/exact owners), 2026-10-19.**
+SpanDDLTest, ExtractionSpanDDLTest, ValidatedSpanDDLTest, ExactSpanDDLTest,
+ExtractionExactSpanDDLTest and ValidatedExactSpanDDLTest now retain current `/2`
+positives with real Router-admitted assessments for every performed kind. The
+accepted RawAssessmentFixture, seed_checks, assessment_binding, attach_checks
+and restore_triggers mechanisms are reused unchanged. The raw table parent
+exposes an accepted-binding catalog hook; each actual subject seeds its declared
+controls under unmutated DDL before snapshots. Generic probe owners and the broad
+schema-edge matrix retain all 30 bindings / 360 records. A normal page control
+needs one binding / 12 records. Receipt construction selects existing rows only.
+
+SQL 37 binds canonical array text. Each accepted literal is first exercised as
+an explicit sampled `/1` compatibility control inside a rolled-back savepoint,
+then retained as a canonical `/2` receipt with the same exact decoded spans and
+admitted references. Every pending positive value gains its current counterpart;
+none is relabeled historical. Negative member/numeral probes retain their literal
+`/1` isolation and original diagnostics. The adopted cap's over-limit values stay
+refusals. No value is rounded. Requested trigger definitions/order and the two
+existing subject-local omissions survive reseeding through restore_triggers.
+
+All 31 original assertion-call ASTs across the three edited existing files are
+unchanged. Four new regressions cover all six owners: retained authenticated
+reports and read-only catalogs checked before rollback, four distinct ordered
+span bindings with 16 disjoint selected record IDs, literal exact-limit/exact-zero
+spellings alongside current references, foreign-span atomic refusal followed by
+six matching full-text promotions, and exact reversed/mutated/dropped catalogs.
+Ordinary extraction outputs remain byte equal and claim no artifact-selector
+discrimination; the accepted distinct-output experiment is unchanged. These are
+synthetic attributed assessments and relationship/binding proofs, not scientific
+correctness or real transport-authentication claims. Full-text promotion controls
+consume response bytes equal to the actual authenticated examined artifact.
+
+The ten-module transitive fixture closure selects 57 directly affected mutants,
+expanded to 68 in the complete 2D4B3D, 2D4B3DR1, 2D4B3DR2 and 2D4CCAP prefixes.
+All 68 are killed with separate passing controls over green 1,105-Store/two
+file-target baselines. All 153 predicate/control pairings qualify through 15
+passing controls, with seven explicit converted paths. All six raw owner controls
+also hit the actual positive attachment line and detailed-binding trigger.
+Downgrade, span-collapse, binding-removal and restoration-removal counterfactuals
+each produce six assertion failures and zero errors. All 3,618 prior control
+records are unchanged. The full unchanged inventory has 337 triggers, zero
+uncovered guards. Production, ordered DDL, schemas, pins and policy are unchanged;
+mandatory consumption and promotion activation remain **OFF**.
+
+The first full run reported ERROR in its nested serial mutation test at the
+existing 900-second deadline. Bulk admission of every span variant for every
+subject was the inferred cause from timing and the test's timeout; its traceback
+was not printed before interruption. Superseded full/order runs receive no
+passing credit. Upfront subject catalogs fix the fixture cost without changing
+any timeout, assertion or admission helper. The focused run falls from 533.176s
+to 161.575s; both nested serial mutation checks pass on final source. A post-audit
+prefix filter initially counted the cap control along with the six owners; the
+corrected explicit-owner filter qualifies all six, without a repository change.
+
+**Part 3f validated before implementation commit.** Full gen2-test passes
+**4,260 tests, two existing skips**, in **3,681.366 test seconds**. Trigger-order
+passes **337 triggers / 4,721 identical Store tests/subtests**; composition passes
+**six tests**; affected complete families pass **68/68**, in 551.1s. All eight
+static gates pass and are repeated after this note. All four code files match
+their final tested hashes. Footprint: **186 repository additions / 15 removals**
+plus **297 retained private driver lines**, totaling **483 additions against 495
+estimated**, excluding documentation/generated evidence. This stops after the
+selected six-owner group; part 3 remains incomplete.
+
+**Exactly what remains pending for part 3g or later:** raw quote DDLTest,
+CaptureDDLTest and AdjudicationDDLTest; StoreTestCase.verify/populate_every_table,
+VerificationTest, ContractAdmittedSupportTest; raw canonical/content/acquisition/
+extraction-content owners, PendingDDLTest's accepted canonical/distractor receipts,
+history/replacement and every JSON/member/population consumer listed in the
+private COMPLETION.md (including all 30 generated owners); both ImpactTest
+ContractWorld.verify amendment positives. The newer
+`test_span_cap.SpanCapTest.test_receipt_router_matrix` also still builds current
+accepted `/1` receipts through the pending root and is explicitly pending. It
+postdates 3e's inventory; it is not relabeled historical. HoldDDLTest stays
+hold-only; ObservationDomainTest writes no verification receipt. Previously
+converted owners and explicit historical/optional/schema controls retain their
+purposes. The cap is implemented and accepted; no cap decision is open. The final
+part-3 slice still owes the repository-wide no-pending-positive inventory.
+
+Evidence, exact pending owners, attempts, source/control inventories, gate commands
+and commits: private/evidence/2d-4c-part3f/COMPLETION.md. PROGRESS.md is current.
+No provider calls, real-database migrations, Gen-1 access, protected-register
+edits by this slice, push or main merge occurred. AGENTS.md lookup stayed inside
+the repository. No manual disposable snapshot or venv symlink was created.

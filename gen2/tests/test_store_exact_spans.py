@@ -28,7 +28,7 @@ class ExactSpanDDLTest(spans.SpanDDLTest):
         self.x("SAVEPOINT exact_pair")
         try:
             before = self.rows("SELECT * FROM verification_receipts")
-            with self.assertRaisesRegex(sqlite3.IntegrityError, diagnostic): self.insert(bad, transform)
+            with self.assertRaisesRegex(sqlite3.IntegrityError, diagnostic): self.insert(bad, transform, historical=True)
             self.assertEqual(self.rows("SELECT * FROM verification_receipts"), before)
             self.insert(control)
             receipt, retained = self.rows("SELECT receipt,cited_spans FROM verification_receipts")[0]

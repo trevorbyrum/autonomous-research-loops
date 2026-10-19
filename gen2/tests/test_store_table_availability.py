@@ -28,24 +28,23 @@ class TableDDLTest(content.relationships.RelationshipTest):
     def setUp(self):
         with patch.object(sf, 'DDL_TEXT', db.schema_text() if self.ATTRIBUTED else sf.DDL_TEXT):
             super().setUp()
-        if not self.ATTRIBUTED:  # Span/exact-span owners remain pending conversion.
-            self.artifact(size=512)
-            self.source(version="v4")
-            return
         self.assessments = detailed.RawAssessmentFixture(self, content.response(content.FULL))
         ref = self.assessments.source
         self.x("INSERT INTO artifacts (content_hash,size_bytes,media_type,staged_at) VALUES (?,?,?,?)",
             ref['content_hash'], ref['size_bytes'], ref['media_type'], T)
         self.x("INSERT INTO artifact_topics VALUES (?,?,'inv_pppppppp',?)", ref['content_hash'], TOPIC, T)
         self.source(version='v4')
-        bea = {**TABLE, 'locator': dict(kind='table', value='table:bea:NIPA:T10101')}
-        for spans in ((TABLE,), (PAGE,), (PAGE, TABLE), (bea,)):
+        for spans in self.assessment_bindings():
             seed_checks(self.assessments, dict(topic_id=TOPIC,
                 claim=dict(claim_id='clm_00000001', claim_revision=1),
                 source=dict(work_id='wrk_00000001', source_version='v4'), cited_spans=list(spans),
                 obtained_content_hash=ref['content_hash'], extraction=dict(method='canonical_bytes'),
                 verifier_invocation_id='inv_vvvvvvvv', checks=self.CHECKS_OK))
         restore_triggers(self, sf.DDL_TEXT)
+
+    def assessment_bindings(self):
+        bea = {**TABLE, 'locator': dict(kind='table', value='table:bea:NIPA:T10101')}
+        return ((TABLE,), (PAGE,), (PAGE, TABLE), (bea,))
 
     def source(self, **changes):
         if self.ATTRIBUTED:
