@@ -4587,3 +4587,83 @@ Any disposable venv uses cp -a. Production/DDL/schema/pins stay unchanged;
 mandatory consumption and promotion changes stay OFF. Stop and report if a
 production change is needed. Evidence and current PROGRESS.md live under
 private/evidence/2d-4c-part3g/. This documentation-only commit precedes code.
+
+**Part 3g plan addendum, operator NB1 (2026-10-19; after code).** Astra
+accepted part 3f and identified another item-4 population consumer:
+`test_store_span_cap.AuxiliaryCapTest.setUp` calls populate_every_table.
+Include this owner explicitly in the coupled global-root/population conversion
+plan and the final receipt-builder inventory. Under the committed 3g split it
+remains pending with that entire group; its setup receipt is not historical
+and is not credited as converted. The selected Router amendment/cap slice and
+its running gates are unchanged. The static call-site inventory already finds
+this call; the named pending-owner list is now corrected as well.
+
+**Part 3g implementation (selected remaining Router group), 2026-10-19.**
+Both ImpactTest amendment positives and SpanCapTest.test_receipt_router_matrix
+now consume current /2 receipts with real Router-admitted attributed records
+for every performed kind. The accepted helpers are reused unchanged. Amendment
+assessments are admitted under unmutated DDL before the receipt transaction,
+then restore_triggers restores the requested definitions/order. The cap matrix
+admits each distinct exact in-range ordered span binding upfront; submission
+only selects existing records. Literal boundary probes remain literal, repeated
+equivalent spellings reuse their exact binding, and no value is rounded.
+Production, DDL, schemas, pins and promotion policy are unchanged; mandatory
+consumption and promotion activation remain OFF. Explicit historical /1 and
+optional-reference controls retain their purposes.
+
+All 197 original assertion-call ASTs survive (179 amendment, 18 cap). Four new
+regressions check retained authenticated assessment evidence, independent
+verifier attribution, all three receipt methods, disjoint span bindings,
+the original accepted promotion/protocol fencing, foreign-span atomic refusal,
+rollback/replay with unchanged record catalogs, and exact requested catalogs.
+The new catalog fixture adopts normal DDL before restoring the requested
+reversed/mutated/dropped catalog. Ordinary extraction outputs remain byte equal;
+the accepted distinct-output regression retains artifact-selector coverage.
+These synthetic attributed judgments establish binding, not scientific truth.
+
+The 77-module reverse-import closure selects 1,169 direct IDs, expanded to
+2,195 mutants in 72 complete prefixes. All are killed: 2,187 have passing
+paired controls, three retain accepted cases inside killers, and five retain
+unchanged documented exceptions; the 1,105-Store/15-file-target baselines are
+green. All 3,618 control records are unchanged. Twenty passing controls are
+traced: all three converted paths hit their actual fixture calls and the
+detailed-binding trigger; 80 predicate/control pairings qualify, with two
+existing documented by-hand delegate exceptions reported separately. The
+initial qualifier incorrectly demanded coverage from those non-reaching
+exceptions; its failed attempt is retained. The corrected driver passes end
+to end without a fixture/control/production change. Four downgrade/binding/
+restoration counterfactuals produce six assertion failures and zero errors.
+The unchanged inventory has 337 installed triggers and zero uncovered guards.
+
+**Part 3g validated before implementation commit.** Full gen2-test passes
+4,264 tests with two existing skips (3,699.718 test seconds); trigger-order
+passes 337 triggers / 4,721 identical Store tests/subtests; composition passes
+six tests. Focused modules pass 57 tests; affected mutations pass 2,195/2,195.
+All eight static gates pass and are repeated after this note. All three code
+files match their tested hashes. Footprint: 134 repository additions / one
+removal plus 264 retained private driver lines, totaling 398 against 440
+estimated, excluding documentation/generated evidence. Heavy runs waited for
+the landing unit to finish; each start has empty user/system observations.
+Small development tests and lightweight static checks during that wait are
+disclosed separately. Required task/dossier/helper reads preceded code; direct
+older-authority rereads completed during the wait, with exact timing disclosed.
+
+**Exactly what remains pending:** raw quote/capture/adjudication; the global
+StoreTestCase.verify/populate_every_table group, VerificationTest and
+ContractAdmittedSupportTest; raw canonical/content/acquisition/extraction-
+content and PendingDDLTest's accepted canonical/distractor receipts; every
+history/replacement/JSON/member/population consumer named in COMPLETION.md,
+including all 30 generated owners and NB1's AuxiliaryCapTest.setUp. The root
+and its consumers remain pending together. Nothing pending became historical.
+HoldDDLTest remains hold-only; ObservationDomainTest writes no verification
+receipt. The two amendment positives and Router cap matrix are converted.
+This completes only the selected split: part 3 remains INCOMPLETE. The final
+part-3 slice still owes the repository-wide no-pending-positive demonstration.
+
+Evidence, exact owner/call-site inventories, attempts, commands, source hashes
+and commits: private/evidence/2d-4c-part3g/COMPLETION.md; PROGRESS.md is current.
+Operator commit 69e84da updated BUILD-STATE/REVIEW-LOG during validation; those
+changes are neither reverted nor included in this implementation commit. No
+provider call, real-database migration, Gen-1 access, protected-register edit
+by this slice, push or main merge occurred. Repository-only AGENTS lookup
+found none; no manual disposable checkout or venv symlink was created.

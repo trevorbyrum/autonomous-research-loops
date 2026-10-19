@@ -11,6 +11,7 @@ from gen2.tests import test_table_availability as tables
 from gen2.tests import test_detailed_checks as checks
 from gen2.tests import test_router_workflow as workflow
 from gen2.tests.router_fixtures import empty_outcome
+from gen2.tests.detailed_receipt_fixtures import attach_checks
 
 
 RECEIPT_SCHEMA = Path(__file__).resolve().parents[1] / 'schema/verification-receipt.schema.json'
@@ -80,13 +81,20 @@ class SpanCapTest(unittest.TestCase):
         self.assertEqual(canonical.parse_json_strict(canonical.canonical_bytes(spans)), spans)
 
     def test_receipt_router_matrix(self):
+        # Admit each distinct exact binding before snapshots. Repeated literal
+        # spellings of the same value consume the same already admitted rows.
+        bindings = {canonical.canonical_bytes(exact_value(literal(key, n))):
+            exact_value(literal(key, n)) for key in ('start', 'end') for n in NUMERALS if admitted(key, n)}
         for method in tables.METHODS:
-            with tables.content.fixture({'identity': tables.content.IDENTITY}) as case:
+            with tables.span_fixture({'identity': tables.content.IDENTITY}, bindings=bindings.values()) as case:
                 for key in ('start', 'end'):
                     for i, n in enumerate(NUMERALS):
                         with self.subTest(method=method, key=key, n=n):
                             doc = tables.document(case, method, 'bibliographic', spans=(tables.PAGE,), detailed=False)
                             doc['verification_receipt_id'] = f'ver_cap_{key}_{i:03}'
+                            if admitted(key, n):
+                                doc['cited_spans'] = exact_value(literal(key, n))
+                                attach_checks(case, doc)
                             doc['cited_spans'] = '__SPAN__'
                             payload = {**empty_outcome(case.verifier['invocation_id'], 'interim_transition'), 'verification_receipts': [doc]}
                             env = case.envelope(case.verifier, f'op_cap_{key}_{i:03}', empty_outcome(case.verifier['invocation_id'], 'interim_transition'))
