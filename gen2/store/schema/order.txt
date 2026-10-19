@@ -43,3 +43,4 @@
 36-detailed-check-member-domain.sql
 37-detailed-check-receipts.sql
 38-span-offset-cap.sql
+39-link-locator-string.sql

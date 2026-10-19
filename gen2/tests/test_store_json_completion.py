@@ -54,6 +54,10 @@ class CompletionPairs(RolloutPairs):
             # SQL 21 redundantly refuses duplicate/unknown names. Isolate SQL 27;
             # unchanged full-schema span tests still enforce shape and numerals.
             exclusions.append('verification_receipts_span_domain_v4')
+        if self.table == 'claim_source_links':
+            # The member-name probe appends arbitrary objects, without a
+            # locator. Full-catalog locator tests separately enforce SQL 39.
+            exclusions.append('claim_source_links_locator_string')
         if self.table == 'obligations':
             # Facet tags normally admit strings only. Exercise object names in
             # the array without an unrelated facet/document binding masking it.

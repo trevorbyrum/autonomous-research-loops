@@ -9,6 +9,7 @@ from gen2.router.schemas import SchemaSet
 from gen2.tests.span_cap_cases import LIMIT, NUMERALS, admitted, literal, exact_value
 from gen2.tests import test_table_availability as tables
 from gen2.tests import test_detailed_checks as checks
+from gen2.tests import test_router_workflow as workflow
 from gen2.tests.router_fixtures import empty_outcome
 
 
@@ -22,6 +23,34 @@ def schema_set():
 
 
 class SpanCapTest(unittest.TestCase):
+    def test_link_locator_matrix(self):
+        case = workflow.ClaimSourceLinkTest()
+        case.setUp()
+        try:
+            self.assertEqual(case.capture(case.grant, 'op_loc_claim000')['status'], 'committed')
+            schemas = schema_set()
+            for i, n in enumerate((*NUMERALS, '"9007199254740993"')):
+                with self.subTest(n=n):
+                    raw_spans = literal('start', '0').replace('"value": "2"', '"value": ' + n)
+                    target = 'outcome-document.schema.json#/properties/claim_source_links/items/properties/spans'
+                    self.assertEqual(not schemas.errors(exact_value(raw_spans), target), n.startswith('"'))
+                    entry = workflow.link()
+                    entry['spans'] = '__SPAN__'
+                    payload = {**empty_outcome(case.grant['invocation_id'], 'interim_transition'), 'claim_source_links': [entry]}
+                    env = case.envelope(case.grant, f'op_locator_{i:04}', empty_outcome(case.grant['invocation_id'], 'interim_transition'))
+                    raw = json.dumps(payload).replace('"__SPAN__"', raw_spans).encode()
+                    env.update(payload_digest=case.spool.put(raw, media_type='application/json'), payload_size_bytes=len(raw))
+                    before = case.state()
+                    out = case.router.commit_outcome(env)
+                    self.assertEqual(out['status'], 'committed' if n.startswith('"') else 'rejected', out)
+                    if n.startswith('"'):
+                        self.assertEqual(case.store.select('claim_source_links')[0]['spans'], json.loads(raw_spans))
+                    else:
+                        self.assertEqual(out['reason'], 'payload_invalid')
+                        self.assertEqual(case.state(), before)
+        finally:
+            case.tearDown()
+
     def test_schemas(self):
         schemas = schema_set()
         targets = ('verification-receipt.schema.json#/properties/cited_spans',

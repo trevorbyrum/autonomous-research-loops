@@ -1,10 +1,9 @@
 """Auxiliary raw integer/span admission uses the same cap as receipts."""
 import json
 import sqlite3
-from decimal import Decimal
 
 from gen2.tests import store_fixtures as fx
-from gen2.tests.span_cap_cases import LIMIT, NUMERALS, literal
+from gen2.tests.span_cap_cases import LIMIT, NUMERALS, literal, number
 
 
 class AuxiliaryCapTest(fx.StoreTestCase):
@@ -23,7 +22,7 @@ class AuxiliaryCapTest(fx.StoreTestCase):
         for key in ('start', 'end'):
             for n in NUMERALS:
                 if n.startswith('-') or n.startswith('0') or 'e-' in n: continue
-                if Decimal(n) <= LIMIT: continue
+                if number(n) <= LIMIT: continue
                 with self.subTest(key=key, n=n):
                     self.x('SAVEPOINT cap')
                     try:
@@ -43,3 +42,17 @@ class AuxiliaryCapTest(fx.StoreTestCase):
         self.write_quote(LIMIT - 1, LIMIT)
         self.assertEqual(json.loads(self.rows('SELECT spans FROM claim_source_links WHERE claim_revision=2')[0][0])[0]['start'], LIMIT)
         self.assertEqual(self.rows("SELECT span_start,span_end FROM quote_checks WHERE check_id='cap-quote'"), [(LIMIT - 1, LIMIT)])
+
+    def test_locator_refusals(self):
+        for n in NUMERALS:
+            with self.subTest(n=n):
+                raw = literal('start', '0').replace('"value": "2"', '"value": ' + n)
+                before = self.rows('SELECT * FROM claim_source_links')
+                with self.assertRaisesRegex(sqlite3.IntegrityError, 'locator value must be a string'):
+                    self.write_link(raw)
+                self.assertEqual(self.rows('SELECT * FROM claim_source_links'), before)
+
+    def test_locator_control(self):
+        raw = literal('start', '0').replace('"value": "2"', '"value": "9007199254740993"')
+        self.write_link(raw)
+        self.assertEqual(self.rows('SELECT spans FROM claim_source_links WHERE claim_revision=2'), [(raw,)])

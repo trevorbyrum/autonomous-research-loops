@@ -29,3 +29,9 @@ add('quote-end', 'test_store_span_cap.AuxiliaryCapTest.test_refusals', 'test_sto
     scope='quote_checks_span_cap', old='NEW.span_end > 9007199254740991', new='0')
 add('link-fraction', 'test_store_span_cap.AuxiliaryCapTest.test_refusals', 'test_store_span_cap.AuxiliaryCapTest.test_control',
     scope='claim_source_links_span_cap', old="rtrim(substr(ltrim(digits, '0'), 17), '0') <> ''", new='0')
+add('locator-string', 'test_store_span_cap.AuxiliaryCapTest.test_locator_refusals', 'test_store_span_cap.AuxiliaryCapTest.test_locator_control',
+    scope='claim_source_links_locator_string', old="json_type(s.value, '$.locator.value') IS NOT 'text'", new='0')
+add('extreme-zero', 'test_canonical_decimal.DecimalExactnessTest.test_extreme_zero', 'test_canonical_decimal.DecimalExactnessTest.test_equivalent_control',
+    target='gen2/core/canonical.py', old='if not digits:  # Exact signed zero', new='if False:  # Exact signed zero')
+add('nonzero-underflow', 'test_canonical_decimal.DecimalExactnessTest.test_nonzero_refusals', 'test_canonical_decimal.DecimalExactnessTest.test_equivalent_control',
+    target='gen2/core/canonical.py', old='if not digits:  # Exact signed zero', new='if not digits or value == 0:  # Exact signed zero')

@@ -28,7 +28,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from decimal import Decimal, InvalidOperation
 
 import rfc8785
 
@@ -60,15 +59,36 @@ def _reject_constant(name: str) -> object:
     raise CanonicalizationError(f"non-finite number {name} is not JSON")
 
 
+def _decimal_parts(text: str) -> tuple[bool, str, int, str]:
+    """Exact decimal coefficient, power adjustment and normalized exponent text.
+
+    Never parse the unbounded input exponent or expand a power of ten. The
+    adjustment counts characters, so its magnitude is bounded by input size.
+    """
+    mantissa, _, exponent = text.lower().partition('e')
+    whole, _, fraction = mantissa.lstrip('-').partition('.')
+    coefficient = (whole + fraction).lstrip('0')
+    digits = coefficient.rstrip('0')
+    adjustment = len(coefficient) - len(digits) - len(fraction)
+    power = exponent.lstrip('+-').lstrip('0') or '0'
+    if exponent.startswith('-') and power != '0':
+        power = '-' + power
+    return mantissa.startswith('-'), digits, adjustment, power
+
+
 def _exact_float(text: str) -> float:
     value = float(text)
     if not math.isfinite(value):
         raise CanonicalizationError(f"number {text} overflows a double")
-    try:
-        if Decimal(repr(value)) != Decimal(text):
-            raise CanonicalizationError(f"number {text} is not exactly representable (it would hash as {value!r})")
-    except InvalidOperation as exc:  # pragma: no cover - json only hands us valid numerals
-        raise CanonicalizationError(f"bad number {text}") from exc
+    negative, digits, adjustment, power = _decimal_parts(text)
+    if not digits:  # Exact signed zero, regardless of exponent size.
+        return value
+    sign, expected, shift, exponent = _decimal_parts(repr(value))
+    # Preserve the prior Decimal(repr(value)) equality contract, including
+    # ordinary JCS decimals such as 0.1 and 5e-324. Only repr's bounded
+    # exponent is converted to int; the submitted exponent stays text.
+    if (negative, digits) != (sign, expected) or power != str(int(exponent) + shift - adjustment):
+        raise CanonicalizationError(f"number {text} is not exactly representable (it would hash as {value!r})")
     return value
 
 

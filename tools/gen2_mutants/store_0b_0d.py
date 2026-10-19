@@ -26,7 +26,7 @@ MUTATIONS: list[Mutation] = [
           ("duplicate-keys-merged", "duplicate keys silently merged (last wins)", ("StrictBoundaryTest.test_parse_rejects",),
            "        if key in out:\n            raise MemberNameError(f\"duplicate object key {key!r}\")\n", ""),
           ("precision-lost-silently", "precision-losing literals rounded instead of refused", ("StrictBoundaryTest.test_parse_rejects",),
-           "        if Decimal(repr(value)) != Decimal(text):", "        if False:"),
+           "    if (negative, digits) != (sign, expected) or power != str(int(exponent) + shift - adjustment):", "    if False:"),
           ("integers-unbounded", "integers beyond 2**53-1 accepted by the strict parser", ("StrictBoundaryTest.test_parse_rejects",),
            "        if abs(value) > INT_BOUND:", "        if False:"),
           ("lone-surrogates-accepted", "invalid Unicode (lone surrogates) accepted by the strict parser", ("StrictBoundaryTest.test_parse_rejects",),
@@ -42,7 +42,7 @@ MUTATIONS: list[Mutation] = [
            ("HashSemanticsTest.test_raw_bytes_are_hashed_raw_never_canonicalized",), "    return _sha256(bytes(raw))", "    return logical_hash(parse_json_strict(bytes(raw)))"),
           # Astra's independent survivors (re-review), now killed
           ("underflow-to-zero", "Astra's survivor: a numeral that underflows is accepted as 0.0", ("StrictBoundaryTest.test_parse_rejects",),
-           "        if Decimal(repr(value)) != Decimal(text):", "        if value != 0 and Decimal(repr(value)) != Decimal(text):"),
+           "    if (negative, digits) != (sign, expected) or power != str(int(exponent) + shift - adjustment):", "    if value != 0 and ((negative, digits) != (sign, expected) or power != str(int(exponent) + shift - adjustment)):"),
           ("raw-bytes-stripped", "Astra's survivor: retained bytes stripped of leading/trailing whitespace before hashing",
            ("HashSemanticsTest.test_raw_bytes_are_hashed_raw_never_canonicalized",), "    return _sha256(bytes(raw))", "    return _sha256(bytes(raw).strip())"),
           ("bytes-decoded-as-ascii", "Astra's survivor: JSON bytes decoded as ASCII, not UTF-8", ("StrictBoundaryTest.test_parse_decodes_bytes_as_utf8",),

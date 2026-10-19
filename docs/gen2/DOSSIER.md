@@ -4262,3 +4262,65 @@ or system gen2-landing-* unit; snapshot venvs use cp -a. Evidence and resumable
 PROGRESS.md stay under private/evidence/2d-4c-cap-repair-1/. No Gen-1, provider,
 real-database migration, protected-register edit, private commit, push or main
 merge is authorized.
+
+**Span-offset cap repair-1 implementation, 2026-10-19.** B1 is repaired by
+additive SQL 39: every raw link locator value must be JSON text. Numeric
+values below, at and above the cap, including decimal/exponent forms, refuse;
+over-limit digit-string labels remain accepted and retained exactly. SQL
+01–38 is byte-unchanged. No JSON column was added; both ordered-DDL and parsed
+SQLite-catalog pins are repinned. Existing immutability and member-name guards
+remain installed. The isolated ClaimSpansTest member-name fixture excludes
+only the new semantic guard when appending its arbitrary object probes;
+full-catalog numeric-locator tests independently enforce the new predicate.
+
+B2 is repaired at canonical._exact_float. Normalize the sign, significant
+digits and decimal-power adjustment, then compare the submitted exponent as
+text against the bounded exponent derived from repr(value). No submitted
+exponent is converted to int, no power is expanded, and no Decimal capacity
+limits participate. An all-zero significand is exact signed zero for every
+exponent; nonzero underflow, overflow and precision loss remain refusals.
+The existing decimal-equivalence policy, float result, JCS bytes, hash contract
+and C-13 text are preserved. A legacy-parser oracle over the existing RFC,
+portal, ECMAScript and span numeral catalogs checks every prior accepted
+numeral's identical canonical bytes and SHA-256. Signed extreme zero and a
+5,000-digit exponent have explicit regressions.
+
+The expanded independent rational offset oracle covers 30 literal spellings.
+Both receipt versions, all six raw owners, all three methods, both assessment
+arrays and both full trigger orders pass 60 proof invocations. Astra's separate
+38-numeral audit now has zero numeric-domain and C-13 parser-domain mismatches
+across 2,538 observations; numeric locators agree with the string schema.
+All 14 cap mutants are assertion-killed with separate passing controls; all
+16 new/retained changed pairings have qualified traces. The two older R1
+mutants now target the replacement comparison. All 3,615 prior control records
+are unchanged. Full uncovered-trigger inventory: 337 installed, zero uncovered.
+
+The canonical import closure is broad, so the complete --only selection is a
+conservative superset containing every mutation family. Private evidence retains
+scope reasons, source hashes, exact commands/exits, complete logs and resumable
+progress under private/evidence/2d-4c-cap-repair-1/. First attempts are disclosed
+without passing credit: the zero mutant initially caused a test error (fixed
+to assert refusal), and the raw JSON baseline exposed the member-name fixture's
+semantic isolation requirement. The earlier full test/order runs were stopped
+for that fixture fix; final engine gates use the repaired source.
+
+Footprint: 195 non-generated repository additions / 19 removals plus 290 retained
+private driver lines, totaling 485 additions against 390 estimated. The extra
+95 lines cover independent replay, full version/order proof, conservative scope
+and the final gate driver after fixture isolation repair; this remains below
+the approximate split threshold. Mandatory consumption and promotion activation
+stay OFF. No remaining positive fixture was relabelled historical. No provider
+calls, real-database migrations, Gen-1 access, protected-register edits, private
+commit, push or main merge. AGENTS.md lookup stayed in the repository. No manual
+snapshot or venv symlink was created.
+
+**Repair-1 validation before implementation commit.** Full gen2-test passes
+4,256 tests with two existing skips (3,324.686 test seconds). Trigger-order
+passes 337 installed triggers and 4,693 identical Store tests/subtests;
+composition passes six tests. The complete-family --only sweep kills
+3,618/3,618 mutants, with 3,601 separate passing controls and green baselines
+of 1,101 Store tests and 26 file targets. Gateway passes both 1,540-test runs
+and kills 413/413 mutants. The eight static gates, SQLite compatibility and
+source-catalog checks pass; static checks are repeated after this note.
+No unresolved repair-1 issue remains. Completion evidence records exact
+commands, exits, source/pin checks, attempts, footprint and commit identities.

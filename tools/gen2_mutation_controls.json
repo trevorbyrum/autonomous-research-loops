@@ -24006,5 +24006,26 @@
    "test_store_span_cap.AuxiliaryCapTest.test_control"
   ],
   "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-locator-string": {
+  "by_hand": true,
+  "controls": [
+   "test_store_span_cap.AuxiliaryCapTest.test_locator_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-extreme-zero": {
+  "by_hand": true,
+  "controls": [
+   "test_canonical_decimal.DecimalExactnessTest.test_equivalent_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-nonzero-underflow": {
+  "by_hand": true,
+  "controls": [
+   "test_canonical_decimal.DecimalExactnessTest.test_equivalent_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
  }
 }
