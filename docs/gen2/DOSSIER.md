@@ -4794,3 +4794,66 @@ during validation; those changes are neither reverted nor included here.
 No provider call, real-database migration, Gen-1 access, protected-register edit
 by this slice, push or main merge occurred. Repository-only AGENTS lookup found
 none; no manual disposable checkout or venv symlink was created.
+
+
+#### 2d-4c part 3i — re-estimate (before code)
+
+2026-10-19, branch `gen2`. Read the whole task (Constraints, both operator
+rulings and every continuation, including the 3h coupling rule); all of this
+section, every part-3 audit and implementation note; part-3h COMPLETION.md;
+part-3f population-owners.json; and all six named accepted detailed/raw/DDL
+fixture and regression helpers. Repository-only AGENTS.md lookup found none.
+Nothing pending is relabelled historical. No code has changed for this stage.
+
+**Remaining estimate: about 780 handwritten additions**, including retained
+private drivers, excluding documentation/generated evidence: raw canonical/
+acquisition wiring and isolation 150; global root and all population consumers
+220; raw quote/capture/adjudication 130; PendingDDLTest canonical/distractor/
+inherited-content conversion 60; independent regressions 100; audit/trace/gate
+drivers 120. This is well above 500. **Split along consumer families; implement
+only CanonicalDDLTest and ExtractionDDLTest (both extraction methods) in 3i.**
+Selected estimate **495 additions**: authenticated setup, real source identity,
+per-operand admission and receipt wiring 150; independent retained-evidence,
+binding/rollback/method/catalog regressions 120; retained inventory/trace/gate
+drivers, including reused infrastructure, 225. Stop after this coherent family.
+
+Reuse RawAssessmentFixture, seed_checks, assessment_binding, attach_checks and
+restore_triggers without forking them. Each accepted source/work/verifier
+operand must exist before Router admission of its exact records. The selector
+loops currently use outer savepoints, incompatible with Router transactions;
+give each operand a fresh disposable in-memory fixture instead. Admit records
+under unmutated DDL before receipt snapshots, then restore exact requested views
+and trigger definitions/order. Submission only attaches admitted rows. Preserve
+the accepted canonical/own/validated receipts, distinct selector operands and
+original refusal diagnostics. Explicit refusal-only /1 operands keep isolation;
+all accepted controls acquire current /2 references. Real examined bytes and
+retained evidence are authenticated. Ordinary byte-equal extraction controls
+make no artifact-selector discrimination claim; retain the accepted separate
+distinct-output experiment. No production change is anticipated or authorized.
+
+**Coupling and exact remaining scope after this stage:** StoreTestCase.verify /
+populate_every_table and every population consumer remain pending together,
+unchanged: VerificationTest, ContractAdmittedSupportTest, EveryTableSweepTest
+(including replacement/delete), RecordIdentityTest; branch-window, obligation,
+registry, semantic, lifecycle and source-artifact DDL owners; member-domain
+QuoteTest; all eight RolloutPairs and 22 CompletionPairs owners named in
+population-owners.json; explicitly NB1 AuxiliaryCapTest.setUp and its four
+controls. Raw quote DDLTest, CaptureDDLTest and AdjudicationDDLTest (including
+inherited population) also remain pending, as do PendingDDLTest's canonical,
+distractor and inherited content positives. Previously converted raw content,
+span/table and Router owners keep their accepted paths. HoldDDLTest remains
+hold-only; ObservationDomainTest writes no verification receipt. This stage
+does not finish part 3; its final stage still owes the repository-wide inventory
+showing no pending positive. No pending consumer receives conversion credit here.
+
+Mandatory consumption and promotion changes stay **OFF**. Production, ordered
+DDL, schemas, pins and policy remain untouched; stop and report if any change
+is needed. Run full gen2-test, trigger-order, composition, complete affected
+--only families (including transitive shared-fixture controls), and all eight
+static gates. Retain qualified original-control traces, unchanged trigger
+inventory, exact pending list, footprint and attempts. Heavy runs wait for no
+active user/system gen2-landing-* unit; 4c3h is active during reading. Any
+disposable snapshot copies .venv-gen2 with cp -a, never a symlink. Evidence and
+current PROGRESS.md: private/evidence/2d-4c-part3i/. This documentation-only
+commit precedes code and implementation gates. No Gen-1, provider call, real
+database migration, protected-register edit, push or main merge is authorized.
