@@ -2942,3 +2942,11 @@ The post-2q Gate D is renumbered #5.
 - **Assertions unchanged:** 179 amendment assertion calls, 11 plain assertions and 18 cap assertion calls.
 - **The pending raw/global group is listed honestly**, including 3f NB1 `AuxiliaryCapTest`.
 - **Landing at 50d8b14:** `gen2-check` green (6,496 s; 337 triggers / 4,721 reversal outcomes; 3,618/3,618 mutants). `gen2-gateway` is carried forward.
+
+## 2026-10-19: 2d-4c part 3h (raw content family, 7681a22): PASS on the first review. Accepted
+- **Astra** (`24bfe096`; `private/reviews/gen2-2d-4c-p3h-astra-review-20261019.md`): **A, B and C all PASS, ROOT-CAUSE.** No findings.
+- **Records:** `ContentDDLTest`, `ExtractionContentDDLTest` and `ValidatedContentDDLTest` take their references from real admitted records.
+- **Fixture isolation:** full requested view and trigger restoration removes a fixture-isolation cause that had been masking content-view mutations.
+- **The 2-line `PendingDDLTest` edit** (`ATTRIBUTED = False`) only keeps the pending path. Its SQLite dumps are identical to the base for six controls.
+- **The pending list is complete,** confirmed by an independent population audit: 12 direct calls, plus 8 RolloutPairs and 22 CompletionPairs owners.
+- **Landing at 7681a22:** `gen2-check` green (6,586 s). `gen2-gateway` is carried forward.
