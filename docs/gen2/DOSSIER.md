@@ -4857,3 +4857,88 @@ disposable snapshot copies .venv-gen2 with cp -a, never a symlink. Evidence and
 current PROGRESS.md: private/evidence/2d-4c-part3i/. This documentation-only
 commit precedes code and implementation gates. No Gen-1, provider call, real
 database migration, protected-register edit, push or main merge is authorized.
+
+
+**Part 3i implementation (selected raw canonical/acquisition family), 2026-10-19.**
+CanonicalDDLTest and ExtractionDDLTest (both methods) now retain current /2
+receipts with real Router-admitted assessments for every performed kind. All
+25 original positive writes are converted: nine canonical and sixteen own/
+validated extraction controls. The accepted RawAssessmentFixture, seed_checks,
+assessment_binding, attach_checks and restore_triggers helpers are unchanged.
+Real examined bytes replace the old source hash label; retained reports and
+evidence are authenticated under full unmutated DDL. Requested views and exact
+trigger definitions/order are restored before the receipt subject. Submission
+only selects admitted rows. Production, ordered DDL, schemas, pins and policy
+are unchanged; mandatory consumption and promotion activation remain **OFF**.
+
+The selector loops now use a fresh disposable in-memory fixture per operand:
+Router transactions cannot nest inside the original outer savepoint. Receipt
+conflict/rollback savepoints remain. The alternate verifier's existing lease
+fixture now has the eighth suffix character required by Router schema. All 18
+original assertion-call expressions and multiplicities are preserved. Explicit
+/1 refusal operands keep their original diagnostics; no accepted positive is
+retained that way or relabelled historical.
+
+Four new regressions independently check retained authenticated reports, actual
+performer attribution, distinct work/verifier records, each performed outcome
+for numeric_units across three methods, unchanged assessment catalogs through receipt
+insertion/conflict/rollback, foreign-span atomic refusal followed by matching
+acceptance, full unmutated admission and exact requested views plus reversed,
+mutated and dropped triggers. Ordinary outputs equal the authenticated canonical
+bytes and claim no artifact-selector discrimination. The accepted distinct-output
+and promotion regressions pass in the focused gate. These synthetic assessments
+prove recorded relationships, not scientific correctness.
+
+**Part 3i validated before implementation commit.** Full gen2-test passes
+**4,271 tests, two existing skips**, in **3,932.080 test seconds**. Trigger-order
+passes **337 triggers / 4,775 identical Store tests/subtests**; composition passes
+six tests; focused modules pass 21. The complete affected-family --only sweep
+kills **68/68**, all with passing paired controls, over a green **1,112-test
+Store baseline**, in 669.9 mutation seconds. All eight static gates pass and are
+repeated after this note. All three code files match their tested hashes.
+
+The three-module reverse-import closure selects 24 directly affected IDs,
+expanded to three complete prefixes. Three passing controls qualify all 24
+predicate/control pairings. Both converted control tests (three receipt methods)
+hit the actual attachment call and detailed-binding trigger. SQL entries are
+successful-guard observations, not branch traces of every SQL subexpression.
+Four downgrade/binding/view-restoration/trigger-restoration counterfactuals each
+cause three assertion failures and zero errors. All 3,618 control records are
+unchanged. Full unchanged trigger inventory: 337 installed, zero uncovered.
+
+Footprint: **207 repository additions / 32 removals** plus **195 retained private
+Python driver lines**, totaling **402 against 495 estimated**, excluding docs
+and generated evidence. Prior development attempts are disclosed in COMPLETION:
+a redundant queue-revision jump, the short alternate-verifier lease suffix,
+and an assertion audit whose traversal-order assumption did not survive loop
+restructuring. Exact-expression multiplicities now verify all original assertions.
+Required task/dossier/helper/evidence reads preceded code; direct older-authority
+rereads completed during the landing wait. No production need was found.
+
+**Exactly what remains pending:** raw quote DDLTest, CaptureDDLTest and
+AdjudicationDDLTest, including inherited population positives; the unchanged
+StoreTestCase.verify / populate_every_table root and every consumer together,
+including VerificationTest, ContractAdmittedSupportTest, EveryTableSweepTest
+(replacement/delete sweeps), RecordIdentityTest, branch-window/obligation/
+registry/semantic/lifecycle/source-artifact DDL owners, member-domain QuoteTest,
+all eight RolloutPairs and 22 CompletionPairs owners, and explicitly NB1
+AuxiliaryCapTest.setUp and its four controls; PendingDDLTest's accepted canonical,
+distractor and inherited content positives. COMPLETION.md and population-owners.json
+name every owner. HoldDDLTest stays hold-only; ObservationDomainTest writes no
+verification receipt. Previously converted owners retain their purposes. Part 3
+remains **INCOMPLETE**; its final stage still owes the repository-wide inventory
+showing no pending positive. Stop after this selected family.
+
+Evidence, exact pending list, call/import inventories, attempts, hashes, gate
+commands and commits: private/evidence/2d-4c-part3i/COMPLETION.md; PROGRESS.md is
+current. Every required start has fresh empty user/system landing observations;
+heavy runs waited for the prior landing to finish successfully. No Gen-1,
+provider call, real-database migration, protected-register edit, push or main
+merge occurred. Repository-only AGENTS lookup found none. No manual disposable
+checkout or venv symlink was created. This completes the selected family only.
+
+Operator commit 4740d5d668b903ac4dbe1a7272d44a0aae4b3ae8 accepted part 3h
+and updated BUILD-STATE/REVIEW-LOG during validation. Those changes are neither
+edited nor included by this slice; DEBT-REGISTER is byte unchanged. All protected
+registers have no working-tree edit. final-inputs.json retains both hash sets
+and the external commit separately from this implementation.

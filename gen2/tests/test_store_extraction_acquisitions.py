@@ -42,33 +42,29 @@ class ExtractionDDLTest(CanonicalDDLTest):
         for method in METHODS:
             with self.subTest(method=method):
                 with self.assertRaisesRegex(sqlite3.IntegrityError, "extraction receipt must consume its admitted acquisition"):
-                    self.extraction_receipt(method)
+                    self.extraction_receipt(method, historical=True)
                 self.assertEqual(self.rows("SELECT * FROM verification_receipts"), [])
 
     def test_selectors(self):
         for method in METHODS:
             for name in ("work", "version", "verifier", "hash", "call", "time", "route"):
                 with self.subTest(method=method, selector=name):
-                    self.x("SAVEPOINT extraction")
-                    try:
-                        acquisition, negative, control = self.operands(name)
-                        self.raw(**acquisition)
-                        before = self.rows("SELECT * FROM verification_receipts")
-                        with self.assertRaisesRegex(sqlite3.IntegrityError, "extraction receipt must consume its admitted acquisition"):
-                            self.extraction_receipt(method, **negative)
-                        self.assertEqual(self.rows("SELECT * FROM verification_receipts"), before)
-                        self.extraction_receipt(method, **control)
-                        self.assertEqual(self.rows("PRAGMA foreign_key_check"), [])
-                    finally:
-                        self.x("ROLLBACK TO extraction")
-                        self.x("RELEASE extraction")
+                    self.fresh_operand()
+                    acquisition, negative, control = self.operands(name)
+                    self.raw(**acquisition)
+                    before = self.rows("SELECT * FROM verification_receipts")
+                    with self.assertRaisesRegex(sqlite3.IntegrityError, "extraction receipt must consume its admitted acquisition"):
+                        self.extraction_receipt(method, historical=True, **negative)
+                    self.assertEqual(self.rows("SELECT * FROM verification_receipts"), before)
+                    self.extraction_receipt(method, **control)
+                    self.assertEqual(self.rows("PRAGMA foreign_key_check"), [])
 
     def test_verdicts(self):
         for method in METHODS:
             for verdict in ("supports", "partially_supports", "does_not_support", "cannot_assess_at_required_tier"):
                 with self.subTest(method=method, verdict=verdict):
                     with self.assertRaisesRegex(sqlite3.IntegrityError, "extraction receipt must consume its admitted acquisition"):
-                        self.extraction_receipt(method, verdict=verdict)
+                        self.extraction_receipt(method, verdict=verdict, historical=True)
         self.assertEqual(self.rows("SELECT * FROM verification_receipts"), [])
 
     def test_unstaged_input(self):
@@ -76,5 +72,5 @@ class ExtractionDDLTest(CanonicalDDLTest):
         for method in METHODS:
             with self.subTest(method=method):
                 with self.assertRaisesRegex(sqlite3.IntegrityError, "extraction receipt must consume its admitted acquisition"):
-                    self.extraction_receipt(method, obtained=h("0"))
+                    self.extraction_receipt(method, obtained=h("0"), historical=True)
         self.assertEqual(self.rows("SELECT * FROM verification_receipts"), [])
