@@ -2899,3 +2899,20 @@ The post-2q Gate D is renumbered #5.
 - **Orchestrator classification:** B2 is an implementation defect against C-13's existing text (exactly representable numerals are admitted). It needs **no operator C-13 amendment.**
 - **Landing at f19725a:** `gen2-check` green (5,703 s); `gen2-gateway` green.
 - **Next:** span-offset cap repair-1.
+
+## 2026-10-19: span-offset cap repair-1 (04c7af7, SQL 39 + canonical exact-zero): round 2 PASS. Span-offset cap accepted
+- **Astra** (`6650db33`; `private/reviews/gen2-2d-4c-cap-r2-astra-review-20261019.md`): **A, B and C all PASS. Family ROOT-CAUSE, domain closure complete.** No remaining findings.
+- **B1 closed:** SQL 39 requires the raw link locator value to be JSON text.
+  - 20 numeric-locator refusals and 10 accepted string labels across both orders.
+  - Staged Router attempts agree.
+- **B2 closed:** `canonical._exact_float` compares sign, significant digits and adjusted exponent instead of using Decimal.
+  - An all-zero significand is exact zero.
+  - The comparison is algebraically equivalent wherever Decimal could parse.
+  - Previously accepted numerals keep identical floats and hashes.
+  - The matrix shows zero numeric-domain and zero parser-domain mismatches; the 58 round-1 counterexamples are gone.
+- **Landing at 04c7af7:**
+  - `gen2-check` attempt 1 hit the DEBT-039 timing flake in the mutation baseline, after a green `gen2-test` (4,256) and trigger-order.
+  - **Attempt 2 is green** (5,697 s, all checks).
+  - `gen2-gateway` green.
+- **Unblocked:** the six raw span and exact-span owners can now be converted.
+- **Next:** the DEBT-039 root fix (the flake cost two landing cycles), then the remaining part 3 conversion.
