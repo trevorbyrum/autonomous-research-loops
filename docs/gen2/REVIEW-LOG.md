@@ -2934,3 +2934,11 @@ The post-2q Gate D is renumbered #5.
 - **All 31 existing assertion calls are unchanged.**
 - **NB1 (naming):** `test_store_span_cap.AuxiliaryCapTest` calls `populate_every_table` but isn't named in the pending list. It falls in the pending population category; carry it into 3g.
 - **Landing at b75bcb4:** `gen2-check` green (6,426 s). `gen2-gateway` is carried forward from b9ec00d.
+
+## 2026-10-19: 2d-4c part 3g (remaining Router group: ImpactTest amendment positives and the cap Router matrix, 50d8b14): PASS on the first review. Accepted
+- **Astra** (`6c69d49a`; `private/reviews/gen2-2d-4c-p3g-astra-review-20261019.md`): **A, B and C all PASS, ROOT-CAUSE.** No findings, blocking or non-blocking.
+- **Records:** `ContractWorld.verify` admits real retained assessments through `Router.commit_outcome`, then restores the requested triggers before submitting the receipt.
+- **Behaviour preserved:** compatible-amendment completion and promotion, and protocol-change fencing across all five job kinds.
+- **Assertions unchanged:** 179 amendment assertion calls, 11 plain assertions and 18 cap assertion calls.
+- **The pending raw/global group is listed honestly**, including 3f NB1 `AuxiliaryCapTest`.
+- **Landing at 50d8b14:** `gen2-check` green (6,496 s; 337 triggers / 4,721 reversal outcomes; 3,618/3,618 mutants). `gen2-gateway` is carried forward.
