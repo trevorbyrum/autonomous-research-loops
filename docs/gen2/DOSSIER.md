@@ -4372,3 +4372,75 @@ static gates, SQLite compatibility and generated-catalog checks pass with no
 metrics regression or new exemption. Interrupted/incorrect-command attempts
 are retained without passing credit in private/evidence/debt-039/COMPLETION.md.
 Runtime code, service wiring and production budgets remain unchanged.
+
+
+#### 2d-4c part 3f — re-estimate (before code)
+
+2026-10-19, branch `gen2`, starting at `7138dd6`. Read the whole task,
+Constraints, both operator rulings and every continuation; this section's
+part 3 audits/implementation and span-cap notes; accepted `9416fd6`,
+`1bfb9a9`, `d140c23`, `1faacfb`, `2bf8bbe`, `f19725a`, `04c7af7` and
+shared detailed/raw/DDL fixture helpers; Astra's complete 3e review. Repository-
+only AGENTS.md lookup found none. The adopted cap and canonical exact-zero
+repair are implemented and accepted: **all six raw span owners are unblocked**.
+The dated OPEN OPERATOR DECISION summaries above are historical chronology,
+not the active status; no second cap decision or implementation is pending.
+
+**Remaining estimate: 900 handwritten additions**, including retained private
+drivers, excluding documentation/generated evidence: six raw span/exact owners
+and literal/canonical pairing 100; raw quote/capture/adjudication 130; global
+raw admission/population/canonical/content/acquisition/pending/history/JSON
+conversion 200; both amendment positives 45; independent binding/promotion/
+rollback/catalog regressions 160; retained audit/trace/gate drivers 265.
+This is well above 500; split again. **Implement only part 3f: the six raw
+span/exact owners**, estimated **495 additions**: wiring and literal pairing
+100, independent regressions 130, retained private drivers 265. Stop after
+this coherent group; no pending positive becomes historical to fit the budget.
+
+Selected owners: test_store_span_domain's SpanDDLTest, ExtractionSpanDDLTest,
+ValidatedSpanDDLTest and test_store_exact_spans's ExactSpanDDLTest,
+ExtractionExactSpanDDLTest, ValidatedExactSpanDDLTest. Reuse RawAssessmentFixture,
+seed_checks, assessment_binding, attach_checks, historical_receipt and
+restore_triggers. Admit real evidence and examined bytes through Router under
+unmutated DDL before subject snapshots, then restore requested definitions/order
+and the existing subject-local omissions. Distinct complete ordered spans,
+locator strings, exact-limit and exact-zero values get distinct bindings.
+Ordinary extraction outputs remain byte equal and claim no selector discrimination;
+the accepted distinct-output regression retains that separate responsibility.
+
+SQL 37 compares serialized span arrays, while Router admission canonicalizes
+reports. Preserve literal raw numeric/name guard experiments as explicit /1
+compatibility/refusal operands; pair **every accepted value** with its /2
+canonical receipt and real admitted records. A /1 literal probe is rolled back
+before retaining the /2 positive. Thus no pending accepted value is relabeled
+historical and no raw numeral guard is silently bypassed by normalization.
+Former over-cap operands remain refusals under the accepted ruling. Receipt
+construction selects existing records only; no assessment creation or repair
+occurs at submission. Preserve accepted tiers, promotions and rollback/conflict.
+
+**Exactly what stays pending for part 3g or later:** raw quote DDLTest in
+ test_store_governed_quotes, CaptureDDLTest in test_store_capture_support,
+AdjudicationDDLTest in test_quote_attention (HoldDDLTest remains hold-only);
+StoreTestCase.verify/populate_every_table, VerificationTest and
+ContractAdmittedSupportTest; CanonicalDDLTest, ContentDDLTest, ExtractionDDLTest,
+ExtractionContentDDLTest, ValidatedContentDDLTest, PendingDDLTest's accepted
+canonical/distractor receipts; EveryTableSweepTest and RecordIdentityTest;
+branch-window, obligation, registry, semantic, lifecycle and source-artifact
+population consumers; QuoteTest in test_store_json_member_domain, all eight
+RolloutPairs and 22 CompletionPairs generated owners; both ImpactTest callers
+of ContractWorld.verify (compatible completion/promotion and protocol fencing).
+ObservationDomainTest writes observations and no verification receipt. Already
+converted 3a–3e owners and explicit legacy/optional/schema controls keep their
+purposes. Part 3 is incomplete; the final sub-part still owes a repository-wide
+receipt-builder call-site inventory showing no pending positive.
+
+No production, DDL, schema, pin or promotion-policy change. Stop and report if
+one is required. Mandatory consumption and promotion changes stay **OFF**.
+Recompute the full transitive import/control closure and expand complete --only
+families; retain qualified predicate/control and direct converted-path traces.
+Before the implementation commit run full gen2-test, trigger-order, composition
+and all eight static gates. No production trigger changes, so no new trigger-
+inventory gate is triggered; retain the unchanged full inventory. Wait for no
+active user/system gen2-landing-* unit before heavy runs. Any snapshot venv uses
+cp -a. Evidence and current exact next steps: private/evidence/2d-4c-part3f/,
+with COMPLETION.md and PROGRESS.md. This estimate commit precedes code/gates.
