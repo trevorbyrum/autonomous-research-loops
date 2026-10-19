@@ -4324,3 +4324,51 @@ and kills 413/413 mutants. The eight static gates, SQLite compatibility and
 source-catalog checks pass; static checks are repeated after this note.
 No unresolved repair-1 issue remains. Completion evidence records exact
 commands, exits, source/pin checks, attempts, footprint and commit identities.
+
+**DEBT-039 plan, 2026-10-19.** Replace scheduler-dependent gateway-client
+test time with the existing VirtualTime clock, mechanically moved with rope.
+Use stdlib mock at blocking socket boundaries for exchange-time arithmetic;
+retain real loopback HTTP/TLS route witnesses. Production source stays byte
+identical. Estimated 450 added/changed handwritten lines across test helpers,
+deadline tests and this dossier; no new runtime dependency or service wiring.
+Audit all gen2/gateway deadline tests, repeat affected suites under deliberate
+CPU load, run loaded mutation baselines and paired deadline/redirect mutants,
+then all task gates. Evidence and resumable steps live in
+private/evidence/debt-039/ outside this repository.
+
+**DEBT-039 implementation and re-estimate.** The family cause was mixing
+short real deadlines with fake/shortened sleeps and scheduled wire arrivals.
+VirtualTime now drives the deadline assertions; stdlib mocks script blocking
+socket time using the socket's actual armed budget. Real route, token and TLS
+certificate witnesses remain. The complete route setup includes the direct
+one-second transport calls. Ownership, Vault failure classification and batch
+overlap use the same controlled-time or event-based approach. No timeout was
+raised, no dependency added, and all 119 production Python files and real-clock
+defaults remain byte-identical. Production stays at 13,449 engine lines and
+12,256 gateway lines.
+
+Re-estimate: 391 additions / 289 removals including final validation
+notes, versus the initial 450 added/changed-line estimate. The wider audit
+includes the Vault/batch races and all direct route budgets; most removals
+replace wall-clock fixtures. Rope moved the 21-line clock unchanged; the new
+socket/clock fixture is 111 lines. No custom equivalence checker was built.
+Eight complete final-source loaded pairs pass (1,328 client and 48 gateway
+cases), with two more passing pairs finishing after load ended. The loaded
+mutation run passes its 1,101-test Store and child-tree baselines and kills
+165/165 mutants with all paired controls passing, including broken deadlines
+and followed redirects. Existing trace/choose requalifies all 143 Python-target
+controls without changing pairings. Accepted replay is EQUIVALENT: 31 successful tests in each of four runs,
+258 calls and 159 immediate readable store snapshots, zero unresolved. An
+initial nonexistent composition-module selector produced equal import errors;
+those recordings were discarded and the corrected runs checked independently
+for zero failures/errors. The replay tooling itself is unchanged.
+
+**DEBT-039 validation before implementation commit.** Full gen2-test passes
+4,256 tests with two existing skips (3,290.671 test seconds). Trigger-order
+passes 337 triggers and 4,693 identical Store tests/subtests; composition passes
+six tests. Gateway passes both 1,540-test runs on the prescribed no-DB and
+disposable-DB paths and kills 413/413 mutants, none invalid or unrun. The eight
+static gates, SQLite compatibility and generated-catalog checks pass with no
+metrics regression or new exemption. Interrupted/incorrect-command attempts
+are retained without passing credit in private/evidence/debt-039/COMPLETION.md.
+Runtime code, service wiring and production budgets remain unchanged.

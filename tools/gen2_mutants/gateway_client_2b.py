@@ -9,8 +9,8 @@ whose killers require the named state instead. `2B-pages-rounded-up` guarded the
 multi-page observation, which is gone (each page is its own observation, A2); the page
 family below replaces it.
 
-Task 2b-repair-13d (R13B-1) adds the whole-exchange deadline family, 2B13D-*: its killers are test_gateway_exchange.py's real
-loopback sockets, and the client's own late-reply check is killed by a transport that breaks its contract.
+Task 2b-repair-13d (R13B-1) adds the whole-exchange deadline family, 2B13D-*: its killers use test_gateway_exchange.py's
+scripted stdlib socket time (DEBT-039), and the client's own late-reply check uses a transport that breaks its contract.
 
 Task 2b-repair-15 (Astra F2) adds 2B15-*: no exchange resolves a name. Its killers are test_gateway_exchange.NoExchangeResolvesAName (a substituted resolver that
 counts, or sleeps, and loopback servers); a name is looked up at construction or by the owner's `resolve()`, never by an exchange.

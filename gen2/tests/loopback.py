@@ -1,7 +1,7 @@
 """A loopback TCP server whose every connection runs a script (not collected as tests).
 
-What the whole-exchange deadline is tested against (test_gateway_exchange.py): a real socket that is slow in a way
-a fake transport, which already honours the timeout it is handed, cannot be. A script is a function of the open
+Real wire witnesses for routes, ownership and TLS certificate checks. Deadline arithmetic uses the separate
+gateway_time scripted socket boundary so scheduling cannot consume its budget. A script is a function of the open
 connection and what the client sent; every wait in it is `server.pause(seconds)`, which returns True at once when the
 server is being stopped, so stop() ends every connection and joins every thread it started: no thread is left running
 behind a test, and a test checks that (`ThreadsJoined`).

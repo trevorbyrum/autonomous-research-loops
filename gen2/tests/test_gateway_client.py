@@ -29,11 +29,14 @@ from pathlib import Path
 
 from gen2.core import canonical
 from gen2.gateway_client import observe
+from gen2.gateway_client import client as gateway
 from gen2.gateway_client.client import GatewayClient, GrantRefused, http_transport
 from gen2.router.service import Router
 from gen2.store import api
 from gen2.tests import children
 from gen2.tests.router_fixtures import OTHER, RouterTestCase
+from gen2.tests.virtual_time import VirtualTime
+from gen2.tests.gateway_time import deadline_clock
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "gateway_answers"
 BASE = "http://gateway.invalid:8765"
@@ -105,26 +108,6 @@ def answering(body_of) -> callable:
     def transport(method, url, headers, body, timeout):
         return 200, HEADERS, json.dumps(body_of(canonical.parse_json_strict(body))).encode(), None
     return transport
-
-
-class VirtualTime:
-    """A monotonic clock the test moves: `sleep` advances it and so does a transport that takes time (`took`), so
-    polling is exercised without waiting, and what it costs in (virtual) seconds is exact."""
-
-    def __init__(self) -> None:
-        self.now, self.sleeps = 0.0, []
-
-    def monotonic(self) -> float:
-        return self.now
-
-    def sleep(self, seconds: float) -> None:
-        self.sleeps.append(seconds)
-        self.now += seconds
-
-    def took(self, seconds: float, timeout: float) -> bool:
-        """Spend a request's time, up to its timeout: True when the transport answered inside it, False when it timed out."""
-        self.now += min(seconds, timeout)
-        return seconds <= timeout
 
 
 class RecordedAnswers(unittest.TestCase):
@@ -802,8 +785,11 @@ class OverRealHttp(unittest.TestCase):
                     h.send_header("Location", other + "/v1/find")
                     h.send_header("Content-Length", "0")
                     h.end_headers()
-                out = GatewayClient(serve(self, redirect), ENGINE_TOKEN, transport=http_transport, timeout=5).search(
-                    FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+                clock = VirtualTime()
+                with deadline_clock(gateway, clock, wire=True):
+                    out = GatewayClient(serve(self, redirect), ENGINE_TOKEN, transport=http_transport, timeout=5,
+                                        monotonic=clock.monotonic, sleep=clock.sleep).search(
+                        FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
                 self.assertEqual([summary(o) for o in out["observations"]], [("unknown", "unobserved", None, "transport_failure", [])])
                 self.assertEqual(seen, [], "the token went nowhere else")
 

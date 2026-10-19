@@ -4,6 +4,7 @@ topic-policy enforcement in the stdio dispatcher, the research-activity file, an
 station-side download handoff."""
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -965,28 +966,35 @@ class ParallelBatch(unittest.TestCase):
     """9·2a: batch entries overlap, results stay in entry order, failures stay per-entry."""
 
     def test_entry_order_survives_shuffled_completion(self):
-        import time as _time
+        all_in = threading.Barrier(3)
+        fast2_done, fast_done = threading.Event(), threading.Event()
+        finished = []
 
         class SlowStub(StubClient):
             def request(self, rt, payload):
-                # EVERY resolve entry sleeps: serial execution would take >= 0.36 s, so the
-                # elapsed assertion below discriminates parallel from serial (it is not a
-                # threshold a serial run could also satisfy)
-                _time.sleep(0.12 if rt == "resolve" else 0.0)
+                if rt == "resolve":
+                    all_in.wait(5)   # all three must be in flight before any can finish
+                    identity = payload["identity"].split("/")[-1]
+                    if identity == "slow":
+                        if not fast_done.wait(5):
+                            raise AssertionError("fast entry never completed")
+                    elif identity == "fast":
+                        if not fast2_done.wait(5):
+                            raise AssertionError("fast2 entry never completed")
+                    finished.append(identity)
+                    (fast_done if identity == "fast" else fast2_done).set()
                 self.seen.append((rt, dict(payload)))
                 return {"request_type": rt, "records": [], "facts": [], "lanes": [],
                         "echo": payload.get("identity")}
 
         client = SlowStub()
-        t0 = __import__("time").monotonic()
         out = mcp_stdio.call_tool(client, "research_batch", {"calls": [
             {"tool": "research_resolve", "arguments": {"identity": "doi:10.1/slow"}},
             {"tool": "research_resolve", "arguments": {"identity": "doi:10.1/fast"}},
             {"tool": "research_find", "arguments": {"query": "rejected"}},
             {"tool": "research_resolve", "arguments": {"identity": "doi:10.1/fast2"}},
         ]})
-        elapsed = __import__("time").monotonic() - t0
         self.assertEqual([r.get("result", {}).get("echo", r.get("error", ""))[:12] if isinstance(r.get("result", r), dict) else "" for r in out["results"]][0],
                          "doi:10.1/slo", "the slow entry still comes back FIRST in the list")
         self.assertIn("error", out["results"][2], "per-entry failures stay per-entry")
-        self.assertLess(elapsed, 0.30, "three 0.12 s entries overlapped (serial would be >= 0.36 s)")
+        self.assertEqual(finished, ["fast2", "fast", "slow"], "completion is reversed while results retain entry order")

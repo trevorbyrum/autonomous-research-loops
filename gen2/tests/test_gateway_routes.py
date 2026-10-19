@@ -25,6 +25,8 @@ from gen2.gateway_client.client import GatewayClient, http_transport
 from gen2.tests.gateway_wire import (EMPTY_AND_EXHAUSTED, EMPTY_LANE, FIND, INV, STAMP, TOKEN, Recorder, admitted, gateway_script, job, lookup, observed, queued_answer,
                                      reply, unobserved)
 from gen2.tests.loopback import ThreadsJoined
+from gen2.tests.gateway_time import deadline_clock
+from gen2.tests.virtual_time import VirtualTime
 
 SEARCH = dict(invocation_id=INV, attempt=1, policy_version="gw-policy/1")
 FAST = dict(clock=lambda: STAMP, sleep=lambda s: None)
@@ -90,6 +92,15 @@ class NoNameIsLookedUp:
 
 
 class RouteTest(ThreadsJoined):
+    def setUp(self):
+        super().setUp()
+        # Every route witness, including direct http_transport calls with a
+        # one-second budget, tests destinations independently of scheduling.
+        self.wire_clock = VirtualTime()
+        patch = deadline_clock(gateway, self.wire_clock, wire=True)
+        patch.__enter__()
+        self.addCleanup(patch.__exit__, None, None, None)
+
     def searching(self, c: GatewayClient) -> dict:
         """`c`'s search. One that raises (a mutant that reaches a handler the client has no business with can raise from deep in urllib) is a failed test, not an error in it."""
         try:
@@ -169,21 +180,25 @@ class DirectHttpOnly(RouteTest):
             for label in ("same-origin, absolute", "same-origin, relative", "same-origin, scheme-relative", "another origin"):
                 for poll in (False, True):
                     with self.subTest(code=code, location=label, poll=poll):
-                        origin = Recorder(self, redirect)   # one for each case: a poll that gave up leaves its last request to arrive late, and that must not be read as the next case's
+                        origin = Recorder(self, redirect)
                         location = {"same-origin, absolute": f"http://127.0.0.1:{origin.port}/v1/other", "same-origin, relative": "/v1/other",
                                     "same-origin, scheme-relative": f"//127.0.0.1:{origin.port}/v1/other", "another origin": f"http://127.0.0.1:{elsewhere.port}/v1/find"}[label]
                         state.update(code=code, location=location, poll=poll)
-                        c = GatewayClient(f"http://127.0.0.1:{origin.port}", TOKEN, deadline=0.2, **FAST)
-                        out = self.searching(c)
+                        clock = VirtualTime()
+                        with deadline_clock(gateway, clock, wire=True):
+                            c = GatewayClient(f"http://127.0.0.1:{origin.port}", TOKEN, deadline=0.2,
+                                              clock=FAST["clock"], sleep=clock.sleep, monotonic=clock.monotonic)
+                            out = self.searching(c)
                         lines = origin.request_lines
                         self.assertEqual(observed(out), unobserved("timeout" if poll else "transport_failure"))
+                        self.assertEqual(clock.now, 0.2 if poll else 0.0)
                         self.assertEqual([line for line in lines if "/v1/other" in line], [], "the destination of a redirect was never requested")
                         self.assertEqual(elsewhere.count, 0, "and nothing went to another origin")
                         self.assertEqual(lines[0], "POST /v1/find HTTP/1.1")
                         if not poll:
                             self.assertEqual(lines, ["POST /v1/find HTTP/1.1"], "once")
                         else:
-                            self.assertTrue(all(line in ("POST /v1/find HTTP/1.1", "GET /v1/jobs/1 HTTP/1.1") for line in lines), lines)
+                            self.assertEqual(lines, ["POST /v1/find HTTP/1.1", "GET /v1/jobs/1 HTTP/1.1"])
 
     def test_an_authentication_challenge_is_not_answered_and_a_cookie_is_not_sent_back(self):
         """401 with a Basic challenge and 407 with a proxy challenge are one request each, never repeated with credentials; a Set-Cookie is not replayed to the next exchange, or to the poll of the same

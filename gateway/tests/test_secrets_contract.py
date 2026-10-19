@@ -269,7 +269,18 @@ class F3TransportAndStatus(VaultCase):
             with self.subTest(label):
                 self.vault.mode = mode
                 chain = backend(self.vault, token_file=self.token_file, timeout=0.5, **({"mount": mount} if mount else {}))
-                read = chain.read("fred", "api_key")
+                # This is a failure-classification matrix, not a kernel timer test.
+                # The timeout is injected; real loopback status/body cases have no
+                # scheduler-dependent read timer. The configured budget stays 0.5.
+                opener = secrets.VaultBackend._opener
+                real_open = opener.open
+                def open_read(req, timeout):
+                    self.assertEqual(timeout, 0.5)
+                    if mode.startswith("stall:"):
+                        raise TimeoutError("synthetic Vault read timeout")
+                    return real_open(req, timeout=None)
+                with mock.patch.object(opener, "open", side_effect=open_read):
+                    read = chain.read("fred", "api_key")
                 self.assertEqual((read.state, read.reason, read.status), (secrets.FAILING, reason, status))
                 self.assertNotEqual(read.state, secrets.ABSENT)
                 self.vault.mode = "ok"

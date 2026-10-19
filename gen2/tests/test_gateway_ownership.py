@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import socket
 import threading
-import time
 import unittest
 from unittest import mock
 
@@ -21,10 +20,11 @@ from gen2.gateway_client.client import ClientBusy, GatewayClient, GrantRefused
 from gen2.tests.gateway_wire import (EMPTY_AND_EXHAUSTED, EMPTY_LANE, FIND, INV, STAMP, TOKEN, Recorder, gateway_answer, gateway_script, job, lookup, observed, paged_answer,
                                      queued_answer, reply, unobserved)
 from gen2.tests.loopback import ThreadsJoined
+from gen2.tests.gateway_time import ScriptedSocketTime, deadline_clock
+from gen2.tests.virtual_time import VirtualTime
 
 SEARCH = dict(invocation_id=INV, attempt=1, policy_version="gw-policy/1")
 GRANT = dict(topic_id="topic_1", commercial=False, accept_per_item=False, invocation_id=INV)
-FAST = dict(clock=lambda: STAMP, sleep=lambda s: time.sleep(min(s, 0.01)))   # a poll waits a hundredth of the half second it would
 
 
 class Hold:
@@ -45,6 +45,11 @@ class Hold:
 class OwnershipTest(ThreadsJoined):
     def setUp(self) -> None:
         super().setUp()
+        self.clock = VirtualTime()
+        self.fast = dict(clock=lambda: STAMP, sleep=self.clock.sleep, monotonic=self.clock.monotonic)
+        patch = deadline_clock(gateway, self.clock, wire=True)
+        patch.__enter__()
+        self.addCleanup(patch.__exit__, None, None, None)
         self._patches: list = []
         self.addCleanup(self.unwatch)
 
@@ -117,7 +122,7 @@ class OwnershipTest(ThreadsJoined):
             answer = found(host, port)
             return answer if len(found.calls) == 1 or not then_nothing else []
         resolver.calls = found.calls
-        return GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=resolver, **FAST), listener, resolver
+        return GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=resolver, **self.fast), listener, resolver
 
 
 def operations(c: GatewayClient) -> dict:
@@ -191,7 +196,7 @@ class OneOperationAtATime(OwnershipTest):
                 hold, answers = Hold(after=held), iter([reply(job("running"))])
                 listener = Recorder(self, script)
                 hooks = {"sleep": hold, "clock": lambda: STAMP} if hook == "sleep" else {"clock": lambda: (hold(), STAMP)[1], "sleep": lambda s: None}
-                c = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=lookup("127.0.0.1", port=listener.port), **hooks)
+                c = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=lookup("127.0.0.1", port=listener.port), monotonic=self.clock.monotonic, **hooks)
                 seen, _ = self.watch()
                 thread, box = self.running(lambda: c.search(FIND, **SEARCH, **extra), hold.release)
                 self.assertTrue(hold.reached.wait(5), f"the search did not reach {label}")
@@ -227,7 +232,7 @@ class OneOperationAtATime(OwnershipTest):
                 inside.set()
                 release.wait(10)
             return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", listener.port))]
-        c = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=resolver, **FAST)
+        c = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=resolver, **self.fast)
         seen, _ = self.watch()
         thread, box = self.running(c.resolve, release)
         self.assertTrue(inside.wait(5))
@@ -275,7 +280,7 @@ class OneOperationAtATime(OwnershipTest):
         def reentrant_resolver(host, port, *rest):
             call_back("resolve")
             return resolving(host, port)
-        d = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=reentrant_resolver, **FAST)
+        d = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=reentrant_resolver, **self.fast)
         holder.append(d)
         d.resolve()
         self.assertEqual(outcomes, [("resolve", "refused")], "a lookup that calls back into its own client is refused: the resolve that was running ends, and nothing else looked anything up")
@@ -293,7 +298,7 @@ class OneOperationAtATime(OwnershipTest):
         broken._clock = lambda: STAMP
         self.assertEqual(observed(self.runs(lambda: broken.search(FIND, **SEARCH))), EMPTY_AND_EXHAUSTED, "after an operation a hook broke")
         refusing = Recorder(self, lambda server, conn, head, body, index: server.send(conn, [(0, reply(b'{"error": "not a grantor"}', "403 Forbidden"))]))
-        g = GatewayClient(f"http://127.0.0.1:{refusing.port}", TOKEN, **FAST)
+        g = GatewayClient(f"http://127.0.0.1:{refusing.port}", TOKEN, **self.fast)
         with self.assertRaises(GrantRefused):
             self.runs(lambda: g.grant(**GRANT))
         with self.assertRaises(GrantRefused):
@@ -331,7 +336,7 @@ class TheEndpointIsOneFact(OwnershipTest):
                 raise socket.gaierror(socket.EAI_NONAME, "synthetic NXDOMAIN")
             return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", found[0])]
         try:
-            c = GatewayClient(f"http://{host}:{port}", TOKEN, resolver=resolver, deadline=0.3, **FAST)
+            c = GatewayClient(f"http://{host}:{port}", TOKEN, resolver=resolver, deadline=0.3, **self.fast)
         except ValueError:
             return None
         seen, hold = self.watch("connect", after=1 if poll else 0)
@@ -409,7 +414,7 @@ class TheEndpointIsOneFact(OwnershipTest):
                 if not found:
                     raise socket.gaierror(socket.EAI_NONAME, "synthetic NXDOMAIN")
                 return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", found[0])]
-            c = GatewayClient(f"http://gateway.test:{port}", TOKEN, resolver=resolver, timeout=1, **FAST)
+            c = GatewayClient(f"http://gateway.test:{port}", TOKEN, resolver=resolver, timeout=1, **self.fast)
             seen, _ = self.watch()
             self.assertEqual(observed(c.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED, "the origin answers directly: the proxy named in the environment is no route")
             original.server.stop()
@@ -445,7 +450,7 @@ class TheOriginIsTheOnlyAuthority(OwnershipTest):
                 raise socket.gaierror(socket.EAI_NONAME, "synthetic NXDOMAIN")
             return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", found[0])]
         try:
-            c = GatewayClient(f"http://{host}:{port}", TOKEN, resolver=resolver, timeout=0.4, **FAST)
+            c = GatewayClient(f"http://{host}:{port}", TOKEN, resolver=resolver, timeout=0.4, **self.fast)
         except ValueError:
             return None
         happened = {"client": c, "found": found, "port": port, "first": observed(c.search(FIND, **SEARCH))}
@@ -514,7 +519,7 @@ class ConnectionLifetimes(OwnershipTest):
         """A client of the name `gateway.test` whose lookup finds these loopback sockets, in this order."""
         def resolver(host, called_port, *rest):
             return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", p)) for p in ports]
-        return GatewayClient(f"http://gateway.test:{port or ports[0]}", TOKEN, resolver=resolver, **FAST, **kw)
+        return GatewayClient(f"http://gateway.test:{port or ports[0]}", TOKEN, resolver=resolver, **self.fast, **kw)
 
     def test_a_later_address_is_tried_when_an_earlier_one_refuses_and_the_endpoint_stays_authorized(self):
         live, [dead] = Recorder(self, gateway_script()), self.dead_ports()
@@ -547,7 +552,7 @@ class ConnectionLifetimes(OwnershipTest):
         first = Recorder(self, gateway_script())
         port = first.port
         refuse = mock.Mock(side_effect=AssertionError("a literal was looked up"))
-        c = GatewayClient(f"http://127.0.0.1:{port}", TOKEN, resolver=refuse, **FAST)
+        c = GatewayClient(f"http://127.0.0.1:{port}", TOKEN, resolver=refuse, **self.fast)
         seen, _ = self.watch()
         self.assertEqual(observed(c.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
         first.server.stop()
@@ -561,18 +566,18 @@ class ConnectionLifetimes(OwnershipTest):
 
     def test_a_timeout_does_not_withdraw_and_a_timely_reply_follows(self):
         """A slow answer is not a gone gateway (the accepted policy, Astra's repair-16 review): the first reply takes longer than the exchange's budget, the next is prompt, and the client goes on without a lookup."""
-        def script(server, conn, head, body, index):
-            if index == 1:
-                server.pause(10)   # ended at once when the test's listener is stopped
-            else:
-                server.send(conn, [(0, gateway_answer())])
-        listener = Recorder(self, script)
-        resolver = lookup("127.0.0.1", port=listener.port)
-        c = GatewayClient(f"http://gateway.test:{listener.port}", TOKEN, resolver=resolver, timeout=1.0, **FAST)
-        self.assertEqual(observed(c.search(FIND, **SEARCH)), unobserved("timeout"))
-        self.assertEqual((c.endpoint_stale, len(resolver.calls)), (False, 1))
-        self.assertEqual(observed(c.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
-        self.assertEqual((listener.count, len(resolver.calls)), (2, 1), "recovered on its own: no lookup, one request each")
+        peer = ScriptedSocketTime([(2.0, gateway_answer())])
+        with peer.installed(gateway):
+            resolver = lookup("127.0.0.1", port=peer.port)
+            c = GatewayClient(f"http://gateway.test:{peer.port}", TOKEN, resolver=resolver, timeout=1.0,
+                              clock=lambda: STAMP, sleep=peer.sleep, monotonic=peer.monotonic)
+            self.assertEqual(observed(c.search(FIND, **SEARCH)), unobserved("timeout"))
+            self.assertAlmostEqual(peer.now, 1.0)
+            self.assertEqual((c.endpoint_stale, len(resolver.calls)), (False, 1))
+            peer.parts = [(0, gateway_answer())]
+            self.assertEqual(observed(c.search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
+            self.assertEqual(len(resolver.calls), 1, "recovered without a lookup")
+            self.assertEqual(sum(name == "connect" for name, _ in peer.calls), 2, "one connection each")
 
     def test_no_socket_outlives_its_exchange(self):
         """Every socket a client creates is closed when its exchange ends, whichever way: an answer, a refused connection, a timeout, every address failing; and nothing is left running (ThreadsJoined)."""
@@ -583,12 +588,16 @@ class ConnectionLifetimes(OwnershipTest):
                 super().__init__(*args, **kw)
                 made.append(self)
         live, [dead], [dead_a, dead_b] = Recorder(self, gateway_script()), self.dead_ports(), self.dead_ports(2)
-        slow = Recorder(self, lambda server, conn, head, body, index: server.pause(3))
         with mock.patch.object(gateway, "_DeadlineSocket", Spy):
             self.assertEqual(observed(self.multi(live.port).search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
             self.assertEqual(observed(self.multi(dead, live.port).search(FIND, **SEARCH)), EMPTY_AND_EXHAUSTED)
             self.assertEqual(observed(self.multi(dead_a, dead_b).search(FIND, **SEARCH)), unobserved("transport_failure"))
-            self.assertEqual(observed(self.multi(slow.port, timeout=0.2).search(FIND, **SEARCH)), unobserved("timeout"))
+            peer = ScriptedSocketTime()
+            with peer.installed(gateway):
+                c = self.multi(peer.port, timeout=0.2)
+                c._monotonic = peer.monotonic
+                self.assertEqual(observed(c.search(FIND, **SEARCH)), unobserved("timeout"))
+                self.assertAlmostEqual(peer.now, 0.2)
         self.assertEqual(len(made), 6, "one for each address tried: 1, 2, 2 and the one that timed out")
         self.assertEqual([s.fileno() for s in made], [-1] * 6, "every socket closed")
 
@@ -631,20 +640,19 @@ class SeparateClientsRunConcurrently(OwnershipTest):
                 def client(i: int):
                     # half of them a name (each its own lookup), half a literal: separate instances either way
                     url = f"http://127.0.0.1:{server.port}" if i % 2 else f"http://gateway.test:{server.port}"
-                    c = GatewayClient(url, TOKEN, resolver=lookup("127.0.0.1", port=server.port), **FAST)
+                    c = GatewayClient(url, TOKEN, resolver=lookup("127.0.0.1", port=server.port), **self.fast)
                     start.wait()
                     try:
                         results[i] = observed(c.search(FIND, **SEARCH))
                     except BaseException as e:
                         results[i] = repr(e)
                 threads = [threading.Thread(target=client, args=(i,), name=f"client {i}") for i in range(self.N)]
-                began = time.monotonic()
                 for t in threads:
                     t.start()
                 for t in threads:
                     t.join(15)
                 self.assertTrue(all_in.is_set(), f"the server never had all {self.N} requests in flight at once (most: {flight['most']})")
-                self.assertEqual((flight["most"], time.monotonic() - began < 5), (self.N, True))
+                self.assertEqual(flight["most"], self.N)
                 self.assertEqual(results, {i: EMPTY_AND_EXHAUSTED for i in range(self.N)}, "every client's search completed: none was refused, none waited")
 
     def test_clients_resolve_at_the_same_time(self):
@@ -656,7 +664,7 @@ class SeparateClientsRunConcurrently(OwnershipTest):
                 barrier.wait()
             return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", port))]
         resolver.armed = False
-        clients = [GatewayClient("http://gateway.test:1", TOKEN, resolver=resolver, **FAST) for _ in range(self.N)]
+        clients = [GatewayClient("http://gateway.test:1", TOKEN, resolver=resolver, **self.fast) for _ in range(self.N)]
         resolver.armed = True
 
         def run(i):
@@ -674,7 +682,7 @@ class SeparateClientsRunConcurrently(OwnershipTest):
     def test_an_operation_running_on_one_client_does_not_refuse_another_client(self):
         """The ruling's other half, as one schedule: A is held mid-operation; a second client of the very same URL runs a whole search, a grant and a resolve meanwhile."""
         a, listener, _ = self.gateway()
-        b = GatewayClient(a.base_url, TOKEN, resolver=lookup("127.0.0.1", port=listener.port), **FAST)
+        b = GatewayClient(a.base_url, TOKEN, resolver=lookup("127.0.0.1", port=listener.port), **self.fast)
         seen, hold = self.watch("connect")
         thread, box = self.running(lambda: a.search(FIND, **SEARCH), hold.release)
         self.assertTrue(hold.reached.wait(5))
@@ -689,8 +697,8 @@ class SeparateClientsRunConcurrently(OwnershipTest):
         live = Recorder(self, gateway_script())
         [dead] = ConnectionLifetimes.dead_ports()
         url = f"http://gateway.test:{live.port}"
-        a = GatewayClient(url, TOKEN, resolver=lookup("127.0.0.1", port=dead), **FAST)
-        b = GatewayClient(url, TOKEN, resolver=lookup("127.0.0.1", port=live.port), **FAST)
+        a = GatewayClient(url, TOKEN, resolver=lookup("127.0.0.1", port=dead), **self.fast)
+        b = GatewayClient(url, TOKEN, resolver=lookup("127.0.0.1", port=live.port), **self.fast)
         self.assertEqual(observed(self.runs(lambda: a.search(FIND, **SEARCH))), unobserved("transport_failure"))
         self.assertEqual((a.endpoint_stale, b.endpoint_stale), (True, False))
         self.assertEqual((observed(self.runs(lambda: b.search(FIND, **SEARCH))), live.count), (EMPTY_AND_EXHAUSTED, 1))
