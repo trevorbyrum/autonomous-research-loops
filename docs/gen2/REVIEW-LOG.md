@@ -2926,3 +2926,11 @@ The post-2q Gate D is renumbered #5.
 - **No production change:** all 119 production files match their base bytes.
 - **No test was removed.** Of the 259 methods in the six affected modules, 44 bodies changed; per-test review is in Astra's evidence.
 - **Loaded landing:** `gen2-check` (including the previously flaky mutation baseline) and `gen2-gateway` are both green, run while a coder worked concurrently.
+
+## 2026-10-19: 2d-4c part 3f (the six raw span and exact-span owners, b75bcb4): PASS on the first review. Accepted
+- **Astra** (`df1a3f11`; `private/reviews/gen2-2d-4c-p3f-astra-review-20261019.md`): **A, B and C all PASS, ROOT-CAUSE.** No blocking findings.
+- **Records:** the six owners use real Router-admitted records under unmutated DDL, followed by `restore_triggers`. Astra checked the unmutated catalog at seeding in both trigger orders.
+- **Accepted literals keep their SQL experiments**, plus a rolled-back `/1` compatibility probe. Over-cap operands stay refusals.
+- **All 31 existing assertion calls are unchanged.**
+- **NB1 (naming):** `test_store_span_cap.AuxiliaryCapTest` calls `populate_every_table` but isn't named in the pending list. It falls in the pending population category; carry it into 3g.
+- **Landing at b75bcb4:** `gen2-check` green (6,426 s). `gen2-gateway` is carried forward from b9ec00d.
