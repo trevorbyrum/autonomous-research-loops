@@ -2883,3 +2883,19 @@ The post-2q Gate D is renumbered #5.
   5. Run the qualification checklist.
   6. Run a first gen2 consumer branch.
   7. Use the rollback plan if any drill fails.
+
+## 2026-10-19: 2d-4c span-offset cap (f19725a, SQL 38): round 1 BLOCK (Gates A and C)
+- **Astra** (`3f8529fc`; `private/reviews/gen2-2d-4c-cap-astra-review-20261019.md`): **A BLOCK, B PASS, C BLOCK. Family: MITIGATION, incomplete domain closure.**
+- **Established:**
+  - the exact `start`/`end` cap (a 38-numeral independent matrix shows no mismatch);
+  - both 3d values refused (112 refusals, 56 exact-limit acceptances);
+  - no rounding;
+  - guards text-identical apart from the magnitude test;
+  - 336 triggers, zero uncovered;
+  - C-11 intact.
+- **Blocking:**
+  - **B1:** raw `claim_source_links` locator values may be over-cap **numbers**. The schema requires strings and the Router refuses them.
+  - **B2:** `0e±999999999999999999999` (exact zero) is admitted by raw DDL but rejected by C-13 parsing. The cause is `Decimal` exponent capacity in `canonical._exact_float`. The defect predates the cap.
+- **Orchestrator classification:** B2 is an implementation defect against C-13's existing text (exactly representable numerals are admitted). It needs **no operator C-13 amendment.**
+- **Landing at f19725a:** `gen2-check` green (5,703 s); `gen2-gateway` green.
+- **Next:** span-offset cap repair-1.
