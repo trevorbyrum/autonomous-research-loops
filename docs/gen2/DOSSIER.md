@@ -4530,3 +4530,60 @@ and commits: private/evidence/2d-4c-part3f/COMPLETION.md. PROGRESS.md is current
 No provider calls, real-database migrations, Gen-1 access, protected-register
 edits by this slice, push or main merge occurred. AGENTS.md lookup stayed inside
 the repository. No manual disposable snapshot or venv symlink was created.
+
+#### 2d-4c part 3g — re-estimate (before code)
+
+2026-10-19, branch `gen2`. Read the whole task, Constraints, both operator
+rulings and every continuation; all of §2d-4c, including every part-3 audit
+and implementation note; part-3f COMPLETION.md and population-owners.json;
+the accepted detailed/raw/DDL helpers and newest raw-span regressions.
+Repository-only AGENTS.md lookup found none. No pending positive is historical.
+
+The concrete remainder is **about 850 handwritten additions**, including
+retained private drivers: raw quote/capture/adjudication 130; global raw
+admission/population and all population consumers 230; raw canonical/content/
+acquisition/extraction-content/pending owners 140; remaining Router amendment
+and cap wiring 65; independent regressions 135; audit/trace/gate drivers 150.
+This remains well above 500, so split before code. **Implement only the
+remaining Router group in 3g:** both ImpactTest callers of ContractWorld.verify
+and SpanCapTest.test_receipt_router_matrix. Selected estimate **440 additions**:
+wiring/catalog admission 65, independent evidence/binding/promotion/rollback/
+catalog regressions 125, retained private inventory/trace/gate drivers 250.
+Stop after this coherent group. Part 3 will remain incomplete.
+
+**Items 2 and 4 are one coupled future conversion, never independent credit.**
+Leave StoreTestCase.verify/populate_every_table and every population consumer
+explicitly pending together: EveryTableSweepTest (replacement/delete sweeps),
+RecordIdentityTest; the six branch-window/obligation/registry/semantic/lifecycle/
+source-artifact DDL owners; member-domain QuoteTest; all eight RolloutPairs and
+22 CompletionPairs owners in part-3f population-owners.json. Their receipt
+histories remain pending even when their subject is another table. That slice
+must authenticate the population's actual examined bytes, convert its receipt
+builder and all inherited accepted paths atomically, preserve each consumer's
+isolation/old-DDL experiment, and run the widened transitive mutation closure.
+No consumer can be reported converted while its population root is pending.
+VerificationTest and ContractAdmittedSupportTest stay in that global audit;
+raw quote/capture/adjudication inheritance must be included when changing it.
+The independently constructed raw canonical/content/acquisition/extraction-
+content/PendingDDL positives also remain pending, with the exact list retained
+in this slice's COMPLETION.md. Nothing is silently opted out or relabelled.
+
+Reuse seed_checks/assessment_binding/attach_checks and restore_triggers.
+Amendment controls retain real examined/evidence bytes and all accepted
+promotion/fencing assertions; seed under unmutated DDL before receipt snapshots,
+then restore requested definitions/order. The cap matrix admits distinct
+in-range ordered span bindings upfront, then selects existing records at
+submission; literal boundary refusal operands and exact-zero/limit acceptance
+remain. Preserve explicit /1 and optional-reference historical controls.
+Ordinary byte-equal extraction outputs claim no artifact-selector distinction;
+the accepted distinct-output regression retains that separate responsibility.
+
+Recompute transitive imports/paired controls, expand complete affected --only
+families, and retain successful changed-path traces. Run full gen2-test,
+trigger-order, composition and all eight static gates before the implementation
+commit. No trigger is changed; retain the unchanged inventory. Heavy runs wait
+for no active user/system gen2-landing-* unit (one is active during reading).
+Any disposable venv uses cp -a. Production/DDL/schema/pins stay unchanged;
+mandatory consumption and promotion changes stay OFF. Stop and report if a
+production change is needed. Evidence and current PROGRESS.md live under
+private/evidence/2d-4c-part3g/. This documentation-only commit precedes code.
