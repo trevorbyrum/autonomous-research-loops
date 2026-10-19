@@ -428,7 +428,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 
 ### DEBT-039 - Load-sensitive gateway-client timing tests can fail a landing baseline (task 2d)
 - kind: obligation
-- status: open
+- status: closed (2026-10-19, Astra accepted debt-039 at `b9ec00d`, ROOT-CAUSE: controlled/virtual time in the gateway deadline tests; loaded landing gen2-check + gen2-gateway green)
 - owner: task 2d
 - what: `gen2/tests/test_gateway_routes.py` `DirectHttpOnly.test_a_redirect_is_never_followed_whatever_the_status_and_wherever_it_points` gives `GatewayClient` a 0.2-second deadline and asserts the timeout or transport-failure classification.
   - On 2026-10-14 the landing at `0cfb573` ran its full unit suite green (3,947 tests). Then the mutation harness's child-tree baseline failed on exactly this test while other heavy work was running, so `gen2-check` exited 2 before any mutant ran.

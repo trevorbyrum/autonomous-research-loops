@@ -2916,3 +2916,13 @@ The post-2q Gate D is renumbered #5.
   - `gen2-gateway` green.
 - **Unblocked:** the six raw span and exact-span owners can now be converted.
 - **Next:** the DEBT-039 root fix (the flake cost two landing cycles), then the remaining part 3 conversion.
+
+## 2026-10-19: debt-039 (deterministic gateway-client deadline tests, b9ec00d): PASS on the first review. Accepted; DEBT-039 closed
+- **Astra** (`75de015c`; `private/reviews/gen2-debt-039-astra-review-20261019.md`): **Gates A and C PASS, ROOT-CAUSE.**
+- **Mechanism:** an injected monotonic clock and advancing sleep replace the scheduler-dependent oracle.
+  - The production client still computes and enforces its own budgets.
+  - The deadline stays at 0.2.
+  - The redirect matrix asserts exactly one POST plus one GET.
+- **No production change:** all 119 production files match their base bytes.
+- **No test was removed.** Of the 259 methods in the six affected modules, 44 bodies changed; per-test review is in Astra's evidence.
+- **Loaded landing:** `gen2-check` (including the previously flaky mutation baseline) and `gen2-gateway` are both green, run while a coder worked concurrently.
