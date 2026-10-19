@@ -4942,3 +4942,65 @@ and updated BUILD-STATE/REVIEW-LOG during validation. Those changes are neither
 edited nor included by this slice; DEBT-REGISTER is byte unchanged. All protected
 registers have no working-tree edit. final-inputs.json retains both hash sets
 and the external commit separately from this implementation.
+
+
+#### 2d-4c part 3j — re-estimate (before code)
+
+2026-10-19, branch `gen2`. Read the whole task, Constraints, both operator
+rulings and every continuation including the coupling rule; all of §2d-4c,
+every part-3 audit/implementation note; part-3i COMPLETION.md and part-3f
+population-owners.json; accepted detailed/raw/DDL helpers and all four raw
+detailed-fixture regression modules. Repository-only AGENTS.md lookup found
+none. The named flow S4, adjudication (b)5/(c)2, methodology §4 and V-4/V-8
+were also read before code. Nothing pending is relabelled historical.
+
+**Remaining estimate: about 690 handwritten additions**, including retained
+private drivers, excluding docs/generated inventories: global root plus every
+population consumer 240; raw quote/capture/adjudication 130; PendingDDLTest
+canonical/distractor/inherited-content setup and wiring 85; independent
+regressions 110; audit/trace/gate drivers 125. This is well above 500. Split
+along consumer families. **Implement only the independent PendingDDLTest
+family in 3j**, estimated **465 additions**: authenticated setup, distinct
+claim/revision operands and receipt wiring 85; independent evidence/binding/
+promotion/rollback/catalog regressions 130; retained inventory/trace/gate
+drivers 250, including reused infrastructure. Stop after this coherent stage.
+
+Enable the accepted attributed content base for all inherited positives. Seed
+revision 2 and the foreign-claim distractor through the existing Router bridge
+and seed_checks under unmutated DDL before subject savepoints, then restore
+requested views and exact trigger definitions/order with restore_triggers.
+Use fresh in-memory fixtures for variable-tier operands rather than nesting
+Router commits in savepoints. Submission only selects already admitted rows.
+Preserve original canonical promotion and distractor/unbound-extraction
+refusals. Existing explicit pre-consumer unbound declarations keep their
+historical isolation mechanism; every pending current canonical/distractor
+and inherited content positive receives /2 references. Distinct claims and
+revisions get disjoint records. Real examined/evidence bytes are authenticated;
+ordinary equal-byte outputs make no artifact-selector discrimination claim.
+
+**Coupling and exact pending scope after this stage:** leave the global
+StoreTestCase.verify/populate_every_table root and every consumer unchanged
+and pending together: VerificationTest, ContractAdmittedSupportTest;
+EveryTableSweepTest (including replacement/delete), RecordIdentityTest;
+branch-window, obligation, registry, semantic, lifecycle and source-artifact
+DDL owners; member-domain QuoteTest; all eight RolloutPairs and 22
+CompletionPairs owners named in population-owners.json; NB1
+AuxiliaryCapTest.setUp and its four controls. Raw quote DDLTest,
+CaptureDDLTest and AdjudicationDDLTest, including inherited population
+positives, also remain pending. No consumer receives conversion credit from
+an unconverted root. HoldDDLTest stays hold-only; ObservationDomainTest
+writes no verification receipt. Previously converted consumers retain their
+purposes. Part 3 remains INCOMPLETE; the final stage still owes a repository-
+wide receipt-builder inventory showing no pending positive.
+
+Reuse RawAssessmentFixture, seed_checks, assessment_binding, attach_checks and
+restore_triggers without forking them. Production, ordered DDL, schemas, pins
+and policy stay unchanged; stop and report if production is needed. Mandatory
+consumption and promotion changes stay **OFF**. Run full gen2-test, trigger-
+order, composition, complete affected --only families including transitive
+imports/paired controls, and all eight static gates before implementation
+commit. Retain converted-path traces, unchanged trigger inventory, exact
+pending inventory, attempts and footprint. Heavy starts wait for no active
+user/system gen2-landing-* unit; 4c3i is active while reading. Any disposable
+snapshot copies .venv-gen2 with cp -a. Evidence and current PROGRESS.md:
+private/evidence/2d-4c-part3j/. This documentation-only commit precedes code.
