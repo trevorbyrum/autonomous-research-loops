@@ -13,8 +13,8 @@ def add(name, killer, scope=None, old=None, new='', target='ddl', control='contr
     CONTROLS[mid] = {'controls': [prefix + control], 'why': 'Separate admitted/readable record exercises admission; unconditional immutability is paired with a successful insert into its guarded table.'}
 
 
-for name, killer in (('domain', 'domain'), ('artifacts', 'artifacts'), ('spans', 'spans'), ('immutable_u', 'immutable'), ('immutable_d', 'immutable')):
-    add(name, killer, drop='detailed_check_records_' + name)
+for name, killer in (('domain', 'domain'), ('artifacts', 'artifacts'), ('spans_v2', 'spans'), ('immutable_u', 'immutable'), ('immutable_d', 'immutable')):
+    add('spans' if name == 'spans_v2' else name, killer, drop='detailed_check_records_' + name)
 for name, old, killer in (
         ('claim', "c.claim_id = json_extract(NEW.assessment, '$.claim_id')", 'bindings'),
         ('revision', "c.revision = json_extract(NEW.assessment, '$.claim_revision')", 'bindings'),

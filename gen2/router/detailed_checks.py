@@ -22,6 +22,7 @@ class DetailedChecks:
             raise Refusal("kind_not_permitted", "detailed checks require independent contract verification")
         for record in records:
             report = record["assessment"]
+            boundary.check_span_offsets(report["cited_spans"] + report["context_spans"])
             for ref in (report["examined_artifact_ref"], record["evidence_ref"]):
                 if ref is None:
                     continue

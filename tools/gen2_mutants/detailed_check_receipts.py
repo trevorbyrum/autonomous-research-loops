@@ -32,7 +32,7 @@ for name, old, killer in (
 add('artifact', 'artifact', "json_extract(d.assessment, '$.examined_artifact_ref.content_hash')", 'NEW.obtained_content_hash')
 add('extraction-output', 'extraction_wrong_basis', "SELECT json_extract(x.output_ref, '$.content_hash') FROM source_extractions x", "SELECT NEW.obtained_content_hash FROM source_extractions x", control='extraction_control')
 add('domain', 'domain', drop='verification_receipts_detailed_domain')
-add('legacy-shape', 'domain', "CASE json_extract(NEW.receipt, '$.receipt_version') WHEN 'verification-receipt/2' THEN '[\"detailed_checks\"]' ELSE '[]' END", "'[\"detailed_checks\"]'", scope='verification_receipts_span_domain_v3')
+add('legacy-shape', 'domain', "CASE json_extract(NEW.receipt, '$.receipt_version') WHEN 'verification-receipt/2' THEN '[\"detailed_checks\"]' ELSE '[]' END", "'[\"detailed_checks\"]'", scope='verification_receipts_span_domain_v4')
 p = 'gen2/router/detailed_checks.py'
 for name, old, killer in (('topic', 'row["topic_id"] != doc["topic_id"]', 'topic'),
         ('verifier', 'row["performer_invocation_id"] != doc["verifier_invocation_id"]', 'verifier'),

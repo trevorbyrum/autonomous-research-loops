@@ -63,12 +63,12 @@ class SpanFixtureTest(unittest.TestCase):
                 self.check_receipt(case, table, case.source)
 
     def test_exponent_control_binds_decoded_value(self):
-        exponent = {**PAGE, 'start': 1e30}
+        exponent = {**PAGE, 'start': 9007199254740991}
         self.assertNotEqual(exponent, PAGE)
         for method in METHODS:
             with self.subTest(method=method), span_fixture(content.FULL, bindings=((PAGE,), (exponent,))) as case:
                 page = document(case, method, 'bibliographic', spans=(PAGE,))
-                out = exact.ExactSpanRouterTest().stage(case, method, exact.raw.numeric('start', '1e30'), binding_spans=(exponent,))
+                out = exact.ExactSpanRouterTest().stage(case, method, exact.raw.numeric('start', '9.007199254740991e15'), binding_spans=(exponent,))
                 self.assertEqual(out['status'], 'committed', out)
                 doc = json.loads(case.value('SELECT receipt FROM verification_receipts'))
                 self.assertEqual(doc['cited_spans'], [exponent])

@@ -43,7 +43,7 @@ class ExactSpanRouterTest(unittest.TestCase):
     def test_canonical_exponent_control(self):
         for method in METHODS:
             with self.subTest(method=method), span_fixture({"identity": content.IDENTITY},
-                    bindings=((PAGE,), ({**PAGE, 'start': 1e30},))) as case:
-                self.assertEqual(self.stage(case, method, raw.numeric("start", "1e30"),
-                    binding_spans=({**PAGE, 'start': 1e30},))["status"], "committed")
-                self.assertIn('"start":1e+30', case.value("SELECT cited_spans FROM verification_receipts"))
+                    bindings=((PAGE,), ({**PAGE, 'start': 9007199254740991.0},))) as case:
+                self.assertEqual(self.stage(case, method, raw.numeric("start", "9.007199254740991e15"),
+                    binding_spans=({**PAGE, 'start': 9007199254740991.0},))["status"], "committed")
+                self.assertIn('"start":9007199254740991', case.value("SELECT cited_spans FROM verification_receipts"))

@@ -107,6 +107,32 @@ class SpanDDLTest(TableDDLTest):
             with self.subTest(predicate=name, bad=bad):
                 self.pair(bad)
 
+    def test_cap_matrix(self):
+        from gen2.core import canonical
+        from gen2.tests.span_cap_cases import NUMERALS, admitted, literal
+        for key in ('start', 'end'):
+            for n in NUMERALS:
+                with self.subTest(key=key, numeral=n):
+                    self.x('SAVEPOINT cap')
+                    raw = literal(key, n)
+                    try:
+                        if admitted(key, n):
+                            self.insert(raw)
+                            retained = self.rows('SELECT cited_spans FROM verification_receipts')[0][0]
+                            self.assertEqual(canonical.parse_json_strict(retained), json.loads(raw))
+                        else:
+                            before = self.rows('SELECT * FROM verification_receipts')
+                            with self.assertRaisesRegex(sqlite3.IntegrityError, DOMAIN): self.insert(raw)
+                            self.assertEqual(self.rows('SELECT * FROM verification_receipts'), before)
+                    finally:
+                        self.x('ROLLBACK TO cap')
+                        self.x('RELEASE cap')
+
+    def test_cap_control(self):
+        from gen2.tests.span_cap_cases import LIMIT
+        self.insert([span(start=LIMIT, end=LIMIT)])
+        self.assertEqual(json.loads(self.rows('SELECT cited_spans FROM verification_receipts')[0][0]), [span(start=LIMIT, end=LIMIT)])
+
     def test_array_max(self): self.cases("array_max")
     def test_span_object(self): self.cases("span_object")
     def test_span_object_number(self): self.pair([0])
@@ -143,7 +169,7 @@ class SpanDDLTest(TableDDLTest):
 
     def test_schema_edges(self):
         controls = [[locator(kind=k)] for k in ("page", "section", "figure", "paragraph", "line")]
-        controls += [[PAGE] * 50, [span(start=0.0, end=1.0)], [span(start=2**53 + 1, end=2**63)],
+        controls += [[PAGE] * 50, [span(start=0.0, end=1.0)], [span(start=2**53 - 1, end=2**53 - 1)],
             [span(start=9, end=1)], [locator(value=" ")], [locator(value="\0")],
             [locator(value="字" * 500)], [locator(value="a\0" + "字" * 498)],
             [{"locator": {"value": "2", "kind": "page"}, "end": 9, "start": 5}]]

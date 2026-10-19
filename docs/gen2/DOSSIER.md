@@ -4159,3 +4159,73 @@ inventory, gen2-gateway, all static gates, and repin both hashes. Check user
 and system landing units before heavy runs; copy any snapshot venv with cp -a.
 Evidence and COMPLETION.md: private/evidence/2d-4c-cap/. Mandatory consumption
 and promotion changes remain OFF; remaining part-3 conversion is separate.
+
+**Span-offset cap implementation, 2026-10-18–19.** The operator's 2026-10-18
+ruling now caps receipt and assessment start/end values at 9,007,199,254,740,991.
+SQL 38 replaces the installed receipt and detailed span guards with explicit
+successors v4 and spans_v2, preserving decoded member sets, exact integrality,
+minima, locator strings and existing relationships. Accepted SQL 01–37 is
+unchanged. Preserved numeral text is compared by decimal magnitude and digits;
+no offset is cast to REAL or rounded. New raw link and quote offset guards
+cover the other numeric admission locations. Quote end>start already bounds
+start once end is capped. No JSON columns or classifications were added;
+both ordered-DDL and SQLite-catalog hashes are repinned.
+
+The receipt schema's maxima also cover both receipt versions, detailed cited
+and context spans, and outcome link spans through their existing references.
+Router receipt admission and detailed authentication independently enforce the
+same bound. Quote operands already have schema maxima and byte-range checking.
+Numeric locator values remain invalid; digit strings remain labels. Above-cap
+span/exponent positives become explicit refusals, and exact-limit controls
+retain acceptance and authenticated attributed-record binding. Mandatory
+consumption and promotion activation stay OFF. The six raw span owners are
+unblocked for subsequent part-3 conversion, not converted by this cap slice.
+
+The complete literal matrix runs through schemas, actual staged Router
+commits and raw SQL under full requested catalogs: both receipt versions,
+normal/reversed trigger order, all three methods and both assessment arrays.
+There are 48 passing proof test invocations, 3,456 literal verdict checks and
+12 authenticated exact-limit binding controls. Every accepted raw matrix row
+passes the production C-13 parser; the accompanying integer-domain argument
+establishes exact canonical representability throughout the amended offset
+interval. This does not claim raw SQLite enforces every unrelated canonical
+JSON lexical restriction. Reseeding uses restore_triggers.
+
+All 11 new predicate mutants have separate passing controls and qualified
+control-path traces. All 3,604 existing control records remain unchanged.
+The transitive affected-family audit conservatively includes every DDL target,
+selecting 2,565 mutants in complete families. Full installed-trigger inventory:
+336 installed, zero uncovered. Successor names keep the existing mutation
+harness's scopes unambiguous; the inherited preservation/isolation oracles and
+mutant selectors now follow the installed successors. The preservation oracle
+continues comparing the remaining guard with accepted SQL 21 independently.
+
+Footprint: 491 non-generated repository additions / 22 removals, including all
+copied SQL, plus 123 retained private Python driver lines: 614 additions against
+495 estimated. Full version/order proof instrumentation, auxiliary raw numeric
+admission coverage and successor catalog/oracle integration account for the
+119-line overrun. No additional 2d-4c implementation part was activated.
+Superseded attempts remain in evidence without passing credit: the initial
+one-line registration size overflow; a fractional-tail cap omission found by
+the auxiliary test; a stale guard-preservation oracle; and duplicate same-name
+mutation scopes/schema-target loading. Final gates use the final source hashes.
+Validation counts and exact commands: private/evidence/2d-4c-cap/COMPLETION.md.
+
+No provider calls, real-database migration, Gen-1/runtime/8765 access,
+protected-register edits, private commit, push or main merge occurred. Lookup
+of AGENTS.md stayed inside this repository. No manual disposable snapshot or
+venv symlink was created. This completes only the span-offset cap production
+slice; remaining part-3 conversion and mandatory-consumption work stay pending.
+
+**Span-offset cap validated before implementation commit, 2026-10-19.**
+Full gen2-test passes **4,249 tests, two existing skips**, in 3,350.758 seconds.
+Trigger-order passes **336 installed triggers / 4,563 identical Store tests
+and subtests**; composition passes **six tests**. The affected complete-family
+sweep kills **2,565/2,565** mutants over green **1,099-Store / 22 file-target
+baselines**: 2,552 separate passing controls, nine existing accepted cases in
+killers and four unchanged documented exceptions. The gateway's offline and
+throwaway-PostgreSQL suites pass, with **413/413** gateway mutants killed.
+All eight static gates pass; SQLite compatibility and source-catalog checks
+also pass. The static gates are repeated after this note. Evidence, final
+hashes, attempts, footprint and commits are retained in the private cap
+COMPLETION.md. The cap slice is complete; mandatory consumption remains OFF.

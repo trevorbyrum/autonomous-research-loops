@@ -23940,5 +23940,71 @@
    "test_detailed_check_receipts.ReferenceRouterTest.test_validated_equal_control"
   ],
   "why": "Separate byte-equal validated-extraction receipt executes the target-selection branch; it remains admitted with the validator selector. Distinct canonical/target/validator bytes discriminate the killers."
+ },
+ "2D4CCAP-verification_receipts_span_domain_v3-magnitude": {
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_cap_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-verification_receipts_span_domain_v3-boundary": {
+  "controls": [
+   "test_store_span_domain.SpanDDLTest.test_cap_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-detailed_check_records_spans-magnitude": {
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_cap_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-detailed_check_records_spans-boundary": {
+  "controls": [
+   "test_store_detailed_checks.DDLCheckTest.test_cap_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-claim_source_links_span_cap-magnitude": {
+  "controls": [
+   "test_store_span_cap.AuxiliaryCapTest.test_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-claim_source_links_span_cap-boundary": {
+  "controls": [
+   "test_store_span_cap.AuxiliaryCapTest.test_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-schema-start": {
+  "controls": [
+   "test_span_cap.SpanCapTest.test_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-schema-end": {
+  "controls": [
+   "test_span_cap.SpanCapTest.test_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-router": {
+  "controls": [
+   "test_span_cap.SpanCapTest.test_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-quote-end": {
+  "controls": [
+   "test_store_span_cap.AuxiliaryCapTest.test_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4CCAP-link-fraction": {
+  "controls": [
+   "test_store_span_cap.AuxiliaryCapTest.test_control"
+  ],
+  "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
  }
 }

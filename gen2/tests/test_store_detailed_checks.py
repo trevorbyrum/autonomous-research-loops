@@ -44,6 +44,37 @@ class DDLCheckTest(RecordMatrix, CheckCase):
         finally:
             self.x('RELEASE detailed_record')
 
+    def test_cap_matrix(self):
+        from gen2.core import canonical
+        from gen2.tests.span_cap_cases import NUMERALS, admitted, literal
+        for field in ('cited_spans', 'context_spans'):
+            for key in ('start', 'end'):
+                for n in NUMERALS:
+                    with self.subTest(field=field, key=key, numeral=n):
+                        self.x('SAVEPOINT cap')
+                        try:
+                            record = self.record(outcome='not_checked')
+                            record['evidence_ref'] = None
+                            record['assessment'][field] = '__SPAN__'
+                            record['assessment'] = json.dumps(record['assessment']).replace('"__SPAN__"', literal(key, n))
+                            before = self.state(exclude=())
+                            out = self.send(record)
+                            self.assertEqual(out['status'], 'committed' if admitted(key, n) else 'rejected')
+                            if admitted(key, n):
+                                retained = self.rows('SELECT assessment FROM detailed_check_records')[0][0]
+                                self.assertEqual(canonical.parse_json_strict(retained), json.loads(record['assessment']))
+                            else: self.assertEqual(self.state(exclude=()), before)
+                        finally:
+                            self.x('ROLLBACK TO cap')
+                            self.x('RELEASE cap')
+
+    def test_cap_control(self):
+        from gen2.tests.span_cap_cases import LIMIT
+        span = dict(start=LIMIT, end=LIMIT, locator=dict(kind='line', value='limit'))
+        record = self.record(cited_spans=[span], context_spans=[span])
+        self.assertEqual(self.send(record)['status'], 'committed')
+        self.assertEqual(self.store.select('detailed_check_records')[0]['assessment'], record['assessment'])
+
     def test_immutable(self):
         self.test_control()
         for statement in ('UPDATE detailed_check_records SET created_at=created_at', 'DELETE FROM detailed_check_records',
@@ -80,7 +111,7 @@ class DDLCheckTest(RecordMatrix, CheckCase):
 
     def member_setup(self, column, event):
         # Isolate the closed member family from shape and unconditional update guards.
-        for trigger in ('domain', 'artifacts', 'spans', 'immutable_u'):
+        for trigger in ('domain', 'artifacts', 'spans_v2', 'immutable_u'):
             self.x('DROP TRIGGER IF EXISTS detailed_check_records_' + trigger)
         record = self.record()
         if event == 'u':

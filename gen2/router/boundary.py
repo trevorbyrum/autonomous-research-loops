@@ -119,10 +119,21 @@ def check_sections(payload: dict, kind: str, admission_context: str) -> None:
             raise Refusal("kind_not_permitted", f"{section} are pre-contract work's (flow S2), not {admission_context}'s")
 
 
+def check_span_offsets(spans: list[dict]) -> None:
+    """Operator ruling 2026-10-18: exact integer values, never rounded."""
+    for span in spans:
+        for name, minimum in (("start", 0), ("end", 1)):
+            try:
+                canonical.identity_integer(span[name], minimum=minimum)
+            except CanonicalizationError:
+                raise Refusal("payload_invalid", f"span {name} must be an integer in [{minimum}, 9007199254740991]") from None
+
+
 def check_verification_receipt(doc: dict, invocation_id: str, capability_id: str, topic_id: str) -> None:
     """RG-5: a receipt is committed by the verifier it names, under that
     verifier's own capability, about work of its topic — so a producer can
     never certify its own claim, whatever a document says."""
+    check_span_offsets(doc["cited_spans"])
     rid = doc["verification_receipt_id"]
     if doc["topic_id"] != topic_id:
         raise Refusal("cross_topic", f"{rid} is about topic {doc['topic_id']}")

@@ -103,10 +103,17 @@ class ExactSpanDDLTest(spans.SpanDDLTest):
     def test_late_numeral(self): self.raw_pair(numeric("start", "1.00000000000000001", True), [spans.PAGE] * 2)
 
     def test_numeric_controls(self):
-        for n in ("5.0", "5e0", "50e-1", "0.005e+3", "9007199254740993", "9223372036854775809",
-                "9007199254740992", "1e+30", "1.7976931348623157e+308", "100000e-5"):
+        for n in ("5.0", "5e0", "50e-1", "0.005e+3", "9007199254740991", "9007199254740991.0",
+                "9.007199254740991e15", "100000e-5"):
             with self.subTest(n=n): self.raw_pair(numeric("start", "1e-999"), numeric("start", n))
         self.raw_pair(numeric("end", "0e+999999999999999999999"), numeric("start", "0e-999999999999999999999"))
+
+    def test_over_cap_refusals(self):
+        for key in ("start", "end"):
+            for n in ("9007199254740992", "9007199254740993", "9223372036854775809", "1e+30", "1.7976931348623157e+308"):
+                for spelling in (n, n + ".0" if "e" not in n else n):
+                    with self.subTest(key=key, n=spelling):
+                        self.raw_pair(numeric(key, spelling), numeric(key, "9007199254740991"))
 
     def test_exact_control(self):
         self.insert([spans.locator(value="é e\u0301\0value")])
