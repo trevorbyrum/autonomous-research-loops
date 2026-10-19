@@ -4229,3 +4229,36 @@ All eight static gates pass; SQLite compatibility and source-catalog checks
 also pass. The static gates are repeated after this note. Evidence, final
 hashes, attempts, footprint and commits are retained in the private cap
 COMPLETION.md. The cap slice is complete; mandatory consumption remains OFF.
+
+### 2d-4c span-offset cap repair-1: pre-code estimate (2026-10-19)
+
+Read the full task and continuations, both operator rulings, Astra's round-1
+report and its independent/staged evidence, SQL 38 at f19725a and the retained
+cap proof/completion, canonical.py and C-13. B1 requires an additive raw-link
+string-value guard; numeric locator values are refused, including values below
+the cap, while digit-string labels remain accepted. B2 requires replacing the
+Decimal-capacity-dependent comparison with exact decimal significand/exponent
+comparison against the existing float representation. Compare preserved digits
+and exponent text without expanding powers or parsing unbounded exponents;
+zero significands are exact for every exponent. Preserve the existing parser's
+accepted decimal equivalence, float result, canonical bytes and hashes.
+
+Estimate **about 390 handwritten lines**: ordered SQL/order/pins 20; canonical
+comparison 45; independent numeral oracle and hash-compatibility regressions
+95; locator schema/Router/raw and version/order parity tests 125; paired mutants,
+control traces and private proof/scope drivers 105. Documentation and generated
+controls/pins are additional. This is one coherent repair below the split
+threshold; no fixture-conversion or mandatory-consumption phase is activated.
+
+Regress both receipt versions, all six raw span owners, both detailed arrays
+and both trigger orders, including extreme signed zero, nonzero underflow,
+overflow and inexact numerals. Preserve hashes across the existing RFC, portal,
+ECMAScript and span numeral catalogs using the prior acceptance oracle. Add a
+separate accepted string-label control for the new raw predicate. Run full
+ gen2-test, trigger-order, composition, complete affected --only families using
+transitive canonical imports, full uncovered-trigger inventory, gen2-gateway
+and the required static gates; repin both hashes. Heavy runs wait for no user
+or system gen2-landing-* unit; snapshot venvs use cp -a. Evidence and resumable
+PROGRESS.md stay under private/evidence/2d-4c-cap-repair-1/. No Gen-1, provider,
+real-database migration, protected-register edit, private commit, push or main
+merge is authorized.
