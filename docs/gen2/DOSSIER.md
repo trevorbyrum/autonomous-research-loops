@@ -4721,3 +4721,76 @@ successful converted-path traces and the unchanged trigger inventory. Heavy
 runs wait for no active user/system gen2-landing-* unit; one is active during
 reading. Any disposable venv uses cp -a. Evidence and current PROGRESS.md:
 private/evidence/2d-4c-part3h/. This documentation-only commit precedes code.
+
+**Part 3h implementation (selected raw content family), 2026-10-19.**
+ContentDDLTest, ExtractionContentDDLTest and ValidatedContentDDLTest now retain
+current /2 positives with Router-admitted assessments for every performed kind.
+The accepted RawAssessmentFixture, seed_checks, assessment_binding, attach_checks
+and restore_triggers helpers are reused unchanged. Examined/evidence bytes are
+authenticated under unmutated DDL before subject snapshots; submission only
+selects admitted records. Full-text promotion controls use response bytes equal
+to the examined artifact. Other raw response counterfactuals prove relationships,
+not transport authentication. Ordinary equal-byte extraction controls make no
+selector-discrimination claim; the accepted distinct-output regression passes.
+Production, DDL, schemas, pins and policy are unchanged; mandatory consumption
+and promotion activation remain OFF.
+
+The first full mutation run exposed two fixture-isolation errors: trigger-only
+restoration left unmutated views installed (36 surviving shared-view mutants),
+and PendingDDLTest inherits the converted content base (nine invalid controls).
+The fixture now restores exact requested views before restore_triggers.
+PendingDDLTest explicitly retains its original pending path through ATTRIBUTED
+False; its claim/revision/distractor and inherited content positives remain
+pending, never historical. The global StoreTestCase.verify/populate_every_table
+root and every population consumer are unchanged and pending together. No
+consumer receives conversion credit from an unconverted root.
+
+All 38 original assertion calls in the three existing edited modules survive;
+one view-catalog assertion is additional. Three new regressions independently
+check retained authenticated reports, verifier attribution, every performed
+outcome at every tier, unchanged record catalogs through insertion/conflict/
+rollback, foreign-span atomic refusal followed by three matching full-text
+promotions, full unmutated admission, and exact requested views plus reversed,
+mutated and dropped triggers. Removing view or trigger restoration each causes
+three assertion failures; binding removal causes three and receipt downgrade
+27, all with zero errors. Nine original accepted controls trace the actual
+attachment call and successful detailed-binding entry; 96/96 predicate/control
+pairings qualify through successful trigger/view observations. All 3,618 control
+records are unchanged. Full trigger inventory: 337 installed, zero uncovered.
+
+**Part 3h validated before implementation commit.** Full gen2-test passes
+4,267 tests with two existing skips (3,786.581 test seconds); trigger-order
+passes 337 triggers / 4,760 identical Store tests/subtests; composition passes
+six tests; focused modules pass 84 tests. The conservative full-inventory
+--only sweep kills 3,618/3,618 mutants, with 3,601 paired controls passing,
+11 existing in-killer accepted cases and six unchanged documented exceptions,
+over green 1,108-Store / 26-file-target baselines. All eight static gates pass
+and are repeated after this note. All four code files match tested hashes.
+Footprint: 186 repository additions / seven removals plus 284 retained private
+driver lines, totaling 470 against 490 estimated, excluding documentation.
+
+Prior attempts remain in evidence without passing credit: the first mutation
+failure and stopped engine run; private view-qualifier/module-alias mistakes;
+and a binding-removal experiment whose trigger drop was rolled back. The full
+required gates and corrected evidence drivers pass on the repaired candidate.
+Heavy runs waited for the landing unit to finish and retain empty user/system
+observations at each start. No production change or new exception was needed.
+
+**Exactly what remains pending:** raw quote DDLTest, CaptureDDLTest and
+AdjudicationDDLTest; StoreTestCase.verify/populate_every_table, VerificationTest
+and ContractAdmittedSupportTest; CanonicalDDLTest, ExtractionDDLTest (both
+methods), and PendingDDLTest's canonical/distractor/inherited content positives;
+every history/replacement/member/JSON/population consumer named in COMPLETION.md,
+including all 30 generated owners and explicitly Astra 3f NB1 AuxiliaryCapTest
+with its four controls. HoldDDLTest stays hold-only; ObservationDomainTest writes
+no verification receipt. Previously converted owners retain their purposes.
+Part 3 remains INCOMPLETE; its final sub-part still owes the repository-wide
+no-pending-positive demonstration. This stage stops after the raw content family.
+
+Evidence, exact pending owner/call-site inventories, attempts, commands, hashes
+and commits: private/evidence/2d-4c-part3h/COMPLETION.md; PROGRESS.md is current.
+Operator commit 29eeafd accepted part 3g and updated BUILD-STATE/REVIEW-LOG
+during validation; those changes are neither reverted nor included here.
+No provider call, real-database migration, Gen-1 access, protected-register edit
+by this slice, push or main merge occurred. Repository-only AGENTS lookup found
+none; no manual disposable checkout or venv symlink was created.

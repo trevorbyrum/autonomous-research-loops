@@ -109,6 +109,8 @@ class PendingRouterTest(unittest.TestCase):
 
 
 class PendingDDLTest(ContentDDLTest):
+    ATTRIBUTED = False  # Pending positives stay on the original base until their own conversion.
+
     def pending(self, method="validated_extraction", tier="full_text"):
         self.x("INSERT INTO claims SELECT claim_id, 2, topic_id, text_ref, producer_invocation_id, 1, ?, 'provisional', created_at FROM claims WHERE revision = 1", tier)
         from unittest.mock import patch

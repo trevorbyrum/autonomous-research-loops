@@ -1,7 +1,14 @@
 """Recorded-content predicates with isolated controls; SQL cannot hash/authenticate bytes."""
 import json
 import sqlite3
+from unittest.mock import patch
 
+from gen2.core import canonical
+from gen2.store import db
+from gen2.tests import store_fixtures as sf
+from gen2.tests.raw_detailed_receipt_fixtures import RawAssessmentFixture
+from gen2.tests.ddl_fixtures import restore_triggers
+from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
 from gen2.tests import test_store_acquisition_relationships as relationships
 from gen2.tests.store_fixtures import FIND_REQUEST, TOPIC, T, h
 
@@ -17,11 +24,70 @@ def response(record, others=()):
 class ContentDDLTest(relationships.RelationshipTest):
     test_binding = test_verifier = test_immutable = test_control = None
     test_relationships = test_relationship_controls = test_natural_key = None
+    ATTRIBUTED = True
 
     def setUp(self):
-        super().setUp()
-        self.artifact(size=512)
-        self.source(version="v4")
+        if not self.ATTRIBUTED:  # Explicitly pending inherited consumers keep their original fixture.
+            super().setUp()
+            self.artifact(size=512)
+            self.source(version='v4')
+            return
+        requested = sf.DDL_TEXT
+        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
+            super().setUp()
+            self.assessments = RawAssessmentFixture(self, response(FULL))
+            ref = self.assessments.source
+            self.x('INSERT INTO artifacts (content_hash,size_bytes,media_type,staged_at) VALUES (?,?,?,?)',
+                ref['content_hash'], ref['size_bytes'], ref['media_type'], T)
+            self.x("INSERT INTO artifact_topics VALUES (?,?,'inv_pppppppp',?)", ref['content_hash'], TOPIC, T)
+            self.source(version='v4')
+            seed_checks(self.assessments, dict(topic_id=TOPIC,
+                claim=dict(claim_id='clm_00000001', claim_revision=1),
+                source=dict(work_id='wrk_00000001', source_version='v4'),
+                cited_spans=[dict(start=0, end=5, locator=dict(kind='page', value='3'))],
+                obtained_content_hash=ref['content_hash'], extraction=dict(method='canonical_bytes'),
+                verifier_invocation_id='inv_vvvvvvvv', checks=self.CHECKS_OK))
+        self.restore_views(requested)
+        restore_triggers(self, requested)
+
+    def restore_views(self, requested):
+        query = "SELECT name,sql FROM sqlite_schema WHERE type='view' ORDER BY rowid"
+        with sqlite3.connect(':memory:') as reference:
+            reference.executescript(requested)
+            expected = list(reference.execute(query))
+        for name, _ in self.rows(query):
+            self.x('DROP VIEW ' + name)
+        for _, sql in expected:
+            self.x(sql)
+        self.assertEqual(self.rows(query), expected)
+
+    def source(self, **changes):
+        if self.ATTRIBUTED:
+            changes.setdefault('digest', self.assessments.source['content_hash'])
+        super().source(**changes)
+
+    def raw(self, **changes):
+        if self.ATTRIBUTED and changes.get('content_hash') == h('e'):
+            changes['content_hash'] = self.assessments.source['content_hash']
+        super().raw(**changes)
+
+    def verify(self, *args, historical=False, **changes):
+        if not self.ATTRIBUTED:
+            return super().verify(*args, **changes)
+        if changes.get('obtained') == h('e'):
+            changes['obtained'] = self.assessments.source['content_hash']
+        original = self.x
+        def insert(sql, *params):
+            if not historical and sql.startswith('INSERT INTO verification_receipts ('):
+                cols = sql.split('(', 1)[1].split(')', 1)[0].split(', ')
+                row = dict(zip(cols, params)); doc = json.loads(row['receipt'])
+                attach_checks(self.assessments, doc)
+                for key in ('receipt', 'cited_spans', 'acquisition'):
+                    row[key] = canonical.canonical_bytes(doc if key == 'receipt' else doc[key]).decode()
+                params = tuple(row[col] for col in cols)
+            return original(sql, *params)
+        with patch.object(self, 'x', side_effect=insert):
+            super().verify(*args, **changes)
 
     def acquired(self, record, others=(), **changes):
         self.raw(source_version=changes.pop("source_version", "v4"), content_hash=h("e"),

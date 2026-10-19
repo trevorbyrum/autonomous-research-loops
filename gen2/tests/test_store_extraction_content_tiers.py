@@ -1,4 +1,4 @@
-"""Reuse canonical predicate pairs against each pending extraction consumer.
+"""Reuse canonical predicate pairs against each attributed extraction consumer.
 
 Inherited cases cover shapes, Unicode, kind, record selection, coverage, each
 obtainable tier and reproduction. Raw operands establish SQL relationships,
@@ -74,7 +74,7 @@ class ExtractionContentDDLTest(content.ContentDDLTest):
 
     def test_missing_diagnostic(self):
         with self.assertRaisesRegex(sqlite3.IntegrityError, "extraction receipt must consume its admitted acquisition"):
-            self.content_receipt("full_text")
+            self.content_receipt("full_text", historical=True)  # /1 missing-basis refusal isolation.
         self.assertEqual(self.rows("SELECT * FROM verification_receipts"), [])
         self.acquired(content.FULL)
         self.content_receipt("full_text")
@@ -83,7 +83,7 @@ class ExtractionContentDDLTest(content.ContentDDLTest):
         self.acquired(content.FULL)
         acq = {"route": "gateway:crossref", "retrieved_at": T, "gateway_call_ref": "gw-call:1", "cache_reuse": False}
         with self.assertRaisesRegex(sqlite3.IntegrityError, "extraction receipt must consume its admitted acquisition"):
-            self.verify("ver_wronghash1", tier="reproduced", required="reproduced", use="sampled", method=self.METHOD,
+            self.verify("ver_wronghash1", historical=True, tier="reproduced", required="reproduced", use="sampled", method=self.METHOD,
                 extraction="inv_vvvvvvvv" if self.METHOD == "verifier_extraction" else "inv_pppppppp", validation="validation_unrecorded",
                 obtained=h("7"), gateway="gw-call:1", quote=("not_applicable", None),
                 receipt_overrides={"source": {"work_id": "wrk_00000001", "source_version": "v4"}, "acquisition": acq},
