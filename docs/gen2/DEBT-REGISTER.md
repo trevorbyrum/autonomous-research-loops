@@ -437,4 +437,5 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - A gate that can fail on machine load costs a full landing cycle and hides real signal.
   - Fix at the root: make the deadline-dependent assertions independent of scheduler load, for example by injecting the clock, `time-machine`-style, as the charter's refactor evidence standard allows. Don't just raise the timeout. Audit the other deadline-based gateway-client and route tests for the same pattern.
 - source: orchestrator landing 2026-10-14, `private/evidence/2d-4b3e2-part2/orchestrator/gen2-check.log`
+- recurrence 2026-10-19: the landing at `04c7af7` (span-cap repair-1) failed the mutation baseline on the same test after a green `gen2-test` (4,256) and trigger-order; rerun queued. This is the second landing cycle lost; schedule the root fix before part 4 (`private/evidence/2d-4c-cap-repair-1/orchestrator/gen2-check.attempt1.log`).
 - removal: the timing-dependent client and route tests pass deterministically under load, shown by a loaded rerun of the mutation baseline, and no deadline assertion depends on wall-clock scheduling.
