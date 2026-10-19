@@ -4667,3 +4667,57 @@ changes are neither reverted nor included in this implementation commit. No
 provider call, real-database migration, Gen-1 access, protected-register edit
 by this slice, push or main merge occurred. Repository-only AGENTS lookup
 found none; no manual disposable checkout or venv symlink was created.
+
+#### 2d-4c part 3h — re-estimate (before code)
+
+2026-10-19, branch `gen2`. Read the whole task, Constraints, operator rulings
+and every continuation; all DOSSIER §2d-4c notes and part-3 audits; part-3g
+COMPLETION.md; part-3f population-owners.json and Astra's full 3f review,
+including NB1; the accepted detailed/raw/DDL helpers and raw-span/remaining-
+Router regressions. Repository-only AGENTS.md lookup found none.
+
+**Remaining estimate: 820 handwritten additions**, including private drivers,
+excluding documentation/generated evidence: raw quote/capture/adjudication 140;
+global root and all population consumers 240; independent raw canonical/
+acquisition/content/extraction-content/pending families 160; regressions 140;
+audit/trace/gate drivers 140. This is well above 500. Split along consumer
+families. **Implement only the raw content family in 3h:** ContentDDLTest,
+ExtractionContentDDLTest and ValidatedContentDDLTest, including all inherited
+content-shape, tier, Unicode, lineage, record-selection and retention controls.
+Selected estimate **490 additions**: authenticated setup/receipt wiring 90,
+independent evidence/binding/promotion/rollback/catalog regressions 120,
+retained inventory/trace/gate drivers 280, including reused infrastructure.
+
+**Safe staging and coupling:** StoreTestCase.verify/populate_every_table and
+every population consumer remain pending together; this stage does not modify
+that root or claim any of its consumers converted. Those consumers include
+EveryTableSweepTest (replacement/delete sweeps), RecordIdentityTest; the six
+branch-window/obligation/registry/semantic/lifecycle/source-artifact owners;
+member-domain QuoteTest; all eight RolloutPairs and 22 CompletionPairs owners
+in population-owners.json; and explicitly NB1 AuxiliaryCapTest.setUp and its
+four controls. VerificationTest and ContractAdmittedSupportTest remain pending.
+Raw quote DDLTest/CaptureDDLTest/AdjudicationDDLTest (including inherited
+population), CanonicalDDLTest, ExtractionDDLTest, and PendingDDLTest's accepted
+canonical/distractor receipts also remain pending. Nothing pending is relabelled
+historical. Part 3 remains INCOMPLETE after this selected family.
+
+Reuse RawAssessmentFixture, seed_checks, assessment_binding, attach_checks and
+restore_triggers without forking them. Admit real retained examined/evidence
+bytes under unmutated DDL before subject snapshots, then restore the complete
+requested trigger definitions/order. Submission selects already admitted rows.
+Keep raw acquisition counterfactuals as relationship operands and preserve
+their diagnostics; they do not prove transport authenticity. Matching full-text
+promotion controls must use response bytes equal to the authenticated examined
+artifact. Keep the accepted distinct-output regression for artifact-selector
+discrimination; ordinary equal-byte controls make no such claim. Explicit
+refusal-only isolation operands retain their guard; pending positives do not
+become historical. Preserve all existing accepted tiers and retention behavior.
+
+No production, DDL, schema, pins or policy change; stop and report if needed.
+Mandatory consumption and promotion changes stay OFF. Run full gen2-test,
+trigger-order, composition, the full mutation inventory (a conservative superset
+of the transitive affected --only families), and all eight static gates. Retain
+successful converted-path traces and the unchanged trigger inventory. Heavy
+runs wait for no active user/system gen2-landing-* unit; one is active during
+reading. Any disposable venv uses cp -a. Evidence and current PROGRESS.md:
+private/evidence/2d-4c-part3h/. This documentation-only commit precedes code.
