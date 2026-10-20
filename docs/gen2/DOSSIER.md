@@ -5322,3 +5322,51 @@ attempts, footprint, commands, hashes and remaining scope are retained in
 private/evidence/2d-4c-part4/COMPLETION.md; PROGRESS.md is current. No provider,
 Gen-1/runtime/8765, real-database migration, protected-register, push or merge
 action occurred. Required heavy starts observed no active landing units.
+
+#### 2d-4c part 4a repair 1 — design before code (2026-10-20)
+
+Read Astra round 1 including its executable B1 reproduction, prior 4a completion,
+repair/parent briefs and operator rulings, charter/boundaries, flow S4 steps 4/8,
+adjudication (b)5/(c)2, methodology §4 and V-4/V-8. Repository-only AGENTS.md
+lookup found none. The retained reproduction asserts refusal and currently
+fails in both trigger orders: raw /1 `succeeded` commits with all 338 triggers,
+foreign keys enabled and zero detailed records. No repository code changed
+before this note. The external BUILD-STATE working edit is left untouched.
+
+**Choose the explicit closed-domain option.** SQL 41 adds a BEFORE INSERT guard
+for the four legacy summary fields on every current load-bearing positive
+receipt, independent of receipt version and extraction method. Each field must
+be JSON text in the closed summary vocabulary (`checked_ok`, `checked_problem`,
+`not_applicable`, `not_checked`, `unavailable`). SQL 03 continues to refuse the
+last two for these verdicts. Thus every remaining operand reaches SQL 40's
+all-four performed-reference requirement; SQL 37 independently enforces /2
+shape, explicit outcome projection and exact durable binding. /1 cannot carry
+references and is refused for this new use. This removes the family cause:
+raw admission previously trusted an open summary domain before branching on it.
+It covers arbitrary strings and JSON types, rather than enumerating bypasses.
+
+An unconditional replacement of SQL 40 would also close B1, but a separate
+closed-domain guard keeps the accepted performed-outcome predicates and their
+mutation controls intact and makes raw/Router operand parity explicit. No new
+representation, duplicated binding relation, Router logic, JSON column or
+promotion authority is introduced. Valid sampled/unsuccessful receipts and
+historical readback remain; promotion consumption stays owned by 4b. Classify
+B1 as ROOT-CAUSE once discriminating evidence and required gates pass.
+
+NB1 is ROOT-CAUSE: restore the extraction-history helper's complete saved
+ordered catalog with restore_triggers(case, None, catalog=definitions), including
+exceptional exits. Probe both orders with actual mutated/dropped definitions.
+Audit other receipt/capture/quote and promotion consumers by executable probes;
+repair any receipt-admission gap, and record promotion-only gaps for 4b.
+
+Estimate **about 360 handwritten repository lines**, including both dossier
+notes: SQL/order 20, domain matrix and admitted controls 160, historical helper
+and regressions 45, mutant/control wiring 15, documentation 100; generated pins
+and control JSON are separate. Private evidence drivers about 250 lines. Stop
+and report after DOSSIER if scope grows above about 500. Freeze source before
+full gen2-test, trigger-order, composition, full mutation inventory, static and
+gateway gates; repin both hashes and qualify the separate accepted control trace.
+Heavy starts wait for no active gen2-landing-* user unit. Disposable snapshots
+copy .venv-gen2 with cp -a. No provider/Gen-1/runtime/8765/real migration,
+protected-register edit, push or merge. Evidence and current progress:
+private/evidence/2d-4c-p4a-repair-1/.
