@@ -192,6 +192,10 @@ class EveryTableSweepTest(StoreTestCase):
                 self.assertEqual(self.snapshot(table), before)
 
     def test_no_table_can_be_deleted_from_or_replaced_into(self) -> None:
+        # Admitted checks advance TOPIC's revision. A pristine, unreferenced
+        # first row keeps REPLACE aimed at deletion rather than intake guards.
+        self.x("INSERT INTO queue_entries (rowid, topic_id, fleet_id, priority, status, created_at, updated_at) "
+               "VALUES (-1, 'fleet-a:queue-delete-probe', 'fleet-a', 1, 'awaiting_brief_confirmation', ?, ?)", T, T)
         for table in self.tables():
             with self.subTest(table=table):
                 before = self.snapshot(table)

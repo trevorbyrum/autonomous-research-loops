@@ -9,7 +9,7 @@ from gen2.tests import store_fixtures as sf
 
 
 class RawAssessmentFixture(routed.RouterTestCase):
-    def __init__(self, owner, raw):
+    def __init__(self, owner, raw, *, verifier="inv_vvvvvvvv"):
         super().__init__()
         self.db = owner.db
         self.store = api.adopt_in_memory(self.db)
@@ -20,10 +20,11 @@ class RawAssessmentFixture(routed.RouterTestCase):
         # The old raw builders use zero-duration leases and do not advance the
         # queue with their operation rows. Make the admission context live and
         # align its revision before authenticated Router commits, under full DDL.
-        owner.x("UPDATE leases SET expires_at='2026-12-31T00:00:00Z' WHERE lease_id='lease_vvvvvvvv'")
-        owner.x("UPDATE invocations SET deadline_at='2026-12-30T00:00:00Z' WHERE invocation_id='inv_vvvvvvvv'")
-        owner.to_running('inv_vvvvvvvv')
-        owner.x("UPDATE queue_entries SET state_revision=(SELECT MAX(state_revision_after) FROM operation_receipts WHERE topic_id=?) WHERE topic_id=?",
-            sf.TOPIC, sf.TOPIC)
-        self.verifier = self.router._grant('fixture', 'inv_vvvvvvvv')
+        owner.x("UPDATE leases SET expires_at='2026-12-31T00:00:00Z' WHERE lease_id=(SELECT lease_id FROM invocations WHERE invocation_id=?)", verifier)
+        owner.x("UPDATE invocations SET deadline_at='2026-12-30T00:00:00Z' WHERE invocation_id=?", verifier)
+        if owner.rows("SELECT state FROM invocations WHERE invocation_id=?", verifier) != [('running',)]:
+            owner.to_running(verifier)
+        owner.x("UPDATE queue_entries SET state_revision=(SELECT MAX(state_revision_after) FROM operation_receipts WHERE topic_id=?) WHERE topic_id=? AND state_revision IS NOT (SELECT MAX(state_revision_after) FROM operation_receipts WHERE topic_id=?)",
+            sf.TOPIC, sf.TOPIC, sf.TOPIC)
+        self.verifier = self.router._grant('fixture', verifier)
         self.source = self.artifact(raw, 'application/json')

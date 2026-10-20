@@ -100,6 +100,8 @@ BUNDLE = {"bundle_version": "config-bundle/1", "version": 1, "questions": [QUEST
 
 class StoreTestCase(unittest.TestCase):
     APPLY_CONNECTION_CONTRACT = True
+    source_hash = h("7")
+    ATTRIBUTED_POPULATION = False
 
     def setUp(self) -> None:
         self.db = connect(self.APPLY_CONNECTION_CONTRACT)
@@ -425,16 +427,19 @@ class StoreTestCase(unittest.TestCase):
         if not self.rows("SELECT 1 FROM source_artifacts WHERE source_version = 'v1'"):
             lease, generation = self.rows("SELECT i.lease_id, l.generation FROM invocations i JOIN leases l USING (lease_id) WHERE i.invocation_id = 'inv_pppppppp'")[0]
             self.receipt("op_content001", "inv_pppppppp", lease=lease, gen=generation)
-            self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", h("7"), TOPIC, T)
+            self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", self.source_hash, TOPIC, T)
             self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
             self.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
             self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
-            self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_content001', ?)", TOPIC, h("7"), T)
+            self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_content001', ?)", TOPIC, self.source_hash, T)
         if not self.rows("SELECT 1 FROM source_acquisitions WHERE source_version = 'v1' AND verifier_invocation_id = ?", verifier):
-            self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, ?, ?, ?, ?, ?)", TOPIC, h("7"), T, verifier, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+            self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, ?, ?, ?, ?, ?)", TOPIC, self.source_hash, T, verifier, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
 
         from gen2.tests.extraction_receipt_fixtures import seed
         seed(self)
+        if self.ATTRIBUTED_POPULATION:
+            from gen2.tests.raw_population_fixtures import prepare
+            prepare(self, verifier=verifier)
 
     CHECKS_OK = {"numeric_units": "checked_ok", "denominators": "checked_ok", "negation": "checked_ok", "qualifications": "checked_ok"}
 
@@ -443,11 +448,11 @@ class StoreTestCase(unittest.TestCase):
                producer: str = "inv_pppppppp", verifier: str = "inv_vvvvvvvv", verdict: str = "supports", checks: dict | None = None,
                quote: tuple = ("matched", "qc-1"), source_artifact: str | None = None, tier0: str | None = None, adjudication: dict | None = None,
                gateway: str | None = "gw-call-1", obtained: str | None = None, capability: str | None = None,
-               receipt_overrides: dict | None = None, column_overrides: dict | None = None, drop: tuple = ()) -> None:
+               receipt_overrides: dict | None = None, column_overrides: dict | None = None, drop: tuple = (), historical: bool = False) -> None:
         """A verification receipt whose JSON (verification-receipt.schema.json
         shape) and normalized columns are built from the same values; pass
         receipt_overrides / column_overrides to make them disagree."""
-        obtained = obtained or h("7")
+        obtained = obtained or self.source_hash
         status, check_id = quote
         capability = capability or self.rows("SELECT capability_id FROM invocations WHERE invocation_id = ?", verifier)[0][0]
         spans = [{"start": 0, "end": 5, "locator": {"kind": "page", "value": "3"}}]
@@ -459,13 +464,16 @@ class StoreTestCase(unittest.TestCase):
                "extraction": {"method": method, "extractor": "x-1", "produced_by_invocation_id": extraction, "validation_ref": validation},
                "producer_invocation_id": producer, "verifier_invocation_id": verifier, "verifier_capability_id": capability,
                "quote_check_id": check_id,
-               "checks": {"exact_quote": {"status": status, "normalization_version": "n1", "source_artifact_hash": source_artifact or h("7")},
+               "checks": {"exact_quote": {"status": status, "normalization_version": "n1", "source_artifact_hash": source_artifact or self.source_hash},
                           **(checks or self.CHECKS_OK), **({"tier0": {"checker": "minicheck", "checker_version": "1", "signal": tier0}} if tier0 else {})},
                "adjudication": adjudication, "verdict": verdict, "verified_at": T}
         for key, value in (receipt_overrides or {}).items():
             doc[key] = value
         from gen2.tests.extraction_receipt_fixtures import attach
         attach(self, doc)
+        if self.ATTRIBUTED_POPULATION and not historical:
+            from gen2.tests.raw_population_fixtures import attach as attach_population
+            attach_population(self, doc)
         for path in drop:  # delete a (dotted) key: probes the absent-key case of NULL-sensitive CHECKs
             *parents, last = path.split(".")
             node = doc
@@ -478,13 +486,17 @@ class StoreTestCase(unittest.TestCase):
                 "extraction_validation_ref": doc["extraction"]["validation_ref"] if method == "validated_extraction" else validation, "producer_invocation_id": producer, "verifier_invocation_id": verifier,
                 "quote_check_id": check_id, "verdict": verdict, "receipt": json.dumps(doc), "verified_at": T}
         cols.update(column_overrides or {})
+        if self.ATTRIBUTED_POPULATION and not historical:
+            from gen2.core import canonical
+            for key in ("receipt", "cited_spans", "acquisition"):
+                cols[key] = canonical.canonical_bytes(doc if key == "receipt" else json.loads(cols[key])).decode()
         self.x(f"INSERT INTO verification_receipts ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())
 
     def quote_check(self, check_id: str, *, claim: tuple = ("clm_00000001", 1), source: str | None = None, match: str = "matched",
                     nli: str = "not_run", quarantined: int | None = None) -> None:
         quarantined = quarantined if quarantined is not None else int(match == "mismatch" or nli == "alarm")
         self.x("INSERT INTO quote_checks (check_id, claim_id, claim_revision, source_artifact_hash, span_start, span_end, normalization_version, exact_match, nli_checker, nli_checker_version, nli_signal, quote_quarantined, checked_at) "
-               "VALUES (?, ?, ?, ?, 0, 5, 'n1', ?, ?, ?, ?, ?, ?)", check_id, claim[0], claim[1], source or h("7"), match,
+               "VALUES (?, ?, ?, ?, 0, 5, 'n1', ?, ?, ?, ?, ?, ?)", check_id, claim[0], claim[1], source or self.source_hash, match,
                None if nli == "not_run" else "minicheck", None if nli == "not_run" else "1", nli, quarantined, T)
 
     def spec(self, spec_id: str = "dspec_screen01", provider: str = "jev", cls: str = "screening", *, primitive: str | None = None,
@@ -620,6 +632,11 @@ class StoreTestCase(unittest.TestCase):
         and the population the history-rewrite sweep attacks. Keep one row in
         every table: test_every_table_is_populated fails if a table is added
         without extending this."""
+        from gen2.tests.raw_population_fixtures import SOURCE_HASH, prepare
+        self.ATTRIBUTED_POPULATION = "detailed_check_records" in self.tables()
+        self.source_hash = SOURCE_HASH if self.ATTRIBUTED_POPULATION else h("7")
+        if self.ATTRIBUTED_POPULATION:
+            self.x("INSERT INTO artifacts (content_hash,size_bytes,media_type,staged_at) VALUES (?,512,'application/json',?)", self.source_hash, T)
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, topic_id, staged_at) VALUES (?, 512, 'application/json', ?, ?)", h("7"), TOPIC, T)
         self.confirm_brief(TOPIC)  # S1: the topic's intake brief, confirmed (intake_briefs)
         # S3: the operator rates draft revision 2; revision 3 carries the ratings and is approved
@@ -666,7 +683,9 @@ class StoreTestCase(unittest.TestCase):
                "contract_revision, eligibility_protocol_version, framing_version, NULL, 'probe', evidence_refs, actor_kind, invocation_id, recorded_by_operation_id, created_at "
                "FROM semantic_assessments WHERE assessment_id = 'sem1'")
         self.x("INSERT INTO branch_windows VALUES ('bw-fixture', ?, 'B-1', 'rdp_branch1', 'inv_pppppppp', 'primary', 'inv_pppppppp', 'op_00000001', ?)", TOPIC, T)
-        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_00000001', ?)", TOPIC, h("7"), T)
+        if self.ATTRIBUTED_POPULATION:
+            self.x("INSERT INTO artifact_topics VALUES (?,?,'inv_pppppppp',?)", self.source_hash, TOPIC, T)
+        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_00000001', ?)", TOPIC, self.source_hash, T)
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
         self.x("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, evidence_origin_lineage, created_at) "
                "VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, ?, 'O-1', '[]', 'answer', 'study-1', ?)", TOPIC, rev, T)
@@ -675,7 +694,7 @@ class StoreTestCase(unittest.TestCase):
         # Raw-row sweep fixture, not authenticated gateway acquisition evidence.
         if "source_acquisitions" in self.tables():  # legacy-DDL installation tests stop before SQL 14
             self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call:1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)",
-                   TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+                   TOPIC, self.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
         if "source_extractions" in self.tables():
             approval = {"registry_version": 1, "operator_id": "user", "reason": "fixture approval",
                 "tools": [{"extractor_identity": "tool-a", "family": "family-a"}, {"extractor_identity": "tool-b", "family": "family-b"}]}
@@ -684,19 +703,14 @@ class StoreTestCase(unittest.TestCase):
             for tool in approval["tools"]:
                 self.x("INSERT INTO extractor_tools VALUES (1, ?, ?)", tool["extractor_identity"], tool["family"])
             self.receipt("op_extractval", "inv_vvvvvvvv", lease="lease_vvvvvvvv", gen=2, before=1, kind="interim_transition")
-            ref = json.dumps({"content_hash": h("7"), "size_bytes": 512, "media_type": "application/json"})
+            ref = json.dumps({"content_hash": self.source_hash, "size_bytes": 512, "media_type": "application/json"})
             for eid, tool, inv, op in (("ext-target", "tool-a", "inv_pppppppp", "op_00000001"), ("ext-independent", "tool-b", "inv_vvvvvvvv", "op_extractval")):
                 self.x("INSERT INTO source_extractions VALUES (?, ?, 'wrk_00000001', 'v1', 'e1', 'inv_vvvvvvvv', ?, '1', ?, ?, 'full_text', ?, ?, 1)", eid, TOPIC, tool, inv, ref, op, T)
             self.x("INSERT INTO extraction_validations VALUES ('val-fixture', 'ext-target', 'inv_vvvvvvvv', 'ext-independent', 'independent_extraction', 1, 'succeeded', 'byte_equal', ?, 'op_extractval', ?)", ref, T)
             if "extraction_validations_v2" in self.tables():
                 self.x("INSERT INTO extraction_validations_v2 SELECT validation_id, target_extraction_id, validator_invocation_id, validator_extraction_id, method, 2, outcome, comparison, comparison_evidence_ref, recorded_by_operation_id, created_at FROM extraction_validations")
-        if "detailed_check_records" in self.tables():
-            report = {"claim_id": "clm_00000001", "claim_revision": 1, "work_id": "wrk_00000001", "source_version": "v1",
-                "source_artifact_hash": h("7"), "examined_artifact_ref": json.loads(ref),
-                "cited_spans": [{"start": 0, "end": 1, "locator": {"kind": "paragraph", "value": "1"}}], "context_spans": [],
-                "kind": "numeric_units", "outcome": "not_checked", "method": "attributed-assessment/1",
-                "assessment": "", "context_examined": "", "applicability_reason": ""}
-            self.x("INSERT INTO detailed_check_records VALUES ('check-history', ?, 'inv_vvvvvvvv', ?, NULL, 'op_extractval', ?)", TOPIC, json.dumps(report), T)
+        if self.ATTRIBUTED_POPULATION:
+            prepare(self)
         self.quote_check("qc-1")
         self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway="gw-call:1")
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1")

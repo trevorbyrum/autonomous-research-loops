@@ -5138,3 +5138,62 @@ private/evidence/2d-4c-part3k/. Mandatory consumption and promotion changes stay
 **OFF**. No production, DDL, schema, pins or policy change is authorized; stop
 and report if needed. No Gen-1, provider calls, real-database migration,
 protected-register edits, push or main merge. This note is committed before code.
+
+
+#### 2d-4c part 3k — implementation: final coupled groups
+
+2026-10-20, branch `gen2`; pre-code estimate committed as `d368f47`.
+Both final groups fit the clarified repository-only guide and are converted
+in one slice. Part 3 is **COMPLETE: no pending positive owner remains**.
+StoreTestCase.verify/populate_every_table, both evidence classes, all forty
+population consumers (including AuxiliaryCapTest and thirty generated JSON
+owners), and raw quote/capture/adjudication including inherited positives now
+use the accepted detailed/raw helpers. Twelve real Router-admitted performed
+records replace the manual check-history placeholder. Source hashes authenticate
+the actual retained bytes; unrelated raw-artifact operands keep their roles.
+
+Admission runs under full unmutated DDL on an in-memory mirror, with foreign
+keys/recursive triggers enabled and CHECK constraints enforced. Exact actual
+admitted rows return to the owner; no invented IDs. Requested tables, views,
+connection flags and complete trigger definitions/order, including mutations
+and local drops, survive restore_triggers. Submission only attaches existing
+records. Claim/revision/span/verifier variants receive distinct records.
+
+Six regressions cover every population, original promotions, independent
+verifiers/adoption, all kinds/performed outcomes and three methods, atomic
+foreign-reference refusal, conflict/rollback and requested-catalog preservation.
+All 207 original assertion expressions survive the explicit source-hash operand
+substitution. Existing old-DDL, refusal, isolation and accepted part-2 optional/
+historical experiments retain their purpose; no pending positive is relabelled.
+Raw response counterfactuals prove relationships; examined/assessment bytes are
+authenticated. Equal-byte outputs claim no selector discrimination; the accepted
+distinct-output regression passes. No scientific-correctness claim is made.
+
+**Validation before commit:** full gen2-test passes **4,281 tests**,
+two existing skips, in **4,720.911 test seconds**;
+trigger-order 337 triggers / 4,884 identical Store tests/subtests; composition
+six; focused 361. Full inventory **3,618/3,618 killed**, all 3,601 paired controls
+passing over the green 1,122-test Store / 26-file-target baseline (2,770.4s).
+All eight static gates pass and repeat after this note. Fifty-one original
+controls reach actual attachment and successful detailed-binding entry, including
+all thirty generated owners; these observations do not trace every SQL branch.
+Counterfactuals fail at 9/9/1/1 assertions, zero errors; the queue delete probe
+also fails at one assertion/zero errors when its guard is removed.
+
+Initial full mutations found one queue-delete survivor: the advanced root revision
+made its replacement operand hit an intake guard first. A pristine unreferenced
+first queue row restores the original delete probe without resetting root state
+or changing assertions. Initial attempt archived; unfinished full suite receives
+no passing credit. Every gate reran on the repaired ten-file candidate.
+
+Repository footprint: 480 additions / 75 removals including both dossier notes;
+private final drivers: 304 lines, separate from archived/generated evidence.
+The 147-module import closure affects 2,708 mutation definitions; full inventory
+is the required superset. COMPLETION.md carries 356 candidate calls across 71
+classified modules, broader text inventory and 34 inherited-owner resolutions.
+Mandatory consumption/promotion remain **OFF**; part 4 is deferred. No production,
+DDL/schema/pin/policy, Gen-1, provider, real-database, protected-register, push or
+main-merge change occurred. Required heavy starts observed empty user/system
+landing units; disposable work uses no venv symlink. Evidence, exact commands,
+hashes, attempts, inventories and commits: private/evidence/2d-4c-part3k/COMPLETION.md;
+PROGRESS.md is current. Operator acceptance `8aa8611` is retained separately.

@@ -10,14 +10,14 @@ class DDLTest(StoreTestCase):
         self.populate_every_table()
 
     def raw(self, **changes):
-        row = {"topic_id": TOPIC, "work_id": "wrk_00000001", "source_version": "v2", "content_hash": h("7"),
+        row = {"topic_id": TOPIC, "work_id": "wrk_00000001", "source_version": "v2", "content_hash": self.source_hash,
                "invocation_id": "inv_pppppppp", "recorded_by_operation_id": "op_00000001", "created_at": T, **changes}
         self.x("INSERT INTO source_artifacts VALUES (?,?,?,?,?,?,?)", *row.values())
 
     def test_control(self):
         self.raw()
         self.assertEqual(self.rows("SELECT source_version, content_hash, invocation_id FROM source_artifacts ORDER BY source_version"),
-                         [("v1", h("7"), "inv_pppppppp"), ("v2", h("7"), "inv_pppppppp")])
+                         [("v1", self.source_hash, "inv_pppppppp"), ("v2", self.source_hash, "inv_pppppppp")])
 
     def test_commit(self):
         with self.assertRaises(sqlite3.IntegrityError):

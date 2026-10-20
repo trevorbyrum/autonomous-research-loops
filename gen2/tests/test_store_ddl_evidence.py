@@ -22,6 +22,7 @@ from __future__ import annotations
 import sqlite3
 import unittest
 
+from gen2.tests.raw_population_fixtures import SOURCE_HASH, prepare
 from gen2.tests.store_fixtures import FIND_REQUEST, OTHER, TOPIC, StoreTestCase, T, h
 
 
@@ -30,25 +31,28 @@ def canonical_support(case, rid, **changes):
     if not case.rows("SELECT 1 FROM source_acquisitions WHERE source_version = 'v1'"):
         lease, generation = case.rows("SELECT i.lease_id, l.generation FROM invocations i JOIN leases l USING (lease_id) WHERE i.invocation_id = 'inv_pppppppp'")[0]
         case.receipt("op_content001", "inv_pppppppp", lease=lease, gen=generation)
-        case.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", h("7"), TOPIC, T)
+        case.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", case.source_hash, TOPIC, T)
         case.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
         case.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
         case.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
-        case.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_content001', ?)", TOPIC, h("7"), T)
-        case.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+        case.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_content001', ?)", TOPIC, case.source_hash, T)
+        case.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, case.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+    prepare(case, changes.get("claim", ("clm_00000001", 1)))
     case.verify(rid, method="canonical_bytes", extraction="inv_pppppppp", **changes)
 
 
 class VerificationTest(StoreTestCase):
+    source_hash = SOURCE_HASH
+    ATTRIBUTED_POPULATION = True
     def setUp(self) -> None:
         super().setUp()
         self.lease("lease_aaaaaaaa", 1)
         self.invocation("inv_pppppppp")
         self.lease("lease_vvvvvvvv", 2, scope="verification")
         self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
-        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 512, 'application/json', ?)", h("7"), T)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 512, 'application/json', ?)", self.source_hash, T)
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
-        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, self.source_hash, T)
         self.quote_check("qc-1")
 
     def second_research_pass(self) -> None:
@@ -60,13 +64,13 @@ class VerificationTest(StoreTestCase):
         self.recorded_verification_basis()
         # Realistic case: the research-pass producer names itself as verifier (the role trigger fires first).
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", verifier="inv_pppppppp", extraction="inv_pppppppp")
+            self.verify("ver_00000001", verifier="inv_pppppppp", extraction="inv_pppppppp", historical=True)
         self.assertIn("separate verification invocation", str(ctx.exception))
         # Isolate the producer != verifier CHECK: a claim whose producer is itself a
         # verification-kind invocation passes the role trigger, so only the CHECK can refuse it.
-        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 2, ?, ?, 'inv_vvvvvvvv', 0, NULL, 'provisional', ?)", TOPIC, h("7"), T)
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 2, ?, ?, 'inv_vvvvvvvv', 0, NULL, 'provisional', ?)", TOPIC, self.source_hash, T)
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000002", claim=("clm_00000001", 2), quote=("not_applicable", None), producer="inv_vvvvvvvv", use="sampled")  # not load-bearing: sampled
+            self.verify("ver_00000002", claim=("clm_00000001", 2), quote=("not_applicable", None), producer="inv_vvvvvvvv", use="sampled", historical=True)  # not load-bearing: sampled
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         self.verify("ver_00000001")
 
@@ -78,7 +82,7 @@ class VerificationTest(StoreTestCase):
         self.recorded_verification_basis()
         self.second_research_pass()  # a second research_pass, not a verifier
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", verifier="inv_qqqqqqqq", extraction="inv_qqqqqqqq")
+            self.verify("ver_00000001", verifier="inv_qqqqqqqq", extraction="inv_qqqqqqqq", historical=True)
         self.assertIn("separate verification invocation", str(ctx.exception))
         # control parentage: refused when the verification invocation is admitted
         self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_vvvvvvvv'", T)
@@ -114,25 +118,26 @@ class VerificationTest(StoreTestCase):
         staged artifact. Positives: canonical-byte reuse of producer-acquired
         bytes; a validated producer extraction."""
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", method="validated_extraction", extraction="inv_pppppppp", validation=None)
+            self.verify("ver_00000001", method="validated_extraction", extraction="inv_pppppppp", validation=None, historical=True)
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", method="verifier_extraction", extraction="inv_pppppppp")
+            self.verify("ver_00000001", method="verifier_extraction", extraction="inv_pppppppp", historical=True)
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway=None)
+            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway=None, historical=True)
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", obtained=h("0"))
+            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", obtained=h("0"), historical=True)
         self.assertIn("authenticated canonical bytes", str(ctx.exception))
         # Raw admitted operands; authenticated transport is tested through Router.
         self.receipt("op_acquire01", "inv_pppppppp")
-        self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", h("7"), TOPIC, T)
+        self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", self.source_hash, TOPIC, T)
         self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
         self.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
         self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
-        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_acquire01', ?)", TOPIC, h("7"), T)
-        self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_acquire01', ?)", TOPIC, self.source_hash, T)
+        self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, self.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+        prepare(self)
         self.verify("ver_00000001", tier="bibliographic", required="bibliographic", use="sampled", method="canonical_bytes", extraction="inv_pppppppp")  # producer-acquired canonical bytes below the recorded ceiling
         from gen2.tests.extraction_receipt_fixtures import seed
         seed(self)
@@ -146,12 +151,13 @@ class VerificationTest(StoreTestCase):
         """
         self.second_research_pass()
         self.receipt("op_acquire01", "inv_qqqqqqqq", lease="lease_bbbbbbbb", gen=3)
-        self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_qqqqqqqq', ?)", h("7"), TOPIC, T)
+        self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_qqqqqqqq', ?)", self.source_hash, TOPIC, T)
         self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_qqqqqqqq', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
         self.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
         self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
-        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_qqqqqqqq', 'op_acquire01', ?)", TOPIC, h("7"), T)
-        self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_qqqqqqqq', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, h("7"), T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_qqqqqqqq', 'op_acquire01', ?)", TOPIC, self.source_hash, T)
+        self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_qqqqqqqq', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, self.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+        prepare(self)
         self.verify("ver_00000001", method="canonical_bytes", extraction="inv_qqqqqqqq")
         self.assertEqual(self.rows("SELECT acquired_by_invocation_id FROM source_acquisitions"), [("inv_qqqqqqqq",)])
         self.assertEqual(self.rows("SELECT extraction_method, extraction_invocation_id, producer_invocation_id, verifier_invocation_id, extraction_validation_ref, access_tier FROM verification_receipts"),
@@ -210,8 +216,9 @@ class VerificationTest(StoreTestCase):
         claim at any tier. (clm_00000002 is not load-bearing but does carry a
         full-text tier, so the load-bearing conjunct alone refuses it.)"""
         self.recorded_verification_basis()
-        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000002', 1, ?, ?, 'inv_pppppppp', 0, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000002', 1, ?, ?, 'inv_pppppppp', 0, 'full_text', 'provisional', ?)", TOPIC, self.source_hash, T)
         self.quote_check("qc-2", claim=("clm_00000002", 1))
+        prepare(self, ("clm_00000002", 1))
         refused = "that claim's own required tier"
         for label, kw in (("a higher required tier than the claim's", dict(tier="reproduced", required="reproduced")),
                           ("a lower required tier than the claim's", dict(tier="abstract", required="abstract")),
@@ -227,17 +234,17 @@ class VerificationTest(StoreTestCase):
 
     def test_claims_start_provisional(self) -> None:
         self.recorded_verification_basis()
-        self.rejects("claims are captured provisional", "INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000002', 1, ?, ?, 'inv_pppppppp', 0, NULL, 'accepted_support', ?)", TOPIC, h("7"), T)
+        self.rejects("claims are captured provisional", "INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000002', 1, ?, ?, 'inv_pppppppp', 0, NULL, 'accepted_support', ?)", TOPIC, self.source_hash, T)
 
     def test_nli_alarm_quarantines_the_quote(self) -> None:
         """D32 + the byte-mismatch test the review found missing: an NLI alarm
         and an exact-byte mismatch each quarantine the quote."""
         self.recorded_verification_basis()
         insert = "INSERT INTO quote_checks (check_id, claim_id, claim_revision, source_artifact_hash, span_start, span_end, normalization_version, exact_match, nli_checker, nli_checker_version, nli_signal, quote_quarantined, checked_at) VALUES (?, 'clm_00000001', 1, ?, 0, 5, 'n1', ?, 'minicheck', '1', ?, ?, ?)"
-        self.rejects("CHECK constraint failed", insert, "qc-2", h("7"), "matched", "alarm", 0, T)
-        self.x(insert, "qc-2", h("7"), "matched", "alarm", 1, T)
-        self.rejects("CHECK constraint failed", insert, "qc-3", h("7"), "mismatch", "pass", 0, T)
-        self.x(insert, "qc-3", h("7"), "mismatch", "pass", 1, T)
+        self.rejects("CHECK constraint failed", insert, "qc-2", self.source_hash, "matched", "alarm", 0, T)
+        self.x(insert, "qc-2", self.source_hash, "matched", "alarm", 1, T)
+        self.rejects("CHECK constraint failed", insert, "qc-3", self.source_hash, "mismatch", "pass", 0, T)
+        self.x(insert, "qc-3", self.source_hash, "mismatch", "pass", 1, T)
 
     def test_support_needs_successful_checks_or_adjudication(self) -> None:
         """A6: 'supports' with an adverse or unperformed check, or a tier-0 alarm,
@@ -295,7 +302,7 @@ class VerificationTest(StoreTestCase):
         receipt's source artifact, with the receipt's match status; support never
         rests on a quarantined quote without adjudication."""
         self.recorded_verification_basis()
-        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 2, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
+        self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 2, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, self.source_hash, T)
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'text/plain', ?)", h("8"), T)
         self.quote_check("qc-rev2", claim=("clm_00000001", 2))
         self.quote_check("qc-src8", source=h("8"))
@@ -339,7 +346,7 @@ class VerificationTest(StoreTestCase):
         for label, value in probes.items():
             with self.subTest(field=label):
                 with self.assertRaises(sqlite3.IntegrityError) as ctx:
-                    self.verify("ver_00000001", receipt_overrides={label.split(".")[0]: value})
+                    self.verify("ver_00000001", receipt_overrides={label.split(".")[0]: value}, historical=True)
                 self.assertIn("CHECK constraint failed", str(ctx.exception))
         self.verify("ver_00000001")
 
@@ -361,6 +368,9 @@ class ContractAdmittedSupportTest(StoreTestCase):
     invocation are admitted. The expected outcome of every promotion is
     written by hand, and each refusal is read back."""
 
+    source_hash = SOURCE_HASH
+    ATTRIBUTED_POPULATION = True
+
     SET_STATUS = "UPDATE claims SET status = ? WHERE claim_id = ? AND revision = ?"
     NEEDS_ADMISSION = "accepted support needs contract-admitted production"
     NEEDS_RECEIPT = "needs a supporting load-bearing-use verification receipt"
@@ -368,7 +378,7 @@ class ContractAdmittedSupportTest(StoreTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 512, 'application/json', ?)", h("7"), T)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 512, 'application/json', ?)", self.source_hash, T)
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
         self.lease("lease_rrrrrrrr", 1)
         self.invocation(self.SCOPING, lease="lease_rrrrrrrr", pre_contract=True)
@@ -384,7 +394,7 @@ class ContractAdmittedSupportTest(StoreTestCase):
 
     def claim(self, cid: str, rev: int, producer: str, *, load_bearing: bool = True, tid: str = TOPIC) -> None:
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) "
-               "VALUES (?, ?, ?, ?, ?, ?, ?, 'provisional', ?)", cid, rev, tid, h("7"), producer, int(load_bearing), "full_text" if load_bearing else None, T)
+               "VALUES (?, ?, ?, ?, ?, ?, ?, 'provisional', ?)", cid, rev, tid, self.source_hash, producer, int(load_bearing), "full_text" if load_bearing else None, T)
 
     def qualifying_receipt(self, rid: str, cid: str, rev: int, producer: str) -> None:
         """A receipt meeting V-4 in full for a load-bearing full-text claim:
