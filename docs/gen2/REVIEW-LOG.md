@@ -2950,3 +2950,15 @@ The post-2q Gate D is renumbered #5.
 - **The 2-line `PendingDDLTest` edit** (`ATTRIBUTED = False`) only keeps the pending path. Its SQLite dumps are identical to the base for six controls.
 - **The pending list is complete,** confirmed by an independent population audit: 12 direct calls, plus 8 RolloutPairs and 22 CompletionPairs owners.
 - **Landing at 7681a22:** `gen2-check` green (6,586 s). `gen2-gateway` is carried forward.
+
+## 2026-10-20: 2d-4c part 3i (raw canonical and acquisition family, e8706a1): PASS on the first review. Accepted
+- **Astra** (`dbb66c3b`; `private/reviews/gen2-2d-4c-p3i-astra-review-20261019.md`): **A, B and C all PASS, ROOT-CAUSE.** No findings.
+- **All 25 original positive writes are converted:** 9 canonical, 16 extraction.
+  - Each requires `/2`, the actual source-artifact identity and the method-selected examined bytes, with performer attribution.
+  - Receipt insertion changes no other table.
+- **The 18 original assertion expressions are preserved.**
+- **Negative operands keep their relationships:** work, version, verifier, obtained hash, gateway call, retrieval, route and acquirer.
+- **Fixture changes:**
+  - fresh disposable stores replace the outer savepoints, because Router admission can't nest;
+  - the alternate verifier's lease suffix was lengthened for schema validity, with its role unchanged.
+- **Landing at e8706a1:** `gen2-check` green (7,047 s). `gen2-gateway` is carried forward.
