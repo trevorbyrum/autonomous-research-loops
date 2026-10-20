@@ -5263,3 +5263,25 @@ per-predicate passing control-path traces and the full uncovered-trigger
 inventory. Every heavy start waits for no active gen2-landing-* user unit;
 any disposable snapshot copies .venv-gen2 with cp -a. Evidence, attempts, exact
 commands, hashes and current PROGRESS.md: private/evidence/2d-4c-part4/.
+
+**4a fixture-isolation addendum, before additional code.** Focused predicates
+and current positives pass, but independent probes find the old Python/DDL
+capture-span mutants survive: their deliberately `/1` refusal operands now fail
+the new admission guard before the capture predicate. The family cause is the
+activation of an admission rule over previously explicit historical isolation
+experiments. Preserve their original predicates/assertions through one named
+test-only historical-admission context, used only at those existing isolation
+call sites. It omits the new SQL guard and independent Router presence rule,
+then restores the exact requested trigger catalog/order, including mutations
+and local drops. Current positive and mandatory-refusal paths never use it.
+
+Re-estimate 4a at **about 470 repository lines** including documentation:
+the existing candidate is 284 non-generated additions including the estimate;
+allow 55 for shared context/catalog support and explicit legacy call sites,
+55 for restoration/current-policy regressions and 75 for this addendum plus
+completion notes. This remains one coherent admission slice under about 500;
+4b stays deferred. Freeze source before rerunning full gates. Initial full
+handoff execution overlapped the last test/mutant edit and is uncredited;
+the frozen-source discovery control passes. The subsequent engine runs are
+also stopped for this independently reproduced fixture defect. Gateway source
+is unchanged and its independent run may finish. Retain both attempts.
