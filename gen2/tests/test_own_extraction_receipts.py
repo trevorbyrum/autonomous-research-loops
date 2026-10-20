@@ -8,7 +8,7 @@ from gen2.core import canonical
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
 from gen2.tests.ddl_fixtures import restore_triggers
-from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt
+from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt, historical_admission
 from gen2.tests.test_canonical_content_tiers import FULL, fixture
 from gen2.tests.test_extraction_acquisitions import extraction_document, send
 
@@ -47,7 +47,8 @@ class OwnCases:
         # Historical /1 operands isolate the existing extraction predicate.
         historical_receipt(self.doc)
         before = self.case.state()
-        out = self.submit()
+        with historical_admission(self.case):
+            out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)
         self.assertIn('receipt needs its verifier durable extraction', out['detail'])
         self.assertEqual(self.case.state(), before)

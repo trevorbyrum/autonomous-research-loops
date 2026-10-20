@@ -9,16 +9,18 @@ def assert_triggers(case, expected):
     case.assertEqual(case.rows(TRIGGERS), expected, 'fixture reset requested trigger catalog/order')
 
 
-def restore_triggers(case, ddl, omit=()):
+def restore_triggers(case, ddl, omit=(), *, catalog=None):
     """Keep complete requested definitions/order, including mutations and drops.
 
     Tables/views may already have been replaced by the caller. Only triggers
     are restored here; explicit isolation omissions retain their relative order.
     Assert the actual catalog before returning control to the subject test.
     """
-    with sqlite3.connect(':memory:') as reference:
-        reference.executescript(ddl)
-        expected = [(n, s) for n, s in reference.execute(TRIGGERS) if n not in omit]
+    if catalog is None:
+        with sqlite3.connect(':memory:') as reference:
+            reference.executescript(ddl)
+            catalog = reference.execute(TRIGGERS).fetchall()
+    expected = [(n, s) for n, s in catalog if n not in omit]
     for name, _ in case.rows(TRIGGERS):
         case.x('DROP TRIGGER "' + name.replace('"', '""') + '"')
     for _, sql in expected:

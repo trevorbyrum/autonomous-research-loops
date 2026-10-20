@@ -74,7 +74,7 @@ class TableDDLTest(content.relationships.RelationshipTest):
                 params = tuple(row[col] for col in cols)
             return original(sql, *params)
         with patch.object(self, 'x', side_effect=insert):
-            super().verify(*args, **changes)
+            super().verify(*args, historical=historical, **changes)
 
     def table_receipt(self, tier="bibliographic", **changes):
         content.ContentDDLTest.content_receipt(self, tier, method=self.METHOD,

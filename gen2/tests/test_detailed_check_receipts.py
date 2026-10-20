@@ -250,7 +250,7 @@ class ReferenceCases:
             self.doc['checks'][kind] = 'checked_ok'
             self.doc['detailed_checks'][kind] = {'outcome': 'succeeded'}
         self.doc['verification_receipt_id'] = 'ver_optional001'
-        self.assertEqual(self.submit()['status'], 'committed')  # Optional even for success.
+        self.assertEqual(self.submit()['status'], 'committed')  # Sampled use retains optional references.
         self.doc['verification_receipt_id'] = 'ver_legacy001'
         self.doc['receipt_version'] = 'verification-receipt/1'
         del self.doc['detailed_checks']

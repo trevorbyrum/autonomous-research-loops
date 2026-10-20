@@ -51,7 +51,7 @@ class ReceiptCase(AcquisitionCase):
 
 
 class AttributedReceiptCase(ReceiptCase):
-    """Converted owner; base ReceiptCase's other consumers remain pending 3c."""
+    """Attributed current receipts; base ReceiptCase isolates format/refusal probes."""
     def setUp(self):
         with patch.object(sf, 'DDL_TEXT', db.schema_text()):
             super().setUp()

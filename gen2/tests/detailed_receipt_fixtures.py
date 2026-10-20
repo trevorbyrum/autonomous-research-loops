@@ -4,9 +4,12 @@ Seed before restoring counterfactual DDL. Attaching references only reads rows,
 so receipt rollback/replay snapshots include all previously admitted evidence.
 """
 import copy
+from contextlib import contextmanager, nullcontext
+from unittest.mock import patch
 
 from gen2.core import canonical
 from gen2.tests.router_fixtures import empty_outcome
+from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 
 OUTCOME = dict(checked_ok='succeeded', checked_problem='failed',
     not_applicable='not_applicable', not_checked='not_checked', unavailable='unavailable')
@@ -78,3 +81,16 @@ def historical_receipt(doc):
     """Explicit /1 isolation/history operand, retaining its original summaries."""
     doc['receipt_version'] = 'verification-receipt/1'
     doc.pop('detailed_checks', None)
+
+
+@contextmanager
+def historical_admission(case):
+    """Explicit old-admission experiments; restore exact subject predicates/order."""
+    catalog = case.rows(TRIGGERS)
+    case.x('DROP TRIGGER IF EXISTS verification_receipts_require_detailed_checks')
+    checker = getattr(getattr(case, 'router', None), '_detailed_checks', None)
+    with patch.object(checker, '_require_performed_references', return_value=None) if checker else nullcontext():
+        try:
+            yield
+        finally:
+            restore_triggers(case, None, catalog=catalog)

@@ -22,7 +22,8 @@ from gen2.tests.independent_tier_fixtures import independent_basis
 def historical(case):
     # Model pre-consumer receipts in disposable memory. Preserve every other
     # guard, then restore the exact installed definitions, including mutants.
-    names = ('verification_receipts_own_extraction', 'verification_receipts_validated_extraction')
+    names = ('verification_receipts_own_extraction', 'verification_receipts_validated_extraction',
+        'verification_receipts_require_detailed_checks')
     definitions = case.rows("SELECT name, sql FROM sqlite_schema WHERE type='trigger' ORDER BY rowid")
     selected = [(n, s) for n, s in definitions if n in names]
     for name, _ in selected:

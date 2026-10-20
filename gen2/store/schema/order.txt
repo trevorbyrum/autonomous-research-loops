@@ -44,3 +44,4 @@
 37-detailed-check-receipts.sql
 38-span-offset-cap.sql
 39-link-locator-string.sql
+40-mandatory-detailed-receipts.sql

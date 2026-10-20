@@ -5285,3 +5285,40 @@ handoff execution overlapped the last test/mutant edit and is uncredited;
 the frozen-source discovery control passes. The subsequent engine runs are
 also stopped for this independently reproduced fixture defect. Gateway source
 is unchanged and its independent run may finish. Retain both attempts.
+
+#### 2d-4c part 4a — implementation and validation (2026-10-20)
+
+SQL 40 and independent DetailedChecks now require durable references for every
+performed kind in new load-bearing supports/partially_supports receipts,
+including failed checks used through adjudication. SQL 37 and the existing
+Router bindings still enforce exact relationships and explicit outcome
+projection; SQL 03 retains the unperformed/unavailable prohibition. Historical
+readback stays available. No semantic-correctness authority is claimed.
+
+Former optional/legacy load-bearing positives now assert atomic refusal;
+sampled binding experiments remain explicit. The three p3k NB-1 comments are
+fixed. Historical isolation restores exact requested trigger definitions/order,
+including mutations, drops and local sentinels. Its raw-root activation matches
+SQL 40, avoiding irrelevant sampled DDL churn without relaxing assertions or
+timeouts. Full inventory also exposed stale Refusal aliases: all three harness
+routes reloading boundary now reload its captured-exception collaborators.
+Import-graph/identity-reload tests cover that family. Isolation/restoration
+counterfactuals fail at four assertions each; missing reload fails at one,
+all with zero errors. Stopped/development attempts remain uncredited in evidence.
+
+Validation: full gen2-test **4,300 tests**, two existing skips, 4,757.909s;
+trigger-order **338 triggers / 4,926 identical Store tests/subtests**; composition
+six; focused 101. Full inventory **3,632/3,632 killed**, 3,615 paired controls,
+green 1,130-Store/26-file-target baselines; all 14 new predicates have qualified
+passing control traces. Full trigger inventory: zero uncovered. All eight
+static gates pass and repeat before commit; gateway two 1,540-test suites and
+413 mutants pass. All 923 frozen source hashes match. Audit: 502 calls across
+78 classified modules, no pending current positives; SQL 01–39 and all 3,618
+prior control records unchanged. Both hashes are repinned; service.py untouched.
+
+**4a COMPLETE; whole part 4 INCOMPLETE.** Both SQL promotion successors and the
+independent Router consumer remain deferred to 4b as estimated above. Evidence,
+attempts, footprint, commands, hashes and remaining scope are retained in
+private/evidence/2d-4c-part4/COMPLETION.md; PROGRESS.md is current. No provider,
+Gen-1/runtime/8765, real-database migration, protected-register, push or merge
+action occurred. Required heavy starts observed no active landing units.

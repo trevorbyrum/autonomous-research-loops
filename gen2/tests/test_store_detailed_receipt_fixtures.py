@@ -73,7 +73,7 @@ class ConvertedFixtureTest(unittest.TestCase):
                         fixture.store(); fixture.promote()
                         self.check_receipt(fixture.case, fixture.doc, fixture.case.source)
 
-    def test_historical_and_optional_consumption_stays_off(self):
+    def test_new_legacy_and_optional_support_requires_records(self):
         for cls in (promotion.BoundPromotionRouterTest, raw_promotion.BoundPromotionDDLTest):
             for method in ('verifier_extraction', 'validated_extraction'):
                 for version in ('verification-receipt/1', 'verification-receipt/2'):
@@ -84,11 +84,12 @@ class ConvertedFixtureTest(unittest.TestCase):
                         if version.endswith('/1'): historical_receipt(fixture.doc)
                         else:
                             for entry in fixture.doc['detailed_checks'].values(): del entry['record_id']
-                        self.assertEqual(own.OwnCases.submit(fixture)['status'], 'committed')
-                        fixture.promote()
-                        retained = fixture.case.store.select('verification_receipts')[0]['receipt']
-                        self.assertEqual(retained, fixture.doc)
-                        self.assertEqual(retained['receipt_version'], version)
+                        before = fixture.case.state()
+                        out = own.OwnCases.submit(fixture)
+                        self.assertEqual(out['status'], 'rejected', out)
+                        self.assertIn('requires detailed check records', out['detail'])
+                        self.assertEqual(fixture.case.state(), before)
+                        self.assertEqual(fixture.case.rows('SELECT * FROM verification_receipts'), [])
 
     def test_performed_failure_and_exemption_retain_evidence(self):
         for cls in (promotion.BoundPromotionRouterTest, raw_promotion.BoundPromotionDDLTest):

@@ -1,7 +1,7 @@
 """Attributed V-8 assessment admission; operator ruling 2026-10-17.
 
 C-9 byte authentication precedes the writer lock. SQL 35 binds relationships;
-optional receipt references bind exactly; promotion policy remains unchanged.
+receipt references bind exactly; load-bearing support must consume records.
 """
 from typing import Callable
 
@@ -54,7 +54,8 @@ class DetailedChecks:
         return {"detailed_check_records": [r["check_id"] for r in records]} if records else {}
 
     def require_receipt(self, doc: dict) -> None:
-        """Part 2: explicit summary projection; any supplied reference must bind."""
+        """Current admission policy plus exact, explicitly projected bindings."""
+        self._require_performed_references(doc)
         projection = {"succeeded": "checked_ok", "failed": "checked_problem",
             "not_applicable": "not_applicable", "not_checked": "not_checked", "unavailable": "unavailable"}
         for kind, entry in doc.get("detailed_checks", {}).items():
@@ -66,6 +67,7 @@ class DetailedChecks:
             sources = self._core._store.select("source_artifacts", {"topic_id": doc["topic_id"], **doc["source"]})
             if not rows or not sources:
                 raise Refusal("payload_invalid", "receipt detailed check binding")
+
             row, report = rows[0], rows[0]["assessment"]
             artifact_hash = doc["obtained_content_hash"]
             if doc["extraction"]["method"] != "canonical_bytes":
@@ -81,3 +83,10 @@ class DetailedChecks:
                     or any(report[k] != v for k, v in expected.items())
                     or report["examined_artifact_ref"]["content_hash"] != artifact_hash):
                 raise Refusal("payload_invalid", "receipt detailed check binding")
+
+    def _require_performed_references(self, doc: dict) -> None:
+        if doc["requested_for"]["use"] == "load_bearing" and doc["verdict"] in ("supports", "partially_supports"):
+            if any("record_id" not in doc.get("detailed_checks", {}).get(kind, {})
+                    for kind in ("numeric_units", "denominators", "negation", "qualifications")
+                    if doc["checks"][kind] in ("checked_ok", "checked_problem", "not_applicable")):
+                raise Refusal("payload_invalid", "load-bearing support requires detailed check records")

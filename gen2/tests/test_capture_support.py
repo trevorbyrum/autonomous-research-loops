@@ -5,7 +5,7 @@ from unittest.mock import patch
 from gen2.store import db
 from gen2.tests.canonical_quotes_fixtures import CanonicalQuotesCase
 from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
-from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
+from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt, historical_admission
 
 
 class CaptureCase(CanonicalQuotesCase):
@@ -52,7 +52,8 @@ class CaptureCase(CanonicalQuotesCase):
     def refuse(self, records, doc, revision=2):
         historical_receipt(doc)  # Explicit /1 capture-guard refusal isolation.
         before = self.state(exclude=())
-        out = self.send(records, verification_receipts=[doc])
+        with historical_admission(self):
+            out = self.send(records, verification_receipts=[doc])
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
         self.rolled_back(before)
         if revision is not None:

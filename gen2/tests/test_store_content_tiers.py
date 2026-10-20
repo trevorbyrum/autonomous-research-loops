@@ -27,7 +27,7 @@ class ContentDDLTest(relationships.RelationshipTest):
     ATTRIBUTED = True
 
     def setUp(self):
-        if not self.ATTRIBUTED:  # Explicitly pending inherited consumers keep their original fixture.
+        if not self.ATTRIBUTED:  # Isolated compatibility/refusal probes use the base fixture.
             super().setUp()
             self.artifact(size=512)
             self.source(version='v4')
@@ -73,7 +73,7 @@ class ContentDDLTest(relationships.RelationshipTest):
 
     def verify(self, *args, historical=False, **changes):
         if not self.ATTRIBUTED:
-            return super().verify(*args, **changes)
+            return super().verify(*args, historical=historical, **changes)
         if changes.get('obtained') == h('e'):
             changes['obtained'] = self.assessments.source['content_hash']
         original = self.x
@@ -87,7 +87,7 @@ class ContentDDLTest(relationships.RelationshipTest):
                 params = tuple(row[col] for col in cols)
             return original(sql, *params)
         with patch.object(self, 'x', side_effect=insert):
-            super().verify(*args, **changes)
+            super().verify(*args, historical=historical, **changes)
 
     def acquired(self, record, others=(), **changes):
         self.raw(source_version=changes.pop("source_version", "v4"), content_hash=h("e"),

@@ -65,7 +65,7 @@ class CanonicalFixtureTest(unittest.TestCase):
                 self.check_receipt(case, doc, case.source)
                 self.check_receipt(case, first, case.source)
 
-    def test_empty_record_store_still_allows_explicit_historical_and_optional(self):
+    def test_empty_record_store_refuses_new_legacy_and_optional_support(self):
         for method in ('canonical_bytes', 'verifier_extraction', 'validated_extraction'):
             for version in ('verification-receipt/1', 'verification-receipt/2'):
                 with self.subTest(method=method, version=version), fixture(FULL) as case:
@@ -78,9 +78,12 @@ class CanonicalFixtureTest(unittest.TestCase):
                         doc['detailed_checks'] = {k: dict(outcome=OUTCOME[doc['checks'][k]]) for k in
                             ('numeric_units', 'denominators', 'negation', 'qualifications')}
                     self.assertEqual(case.rows('SELECT * FROM detailed_check_records'), [])
-                    self.assertEqual(case.send(doc)['status'], 'committed')
-                    self.promote(case)
-                    self.assertEqual(json.loads(case.value('SELECT receipt FROM verification_receipts')), doc)
+                    before = case.state()
+                    out = case.send(doc)
+                    self.assertEqual(out['status'], 'rejected', out)
+                    self.assertIn('requires detailed check records', out['detail'])
+                    self.assertEqual(case.state(), before)
+                    self.assertEqual(case.rows('SELECT * FROM verification_receipts'), [])
 
     def test_authority_positive_has_all_admitted_references(self):
         case = authority.AuthorityTest('test_a_producer_cannot_verify_its_own_work')

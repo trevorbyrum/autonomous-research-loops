@@ -27,7 +27,7 @@ def fixture(record, coverage="searched_ok", others=(), *, detailed=False):
         case.tearDown()
 
 
-# Other importers remain explicitly pending; this slice opts in its consumers.
+# Current positive owners opt into admitted assessments; base fixtures isolate probes.
 attributed_fixture = partial(fixture, detailed=True)
 
 

@@ -1,5 +1,6 @@
 """Optional receipt bindings: independent Router/SQL predicates and controls."""
 from dataclasses import replace
+import json
 
 from .base import Mutation
 
@@ -63,3 +64,30 @@ for name, replacement, killer in (('examined-auth', '(record["evidence_ref"],)',
         old='(report["examined_artifact_ref"], record["evidence_ref"])', new=replacement))
     CONTROLS[mid] = {'controls': [prefix + 'recorded_bytes_control'],
         'why': 'A fresh operation reuses authenticated recorded bytes with no result_refs; both examined and evidence paths are entered before the writer lock.'}
+
+# Part 4a: mandatory admission is independently enforced in SQL and Router.
+for target in ('ddl', p):
+    prefix = ('test_store_mandatory_detailed_receipts.MandatoryDDLTest.test_' if target == 'ddl'
+        else 'test_mandatory_detailed_receipts.MandatoryRouterTest.test_')
+    for kind in ('numeric_units', 'denominators', 'negation', 'qualifications'):
+        mid = '2D4C4A-' + ('ddl-' if target == 'ddl' else 'router-') + kind
+        old = ('["numeric_units","denominators","negation","qualifications"]' if target == 'ddl'
+            else '("numeric_units", "denominators", "negation", "qualifications")')
+        remaining = tuple(k for k in ('numeric_units', 'denominators', 'negation', 'qualifications') if k != kind)
+        new = json.dumps(remaining, separators=(',', ':')) if target == 'ddl' else repr(remaining).replace("'", '"')
+        MUTATIONS.append(Mutation(mid, '2d-4c part 4a', 'Missing performed ' + kind + ' record',
+            (prefix + 'missing', prefix + 'failed_without_record'), target=target,
+            scope='verification_receipts_require_detailed_checks' if target == 'ddl' else None, old=old, new=new))
+        CONTROLS[mid] = {'controls': [prefix + 'control'],
+            'why': 'Separate admitted load-bearing /2 support enters the mandatory record guard with all four real exact references.'}
+    performed = ('checked_ok', 'checked_problem', 'not_applicable')
+    for summary, killer in zip(performed, ('missing', 'failed_without_record', 'exemption_without_record')):
+        mid = '2D4C4A-' + ('ddl-' if target == 'ddl' else 'router-') + summary
+        old = repr(performed) if target == 'ddl' else repr(performed).replace("'", '"')
+        new = repr(tuple(s for s in performed if s != summary))
+        if target != 'ddl': new = new.replace("'", '"')
+        MUTATIONS.append(Mutation(mid, '2d-4c part 4a', 'Performed outcome requires records: ' + summary,
+            (prefix + killer,), target=target, scope='verification_receipts_require_detailed_checks' if target == 'ddl' else None,
+            old=old, new=new))
+        CONTROLS[mid] = {'controls': [prefix + 'control'],
+            'why': 'Separate load-bearing support with admitted references passes the performed-outcome predicate and record requirement.'}

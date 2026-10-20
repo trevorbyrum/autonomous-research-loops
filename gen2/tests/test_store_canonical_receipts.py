@@ -81,7 +81,7 @@ class CanonicalDDLTest(relationships.RelationshipTest):
                 params = tuple(row[col] for col in cols)
             return original(sql, *params)
         with patch.object(self, 'x', side_effect=insert):
-            super().verify(*args, **changes)
+            super().verify(*args, historical=historical, **changes)
 
     def canonical_receipt(self, **changes):
         acq = {"route": "gateway:crossref", "retrieved_at": T, "gateway_call_ref": "gw-call:1", "cache_reuse": True}

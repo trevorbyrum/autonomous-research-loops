@@ -1,4 +1,88 @@
 {
+ "2D4C4A-ddl-checked_ok": {
+  "controls": [
+   "test_store_mandatory_detailed_receipts.MandatoryDDLTest.test_control"
+  ],
+  "why": "Separate load-bearing support with admitted references passes the performed-outcome predicate and record requirement."
+ },
+ "2D4C4A-ddl-checked_problem": {
+  "controls": [
+   "test_store_mandatory_detailed_receipts.MandatoryDDLTest.test_control"
+  ],
+  "why": "Separate load-bearing support with admitted references passes the performed-outcome predicate and record requirement."
+ },
+ "2D4C4A-ddl-denominators": {
+  "controls": [
+   "test_store_mandatory_detailed_receipts.MandatoryDDLTest.test_control"
+  ],
+  "why": "Separate admitted load-bearing /2 support enters the mandatory record guard with all four real exact references."
+ },
+ "2D4C4A-ddl-negation": {
+  "controls": [
+   "test_store_mandatory_detailed_receipts.MandatoryDDLTest.test_control"
+  ],
+  "why": "Separate admitted load-bearing /2 support enters the mandatory record guard with all four real exact references."
+ },
+ "2D4C4A-ddl-not_applicable": {
+  "controls": [
+   "test_store_mandatory_detailed_receipts.MandatoryDDLTest.test_control"
+  ],
+  "why": "Separate load-bearing support with admitted references passes the performed-outcome predicate and record requirement."
+ },
+ "2D4C4A-ddl-numeric_units": {
+  "controls": [
+   "test_store_mandatory_detailed_receipts.MandatoryDDLTest.test_control"
+  ],
+  "why": "Separate admitted load-bearing /2 support enters the mandatory record guard with all four real exact references."
+ },
+ "2D4C4A-ddl-qualifications": {
+  "controls": [
+   "test_store_mandatory_detailed_receipts.MandatoryDDLTest.test_control"
+  ],
+  "why": "Separate admitted load-bearing /2 support enters the mandatory record guard with all four real exact references."
+ },
+ "2D4C4A-router-checked_ok": {
+  "controls": [
+   "test_mandatory_detailed_receipts.MandatoryRouterTest.test_control"
+  ],
+  "why": "Separate load-bearing support with admitted references passes the performed-outcome predicate and record requirement."
+ },
+ "2D4C4A-router-checked_problem": {
+  "controls": [
+   "test_mandatory_detailed_receipts.MandatoryRouterTest.test_control"
+  ],
+  "why": "Separate load-bearing support with admitted references passes the performed-outcome predicate and record requirement."
+ },
+ "2D4C4A-router-denominators": {
+  "controls": [
+   "test_mandatory_detailed_receipts.MandatoryRouterTest.test_control"
+  ],
+  "why": "Separate admitted load-bearing /2 support enters the mandatory record guard with all four real exact references."
+ },
+ "2D4C4A-router-negation": {
+  "controls": [
+   "test_mandatory_detailed_receipts.MandatoryRouterTest.test_control"
+  ],
+  "why": "Separate admitted load-bearing /2 support enters the mandatory record guard with all four real exact references."
+ },
+ "2D4C4A-router-not_applicable": {
+  "controls": [
+   "test_mandatory_detailed_receipts.MandatoryRouterTest.test_control"
+  ],
+  "why": "Separate load-bearing support with admitted references passes the performed-outcome predicate and record requirement."
+ },
+ "2D4C4A-router-numeric_units": {
+  "controls": [
+   "test_mandatory_detailed_receipts.MandatoryRouterTest.test_control"
+  ],
+  "why": "Separate admitted load-bearing /2 support enters the mandatory record guard with all four real exact references."
+ },
+ "2D4C4A-router-qualifications": {
+  "controls": [
+   "test_mandatory_detailed_receipts.MandatoryRouterTest.test_control"
+  ],
+  "why": "Separate admitted load-bearing /2 support enters the mandatory record guard with all four real exact references."
+ },
  "0C-comparison-removed": {
   "controls": [
    "test_source_catalog.CatalogToolTest.test_the_committed_pair_is_current_for_the_real_registry"

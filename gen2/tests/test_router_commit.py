@@ -349,7 +349,9 @@ class AuthorityTest(CommitCase):
                 committing["verification_receipts"] = [doc]
                 env = self.envelope(grant, "op_verify0001", committing)
                 before, audits = self.snapshot()
-                self.assertRejected(self.router.commit_outcome(env), reason, before, audits)
+                from gen2.tests.detailed_receipt_fixtures import historical_admission
+                with historical_admission(self):
+                    self.assertRejected(self.router.commit_outcome(env), reason, before, audits)
         own = empty_outcome("inv_verify01", "interim_transition")
         # NB1: the accepted support is a current positive; refusals above retain
         # their explicit /1 authority-isolation operands.
@@ -385,8 +387,10 @@ class AuthorityTest(CommitCase):
         before, audits = self.snapshot()
         self.assertRejected(self.router.commit_outcome(env), "payload_missing", before, audits, "canonical bytes are not staged")
         before, audits = self.snapshot()
-        self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired])),
-                            "payload_invalid", before, audits, "must consume its admitted acquisition")
+        from gen2.tests.detailed_receipt_fixtures import historical_admission
+        with historical_admission(self):
+            self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired])),
+                                "payload_invalid", before, audits, "must consume its admitted acquisition")
 
     def test_canonical_bytes_recorded_only_for_another_topic_are_not_this_topics(self) -> None:
         """Astra 1c review A6: the same receipt path, the obtained bytes
@@ -412,8 +416,10 @@ class AuthorityTest(CommitCase):
         self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own)), "payload_missing", before, audits, "canonical bytes are not staged")
         self.spool.put(raw, media_type="application/pdf", topic=TOPIC)
         before, audits = self.snapshot()
-        self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired])),
-                            "payload_invalid", before, audits, "must consume its admitted acquisition")
+        from gen2.tests.detailed_receipt_fixtures import historical_admission
+        with historical_admission(self):
+            self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired])),
+                                "payload_invalid", before, audits, "must consume its admitted acquisition")
         self.assertEqual(self.rows("SELECT topic_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", acquired["content_hash"]), [(OTHER,)])
 
     def verification_receipt(self, verifier: dict) -> dict:

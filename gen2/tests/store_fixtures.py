@@ -490,7 +490,11 @@ class StoreTestCase(unittest.TestCase):
             from gen2.core import canonical
             for key in ("receipt", "cited_spans", "acquisition"):
                 cols[key] = canonical.canonical_bytes(doc if key == "receipt" else json.loads(cols[key])).decode()
-        self.x(f"INSERT INTO verification_receipts ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())
+        from contextlib import nullcontext
+        from gen2.tests.detailed_receipt_fixtures import historical_admission
+        historical_support = historical and cols["use"] == "load_bearing" and cols["verdict"] in ("supports", "partially_supports")
+        with historical_admission(self) if historical_support else nullcontext():
+            self.x(f"INSERT INTO verification_receipts ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())
 
     def quote_check(self, check_id: str, *, claim: tuple = ("clm_00000001", 1), source: str | None = None, match: str = "matched",
                     nli: str = "not_run", quarantined: int | None = None) -> None:
