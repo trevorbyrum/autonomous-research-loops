@@ -24117,5 +24117,161 @@
    "test_store_receipt_summary_domain.SummaryDDLTest.test_control"
   ],
   "why": "Separate load-bearing /2 receipts with four real exact records enter SQL 41 successfully for all three methods in both orders."
+ },
+ "2D4C4B1-id": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-topic": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-verifier": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-kind": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-claim_id": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-claim_revision": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-cited_spans": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-work_id": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-source_version": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-source_artifact_hash": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-outcome": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-performed": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-projection": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-examined": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-version": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-four": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-gateway_call_ref": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-retrieved_at": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-route": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-content": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-sql03": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-sql34": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-capture": {
+  "controls": [
+   "test_store_detailed_support.DetailedCaptureDDLTest.test_capture_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-validated-target": {
+  "controls": [
+   "test_store_detailed_support.DetailedSupportDDLTest.test_promotion_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-capture-required-tier": {
+  "controls": [
+   "test_store_detailed_support.DetailedCaptureDDLTest.test_capture_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-capture-access-tier": {
+  "controls": [
+   "test_store_detailed_support.DetailedCaptureDDLTest.test_capture_control"
+  ],
+  "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
  }
 }

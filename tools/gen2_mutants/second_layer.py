@@ -61,7 +61,7 @@ SECOND_LAYER = {
         "a brief is confirmed only through intake_briefs_confirmation_bound, which needs an existing decision (IB-confirmation-bound-dropped), "
         "archived is reached only from confirmed (IB-archive-from-awaiting), and the pointer is set only by that transition and never "
         "changes (IB-pointer-dropped, IB-pointer-changes-after); so neither CHECK can be the first refusal",
-    "claims_accepted_support_needs_receipt: its required-tier, obtained-tier and performed-checks conjuncts (RA5, re-checked at promotion)":
+    "claims_accepted_support_detailed_receipt: its required-tier, obtained-tier and performed-checks conjuncts (RA5, re-checked at promotion)":
         "a load-bearing-use receipt is written only at its claim's own required tier (verification_receipts_use_matches_claim, RA5-use-matches-claim-*), "
         "'supports' never exceeds the obtained tier (verification_receipts CHECK), and a load-bearing support cannot record an unperformed check "
         "(A6-load-bearing-support-checks-performed); the trigger's own use and verdict conjuncts are mutated (RA5-promotion-*)",

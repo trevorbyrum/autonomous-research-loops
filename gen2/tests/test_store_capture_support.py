@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from gen2.tests.raw_population_fixtures import prepare
 from gen2.tests import store_fixtures
+from gen2.tests.detailed_support_fixtures import prior_consumption
 from gen2.tests.store_fixtures import TOPIC, T, h
 from gen2.tests.test_store_governed_quotes import DDLTest
 
@@ -104,7 +105,8 @@ class CaptureDDLTest(DDLTest):
         self.raw()
         self.verify("ver_pending01", gateway="gw-call:1", quote=("matched", "qck_governed001"), receipt_overrides={"checks": {
             **self.CHECKS_OK, "exact_quote": {"status": "matched", "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": self.source_hash}}})
-        self.finish()
+        with prior_consumption(self):
+            self.finish()
         self.assertEqual(self.rows("SELECT status FROM claims"), [("quarantined",)])
 
     def test_existing_receipt(self):

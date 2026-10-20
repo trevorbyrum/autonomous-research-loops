@@ -53,7 +53,7 @@ change("unicode-space-set", "char(9) || '-' || char(13) || char(32,133,160,5760)
 change("unicode-ignorable-set", "char(173,847,1564)", "char(65)", "shapes", scope=None)
 
 PENDING = "test_pending_extraction_support."
-FENCE = "claims_accepted_support_bound_extraction"
+FENCE = "claims_accepted_support_detailed_extraction"
 
 
 def pending(name, old, new, killer="PendingDDLTest.test_pending_methods", target="ddl", scope=FENCE, test_prefix=PENDING):
@@ -86,7 +86,7 @@ for name, control in (('hold', 'test_bound_control'), ('classification', 'test_m
 mid = "2D4B3B-pending-capture"
 MUTATIONS.append(Mutation(mid, "2d-4b3b-repair-1", "pending receipt cannot preserve governed accepted support",
     ("test_store_capture_support.CaptureDDLTest.test_late_pending_cannot_preserve_support",),
-    old="      AND v.extraction_method = 'canonical_bytes'\n", new=""))
+    old="      AND r.extraction_method = 'canonical_bytes'\n", new=""))
 CONTROLS[mid] = {"controls": ["test_store_capture_support.CaptureDDLTest.test_capture_control"],
     "why": "A separate canonical receipt binds the current governed capture and qualifies support."}
 

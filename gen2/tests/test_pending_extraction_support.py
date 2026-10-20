@@ -8,6 +8,7 @@ from gen2.tests.test_canonical_content_tiers import IDENTITY, FULL, attributed_f
 from gen2.tests.test_canonical_receipt_admission import AttributedReceiptCase, ReceiptCase
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
 from gen2.tests.ddl_fixtures import restore_triggers
+from gen2.tests.detailed_support_fixtures import prior_consumption
 from gen2.tests import store_fixtures as sf
 from gen2.store import db
 from gen2.tests.test_store_content_tiers import ContentDDLTest
@@ -158,7 +159,7 @@ class PendingDDLTest(ContentDDLTest):
                         self.pending(method, tier)
                         self.assertEqual(self.rows("SELECT access_tier, extraction_method FROM verification_receipts WHERE verification_receipt_id = 'ver_content1'"), [(tier, method)])
                         before = self.rows("SELECT * FROM claims")
-                        with self.assertRaisesRegex(sqlite3.IntegrityError, "unbound extraction"):
+                        with prior_consumption(self), self.assertRaisesRegex(sqlite3.IntegrityError, "unbound extraction"):
                             self.promote()
                         self.assertEqual(self.rows("SELECT * FROM claims"), before)
                     finally:
@@ -183,7 +184,7 @@ class PendingDDLTest(ContentDDLTest):
                 try:
                     args = {"claim": ("clm_00000001", 2), "use": "load_bearing", **change}
                     self.content_receipt("full_text", rid="ver_distractor1", **args)
-                    with self.assertRaisesRegex(sqlite3.IntegrityError, "unbound extraction"):
+                    with prior_consumption(self), self.assertRaisesRegex(sqlite3.IntegrityError, "unbound extraction"):
                         self.promote()
                 finally:
                     self.x("ROLLBACK TO distractor")

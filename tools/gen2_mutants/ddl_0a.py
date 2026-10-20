@@ -443,10 +443,10 @@ MUTATIONS: list[Mutation] = [
              (VT + "test_truthful_unsuccessful_verdicts_may_record_unperformed_checks",), old="  CHECK (use != 'load_bearing' OR verdict NOT IN ('supports', 'partially_supports') OR (", new="  CHECK (use != 'load_bearing' OR ("),
     # --- RA5: promotion from the stored claim; sampling never qualifies ----------
     Mutation("RA5-promotion-accepts-sampling", "RA5", "the review's probe: a sampled receipt (any checks, any adjudication) promotes a load-bearing claim",
-             (VT + "test_sampling_never_qualifies_a_load_bearing_claim",), scope="claims_accepted_support_needs_receipt",
+             (VT + "test_sampling_never_qualifies_a_load_bearing_claim",), scope="claims_accepted_support_detailed_receipt",
              old="    AND v.use = 'load_bearing'\n", new=""),
     Mutation("RA5-promotion-verdict", "RA5", "a load-bearing partial support promotes the claim",
-             (VT + "test_sampling_never_qualifies_a_load_bearing_claim",), scope="claims_accepted_support_needs_receipt",
+             (VT + "test_sampling_never_qualifies_a_load_bearing_claim",), scope="claims_accepted_support_detailed_receipt",
              old="AND v.verdict = 'supports'\n", new="AND v.verdict IN ('supports', 'partially_supports')\n"),
     Mutation("RA5-use-matches-claim-dropped", "RA5", "a load-bearing-use receipt may re-describe its claim's designation",
              (VT + "test_load_bearing_receipt_states_its_claims_designation",), drop_trigger="verification_receipts_use_matches_claim"),
@@ -485,7 +485,7 @@ MUTATIONS: list[Mutation] = [
            "AND v.claim_revision = NEW.revision AND v.use = 'load_bearing' AND v.verdict = 'supports') AND NOT EXISTS ("),
           ("admission-substitutes-for-receipt", "the two conditions merged: contract admission stands in for the verification receipt",
            ("test_contract_admitted_claim_without_a_receipt_is_refused",),
-           "claims_accepted_support_needs_receipt", "WHEN NEW.status = 'accepted_support' AND NEW.load_bearing = 1 AND NOT EXISTS (",
+           "claims_accepted_support_detailed_receipt", "WHEN NEW.status = 'accepted_support' AND NEW.load_bearing = 1 AND NOT EXISTS (",
            "WHEN NEW.status = 'accepted_support' AND NEW.load_bearing = 1 AND NOT EXISTS (SELECT 1 FROM invocations p "
            "WHERE p.invocation_id = NEW.producer_invocation_id AND p.admission_context = 'contract/1') AND NOT EXISTS ("),
           ("adoption-per-claim", "adoption read per claim id, not per revision: an adopted revision admits the scoping revision and a relabelled one too",

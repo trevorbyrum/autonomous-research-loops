@@ -2,12 +2,13 @@
 import json
 import sqlite3
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from unittest.mock import patch
 
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
 from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
+from gen2.tests.detailed_support_fixtures import prior_consumption
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
 
 from gen2.tests.router_fixtures import empty_outcome
@@ -74,6 +75,7 @@ class PromotionCases:
             OwnCases.clone(self, table, changes, where)
 
     def store(self, legacy=False):
+        self.legacy_consumption = legacy
         if legacy:
             historical_receipt(self.doc)
             with historical(self.case):
@@ -86,16 +88,17 @@ class PromotionCases:
     def promote(self, expected='committed'):
         c = self.case
         before = c.state()
-        if self.RAW:
-            try:
-                c.x("UPDATE claims SET status='accepted_support' WHERE claim_id='clm_loadbear1' AND revision=1")
-                out = dict(status='committed')
-            except sqlite3.IntegrityError as exc:
-                out = dict(status='rejected', detail=str(exc))
-        else:
-            self.promotion_env = c.envelope(c.producer, 'op_promote001',
-                {**empty_outcome(c.ACQUIRER, 'interim_transition'), 'claim_promotions':[dict(claim_id='clm_loadbear1', revision=1)]})
-            out = c.router.commit_outcome(self.promotion_env)
+        with prior_consumption(c) if getattr(self, 'legacy_consumption', False) else nullcontext():
+            if self.RAW:
+                try:
+                    c.x("UPDATE claims SET status='accepted_support' WHERE claim_id='clm_loadbear1' AND revision=1")
+                    out = dict(status='committed')
+                except sqlite3.IntegrityError as exc:
+                    out = dict(status='rejected', detail=str(exc))
+            else:
+                self.promotion_env = c.envelope(c.producer, 'op_promote001',
+                    {**empty_outcome(c.ACQUIRER, 'interim_transition'), 'claim_promotions':[dict(claim_id='clm_loadbear1', revision=1)]})
+                out = c.router.commit_outcome(self.promotion_env)
         self.assertEqual(out['status'], expected, out)
         if expected == 'rejected':
             self.assertEqual(c.state(), before)

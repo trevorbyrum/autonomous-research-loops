@@ -5537,3 +5537,36 @@ fixture or mutation family and needs no functional rerun. Evidence, the input
 manifest and resumable next steps: private/evidence/2d-4c-part4b/COMPLETION.md
 and PROGRESS.md. Commit this design alone; report INCOMPLETE with the open
 choice and recommendation. No protected register is changed by this task.
+
+#### 2d-4c part 4b1 — SQL consumer implementation (2026-10-20)
+
+Implements the SQL-only split designed in `2aeef44`, under the newest operator
+continuation. SQL 42 adds one exact detailed-support relation, replaces SQL 03
+and SQL 34's promotion guards, and replaces the blocked-capture relation read
+by SQL 12's unchanged promotion and operation-scoped final-audit triggers.
+All four named, performed, projected outcomes must bind actual records to the
+same receipt's topic, claim/revision, full ordered spans, source/version/hash,
+verifier and basis-selected examined bytes. Canonical support rechecks its
+exact acquisition/content ceiling; extraction support retains SQL 34's bound
+basis on that same candidate. Tier/use, output ceilings, contract admission,
+tier-0 and canonical-only governed capture gates remain. No scientific judgment
+is certified. SQL 01–41, production Python and service.py are unchanged.
+
+Raw regressions retain the six historical claim operands and both capture
+operands, testing capture promotion and final refencing independently. Before
+SQL 42, all ten refusal assertions fail with zero errors. Real Router-admitted
+records supply controls, including distinct target/validator/canonical bytes.
+Per-kind binding/outcome, missing/partial/extra references, adjudication,
+non-pooling, rollback and exact normal/exceptional catalog restoration are
+covered. Earlier historical predicate experiments explicitly isolate the new
+relation while retaining their original assertions and mutated definitions;
+current detailed-support controls use the complete subject schema. Canonical
+tier-0 adjudication remains permitted as before; SQL 34 retains its extraction
+no-alarm gate. Paired
+mutants cover the new consumers and relation. Both classification pins are
+repinned; there are no new JSON columns. Validation results follow in evidence.
+
+**4b1 only. Whole part 4 remains INCOMPLETE.** Independent Router consumers and
+retained-state activation remain 4b2; no opening guard, installation DML,
+reconciliation or accounting policy is selected here. Evidence and resumable
+progress: private/evidence/2d-4c-part4b1/. Stop after this SQL slice.

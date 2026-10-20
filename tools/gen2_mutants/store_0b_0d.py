@@ -500,7 +500,9 @@ MUTATIONS: list[Mutation] = [
                       "verification_receipts_immutable_d", "artifact_topics_immutable_d", "questions_no_delete", "qualifications_no_delete",
                       "reservation_draws_no_delete", "retries_no_delete", "amendment_impacts_no_delete", "config_bundles_no_delete",
                       "reservations_no_delete")),
-    *(Mutation(f"cov-{trigger}", "0a", f"drop {trigger} (a pre-existing 0a guard)", tuple(killers), drop_trigger=trigger)
+    # Keep the historical mutant ID/control pairing across the SQL03 successor.
+    *(Mutation(f"cov-{trigger}", "0a", f"drop {trigger} (a pre-existing 0a guard)", tuple(killers),
+        drop_trigger='claims_accepted_support_detailed_receipt' if trigger == 'claims_accepted_support_needs_receipt' else trigger)
       for trigger, killers in (
           ("operation_receipts_fenced", (DI + "CommitFencingTest.test_stale_generation_rejected", DI + "CommitFencingTest.test_released_lease_cannot_commit",
                                          DI + "CommitFencingTest.test_cross_topic_commit_rejected", DI + "CommitFencingTest.test_commit_under_another_invocations_lease_rejected")),

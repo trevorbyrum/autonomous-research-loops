@@ -3,7 +3,7 @@ from .base import Mutation
 
 MUTATIONS, CONTROLS = [], {}
 RAW = 'test_store_bound_extraction_support.BoundPromotionDDLTest.test_'
-SCOPE = 'claims_accepted_support_bound_extraction'
+SCOPE = 'claims_accepted_support_detailed_extraction'
 
 
 def change(name, old, new, killer, scope=None, also=()):

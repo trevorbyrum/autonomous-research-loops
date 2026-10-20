@@ -89,7 +89,7 @@ capture_guard("ddl-spans", "test_span", "AND b.check_id = v.quote_check_id\n    
 capture_guard("ddl-each-span", "test_multi_unchecked", "OR EXISTS (SELECT 1 FROM json_each(v.cited_spans) s WHERE NOT EXISTS (",
     "OR 0 AND EXISTS (SELECT 1 FROM json_each(v.cited_spans) s WHERE NOT EXISTS (", target="ddl", control="test_multi_control")
 capture_guard("ddl-promotion", "test_non_load_bearing", target="ddl", trigger="claims_accepted_support_needs_capture", control="test_capture_control")
-capture_guard("ddl-existing-receipt", "test_existing_receipt_matching", "AND NOT EXISTS (SELECT 1 FROM governed_receipt_failures f WHERE f.verification_receipt_id = v.verification_receipt_id)",
+capture_guard("ddl-existing-receipt", "test_existing_receipt_matching", "AND NOT EXISTS (SELECT 1 FROM governed_receipt_failures f WHERE f.verification_receipt_id = r.verification_receipt_id)",
     target="ddl", control="test_capture_control")
 capture_guard("ddl-late-check", "test_late_check", target="ddl", trigger="commit_outcome_refence_captures", control="test_late_multi_control")
 capture_guard("ddl-capture-quarantine", "test_same_capture_cannot_clear", "(v.verdict IN ('supports', 'partially_supports') AND EXISTS (",
