@@ -109,24 +109,50 @@ class PendingRouterTest(unittest.TestCase):
 
 
 class PendingDDLTest(ContentDDLTest):
-    ATTRIBUTED = False  # Pending positives stay on the original base until their own conversion.
+    def prepare_pending(self, tier="full_text", *, other=False):
+        # Admit exact claim/revision operands before the subject savepoints.
+        requested = sf.DDL_TEXT
+        full = db.schema_text()
+        self.restore_views(full)
+        restore_triggers(self, full)
+        try:
+            self.x("INSERT INTO claims SELECT claim_id, 2, topic_id, text_ref, producer_invocation_id, 1, ?, 'provisional', created_at FROM claims WHERE revision = 1", tier)
+            claims = ["clm_00000001"]
+            if other:
+                self.x("INSERT INTO claims SELECT 'clm_other001', revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at FROM claims WHERE revision = 2")
+                claims.append("clm_other001")
+            for claim in claims:
+                seed_checks(self.assessments, dict(topic_id=sf.TOPIC,
+                    claim=dict(claim_id=claim, claim_revision=2),
+                    source=dict(work_id="wrk_00000001", source_version="v4"),
+                    cited_spans=[dict(start=0, end=5, locator=dict(kind="page", value="3"))],
+                    obtained_content_hash=self.assessments.source["content_hash"],
+                    extraction=dict(method="canonical_bytes"),
+                    verifier_invocation_id="inv_vvvvvvvv", checks=self.CHECKS_OK))
+        finally:
+            self.restore_views(requested)
+            restore_triggers(self, requested)
 
     def pending(self, method="validated_extraction", tier="full_text"):
-        self.x("INSERT INTO claims SELECT claim_id, 2, topic_id, text_ref, producer_invocation_id, 1, ?, 'provisional', created_at FROM claims WHERE revision = 1", tier)
         from unittest.mock import patch
         from gen2.tests.test_bound_extraction_support import historical
         with historical(self), patch("gen2.tests.extraction_receipt_fixtures.attach", side_effect=lambda c, d: d):
             self.content_receipt(tier, method=method, claim=("clm_00000001", 2), use="load_bearing",
-                extraction="inv_vvvvvvvv" if method == "verifier_extraction" else "inv_pppppppp", validation="validation_unrecorded")
+                extraction="inv_vvvvvvvv" if method == "verifier_extraction" else "inv_pppppppp", validation="validation_unrecorded",
+                historical=True)  # Existing pre-consumer unbound declaration, never support authority.
 
     def promote(self):
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 2")
 
     def test_pending_methods(self):
-        self.acquired({"identity": "rec-1", "kind": "full_text", "text": "Recorded text", "abstract": "Recorded abstract"})
         for method in METHODS:
             for tier in ("abstract", "full_text"):
                 with self.subTest(method=method, tier=tier):
+                    # Router transactions cannot nest inside the raw savepoint.
+                    self.tearDown()
+                    self.setUp()
+                    self.prepare_pending(tier)
+                    self.acquired({"identity": "rec-1", "kind": "full_text", "text": "Recorded text", "abstract": "Recorded abstract"})
                     self.x("SAVEPOINT pending")
                     try:
                         self.pending(method, tier)
@@ -140,6 +166,7 @@ class PendingDDLTest(ContentDDLTest):
                         self.x("RELEASE pending")
 
     def test_canonical_support_control(self):
+        self.prepare_pending()
         self.acquired({"identity": "rec-1", "kind": "full_text", "text": "Recorded full text"})
         self.pending()
         self.content_receipt("full_text", rid="ver_canonical1", claim=("clm_00000001", 2), use="load_bearing")
@@ -147,9 +174,9 @@ class PendingDDLTest(ContentDDLTest):
         self.assertEqual(self.rows("SELECT status FROM claims WHERE revision = 2"), [("accepted_support",)])
 
     def test_canonical_distractors(self):
+        self.prepare_pending(other=True)
         self.acquired({"identity": "rec-1", "kind": "full_text", "text": "Recorded full text"})
         self.pending()
-        self.x("INSERT INTO claims SELECT 'clm_other001', revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at FROM claims WHERE revision = 2")
         for change in ({"claim": ("clm_00000001", 1)}, {"claim": ("clm_other001", 2)}, {"use": "sampled"}, {"verdict": "does_not_support"}):
             with self.subTest(change=change):
                 self.x("SAVEPOINT distractor")

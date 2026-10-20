@@ -5004,3 +5004,84 @@ pending inventory, attempts and footprint. Heavy starts wait for no active
 user/system gen2-landing-* unit; 4c3i is active while reading. Any disposable
 snapshot copies .venv-gen2 with cp -a. Evidence and current PROGRESS.md:
 private/evidence/2d-4c-part3j/. This documentation-only commit precedes code.
+
+**Part 3j implementation (selected PendingDDLTest family), 2026-10-19–20.**
+PendingDDLTest now inherits the accepted attributed content fixture, converting
+all twelve inherited content methods and its canonical/distractor positives.
+Revision 2 and the foreign-claim distractor receive real Router-admitted
+assessments under unmutated DDL before subject savepoints. Variable-tier
+operands use fresh in-memory stores rather than nesting Router transactions.
+Requested views and exact trigger definitions/order are restored through the
+accepted methods and restore_triggers. Receipt submission only selects admitted
+records. RawAssessmentFixture, seed_checks, assessment_binding and attach_checks
+are reused unchanged. Production, ordered DDL, schemas, pins and policy are
+unchanged; mandatory consumption and promotion changes remain **OFF**.
+
+The existing pending() path already used the explicit pre-consumer historical
+context and disabled extraction attachment. Its unbound declarations retain that
+same /1 non-authority isolation; the keyword is now explicit when opting into
+the attributed parent. No pending positive becomes historical. Every current
+canonical/distractor and inherited content positive gains /2 references.
+All 23 original assertion-call expressions and multiplicities are preserved.
+
+Four new regressions check eight original current writes across canonical,
+distractor and inherited-tier controls; disjoint records for three claim/revision
+bindings; all twelve performed kind/outcome combinations; authenticated retained
+reports and actual independent verifier attribution; unchanged record catalogs
+through insertion/conflict/rollback; two foreign-reference atomic refusals and
+matching full-text promotion; and exact requested views plus reversed/mutated/
+dropped triggers. Matching promotion uses response bytes equal to the examined
+artifact. Other raw response counterfactuals prove relationships, not transport
+authentication. Ordinary equal-byte outputs claim no selector discrimination;
+the accepted distinct-output regression also passes. Synthetic assessments prove
+recorded relationships, not scientific correctness.
+
+**Validated before implementation commit.** Full gen2-test passes **4,275 tests,
+two existing skips**, in **3,973.396 test seconds**. Trigger-order passes **337
+triggers / 4,791 identical Store tests and subtests**; composition passes six
+tests; focused execution passes 41. The 27-module reverse-import closure selects
+136 direct IDs, expanded to 195 mutants in eight complete families. All **195/195**
+are killed with paired controls passing over a green **1,116-test Store baseline**
+(740.4 mutation seconds). All eight static gates pass and are repeated after this
+note. Both code files match their tested hashes. All 3,618 control records and
+mutation definitions are unchanged; the full inventory has zero uncovered guards.
+
+Twenty-three unchanged controls pass tracing; all **136/136** predicate/control
+pairings qualify. The three selected original controls hit actual attachment and
+detailed-binding; canonical/distractor controls also hit the new preparation
+call. Returned view rows are observed separately from successful trigger entries;
+these are not branch traces of every SQL subexpression. Four counterfactuals
+produce 12/1/1/1 assertion failures and zero errors. The initial private qualifier
+omitted bound-view observations; its failed attempt and initial driver exit 1
+are retained. Corrected full tracing, explicit preparation-line qualification and
+the final validator exit 0, with no repository source/control change or repeated
+engine gate. An extra call-difference audit also needed to account for the
+existing pending() call's explicit keyword; no new unconverted owner was found.
+
+Footprint: **154 repository additions / five removals**, plus **266 retained
+private driver lines**, totaling **420 against 465 estimated**, excluding docs
+and generated inventories. Required task/section/helper/evidence reads preceded
+code; broader methodology and accepted quote-work rereads completed during the
+landing wait. Initial required starts have fresh empty user/system landing
+observations. Small development checks during the wait are separate from gates.
+
+**Exactly what remains pending:** raw quote DDLTest, CaptureDDLTest and
+AdjudicationDDLTest, including inherited population positives; the unchanged
+StoreTestCase.verify/populate_every_table root and every population consumer
+together: VerificationTest, ContractAdmittedSupportTest, EveryTableSweepTest
+(including replacement/delete), RecordIdentityTest; branch-window, obligation,
+registry, semantic, lifecycle and source-artifact DDL owners; member-domain
+QuoteTest; all eight RolloutPairs and 22 CompletionPairs owners; and explicitly
+NB1 AuxiliaryCapTest.setUp and its four controls. COMPLETION.md and
+pending-owners.json name every owner. HoldDDLTest stays hold-only;
+ObservationDomainTest writes no verification receipt. Previously converted
+owners retain their purposes. Part 3 remains **INCOMPLETE**; its final stage still
+owes the repository-wide receipt-builder inventory showing no pending positive.
+This stage stops after the independent PendingDDLTest family.
+
+Evidence, exact pending list, call/control inventories, attempts, commands,
+hashes and commits: private/evidence/2d-4c-part3j/COMPLETION.md; PROGRESS.md is
+current. Operator commit 5ec987b accepted 3i and updated BUILD-STATE/REVIEW-LOG;
+those changes are neither edited nor included here. DEBT-REGISTER is unchanged;
+all protected registers have no working-tree edit. No Gen-1, provider call,
+real-database migration, manual snapshot/venv symlink, push or main merge occurred.
