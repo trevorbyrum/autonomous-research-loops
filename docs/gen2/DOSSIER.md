@@ -5419,3 +5419,121 @@ is introduced. No provider, Gen-1/runtime/8765, real migration, protected-regist
 push or merge action occurred. Required heavy starts observed empty landing
 units; the isolated snapshot's venv was copied with cp -a. Evidence and exact
 commands/exits: private/evidence/2d-4c-p4a-repair-1/COMPLETION.md; progress is current.
+
+#### 2d-4c part 4b — design and re-estimate; stopped before code (2026-10-20)
+
+Branch `gen2`, design against `b4dd74c`. Read the complete task and operator
+rulings, BUILD-CHARTER/BOUNDARIES, flow architecture (especially S4 steps 4/8/9),
+adjudication (b)5/7 and (c)2, methodology synthesis (especially §4), V-4/V-8,
+all of this section including the 4a notes, both 4a completion records and
+Astra reviews, and repair-1's family/capture-history probes and drivers.
+Repository-only AGENTS.md lookup found none. **INCOMPLETE: design only.**
+The newest continuation explicitly requires stopping after DOSSIER if the
+authority leaves a necessary choice open. No implementation sub-part starts.
+
+**Open operator choice: activation over already-promoted historical claims.**
+When a retained load-bearing claim is already `accepted_support` and its only
+support is a historical receipt without qualifying detailed records, must
+activation refuse that store pending reconciliation, or may that status remain
+effective until a later scoped operation rechecks it? If reconciliation is
+required, what explicit authority and transaction perform it? No live gen-2
+data exists under the 2026-10-18 ruling; this is a specified compatibility
+behavior and a fixture question, not a request to migrate a real database.
+
+The authority settles rejection of new promotions using those receipts, but
+does not select this treatment of existing acceptance. In particular:
+
+- SQL 03/34 guard an UPDATE of status; installing successor predicates alone
+  does not inspect or revoke earlier acceptance.
+- SQL 12's final commit refence quarantines only already accepted governed
+  captures checked by that operation. An untouched claim, including an
+  ungoverned claim, receives no such recheck. Updating its shared relation
+  cannot make this an activation-wide reconciliation.
+- The accepted §2d-3b3-repair-2 decision says installation declares schema
+  only. `CaptureDDLTest.test_installation_no_dml` preserves an accepted row
+  across installation even with a mismatching capture. A blanket installation
+  UPDATE would contradict that accepted boundary.
+- `accounting.candidate_units` selects accepted claims directly by stored
+  status. Merely calling retained acceptance "historical" would not prevent
+  it from being counted as accepted evidence. Store opening currently checks
+  schema identity and connection compatibility, not detailed support of rows.
+
+Flow S4/V-4 and the 4b brief establish the consuming gate; flow S8 preserves
+historical completion at its approved revision. Neither supplies the missing
+activation/reconciliation policy. The 4a reviews expressly defer promotion
+consumption and do not ratify grandfathering or retroactive demotion. This is
+an identified limit of these authorities, not an absence claim about other
+private records. Do not silently select either policy or change accounting.
+
+**Recommendation, pending the operator ruling:** keep installation schema-only
+and immutable receipts/readback intact. Permit normal activation of fresh
+stores and stores whose already-accepted load-bearing claims satisfy the new
+complete support relation. Refuse active use of a retained store with an
+unqualified accepted claim, with an explicit reconciliation diagnostic; do not
+silently grandfather its authority or demote it while opening the store.
+Preserve it for historical inspection. An explicit, audited Router procedure
+would have to reverify or quarantine affected claims before active use; its
+authority/scope must be ratified rather than invented here. No live migration
+is needed. This recommendation changes admission of retained state and is
+therefore a proposal, not an implementation choice already authorized by V-4.
+
+**Settled consumer design, conditional on that ruling.** Add ordered SQL 42+
+without editing SQL 01–41. One exact durable-binding relation selects receipts
+with all four named performed checks and real records, closed `/2` outcome and
+summary projection, matching kind/outcome/topic/claim revision/full ordered
+spans/source version and hash/verifier, and the basis-selected examined artifact.
+Require actual record presence, not an aggregate that can succeed on an empty
+or partial object. Reuse the accepted SQL 37 relationships; an invented `/1`
+summary, missing reference or unperformed outcome contributes no authority.
+An adjudicated performed failure still needs its exactly bound record.
+
+SQL 03's successor uses the claim's own flag/tier. SQL 34's successor requires
+the same candidate receipt to meet detailed checks and the existing SQL 32/33
+bound basis; no receipt pooling. Retain tier/use, required/obtained tiers,
+acquisition content and both validated-output ceilings, tier-0, contract
+admission and canonical-only governed captures. SQL 12's governed-capture
+promotion relation and operation-scoped final refence consume that same
+qualified receipt. Independent Router checks must read actual records and
+bases inside the existing writer transaction, including completed capture
+refencing; they must not use the new SQL view as their sole oracle. Reuse
+DetailedChecks/EvidenceWriter collaborators; service.py stays wiring-only.
+No judgment-quality guarantee, new provider call or JSON column is proposed.
+
+**Conditional estimate: about 880 handwritten repository added/changed lines**:
+shared SQL relation and promotion/capture consumers 180; independent Router
+consumption/refence 100; exact history preparation and existing fixture/control
+dispositions 80; discriminating Router/raw regressions 290; predicate mutants
+and control integration 80; a retained-state activation guard/tests if the
+recommendation is approved 40; dossier design/completion notes 110. Generated
+controls/pins are additional. Retained private drivers are about 300 lines,
+reported separately and excluded from the repository guide. A different
+reconciliation ruling may enlarge this estimate and must be re-estimated.
+
+This is well above about 500. After the ruling, proposed **4b1 is the SQL
+consumer family only, about 470 repository lines**: common relation and both
+promotion successors plus SQL 12 capture consumption/refence 180; exact
+history preparation 30; raw regressions 140; paired mutants/integration 40;
+dossier notes 80. Stop after that coherent SQL slice. **4b2, about 410 lines**,
+would add the independent Router promotion/capture/final-refence consumers,
+Router/DDL-isolated regressions and retained-state policy implementation.
+Neither an estimate nor 4b1 acceptance could claim whole part 4 complete.
+This split is conditional; the current dispatch stops before either slice.
+
+Preserve the six claim-promotion and two capture probes as failing-before/
+passing-after regressions, with exact ordered catalog restoration on normal
+and exceptional exits. Raw records come only from real Router admission
+under unmutated DDL. Test both orders/layers, all methods, every kind's exact
+bindings/outcomes, historical and adjudicated unperformed checks, same-receipt
+non-pooling, every preserved gate, separate accepted controls and replay/
+conflict/rollback. Newly ratified activation behavior also needs positive and
+refusal controls, unchanged history and no-installation-DML assertions.
+
+Implementation gates remain full gen2-test, trigger-order, composition, full
+mutation inventory and uncovered-trigger coverage, separate accepted control
+traces, gen2-gateway and all eight static gates, with both hashes repinned.
+Every heavy start must wait for no active gen2-landing-* unit; copy snapshot
+venvs with cp -a. This documentation-only stop has no affected code/trigger/
+fixture or mutation family and needs no functional rerun. Evidence, the input
+manifest and resumable next steps: private/evidence/2d-4c-part4b/COMPLETION.md
+and PROGRESS.md. Commit this design alone; report INCOMPLETE with the open
+choice and recommendation. No protected register is changed by this task.
