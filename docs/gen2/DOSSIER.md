@@ -5197,3 +5197,69 @@ main-merge change occurred. Required heavy starts observed empty user/system
 landing units; disposable work uses no venv symlink. Evidence, exact commands,
 hashes, attempts, inventories and commits: private/evidence/2d-4c-part3k/COMPLETION.md;
 PROGRESS.md is current. Operator acceptance `8aa8611` is retained separately.
+
+#### 2d-4c part 4 — re-estimate before code (2026-10-20)
+
+Branch `gen2`, starting at `c95b0ee`. Read the complete task and operator
+rulings, BUILD-CHARTER, BOUNDARIES Router/Verifier/Tier-0, flow S4 steps 4/8/9,
+adjudication (b)5/(c)2, methodology §4, V-4/V-8, this entire section including
+every part-3 note, and accepted part-3k completion/review. Repository-only
+AGENTS.md lookup found none. The existing BUILD-STATE working edit is external
+and will be left untouched. No unresolved design choice is needed: the ruling
+settles retained evidence/applicability, and the original design explicitly
+requires records for performed failures used through adjudication too.
+
+**Re-estimate: about 820 handwritten repository additions/changes**, excluding
+generated controls/pins: mandatory receipt admission in SQL/Router 55;
+optional/legacy experiment dispositions and stale comments 105; shared exact
+SQL binding relation and both successor promotion triggers 155; independent
+Router promotion consumption 85; admission/promotion/history/non-pooling and
+rollback regressions 240; paired mutants/integration 70; dossier notes 110.
+Private retained audit/trace/gate drivers are estimated separately at 350 lines.
+This is well above about 500. Split and stop after the first coherent sub-part.
+
+**Implement part 4a only: mandatory receipt admission**, estimated **390
+repository lines**: additive SQL 40/order/pins 25, independent DetailedChecks
+admission 20, existing optional/legacy experiment dispositions and NB-1 comments
+105, focused per-kind admission/outcome/atomicity tests 110, paired mutants and
+integration 45, dossier estimate/completion notes 85. Reuse SQL 37 and the
+existing independent Router exact-binding checks; do not duplicate their
+relationship predicates. No new JSON column or member-name classification is
+needed. Both DDL/catalog hashes must be repinned.
+
+New load-bearing-use supports/partially_supports receipts must supply all four
+performed outcomes and record references, including a performed failure allowed
+by the existing verdict/adjudication rules. `/1` cannot supply these and is
+refused for that new use. Any supplied record still binds exactly to kind,
+outcome, topic, claim/revision, full spans, source/version/hash, selected examined
+artifact and verifier. Legacy summary projection remains explicit. Sampled and
+truthful unsuccessful receipts retain optional references; not_checked and
+unavailable never authorize support. The schema remains a structural format
+and historical readback contract; SQL/Router enforce current admission policy.
+No retained receipt is rewritten and no live database is migrated.
+
+Re-dispose the part-2 single-reference controls as sampled binding experiments,
+keeping every supplied reference tested; distinct validated selector probes
+retain four references with only the examined selector varying. Optional/legacy
+load-bearing admission experiments must now assert atomic refusal. Keep explicit
+historical promotion fixtures by installing their old receipts in disposable
+memory with the new admission guard omitted, then restoring the requested
+catalog. These fixtures remain inputs for the next promotion-consumer slice,
+not evidence that part 4 is complete. Fix all three p3k NB-1 comments.
+
+**Exactly deferred to part 4b:** the common durable-binding relation at
+consumption, SQL 03 and SQL 34 successors, independent Router promotion check,
+same-receipt/non-pooling and historical promotion refusals across canonical,
+own and validated extraction; preserved tier/use/tier-0/content/output/bound-
+basis/contract/governed-capture gates; adjudication of unperformed checks and
+their predicate mutants. Existing promotion behavior is intentionally unchanged
+in 4a. Part 4 and the whole mandatory-consumption requirement remain INCOMPLETE
+until that separately estimated/reviewed slice lands.
+
+Before the implementation commit: full gen2-test, trigger-order, composition,
+full mutation inventory (a conservative superset of affected --only families),
+the eight static gates and gen2-gateway because production/DDL changes. Retain
+per-predicate passing control-path traces and the full uncovered-trigger
+inventory. Every heavy start waits for no active gen2-landing-* user unit;
+any disposable snapshot copies .venv-gen2 with cp -a. Evidence, attempts, exact
+commands, hashes and current PROGRESS.md: private/evidence/2d-4c-part4/.
