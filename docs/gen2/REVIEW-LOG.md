@@ -2993,3 +2993,19 @@ The post-2q Gate D is renumbered #5.
 - **Reviewer procedural deviation:** the initial AGENTS.md filename lookup extended to `/home/trevor/work`. Paths were listed but no file was opened. Disclosed by Astra.
 - **Landing at a0f976e:** `gen2-check` green (8,482 s), `gen2-gateway` green (1,018 s). Green gates don't cover B1.
 - **Routed:** `docs/gen2/tasks/2d-4c-p4a-repair-1.md` (B1 ROOT-CAUSE fail-closed repair via additive SQL 41, with a family audit; NB1 folded in).
+
+## 2026-10-20: 2d-4c part 4a repair-1 (SQL 41 summary domain, c5bce59): PASS on round 2. Part 4a accepted
+- **Astra** (`934916b8`; `private/reviews/gen2-2d-4c-p4a-r2-astra-review-20261020.md`): **A, B and C all PASS, ROOT-CAUSE.** Blocking list: none.
+- **B1 closed at the root:** SQL 41 (BEFORE INSERT) allow-lists the four summary fields as JSON text in the five-label legacy vocabulary for every new load-bearing `supports`/`partially_supports` receipt, whatever its version or method. SQL 40 (AFTER INSERT) then requires the records, and SQL 03 still refuses `not_checked`/`unavailable`.
+  - Astra reran the round 1 reproduction and its operand table: 192 refusals, with Router and raw layers agreeing.
+  - An independent matrix added 5,664 refusals, covering case, whitespace, look-alike, fullwidth, zero-width and NUL variants, plus empty, numeric, boolean, array and null values.
+  - Sampled and truthful-unsuccessful receipts and historical readback still work.
+- **NB1 ROOT-CAUSE:** the extraction-history helper restores and asserts the ordered catalog. The old-helper counterfactual gives 2 assertion failures.
+- **Gate C:** `2D4C4AR1-summary-domain` is assertion-killed by `test_b1`, and its separate control passes. All 3,632 prior control records are unchanged.
+- **4b remainder (confirmed as promotion consumption, not current admission):**
+  - SQL 03/SQL 34 promotion from a sole historical adjudicated `/1` receipt, for each basis;
+  - SQL 12 governed-capture promotion and the final `commit_outcome` refence;
+  - independent Router consumption;
+  - durable checks and the basis on the same receipt, with no pooling and no adjudication waiver;
+  - all existing tier/use/ceiling/tier-0/contract/canonical-capture gates preserved.
+- **Landing at c5bce59:** `gen2-check` green (8,636 s), `gen2-gateway` green (1,020 s).
