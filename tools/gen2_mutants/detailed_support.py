@@ -40,3 +40,13 @@ change('capture', 'EXISTS (SELECT 1 FROM detailed_support_receipts d WHERE d.ver
 change('validated-target', 'SELECT target_extraction_id FROM extraction_validations_v2\n                WHERE validation_id = v.extraction_validation_ref', 'bindings', 'SELECT validator_extraction_id FROM extraction_validations_v2\n                WHERE validation_id = v.extraction_validation_ref')
 change('capture-required-tier', 'r.required_access_tier = c.required_access_tier', 'capture_tiers', capture=True)
 change('capture-access-tier', "(CASE r.access_tier WHEN 'bibliographic' THEN 1 WHEN 'abstract' THEN 2 WHEN 'full_text' THEN 3 ELSE 4 END)\n        >= CASE c.required_access_tier WHEN 'bibliographic' THEN 1 WHEN 'abstract' THEN 2 WHEN 'full_text' THEN 3 ELSE 4 END", 'capture_tiers', capture=True)
+
+HARNESS = 'tools/gen2_mutations.py'
+BASELINE = 'test_mutation_verdict.BaselineModesTest.test_'
+for name, replacement, killer, control in (
+        ('sql-baseline', 'False', 'sql_baseline_refusal_stops_selected_sql', 'file_selection_runs_its_baseline_without_unrelated_sql'),
+        ('file-mode', 'True', 'file_selection_runs_its_baseline_without_unrelated_sql', 'sql_selection_runs_its_baseline')):
+    mid = '2D4C4B1-' + name
+    MUTATIONS.append(Mutation(mid, '4b1 validation integration', name, (BASELINE + killer,), target=HARNESS,
+        old='any(m.target in ("ddl", "connection") for m in selected)', new=replacement))
+    CONTROLS[mid] = dict(controls=[BASELINE + control], why='Separate loading mode preserves its required baseline and existing refusal; the full inventory still selects SQL.')

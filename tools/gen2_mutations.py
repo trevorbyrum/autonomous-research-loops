@@ -694,11 +694,13 @@ def main(argv: list[str] | None = None) -> int:
 
     ddl0, conn0 = fx.DDL_TEXT, fx.CONNECTION_TEXT
     started = time.monotonic()
-    base = run(fx, ddl0, conn0)
-    if base.failed or base.errored or not base.testsRun:
+    selected = [m for m in MUTATIONS if not args.only or m.mid.startswith(tuple(args.only.split(",")))]
+    # Baselines belong to the selected loading modes; module-only serial
+    # regressions still run their file baselines, without repeating all SQL.
+    base = run(fx, ddl0, conn0) if any(m.target in ("ddl", "connection") for m in selected) else None
+    if base is not None and (base.failed or base.errored or not base.testsRun):
         print(f"BASELINE NOT GREEN: failed={sorted(base.failed)} errored={base.errored}", file=sys.stderr)
         return 1
-    selected = [m for m in MUTATIONS if not args.only or m.mid.startswith(tuple(args.only.split(",")))]
     unresolved = unresolved_killers(selected)
     if unresolved:
         print(f"UNRESOLVED KILLERS (no single test of that name): {unresolved}", file=sys.stderr)
@@ -723,7 +725,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     held = [m.mid for m in selected if not controls_of(m) and (_CONTROLS.get(m.mid) or {}).get("in_killer")]
     unpaired = [m.mid for m in selected if not controls_of(m) and m.mid not in held]
-    print(f"gen2 mutation run: baselines green ({base.testsRun} store tests; {len(baselines)} file-target baseline(s)); "
+    print(f"gen2 mutation run: baselines green ({base.testsRun if base else 0} store tests; {len(baselines)} file-target baseline(s)); "
           f"{len(selected)} mutants on {args.jobs} worker(s); {len(selected) - len(held) - len(unpaired)} with paired controls, "
           f"{len(held)} whose killer holds its accepted case, {len(unpaired)} with neither (reasons in {CONTROLS_FILE.name}): {unpaired}", flush=True)
     ids = [m.mid for m in MUTATIONS]
@@ -753,7 +755,7 @@ def main(argv: list[str] | None = None) -> int:
             report(_evaluate(m))
     coverage = "" if args.only else f"every DDL trigger covered (second layers: {len(SECOND_LAYER_TRIGGERS)}), "
     print(f"gen2 mutation run: {len(selected) - bad}/{len(selected)} killed, {paired} of them with paired controls passing, "
-          f"baseline {base.testsRun} tests green, {coverage}{time.monotonic() - started:.1f}s")
+          f"baseline {base.testsRun if base else 0} tests green, {coverage}{time.monotonic() - started:.1f}s")
     return 1 if bad else 0
 
 

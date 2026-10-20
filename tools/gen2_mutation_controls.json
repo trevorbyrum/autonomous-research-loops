@@ -24273,5 +24273,17 @@
    "test_store_detailed_support.DetailedCaptureDDLTest.test_capture_control"
   ],
   "why": "Separate real-record support promotes under the subject relation and consuming trigger; capture control also passes final operation refencing."
+ },
+ "2D4C4B1-sql-baseline": {
+  "controls": [
+   "test_mutation_verdict.BaselineModesTest.test_file_selection_runs_its_baseline_without_unrelated_sql"
+  ],
+  "why": "Separate loading mode preserves its required baseline and existing refusal; the full inventory still selects SQL."
+ },
+ "2D4C4B1-file-mode": {
+  "controls": [
+   "test_mutation_verdict.BaselineModesTest.test_sql_selection_runs_its_baseline"
+  ],
+  "why": "Separate loading mode preserves its required baseline and existing refusal; the full inventory still selects SQL."
  }
 }

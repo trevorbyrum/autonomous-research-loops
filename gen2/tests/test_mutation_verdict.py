@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import contextlib
+import io
 import subprocess
 import sys
 import tempfile
@@ -249,6 +251,49 @@ class RestoredModulesTest(unittest.TestCase):
         with self.h._restored_modules():
             import sched  # noqa: F401 (a standard-library module first imported by the case)
         self.assertIn("sched", sys.modules, msg="a C extension or a stdlib module is not unloaded: only the repository's own, and temporary copies of it")
+
+
+class BaselineModesTest(unittest.TestCase):
+    def selected(self, target, *, sql_bad, file_bad):
+        with mock.patch.object(sys, 'path', list(sys.path)):
+            return self._selected(target, sql_bad=sql_bad, file_bad=file_bad)
+
+    def _selected(self, target, *, sql_bad, file_bad):
+        h = harness()
+        good, bad = h._Collector(), h._Collector()
+        good.testsRun = bad.testsRun = 1
+        bad.failed.add('unmutated-baseline-failure')
+        mutation = h.Mutation('T-selection', 'test', 'loading mode', ('killer',), target=target)
+        with mock.patch.multiple(h, MUTATIONS=[mutation], load_controls=mock.Mock(return_value={}),
+                unresolved_killers=mock.Mock(return_value=[]), control_problems=mock.Mock(return_value=[]),
+                uncovered_triggers=mock.Mock(return_value=[])), \
+                mock.patch.object(h, 'run', return_value=bad if sql_bad else good) as sql, \
+                mock.patch.object(h, '_run_file_mutation_unmutated', return_value=bad if file_bad else good) as file, \
+                mock.patch.object(h, '_evaluate', return_value='KILLED T-selection') as evaluate, \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = h.main(['--only', 'T-selection', '--jobs', '1'])
+        return code, sql.call_count, file.call_count, evaluate.call_count
+
+    def test_sql_baseline_refusal_stops_selected_sql(self):
+        for target in ('ddl', 'connection'):
+            with self.subTest(target=target):
+                self.assertEqual(self.selected(target, sql_bad=True, file_bad=False), (1, 1, 0, 0))
+
+    def test_sql_selection_runs_its_baseline(self):
+        self.assertEqual(self.selected('ddl', sql_bad=False, file_bad=False), (0, 1, 0, 1))
+
+    def test_file_baseline_refusal_stops_selected_file(self):
+        self.assertEqual(self.selected('gen2/router/service.py', sql_bad=True, file_bad=True), (1, 0, 1, 0))
+
+    def test_file_selection_runs_its_baseline_without_unrelated_sql(self):
+        self.assertEqual(self.selected('gen2/router/service.py', sql_bad=True, file_bad=False), (0, 0, 1, 1))
+
+
+    def test_selection_preserves_the_import_search_path(self):
+        before = sys.path, tuple(sys.path)
+        self.selected('ddl', sql_bad=False, file_bad=False)
+        self.assertIs(sys.path, before[0])
+        self.assertEqual(tuple(sys.path), before[1])
 
 
 class SerialRunTest(unittest.TestCase):

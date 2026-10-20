@@ -5570,3 +5570,46 @@ repinned; there are no new JSON columns. Validation results follow in evidence.
 retained-state activation remain 4b2; no opening guard, installation DML,
 reconciliation or accounting policy is selected here. Evidence and resumable
 progress: private/evidence/2d-4c-part4b1/. Stop after this SQL slice.
+
+**4b1 validation integration addendum, before the harness change.** The complete
+339-trigger/6,149-subtest order check passes. Full mutation baselines are green,
+but the engine's serial module-mutation regression reaches its unchanged
+900-second child deadline. Its CLI unconditionally reruns every Store test,
+even for selections containing only Python modules. This couples the serial
+contamination regression to an unrelated, growing SQL baseline. The harness's
+own documented contract assigns Store baselines to DDL/connection loading and
+file-target baselines to file loading. Select before choosing baselines: retain
+the full Store baseline for any SQL/connection selection, and retain every
+selected file-target baseline. Full inventory still runs both. Preserve all
+kill/control assertions and the 900-second deadline; add baseline-refusal
+regressions and paired mutants. Allow about 60 extra integration lines beyond
+the SQL slice's roughly 570, reported separately; no activation policy changes.
+
+**Validation fixture correction, before code.** The next full inventory passed
+baselines but ended 3,563/3,661 killed with 98 INVALID cases. A retained probe
+traced this to the new baseline-mode test helper: its copied CLI inserted
+`/tmp` into `sys.path`, and subsequent Router reloads selected stale scratch
+code. Restoring only that search path restores the real mutant/control result.
+Isolate the entire helper, including harness loading, in its own search-path
+copy and add a preservation regression (about ten lines). Withdraw the
+ineffective generic baseline-restoration change; production harness behavior
+changes only in the loading-mode selection already described. Require fresh
+full engine/inventory runs, with the failed attempts retained in evidence.
+
+**4b1 validation complete.** The final frozen source passes 4,330 engine tests
+(two skips), all 3,661 mutation cases (3,644 paired controls; 11 in-killer and
+six existing documented exceptions), and all eight static gates. All 28 new
+mutants have a separate passing accepted control and a qualifying path trace.
+All 339 installed triggers are covered; 6,149 Store tests/subtests pass
+identically in both trigger orders. The six composition tests, both 1,540-test
+gateway suites and all 413 gateway mutants pass. The retained before-SQL42
+counterfactual produces exactly ten assertion failures and zero errors.
+
+The SQL family and required validation integration exceed the original slice
+estimate; the exact handwritten/generated/private-driver footprint and frozen
+input proofs are retained in private/evidence/2d-4c-part4b1/COMPLETION.md.
+The SQL implementation was captured by concurrent commit `9788093`; this coder
+follow-up records its verification and completes the harness integration.
+**4b1 is implemented; whole part 4 remains INCOMPLETE.** Independent Router
+consumers and the operator-ruled retained-state refusal remain for 4b2. No
+activation guard, opening change, installation DML or reconciliation is added.
