@@ -5085,3 +5085,56 @@ current. Operator commit 5ec987b accepted 3i and updated BUILD-STATE/REVIEW-LOG;
 those changes are neither edited nor included here. DEBT-REGISTER is unchanged;
 all protected registers have no working-tree edit. No Gen-1, provider call,
 real-database migration, manual snapshot/venv symlink, push or main merge occurred.
+
+
+#### 2d-4c part 3k — re-estimate (before code)
+
+2026-10-20, branch `gen2`. Read the complete task, Constraints, both operator
+rulings and every continuation, including the coupling rule and orchestrator
+clarification: the slice guide counts repository handwritten changes only.
+Read all of this section's audits/notes, part-3j COMPLETION.md, part-3f
+population-owners.json and the accepted detailed/raw/DDL/regression helpers.
+Repository-only AGENTS.md lookup found none. No code has changed for this stage.
+
+**Repository estimate: about 480 handwritten added/changed lines**, including
+this estimate and final implementation note: global population/authenticated
+admission and exact requested-catalog isolation 140; raw verification and
+quote/capture/adjudication wiring 100; independent binding, retained-evidence,
+promotion, rollback and catalog regressions 160; dossier notes 80.
+**Private estimate: about 350 retained driver lines**, including reused audit,
+trace and gate infrastructure; generated inventories/logs are additional.
+Private evidence does not count against the repository slice guide. Both final
+groups fit about 500 repository lines, so implement both and finish part 3.
+Re-estimate before expanding beyond this coherent scope if necessary.
+
+Convert StoreTestCase.verify/populate_every_table, VerificationTest and
+ContractAdmittedSupportTest together with every population consumer: history
+and replacement/delete sweeps, RecordIdentityTest; branch-window, obligation,
+registry, semantic, lifecycle and source-artifact DDL owners; member QuoteTest;
+AuxiliaryCapTest and its four controls; all eight RolloutPairs and 22
+CompletionPairs owners named in population-owners.json. Convert raw quote
+DDLTest, CaptureDDLTest and AdjudicationDDLTest including inherited positives.
+Nothing pending becomes historical. Existing old-DDL installation, explicit
+refusal/isolation and optional-reference controls retain their purposes.
+
+Reuse RawAssessmentFixture, seed_checks, assessment_binding, attach_checks and
+restore_triggers. Real examined/evidence bytes and every performed outcome are
+admitted through Router under unmutated DDL before subject snapshots; receipt
+submission only selects admitted records. Preserve requested table constraints,
+views and complete trigger definitions/order, including local omissions, so
+admission cannot mask predicate mutants. Any in-memory copy retains the actual
+Router-admitted rows, never invented IDs. Distinct claim/revision/span/verifier
+operands receive distinct records. Preserve promotions, holds, rollback and
+original refusal diagnostics; ordinary equal-byte outputs claim no selector
+discrimination. Keep the accepted distinct-output regression.
+
+Run full gen2-test, trigger-order, composition, **full mutation inventory**,
+static gates and successful original-control traces. Heavy starts wait for no
+active user/system gen2-landing-* unit; 4c3j is active while reading. Any
+snapshot copies .venv-gen2 with cp -a. Final COMPLETION.md must carry the
+repository-wide receipt-builder call-site inventory and demonstrate no pending
+positive remains. Evidence and current PROGRESS.md:
+private/evidence/2d-4c-part3k/. Mandatory consumption and promotion changes stay
+**OFF**. No production, DDL, schema, pins or policy change is authorized; stop
+and report if needed. No Gen-1, provider calls, real-database migration,
+protected-register edits, push or main merge. This note is committed before code.
