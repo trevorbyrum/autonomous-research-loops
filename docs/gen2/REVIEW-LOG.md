@@ -2981,3 +2981,15 @@ The post-2q Gate D is renumbered #5.
 - **Scope qualifications, not blockers:** copied rows include fixture preparation as well as admission effects; the rebound bridge is used for readback only by convention. Explicit optional/legacy admission experiments still describe pre-activation behavior, and **part 4 must deliberately change their disposition.**
 - **Non-blocking NB-1:** stale "consumers pending" comments at `test_canonical_receipt_admission.py:54`, `test_canonical_content_tiers.py:30`, `test_store_content_tiers.py:30`. Fold into part 4.
 - **Landing at a7e01f5:** `gen2-check` green (8,384 s). `gen2-gateway` is carried forward from `b9ec00d`.
+
+## 2026-10-20: 2d-4c part 4a (mandatory detailed-record receipt admission, a0f976e): BLOCK, round 1
+- **Astra** (`dd6ab23e`; `private/reviews/gen2-2d-4c-p4a-astra-review-20261020.md`): **A BLOCK, B PASS, C BLOCK.** 4a is classed **MITIGATION**: activation is incomplete over the raw admission domain. The warm mutation-loader repair (boundary-reload routes reload every Router collaborator that captures `Refusal`) is **ROOT-CAUSE**.
+- **B1 (blocking):** SQL 40 requires references only for the summary values `checked_ok`/`checked_problem`/`not_applicable`. SQL 37 closes the domain for `/2` only, and SQL 03 excludes only `not_checked`/`unavailable`/missing. So raw `/1` load-bearing positives with out-of-domain summaries (`succeeded`, `invented`, JSON `1`/`true`/`{}`) **commit with zero records**.
+  - Reproduced for canonical, own and validated extraction, in both trigger orders, under the full 338-trigger catalog.
+  - The Router refuses the same operands (`payload_invalid`), so the layers disagree.
+  - An adjudicated `supports` row then allowed a raw claim update to `accepted_support`.
+- **NB1:** `test_bound_extraction_support.py:22` restores triggers by appending, losing order (SQL 40 moves from index 0 to 335 when reversed). Fold into the repair, before 4b relies on it.
+- **Confirmed sound:** exact binding (SQL 37 and Router) intact; `historical_admission` is test-only, restores the exact catalog and order (nested and exceptional exits probed), and is used only at explicit historical/refusal sites; the legacy experiments assert substantive refusals; 3,618 prior control records and verdicts unchanged; `service.py` untouched; split honest.
+- **Reviewer procedural deviation:** the initial AGENTS.md filename lookup extended to `/home/trevor/work`. Paths were listed but no file was opened. Disclosed by Astra.
+- **Landing at a0f976e:** `gen2-check` green (8,482 s), `gen2-gateway` green (1,018 s). Green gates don't cover B1.
+- **Routed:** `docs/gen2/tasks/2d-4c-p4a-repair-1.md` (B1 ROOT-CAUSE fail-closed repair via additive SQL 41, with a family audit; NB1 folded in).
