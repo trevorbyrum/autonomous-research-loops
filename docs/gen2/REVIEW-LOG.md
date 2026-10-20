@@ -2962,3 +2962,13 @@ The post-2q Gate D is renumbered #5.
   - fresh disposable stores replace the outer savepoints, because Router admission can't nest;
   - the alternate verifier's lease suffix was lengthened for schema validity, with its role unchanged.
 - **Landing at e8706a1:** `gen2-check` green (7,047 s). `gen2-gateway` is carried forward.
+
+## 2026-10-20: 2d-4c part 3j (PendingDDLTest family, 7419be4): PASS on the first review. Accepted
+- **Astra** (`a611a7d2`; `private/reviews/gen2-2d-4c-p3j-astra-review-20261020.md`): **A, B and C all PASS, ROOT-CAUSE.** No findings.
+- **The opt-out is gone:** `PendingDDLTest.ATTRIBUTED = False` is removed.
+- **Assertions preserved:** all 23 original assertion-call expressions, and the 3 local plus 12 inherited methods.
+- **Records:** `prepare_pending` restores unmutated views and triggers, then admits records through `Router.commit_outcome`.
+  - Distinct claim/revision operands have disjoint record sets.
+  - The existing `historical=True` negative keeps its role.
+  - Matching canonical support still promotes; all four distractors still can't authorize.
+- **Landing at 7419be4:** `gen2-check` green (7,050 s). `gen2-gateway` is carried forward.
