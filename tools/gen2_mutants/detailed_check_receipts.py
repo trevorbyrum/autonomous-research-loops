@@ -91,3 +91,11 @@ for target in ('ddl', p):
             old=old, new=new))
         CONTROLS[mid] = {'controls': [prefix + 'control'],
             'why': 'Separate load-bearing support with admitted references passes the performed-outcome predicate and record requirement.'}
+
+# Repair 1: raw /1 summaries cannot escape SQL 40 through an open domain.
+mid = '2D4C4AR1-summary-domain'
+prefix = 'test_store_receipt_summary_domain.SummaryDDLTest.test_'
+MUTATIONS.append(Mutation(mid, '2d-4c part 4a repair 1', 'Open legacy summary domain bypasses mandatory records',
+    (prefix + 'b1',), drop_trigger='verification_receipts_support_check_domain'))
+CONTROLS[mid] = {'controls': [prefix + 'control'],
+    'why': 'Separate load-bearing /2 receipts with four real exact records enter SQL 41 successfully for all three methods in both orders.'}

@@ -1,0 +1,167 @@
+"""Raw and Router admission agree before a summary can select record policy."""
+import copy
+import unittest
+from unittest.mock import patch
+
+from gen2.store import db
+from gen2.tests import store_fixtures as sf
+from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
+from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt
+from gen2.tests.test_bound_extraction_support import historical
+from gen2.tests.test_canonical_receipt_admission import ReceiptCase
+from gen2.tests.test_detailed_check_receipts import KINDS, ReferenceCases
+from gen2.tests.test_extraction_acquisitions import extraction_document
+from gen2.tests.test_pending_extraction_support import load_claim
+from gen2.tests.test_store_fixture_order import reverse_triggers
+
+
+METHODS = ('canonical_bytes', 'verifier_extraction', 'validated_extraction')
+BAD = ('succeeded', 'failed', 'invented', 1, True, {}, [], None, 'checked_ok\x00suffix')
+
+
+class SummaryCases:
+    RAW = False
+
+    def opened(self, method='canonical_bytes', reverse=False):
+        ddl = reverse_triggers(sf.DDL_TEXT) if reverse else sf.DDL_TEXT
+        # Adopt only pristine DDL; restore the actual requested mutations,
+        # omissions, instrumentation and order after authenticated seeding.
+        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
+            case = ReceiptCase()
+            case.setUp()
+            self.addCleanup(case.tearDown)
+            case.admit()
+            load_claim(case, 'abstract')
+        case.RAW = self.RAW
+        case.doc = (case.document() if method == 'canonical_bytes'
+            else extraction_document(case, method, detailed=False))
+        case.doc['claim']['claim_id'] = 'clm_loadbear1'
+        case.doc['requested_for']['use'] = 'load_bearing'
+        case.doc['access_tier'] = case.doc['requested_for']['required_access_tier'] = 'abstract'
+        restore_triggers(case, ddl)
+        self.assertEqual(case.value('PRAGMA foreign_keys'), 1)
+        self.assertEqual(case.value('SELECT count(*) FROM detailed_check_records'), 0)
+        return case
+
+    def refused(self, case):
+        before = case.state()
+        out = ReferenceCases.submit(case)
+        self.assertEqual(out['status'], 'rejected', out)
+        self.assertEqual(case.state(), before)
+        self.assertEqual(case.store.select('verification_receipts'), [])
+        if not self.RAW:
+            self.assertEqual(out['reason'], 'payload_invalid', out)
+        return out
+
+    def test_b1(self):
+        # Astra's exact bypass: /1, all four successor words, no records,
+        # ordinary current admission, complete requested catalog in both orders.
+        for reverse in (False, True):
+            with self.subTest(reverse=reverse):
+                case = self.opened(reverse=reverse)
+                case.doc['verdict'] = 'partially_supports'
+                for kind in KINDS:
+                    case.doc['checks'][kind] = 'succeeded'
+                self.refused(case)
+
+    def test_summary_domain(self):
+        for reverse in (False, True):
+            for method in METHODS:
+                case = self.opened(method, reverse)
+                original = copy.deepcopy(case.doc)
+                for version in ('verification-receipt/1', 'verification-receipt/2'):
+                    for verdict in ('supports', 'partially_supports'):
+                        for bad in BAD:
+                            for kind in KINDS:
+                                with self.subTest(reverse=reverse, method=method, version=version,
+                                        verdict=verdict, bad=bad, kind=kind):
+                                    case.doc = copy.deepcopy(original)
+                                    case.doc.update(receipt_version=version, verdict=verdict)
+                                    if verdict == 'supports':
+                                        case.doc['adjudication'] = dict(adjudication_ref='adj-domain',
+                                            resolved_at=case.doc['verified_at'], resolution='Explicit fixture resolution.')
+                                    if version.endswith('/2'):
+                                        case.doc['detailed_checks'] = {k: dict(outcome='succeeded') for k in KINDS}
+                                    case.doc['checks'][kind] = bad
+                                    self.refused(case)
+                self.doCleanups()
+
+    def test_control(self):
+        # Separate accepted control: real authenticated records, all three bases.
+        for reverse in (False, True):
+            for method in METHODS:
+                with self.subTest(reverse=reverse, method=method):
+                    case = self.opened(method, reverse)
+                    seed_checks(case, case.doc)
+                    for verdict in ('supports', 'partially_supports'):
+                        case.doc.update(verdict=verdict, verification_receipt_id='ver_' + verdict)
+                        case.doc['adjudication'] = (dict(adjudication_ref='adj-control',
+                            resolved_at=case.doc['verified_at'], resolution='Explicit fixture resolution.')
+                            if verdict == 'supports' else None)
+                        self.assertEqual(ReferenceCases.submit(case)['status'], 'committed')
+                        self.assertEqual(case.store.select('verification_receipts',
+                            {'verification_receipt_id': case.doc['verification_receipt_id']})[0]['receipt'], case.doc)
+                    self.assertEqual(case.rows('PRAGMA foreign_key_check'), [])
+
+    def test_successor_outcome_vocabulary(self):
+        for reverse in (False, True):
+            case = self.opened(reverse=reverse)
+            seed_checks(case, case.doc)
+            for kind in KINDS:
+                for legacy in ('checked_ok', 'checked_problem'):
+                    with self.subTest(reverse=reverse, kind=kind, legacy=legacy):
+                        original = case.doc['detailed_checks'][kind]['outcome']
+                        case.doc['detailed_checks'][kind]['outcome'] = legacy
+                        self.refused(case)
+                        case.doc['detailed_checks'][kind]['outcome'] = original
+
+    def test_compatibility(self):
+        for reverse in (False, True):
+            for verdict, use, summary in (('supports', 'sampled', 'checked_ok'),
+                    ('does_not_support', 'load_bearing', 'not_checked'),
+                    ('cannot_assess_at_required_tier', 'load_bearing', 'unavailable')):
+                with self.subTest(reverse=reverse, verdict=verdict):
+                    case = self.opened(reverse=reverse)
+                    case.doc['verdict'] = verdict
+                    case.doc['requested_for']['use'] = use
+                    for kind in KINDS:
+                        case.doc['checks'][kind] = summary
+                    self.assertEqual(ReferenceCases.submit(case)['status'], 'committed')
+                    self.assertEqual(case.store.select('verification_receipts')[0]['receipt'], case.doc)
+
+    def test_unperformed_remains_refused(self):
+        for summary in ('not_checked', 'unavailable'):
+            case = self.opened()
+            case.doc['verdict'] = 'partially_supports'
+            for kind in KINDS:
+                case.doc['checks'][kind] = summary
+            self.refused(case)
+
+
+class SummaryRouterTest(SummaryCases, unittest.TestCase):
+    pass
+
+
+class ExtractionHistoryOrderTest(unittest.TestCase):
+    def test_exact_catalog_on_normal_and_exceptional_exit(self):
+        for reverse in (False, True):
+            with self.subTest(reverse=reverse):
+                case = SummaryRouterTest().opened('validated_extraction', reverse)
+                try:
+                    case.x('DROP TRIGGER verification_receipts_detailed_domain')
+                    definition = case.value("SELECT sql FROM sqlite_schema WHERE name='verification_receipts_detailed_binding'")
+                    case.x('DROP TRIGGER verification_receipts_detailed_binding')
+                    case.x(definition.replace('d.topic_id = NEW.topic_id', '1 = 1'))
+                    catalog = case.rows(TRIGGERS)
+                    historical_receipt(case.doc)
+                    for exceptional in (False, True):
+                        try:
+                            with historical(case):
+                                if exceptional:
+                                    raise RuntimeError('historical exception')
+                        except RuntimeError as exc:
+                            self.assertTrue(exceptional)
+                            self.assertEqual(str(exc), 'historical exception')
+                        self.assertEqual(case.rows(TRIGGERS), catalog)
+                finally:
+                    case.tearDown()

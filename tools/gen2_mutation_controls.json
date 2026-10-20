@@ -24111,5 +24111,11 @@
    "test_canonical_decimal.DecimalExactnessTest.test_equivalent_control"
   ],
   "why": "Separate accepted numeric span reaches this admission predicate; exact retained values are asserted."
+ },
+ "2D4C4AR1-summary-domain": {
+  "controls": [
+   "test_store_receipt_summary_domain.SummaryDDLTest.test_control"
+  ],
+  "why": "Separate load-bearing /2 receipts with four real exact records enter SQL 41 successfully for all three methods in both orders."
  }
 }

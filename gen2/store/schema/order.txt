@@ -45,3 +45,4 @@
 38-span-offset-cap.sql
 39-link-locator-string.sql
 40-mandatory-detailed-receipts.sql
+41-support-check-summary-domain.sql

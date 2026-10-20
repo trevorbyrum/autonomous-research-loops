@@ -5370,3 +5370,52 @@ Heavy starts wait for no active gen2-landing-* user unit. Disposable snapshots
 copy .venv-gen2 with cp -a. No provider/Gen-1/runtime/8765/real migration,
 protected-register edit, push or merge. Evidence and current progress:
 private/evidence/2d-4c-p4a-repair-1/.
+
+#### 2d-4c part 4a repair 1 — implementation and validation (2026-10-20)
+
+Pre-code design: `7111c61`. **B1 ROOT-CAUSE:** additive SQL 41 closes the JSON
+text/summary domain on every new load-bearing positive, regardless of receipt
+version or extraction method. SQL 03 refuses the two unperformed outcomes;
+SQL 40 requires all four remaining performed references; SQL 37 preserves /2
+projection and exact binding. Arbitrary strings, mixed vocabularies and JSON
+non-strings cannot skip this policy. No production Python, JSON column, accepted
+SQL 01–40 or promotion policy changes. Both hashes are repinned.
+
+The exact B1 operand failed the retained refusal regression before code in both
+orders and passes afterward, with zero detailed records. Raw/Router matrices
+cover all four kinds, both receipt versions, all three methods, adjudicated
+supports and unadjudicated partial support; real-record accepted controls and
+sampled/unsuccessful/readback behavior remain. The domain-bypass mutant is
+assertion-killed with a separate accepted control and qualified SQL 41 trace.
+All 3,632 previous control records remain identical; one new pairing is added.
+
+**NB1 ROOT-CAUSE:** the extraction-history helper now restores its entire saved
+ordered catalog through the shared restore_triggers helper. Normal/exceptional
+exit tests cover both orders and mutated/dropped definitions. Substituting the
+old helper yields two assertion failures, zero errors, beside a green baseline.
+
+Frozen-source gates: **4,313 engine tests**, two existing skips (4,910.039s);
+**339 triggers / 5,826 identical Store tests/subtests**; composition six; focused
+56; **3,633/3,633 mutants killed**, all 3,616 paired controls passing over green
+1,136-Store/26-file-target baselines. Gateway: two 1,540-test suites and 413/413
+mutants. All eight static gates pass and repeat before commit. All **965 frozen
+inputs** match the snapshot and repository; all protected input hashes match.
+
+Executable family audit: 40 malformed quote/capture admissions refuse under
+SQL 41, while the same 40 commit if only SQL 41 is omitted. **Still owned by
+4b:** six historical canonical/own/validated promotion probes admit support
+without references; two sole-receipt historical capture probes also preserve
+support through the final commit refence. These explicitly installed old-domain
+operands are readback/consumption gaps, not current receipt admission. Both
+promotion successors, independent Router consumption and same-receipt binding
+remain for 4b; whole part 4 is not complete. No new promotion authority is added.
+
+Initial private mutant/trace fixture-adoption errors and the extra capture
+probe's raw-query helper error are retained without passing credit. Final
+fixture preparation admits under pristine DDL, then restores the exact subject
+catalog, retaining mutations and instrumentation. No source edit followed the
+frozen runs; this final dossier note alone is appended afterward. No mitigation
+is introduced. No provider, Gen-1/runtime/8765, real migration, protected-register,
+push or merge action occurred. Required heavy starts observed empty landing
+units; the isolated snapshot's venv was copied with cp -a. Evidence and exact
+commands/exits: private/evidence/2d-4c-p4a-repair-1/COMPLETION.md; progress is current.

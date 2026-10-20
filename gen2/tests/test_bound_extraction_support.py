@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
-from gen2.tests.ddl_fixtures import restore_triggers
+from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
 
 from gen2.tests.router_fixtures import empty_outcome
@@ -24,17 +24,15 @@ def historical(case):
     # guard, then restore the exact installed definitions, including mutants.
     names = ('verification_receipts_own_extraction', 'verification_receipts_validated_extraction',
         'verification_receipts_require_detailed_checks')
-    definitions = case.rows("SELECT name, sql FROM sqlite_schema WHERE type='trigger' ORDER BY rowid")
+    definitions = case.rows(TRIGGERS)
     selected = [(n, s) for n, s in definitions if n in names]
     for name, _ in selected:
         case.x('DROP TRIGGER ' + name)
     try:
         yield
     finally:
-        for _, sql in selected:
-            case.x(sql)
-        actual = dict(case.rows("SELECT name, sql FROM sqlite_schema WHERE type='trigger'"))
-        case.assertEqual(actual, dict(definitions))
+        restore_triggers(case, None, catalog=definitions)
+        case.assertEqual(case.rows(TRIGGERS), definitions)
 
 
 class PromotionCases:
