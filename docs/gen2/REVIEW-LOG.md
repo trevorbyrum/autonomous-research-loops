@@ -2972,3 +2972,12 @@ The post-2q Gate D is renumbered #5.
   - The existing `historical=True` negative keeps its role.
   - Matching canonical support still promotes; all four distractors still can't authorize.
 - **Landing at 7419be4:** `gen2-check` green (7,050 s). `gen2-gateway` is carried forward.
+
+## 2026-10-20: 2d-4c part 3k (global population root + raw quote/capture/adjudication, a7e01f5): PASS on the first review. Accepted; part 3 complete
+- **Astra** (`5b37db2a`; `private/reviews/gen2-2d-4c-p3k-astra-review-20261020.md`): **A, B and C all PASS, ROOT-CAUSE.**
+- **Completeness:** Astra's own inventory of all 201 test files (226 receipt literals, 225 builder/population candidates, wrappers and inheritance followed) finds no pending ordinary/current positive owner. Part 3 is complete within its fixture-conversion scope.
+- **Converted together:** `StoreTestCase.verify` / `populate_every_table` and all forty consumers (including `QuoteTest`, `AuxiliaryCapTest`, eight RolloutPairs and twenty-two CompletionPairs), plus raw quote, capture and adjudication.
+- **Mirror fixture:** admission runs on a disposable mirror under complete unmutated DDL with `(foreign_keys, recursive_triggers, ignore_check_constraints) = (1,1,0)`; copy-back is a privileged test-setup bridge (guards off during transfer, then flags and the exact trigger catalog restored). It builds no receipts or promotions. Astra probed all eight flag combinations; the full mutation inventory still kills through the owner.
+- **Scope qualifications, not blockers:** copied rows include fixture preparation as well as admission effects; the rebound bridge is used for readback only by convention. Explicit optional/legacy admission experiments still describe pre-activation behavior, and **part 4 must deliberately change their disposition.**
+- **Non-blocking NB-1:** stale "consumers pending" comments at `test_canonical_receipt_admission.py:54`, `test_canonical_content_tiers.py:30`, `test_store_content_tiers.py:30`. Fold into part 4.
+- **Landing at a7e01f5:** `gen2-check` green (8,384 s). `gen2-gateway` is carried forward from `b9ec00d`.
