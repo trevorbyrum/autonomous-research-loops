@@ -3088,3 +3088,11 @@ The post-2q Gate D is renumbered #5.
 - **Completeness:** Astra found no further missing production V-8 consumption step in 2d-4c. **2d-4c is complete once C1 is repaired and accepted.**
 - **Landing at 5b01b6e:** `gen2-check` green (7,532 s), `gen2-gateway` green (1,018 s).
 - **Routed:** `docs/gen2/tasks/2d-4c-p4b2c2-repair-1.md`: a ROOT-CAUSE, database-aware application-write oracle qualified by bare, commented and CTE canaries; NB1 folded in; test-only.
+
+## 2026-10-21: 2d-4c part 4b2c2 repair-1 (d954236): BLOCK, round 2
+- **Astra** (`5cddd8e6`; `private/reviews/gen2-2d-4c-p4b2c2-r2-astra-review-20261021.md`): **A PASS, B PASS, C BLOCK.**
+- **NB1 closed (ROOT-CAUSE).** The lexical part of C1 is repaired at its cause: the SQLite authorizer observer catches comment/CTE DML, UPSERT/REPLACE, trigger bodies, a second connection, executescript, ATTACH, VACUUM INTO and FK cascades.
+- **C1 still open:** a data-bearing installation `CREATE TABLE ... AS SELECT` writes an application row with no INSERT authorization and zero `total_changes`. The whole module still passes (15 tests). Dropping a populated table also passes.
+  - This still violates schema-only installation (class e). The full guarantee is classed MITIGATION/incomplete.
+- **Landing at d954236:** `gen2-check` green (7,563 s). Production unchanged.
+- **Routed:** `docs/gen2/tasks/2d-4c-p4b2c2-repair-2.md`, the **final** round (3 of 3). It adds database-content observation (created tables must be empty, dropped tables must have been empty) plus a broad self-qualified canary set. If round 3 fails, escalate to Trevor.
