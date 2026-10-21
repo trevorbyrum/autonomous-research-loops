@@ -6159,3 +6159,16 @@ additional handwritten lines; revised guide footprint is about 540, plus generat
 control/ledger scaffolding. Stop the first frozen engine/order/full-inventory
 attempts and rerun them on corrected frozen bytes; unchanged gateway inputs may
 finish independently. No stopped attempt supplies passing-gate credit.
+
+**4b2c2 timing-fixture isolation, before test changes.** The serial 2QB6
+probe reports 5/6 kills: its clock-before-lock mutant survives because the
+old trace observes the new constructor transaction. The clock now moves before
+the operation starts. Audit finds exactly two such fixtures, in router_time
+and router_lifecycle_wiring. Construct/admit the worker-thread Router before
+holding the competing writer lock; then observe only the operation's BEGIN.
+Preserve all clock values, assertions, mutants, controls and deadlines; no
+production bypass or clock/harness change. This is correction of the fixture
+family's transaction identity, not a weakened temporal rule. Allow about 40
+additional test/documentation lines (about 580 handwritten overall). Stop B's
+engine/full-inventory attempts and rerun on a new freeze. B's Store-order and
+completed gateway/composition runs retain byte-identical inputs and may stand.
