@@ -115,9 +115,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_out
 - location: engine:gen2/router/service.py
-- limit: 22
-- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core. Task 2d-4b2 adds one acquisition admission collaborator (17 to 18) and only constructor/schema/public-delegate wiring. Task 2d-4b3e1 adds one ExtractionRecords collaborator (18 to 19), with only construction, authentication/write delegation and audit-result wiring. JSON2 adds one Observations collaborator (19 to 20), moving observation admission out of service.py and retaining its existing transaction writer. Task 2d-4b3e2 adds one ExtractorRegistry collaborator (20 to 21); service adds only construction/schema and operator/admission delegates. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only.
-- task: 2d-4c part 1
+- limit: 23
+- reason: The original 13 to 16 increase covers the 2c-1 pure accounting component/row adapter and 2c-2a assessment collaborator. Task 2d-4 adds one Verification collaborator; service.py gains only construction, receipt effects and a thin private delegate, keeping new verdict routing outside the core. Task 2d-4b2 adds one acquisition admission collaborator (17 to 18) and only constructor/schema/public-delegate wiring. Task 2d-4b3e1 adds one ExtractionRecords collaborator (18 to 19), with only construction, authentication/write delegation and audit-result wiring. JSON2 adds one Observations collaborator (19 to 20), moving observation admission out of service.py and retaining its existing transaction writer. Task 2d-4b3e2 adds one ExtractorRegistry collaborator (20 to 21); service adds only construction/schema and operator/admission delegates. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only. Task 2d-4c part 4b2c2 adds one guarded-admission/history dependency (22 to 23); the core adds only snapshot/admission and owned-store cleanup wiring.
+- task: 2d-4c part 4b2c2
 
 ### ML-0014
 - action: admit
@@ -183,9 +183,9 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/router/boundary.py
-- limit: 14
-- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority. Task 2d-4b3e1 adds one caller (10 to 11), reusing the existing staged-artifact authentication and typed refusal paths. JSON2 adds Observations (11 to 12), reusing normalization and observation checks before the existing writer transaction. Task 2d-4b3e2 adds ExtractorRegistry (12 to 13), reusing normalization and typed refusals for audited operator admission. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only.
-- task: 2d-4c part 1
+- limit: 15
+- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority. Task 2d-4b3e1 adds one caller (10 to 11), reusing the existing staged-artifact authentication and typed refusal paths. JSON2 adds Observations (11 to 12), reusing normalization and observation checks before the existing writer transaction. Task 2d-4b3e2 adds ExtractorRegistry (12 to 13), reusing normalization and typed refusals for audited operator admission. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only. Task 2d-4c part 4b2c2 adds one historical-support reader (14 to 15), reusing the existing Refusal vocabulary without swallowing infrastructure failures.
+- task: 2d-4c part 4b2c2
 
 ### ML-0025
 - action: budget
