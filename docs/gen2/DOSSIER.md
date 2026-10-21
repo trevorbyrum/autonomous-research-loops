@@ -6057,3 +6057,79 @@ Item 1 is implemented; independent acceptance and whole-part-4 completion are
 not claimed. Guard/inspection and the operator's pending interface ruling remain
 outside this change. No protected register, provider, gen-1 runtime, real
 database migration, push or merge is involved.
+
+#### 2d-4c part 4b2c2 — guarded admission and history reader, before code
+
+2026-10-21, branch `gen2`, starting at `cf52bd1`. Read Required/Constraints,
+all task continuations and operator rulings, DOSSIER §2d-4c including design
+`117573a` and its retained entry-point audit, BUILD-CHARTER/BOUNDARIES,
+V-4/V-8 and the named flow/adjudication/methodology authority, 4b2c evidence,
+4b2c1 completion and Astra's acceptance. Repository-only AGENTS lookup found
+none. Private reads stay within named paths. No implementation preceded this
+note. The October 21 ruling authorizes the previously proposed interface;
+no further authority choice is needed for the callable contract below.
+
+**Re-estimate: about 460 handwritten repository lines**, including this note
+and the execution note: support reader/diagnostic/frozen history object 95;
+Router admission and owned-store cleanup wiring 15; activation, store-wide
+revision scope, complete relation, snapshot, startup ordering, historical
+readback and zero-DML regressions 220; paired mutants/registration 55;
+documentation 75. Generated controls are additional. Private retained drivers
+are estimated separately at 250 lines. This fits one coherent slice under
+about 500; no reconciliation or harness redesign is included. Re-estimate if
+implementation requires material expansion; keep growing loader work separate.
+
+**Callable contract.** Normal `Router(store, spool, ...)` first checks every
+stored `accepted_support`, load-bearing revision in the core's single snapshot,
+before constructing configuration-bearing collaborators or invoking any clock,
+ID source, extension, configuration or supervisor effect. `Router.open` uses
+that same constructor and closes its owned Store if admission fails. Direct
+construction leaves the caller-owned Store available. Station/engine startup
+already constructs the Router before configuration activation/restoration and
+supervision; retain that order and prove it through both startup paths.
+
+One narrow read adapter reuses the accepted independent DetailedChecks candidate
+loop and EvidenceWriter canonical-capture predicate over actual rows. Every
+candidate must satisfy the complete detailed/basis/content/tier/use/capture
+relation on the same receipt; no SQL authority view is the oracle. Selection
+is store-wide, without topic or latest-revision filtering. Deficiencies are
+collected as topic, claim ID, claim revision and an explicit qualification
+reason. A `ReconciliationRequired` startup exception carries a structured
+`reconciliation_required` diagnostic and readable identities/reasons. There
+are no status updates or rejection-audit writes during opening.
+
+`gen2.router.history.HistoryReader.open(path)` explicitly opens the ordinary
+compatibility/schema-checked Store, captures diagnostics and the closed record
+families in one read-only snapshot, and closes the Store before returning.
+The result retains only detached historical data, with no open connection,
+spool, normal Router or configuration/supervisor capability. `records(family)`
+accepts only claims, operation/verification receipts, detailed/quote checks,
+source artifacts/acquisitions/extractions, both validation histories and audit
+history. It returns a labelled `historical_records` envelope and defensive
+copies; `diagnostic()` returns the same labelled refusal information. Reopen
+explicitly to obtain a later snapshot. No generic SQL/table reader, live status,
+health, accounting/completion, write, launch, configuration, approval or export
+route is exposed. Freezing the reader at open makes the closed capability
+concrete without a validation-skipping Router flag or another Store opener.
+
+Fresh and fully qualified retained stores keep normal use. Deficient acceptance
+remains unchanged and readable as history; installation stays schema-only.
+Reconciliation remains the proposal above: authenticated authority, approved
+manifest/request hash, stale-preview pins, store/topic scope and quarantine
+transitions still require Trevor's approval. No procedure or bypass is built.
+These checks establish recorded relationships, never scientific correctness.
+
+Tests will admit real records under pristine DDL, then use scoped historical
+preparation with exact restoration. Cover both constructor paths, non-latest
+and other-topic deficiencies, all methods/canonical captures, positive controls,
+unchanged complete row history, closed detached readback, compatibility/schema
+refusal, zero installation/opening DML, snapshot consistency and station/engine
+refusal before effects. New predicates get separate accepted controls and native
+path qualification. Before the implementation commit run full gen2-test,
+trigger-order, composition, full mutation inventory, affected complete --only
+families, station/engine suites, gen2-gateway and all eight static gates. No
+DDL/schema/pin change is planned. Check no active gen2-landing-* user unit before
+each heavy start; copy any snapshot venv with cp -a. Evidence and resumable
+steps: private/evidence/2d-4c-part4b2c2/PROGRESS.md. Commit this estimate alone
+before code. No provider, gen-1 runtime/8765, real-database migration, protected
+register, push or merge action is authorized or performed.
