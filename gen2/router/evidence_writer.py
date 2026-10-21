@@ -33,6 +33,7 @@ class EvidenceCore(Protocol):
     def _pin_status(self, inv: dict) -> str: ...
     def _work_of_topic(self, work_id: str, topic_id: str) -> bool: ...
     def _write_verification_holds(self, payload: dict, op_id: str, now: str) -> dict: ...  # delegate to Verification
+    def _require_detailed_support(self, claim: dict) -> None: ...  # delegate to DetailedChecks
 
 
 class EvidenceWriter:
@@ -263,6 +264,7 @@ class EvidenceWriter:
             if producer["admission_context"] == "contract/1" and self._core._pin_status(producer) not in ("current", "compatible"):
                 raise Refusal("amendment_pending", f"{promotion['claim_id']} revision {promotion['revision']} was produced under a revision an amendment made "
                                                    "incompatible; contract-admitted work adopts it as a new revision (V-10, G-1)")
+            self._core._require_detailed_support(row)
             self._require_quote_support(row)
             self._core._store.update("claims", {"claim_id": promotion["claim_id"], "revision": promotion["revision"]}, {"status": "accepted_support"})
             promotions.append([promotion["claim_id"], promotion["revision"]])

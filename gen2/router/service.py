@@ -859,6 +859,9 @@ class Router:
                    for link in self._store.select("record_work_links", {"work_id": work_id}))
 
     # -- commit_outcome ----------------------------------------------------------
+    def _require_detailed_support(self, claim: dict) -> None:
+        self._detailed_checks.require_support(claim)
+
     def commit_outcome(self, envelope: Mapping) -> dict:
         op_id = envelope.get("operation_id") if isinstance(envelope, Mapping) else None
         if not isinstance(op_id, str) or self._schemas.errors(op_id, "common.schema.json#/$defs/operation_id"):

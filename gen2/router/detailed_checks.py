@@ -15,6 +15,45 @@ class DetailedChecks:
     def __init__(self, core: ExtractionCore) -> None:
         self._core = core
 
+    def require_support(self, claim: dict) -> None:
+        """V-4/V-8 consumption in the existing writer transaction.
+
+        Detailed-record authority is independent of the SQL42 relation. The
+        remaining acquisition/extraction and capture gates still apply in SQL.
+        """
+        if not claim["load_bearing"]:
+            return
+        rank = {"bibliographic": 1, "abstract": 2, "full_text": 3, "reproduced": 4}
+        for row in self._core._store.select("verification_receipts", {
+                "claim_id": claim["claim_id"], "claim_revision": claim["revision"]}):
+            if (row["verdict"] != "supports" or row["use"] != "load_bearing"
+                    or row["required_access_tier"] != claim["required_access_tier"]
+                    or rank[row["access_tier"]] < rank[claim["required_access_tier"]]):
+                continue
+            # Consumption binds the stored columns, including retained history,
+            # rather than letting a detached JSON label choose the operands.
+            doc = {**row["receipt"], "topic_id": row["topic_id"],
+                "claim": {"claim_id": row["claim_id"], "claim_revision": row["claim_revision"]},
+                "source": {"work_id": row["work_id"], "source_version": row["source_version"]},
+                "cited_spans": row["cited_spans"], "verifier_invocation_id": row["verifier_invocation_id"],
+                "obtained_content_hash": row["obtained_content_hash"], "extraction": {
+                    **row["receipt"]["extraction"], "method": row["extraction_method"],
+                    "validation_ref": row["extraction_validation_ref"]}}
+            entries = doc.get("detailed_checks")
+            if (doc.get("receipt_version") != "verification-receipt/2" or not isinstance(entries, dict)
+                    or set(entries) != {"numeric_units", "denominators", "negation", "qualifications"}):
+                continue
+            if any(not isinstance(entry, dict) or not entry.get("record_id")
+                    or entry.get("outcome") not in ("succeeded", "failed", "not_applicable")
+                    for entry in entries.values()):
+                continue
+            try:
+                self.require_receipt(doc)
+            except Refusal:
+                continue
+            return
+        raise Refusal("payload_invalid", "support requires exactly bound performed detailed checks (V-4, V-8)")
+
     def authenticate(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> None:
         records = payload.get("detailed_check_records", [])
         if records and (inv["admission_context"] != "contract/1" or inv["kind"] != "verification"

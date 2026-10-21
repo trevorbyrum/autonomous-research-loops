@@ -50,3 +50,26 @@ for name, replacement, killer, control in (
     MUTATIONS.append(Mutation(mid, '4b1 validation integration', name, (BASELINE + killer,), target=HARNESS,
         old='any(m.target in ("ddl", "connection") for m in selected)', new=replacement))
     CONTROLS[mid] = dict(controls=[BASELINE + control], why='Separate loading mode preserves its required baseline and existing refusal; the full inventory still selects SQL.')
+
+# 4b2a: public Router promotion with SQL support consumers explicitly omitted.
+ROUTER = 'test_router_detailed_support.RouterDetailedSupportTest.test_'
+DETAIL = 'gen2/router/detailed_checks.py'
+for name, target, old, new, killer in (
+        ('writer', 'gen2/router/evidence_writer.py', 'self._core._require_detailed_support(row)', 'None', 'historical_shapes'),
+        ('delegate', 'gen2/router/service.py', 'self._detailed_checks.require_support(claim)', 'None', 'historical_shapes'),
+        ('load-bearing', DETAIL, 'if not claim["load_bearing"]:', 'if True:', 'historical_shapes'),
+        ('verdict', DETAIL, 'row["verdict"] != "supports"', 'False', 'claim_owned_gates'),
+        ('use', DETAIL, 'row["use"] != "load_bearing"', 'False', 'claim_owned_gates'),
+        ('required-tier', DETAIL, 'row["required_access_tier"] != claim["required_access_tier"]', 'False', 'claim_owned_gates'),
+        ('access-tier', DETAIL, 'rank[row["access_tier"]] < rank[claim["required_access_tier"]]', 'False', 'claim_owned_gates'),
+        ('version', DETAIL, 'doc.get("receipt_version") != "verification-receipt/2"', 'False', 'historical_shapes'),
+        ('four', DETAIL, 'set(entries) != {"numeric_units", "denominators", "negation", "qualifications"}', 'False', 'historical_shapes'),
+        ('performed', DETAIL, 'entry.get("outcome") not in ("succeeded", "failed", "not_applicable")', 'False', 'missing_and_outcomes'),
+        ('binding', DETAIL, 'try:\n                self.require_receipt(doc)', 'try:\n                None', 'bindings'),
+        ('stored-topic', DETAIL, '"topic_id": row["topic_id"]', '"topic_id": row["receipt"]["topic_id"]', 'stored_operands'),
+        ('stored-verifier', DETAIL, '"verifier_invocation_id": row["verifier_invocation_id"]', '"verifier_invocation_id": row["receipt"]["verifier_invocation_id"]', 'stored_operands'),
+        ('stored-spans', DETAIL, '"cited_spans": row["cited_spans"]', '"cited_spans": row["receipt"]["cited_spans"]', 'stored_operands')):
+    mid = '2D4C4B2A-' + name
+    MUTATIONS.append(Mutation(mid, '2d-4c part 4b2a', name, (ROUTER + killer,), target=target, old=old, new=new))
+    CONTROLS[mid] = dict(controls=[ROUTER + 'control'],
+        why='Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted.')

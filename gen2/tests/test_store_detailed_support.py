@@ -197,14 +197,25 @@ class DetailedSupportDDLTest(unittest.TestCase):
             case.x(sql.replace('d.topic_id = NEW.topic_id', '1 = 1'))
             catalog = case.rows(TRIGGERS)
             view = case.value("SELECT sql FROM sqlite_schema WHERE name='detailed_support_receipts'")
-            for prepared in (history, prior_consumption):
+            for checks in (0, 1):
+                case.x('PRAGMA ignore_check_constraints=' + str(checks))
                 for exceptional in (False, True):
                     try:
-                        with prepared(case):
+                        with history(case, unchecked=True):
+                            self.assertEqual(case.value('PRAGMA ignore_check_constraints'), 1)
                             if exceptional: raise RuntimeError('history exit')
                     except RuntimeError:
                         self.assertTrue(exceptional)
+                    self.assertEqual(case.value('PRAGMA ignore_check_constraints'), checks)
                     self.assertEqual(case.rows(TRIGGERS), catalog)
+            case.x('PRAGMA ignore_check_constraints=OFF')
+            for exceptional in (False, True):
+                try:
+                    with prior_consumption(case):
+                        if exceptional: raise RuntimeError('history exit')
+                except RuntimeError:
+                    self.assertTrue(exceptional)
+                self.assertEqual(case.rows(TRIGGERS), catalog)
                 self.assertEqual(case.value("SELECT sql FROM sqlite_schema WHERE name='detailed_support_receipts'"), view)
 
     def test_non_pooling(self):

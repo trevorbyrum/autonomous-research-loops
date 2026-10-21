@@ -1,6 +1,7 @@
 """Explicit disposable history preparation; never a current admission route."""
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import sqlite3
+from unittest.mock import patch
 
 from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 
@@ -41,7 +42,11 @@ def prior_consumption(case):
     case.x('DROP VIEW detailed_support_receipts')
     case.x('CREATE VIEW detailed_support_receipts AS SELECT verification_receipt_id FROM verification_receipts')
     try:
-        yield
+        # Earlier SQL-predicate experiments explicitly suspend only the new
+        # independent detailed promotion consumer, never current controls.
+        router = getattr(case, 'router', None)
+        with patch.object(router._detailed_checks, 'require_support', return_value=None) if router else nullcontext():
+            yield
     finally:
         case.x('DROP VIEW detailed_support_receipts'); case.x(sql)
         case.assertEqual(case.rows(TRIGGERS), catalog)

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import copy
 import json
+from unittest.mock import patch
 
 from gen2.core import canonical
 from gen2.router.schemas import SchemaSet
@@ -703,7 +704,11 @@ class AtomicityTest(CommitCase):
         outcome["claims"][0].update(load_bearing=True, required_access_tier="full_text")
         env = self.final_envelope(outcome=outcome, result_refs=refs)
         before, audits = self.snapshot()
-        self.assertRejected(self.router.commit_outcome(env), "payload_invalid", before, audits, "V-4")
+        # Isolate the Store refusal from the independently tested Router gate.
+        with patch.object(self.router._detailed_checks, "require_support", return_value=None):
+            out = self.router.commit_outcome(env)
+        self.assertRejected(out, "payload_invalid", before, audits, "V-4")
+        self.assertIn("the store refused the write:", out["detail"])
         self.assertIn("V-4", self.value("SELECT json_extract(detail, '$.detail') FROM audit_events ORDER BY rowid DESC LIMIT 1"))
 
     def test_staged_bytes_are_read_only_outside_transactions(self) -> None:

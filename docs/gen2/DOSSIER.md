@@ -5690,3 +5690,53 @@ start waits for no active gen2-landing-* user unit; disposable snapshot venvs
 use cp -a. Evidence, attempts and resumable progress:
 private/evidence/2d-4c-part4b2/. Commit this estimate alone before code, then
 implement only 4b2a and stop. Whole part 4 remains INCOMPLETE.
+
+
+**4b2a validation isolation correction.** The first full inventory finds the
+existing 1B-store-refusal-swallowed mutant surviving: its atomicity test's
+unsupported promotion now reaches the new Router refusal before the Store.
+Narrowly suspend only that new gate in this Store-specific test, retain every
+rollback/V-4 assertion, and additionally require the Store-origin diagnostic.
+The focused test and original mutant/control pass after this correction.
+No runtime, harness, pairing or deadline changes. Retain the first attempt
+and use a fresh frozen candidate for the final required checks.
+
+
+#### 2d-4c part 4b2a — implementation and validation (2026-10-21)
+
+Pre-code estimate/split: `0f3d9cd`. Implements only the first 4b2 slice:
+DetailedChecks reads actual stored receipt columns and exactly bound durable
+records at claim promotion inside the existing writer transaction. All four
+kinds need performed outcomes and explicit projections on one /2 receipt;
+claim-owned tier/use/load-bearing gates apply. Historical summaries and
+adjudication cannot waive missing/unperformed records. EvidenceWriter calls
+a thin core delegate; service.py adds three wiring lines (1,451 total).
+No SQL42 view supplies this independent check; SQL01-42, schemas and pins,
+opening/accounting and the existing basis/capture gates are unchanged.
+
+Ten isolated Router tests cover all methods/both orders, per-kind bindings and
+outcomes, actual columns versus detached JSON, non-pooling, controls and public
+replay/conflict/rollback. Records use pristine Router admission. NB2 now tests
+unchecked history and original CHECK-policy restoration in all eight order/
+policy/exit combinations. The original-Python probe accepts six historical
+operands; the candidate refuses all six, with six accepted controls in both.
+All 14 new mutants have separate passing controls and native qualifying paths;
+all 3,661 old pairing records are unchanged. The Store-specific atomicity
+correction above restores actual Store-error coverage without a harness change.
+
+Final frozen-source gates pass: **4,340 engine tests, two skips** (3,292.413
+unittest seconds); **339 triggers / 6,149 identical order outcomes**; composition
+six; **3,675/3,675 mutants killed**, 3,658 separate controls passing, zero invalid
+or surviving cases and zero uncovered triggers. The 11 existing in-killer cases
+and six documented exceptions remain. Both 1,540-test gateway suites and all
+413 gateway mutants pass. All eight static gates pass without a new exemption.
+Production is **13,502 engine / 12,256 gateway lines**. Final staged checks,
+exact footprint, hashes, prior attempts and commits are recorded in
+private/evidence/2d-4c-part4b2/COMPLETION.md; PROGRESS.md is current.
+
+**4b2a implemented; whole 4b2/part 4 INCOMPLETE.** Stop after this slice.
+Independent same-candidate acquisition/extraction qualification, governed capture
+promotion/final refence and retained-state active-use refusal remain for later
+4b2 sub-parts. Reconciliation is a proposal only, requiring operator approval.
+No opening-time demotion, installation DML, grandfathering policy, provider
+call, real migration, protected-register edit, push or merge is introduced.

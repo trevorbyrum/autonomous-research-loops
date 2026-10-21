@@ -1,4 +1,102 @@
 {
+ "2D4C4B2A-access-tier": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-binding": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-delegate": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-four": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-load-bearing": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-performed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-required-tier": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-stored-spans": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-stored-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-stored-verifier": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-use": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-verdict": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-version": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
+ "2D4C4B2A-writer": {
+  "by_hand": true,
+  "controls": [
+   "test_router_detailed_support.RouterDetailedSupportTest.test_control"
+  ],
+  "why": "Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted."
+ },
  "2D4C4A-ddl-checked_ok": {
   "controls": [
    "test_store_mandatory_detailed_receipts.MandatoryDDLTest.test_control"
