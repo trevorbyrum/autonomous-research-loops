@@ -6133,3 +6133,15 @@ each heavy start; copy any snapshot venv with cp -a. Evidence and resumable
 steps: private/evidence/2d-4c-part4b2c2/PROGRESS.md. Commit this estimate alone
 before code. No provider, gen-1 runtime/8765, real-database migration, protected
 register, push or merge action is authorized or performed.
+
+**4b2c2 admission-metadata addendum, before ledger changes.** Focused behavior
+passes; the supported-source gate required ordinary single-underscore fields,
+now corrected. The new history module also needs the metrics ledger's standard
+reasoned identity admissions: its file, direct edges and transitive reach,
+including the service/station/engine startup reach. These are explicit growth
+metadata for the approved capability, not a budget exemption or a baseline
+relaxation. Allow about 55 additional handwritten reason/task/documentation
+lines, plus the tool-generated identity/section scaffolding, bringing the
+handwritten estimate to about 515. This remains about 500 for one coherent
+interface; report the generated templates and conservative total separately.
+No harness redesign, source-contract exception or reconciliation is added.
