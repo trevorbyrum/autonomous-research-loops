@@ -3009,3 +3009,20 @@ The post-2q Gate D is renumbered #5.
   - durable checks and the basis on the same receipt, with no pooling and no adjudication waiver;
   - all existing tier/use/ceiling/tier-0/contract/canonical-capture gates preserved.
 - **Landing at c5bce59:** `gen2-check` green (8,636 s), `gen2-gateway` green (1,020 s).
+
+## 2026-10-21: 2d-4c part 4b1 (SQL promotion consumers, c5b2bec..b07a68f): PASS on the first review. Accepted
+- **Astra** (`c4617aeb`; `private/reviews/gen2-2d-4c-p4b1-astra-review-20261021.md`): **A, B and C all PASS, ROOT-CAUSE** within the SQL-consumer scope. Blocking: none.
+- **SQL 42** enumerates the four kinds independently of receipt contents. It requires a `/2` receipt with exactly four entries and an actual record for each, with a performed outcome. The outcome must match the referenced record and the summary projection exactly.
+  - Joins bind topic, verifier, kind, claim/revision, full ordered spans, work/version, source hash, and the basis-selected examined bytes (canonical hash, own output, or the validation's **target** output).
+  - Empty, partial, extra, historical `/1` and invented-summary receipts can't satisfy it.
+- **Consumers:**
+  - SQL 03/34 trigger bodies are mechanically unchanged apart from the added conjunct.
+  - SQL 34 requires the **same receipt ID** in both the detailed and bound-extraction relations, so there's no pooling.
+  - SQL 12 promotion and final audit consume the replacement relation.
+  - Adjudication gives no escape from the actual-record requirement.
+  - SQL 01–41 and production Python unchanged; no installation DML.
+- **Provenance:** the orchestrator's `9788093` (`git commit -am`) captured Sol's in-progress implementation and was pushed. Astra judged the final tree, and the capture doesn't change the verdict. Lesson recorded: stage explicit paths only.
+- **Non-blocking:**
+  - NB1 size: 674 hand-written lines against a ~470 estimate and the ~500 guide. Not blocked (production SQL is 111 lines); keep 4b2 separate and re-estimate it.
+  - NB2: the history-catalog test should request `unchecked=True` and assert `ignore_check_constraints` restoration. Astra's 8-case probe found no defect; fold into 4b2.
+- **Landing at b07a68f:** `gen2-check` green (7,195 s), `gen2-gateway` green (1,013 s).
