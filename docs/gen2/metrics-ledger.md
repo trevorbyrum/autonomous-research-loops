@@ -950,3 +950,123 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - target: engine|reach|gen2/router/service.py->gen2/router/detailed_checks.py
 - reason: The DetailedChecks collaborator admits immutable attributed V-8 assessments, reusing canonical serialization, artifact authentication and existing Store protocols. Service gains only construction and authentication/write dispatch; receipt and promotion authority are unchanged.
 - task: 2d-4c part 1
+
+### ML-0152
+- action: admit
+- target: engine|edge|gen2/router/history.py->gen2/router/boundary.py
+- reason: Reuse the Router refusal type when classifying missing complete support; infrastructure failures still propagate.
+- task: 2d-4c part 4b2c2
+
+### ML-0153
+- action: admit
+- target: engine|edge|gen2/router/history.py->gen2/router/detailed_checks.py
+- reason: Reuse the independent same-receipt detailed-record, acquisition, bound-extraction and content-ceiling consumer for retained admission.
+- task: 2d-4c part 4b2c2
+
+### ML-0154
+- action: admit
+- target: engine|edge|gen2/router/history.py->gen2/router/evidence_writer.py
+- reason: Reuse canonical-only governed-capture qualification on that same supporting candidate.
+- task: 2d-4c part 4b2c2
+
+### ML-0155
+- action: admit
+- target: engine|edge|gen2/router/history.py->gen2/store/api.py
+- reason: Open the compatibility/schema-checked Store and capture only historical rows in one snapshot; close it before returning the reader.
+- task: 2d-4c part 4b2c2
+
+### ML-0156
+- action: admit
+- target: engine|edge|gen2/router/service.py->gen2/router/history.py
+- reason: Both Router constructor paths qualify retained support before configuration effects; station and engine inherit that admission before supervisor or listener creation.
+- task: 2d-4c part 4b2c2
+
+### ML-0157
+- action: admit
+- target: engine|file|gen2/router/history.py
+- reason: The operator-approved distinct history capability and retained-support diagnostic share a narrow read adapter, with no active Router or Store retained by the returned viewer.
+- task: 2d-4c part 4b2c2
+
+### ML-0158
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/router/history.py
+- reason: Both Router constructor paths qualify retained support before configuration effects; station and engine inherit that admission before supervisor or listener creation.
+- task: 2d-4c part 4b2c2
+
+### ML-0159
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/router/history.py
+- reason: Both Router constructor paths qualify retained support before configuration effects; station and engine inherit that admission before supervisor or listener creation.
+- task: 2d-4c part 4b2c2
+
+### ML-0160
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/core/canonical.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0161
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/core/instants.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0162
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/core/pagination.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0163
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/router/boundary.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0164
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/router/detailed_checks.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0165
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/router/evidence_writer.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0166
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/router/extractions.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0167
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/router/quote_matching.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0168
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/store/api.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0169
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/store/compat.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0170
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/store/db.py
+- reason: Transitive reach of the approved historical reader/retained-support qualifier through existing row binding, canonical/capture and checked Store helpers; no new write, provider or research-judgment authority.
+- task: 2d-4c part 4b2c2
+
+### ML-0171
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/router/history.py
+- reason: Both Router constructor paths qualify retained support before configuration effects; station and engine inherit that admission before supervisor or listener creation.
+- task: 2d-4c part 4b2c2
