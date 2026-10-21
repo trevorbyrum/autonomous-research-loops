@@ -29,7 +29,7 @@
 
   Yet every fresh installation then contains that row.
 - SQLite authorizes CTAS through catalog writes and a CREATE TABLE action, with **no INSERT authorization**. `total_changes` also stays zero, so a change counter alone won't close it.
-- Astra also noted that **dropping a populated standalone table passes the helper**: data destruction through DDL.
+- Astra also noted that **dropping a populated standalone table passes the helper**: rows removed through DDL go unobserved.
 - This violates the operator's schema-only installation rule. It's charter class (e) again.
 
 **Required (ROOT-CAUSE):**
@@ -39,7 +39,7 @@
   - row contents, not only counts;
   - attached databases and TEMP, if the subject can reach them.
 - Legitimate schema-only DDL (empty CREATE/DROP, index and trigger creation) must still pass.
-- **Qualify the oracle before submitting.** Run your own broad canary set and keep it as evidence. Each case must fail by assertion, with zero unrelated errors, while a schema-only control passes. Cover:
+- **Validate the oracle before submitting.** Run your own broad set of test fixtures and keep it as evidence. Each case must fail by assertion, with zero unrelated errors, while a schema-only control passes. Cover:
   - the exact CTAS counterexample above;
   - `CREATE TABLE ... AS SELECT` with zero rows, which must pass;
   - DROP of a populated table, and DROP of an empty table (the latter must pass);
@@ -47,8 +47,8 @@
   - `ALTER TABLE ... ADD COLUMN ... DEFAULT` on a populated table: decide whether that's a data change, and justify the decision in DOSSIER;
   - CREATE TEMP TABLE AS SELECT;
   - VACUUM INTO;
-  - every round 1 and round 2 canary (bare, commented and CTE DML; triggers; second connection; ATTACH; executescript; UPSERT and REPLACE).
-- **Think adversarially before you submit.** Ask: what other SQLite operation could create, change or destroy application rows without an INSERT/UPDATE/DELETE authorization? Probe each one you find.
+  - every round 1 and round 2 fixture (bare, commented and CTE DML; triggers; second connection; ATTACH; executescript; UPSERT and REPLACE).
+- **Check coverage completeness before you submit.** Review the SQLite documentation for any other statement that can add, change or remove application rows without an INSERT/UPDATE/DELETE authorization, and add a validation fixture for each one you find.
 - Keep the existing commented/CTE, zero-row/rollback, path, snapshot and no-effects coverage. Keep NB1.
 
 ## Constraints
@@ -59,5 +59,5 @@
   - wait for `gen2-landing-*` units before heavy runs.
 - Look up AGENTS.md only inside the repository. No provider calls. Never touch gen-1 runtime state or `127.0.0.1:8765`.
 - **Don't edit** BUILD-STATE, REVIEW-LOG or DEBT-REGISTER. Don't push or merge.
-- **Evidence:** `~/work/research-loops-public/private/evidence/2d-4c-p4b2c2-repair-2/`, with PROGRESS.md, COMPLETION.md and the canary qualification records. Class every fix ROOT-CAUSE or MITIGATION.
+- **Evidence:** `~/work/research-loops-public/private/evidence/2d-4c-p4b2c2-repair-2/`, with PROGRESS.md, COMPLETION.md and the fixture validation records. Class every fix ROOT-CAUSE or MITIGATION.
 - **Commits:** end the message with `Co-Authored-By: GPT-6.1-Sol <noreply@openai.com>`.
