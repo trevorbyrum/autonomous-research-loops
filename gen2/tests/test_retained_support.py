@@ -1,9 +1,9 @@
 """Guarded admission and historical inspection over real admitted records."""
 import json
-import re
 import sqlite3
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -19,6 +19,43 @@ from gen2.tests.test_receipt_summary_domain import METHODS
 
 class RetainedSupportTest(unittest.TestCase):
     RAW = True
+
+    @contextmanager
+    def no_dml(self, *connections):
+        """Observe compiled writes, including triggers; permit schema-catalog DDL.
+
+        SQLITE_OK lets canaries execute. Zero-row and rolled-back writes also
+        violate the no-DML contract; this is not a committed-change counter.
+        """
+        writes = []
+        def observe(conn):
+            dropped = set()
+            def authorize(action, table, column, database, trigger):
+                # DROP authorizes a DELETE on the dropped object as well as
+                # catalog writes. Consume that specific schema operation only.
+                if action in (sqlite3.SQLITE_DROP_TABLE, sqlite3.SQLITE_DROP_VIEW,
+                              sqlite3.SQLITE_DROP_TEMP_TABLE, sqlite3.SQLITE_DROP_TEMP_VIEW):
+                    dropped.add((database, table))
+                elif action == sqlite3.SQLITE_DELETE and (database, table) in dropped:
+                    dropped.remove((database, table))
+                elif action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE) and table not in (
+                        'sqlite_master', 'sqlite_schema', 'sqlite_temp_master', 'sqlite_temp_schema'):
+                    writes.append((action, table, column, database, trigger))
+                return sqlite3.SQLITE_OK
+            conn.set_authorizer(authorize)
+            return conn
+        original = sqlite3.connect
+        def connect(*args, **kwargs):
+            return observe(original(*args, **kwargs))
+        for conn in connections:
+            observe(conn)
+        try:
+            with patch.object(sqlite3, 'connect', connect):
+                yield
+            self.assertEqual(writes, [], 'application-table DML')
+        finally:
+            for conn in connections:
+                conn.set_authorizer(None)
 
     def retained(self, method='canonical_bytes', reverse=False):
         case = raw.DetailedSupportDDLTest.opened(self, method, reverse, seed=True,
@@ -53,7 +90,7 @@ class RetainedSupportTest(unittest.TestCase):
         return diagnostic
 
     def test_control(self):
-        with tempfile.TemporaryDirectory() as root:
+        with tempfile.TemporaryDirectory() as root, self.no_dml():
             router = service.Router.open(Path(root) / 'fresh', None, create=True)
             router.close()
         for reverse in (False, True):
@@ -138,24 +175,26 @@ class RetainedSupportTest(unittest.TestCase):
             for mounted in (None, rf.BUNDLE):
                 with self.subTest(engine=use_engine, mounted=mounted is not None), \
                         patch.object(station, 'Router', service.Router), \
-                        patch.object(service.Router, 'activate_config_bundle') as activate, \
-                        patch.object(service.Router, 'restore_config_bundle') as restore, \
+                        patch.object(service.Router, 'activate_config_bundle', return_value=dict(status='activated', bundle_hash=rf.CONFIG)) as activate, \
+                        patch.object(service.Router, 'restore_config_bundle', return_value=rf.CONFIG) as restore, \
                         patch.object(station, 'Spool') as spool, patch.object(station, 'Supervisor') as supervisor, patch.object(station, '_probe') as probe, \
-                        patch.object(engine, '_Server') as server:
+                        patch.object(engine, '_Server') as server, self.no_dml():
                     clock, control = Mock(), Mock()
                     opener = lambda: station.open_station(path.parent, station_id='test', host_id='fixture',
                         clock=clock, config_bundle=mounted, control=control)
                     with self.assertRaises(reader.ReconciliationRequired):
-                        engine.Engine(opener, Mock()) if use_engine else opener()
+                        active = engine.Engine(opener, Mock()) if use_engine else opener()
+                        active.close()
                     for effect in (spool, activate, restore, supervisor, probe, server, clock, control):
                         effect.assert_not_called()
 
     def test_startup_control(self):
         case = self.retained()
         path = self.disk(case)
-        active = station.open_station(path.parent, station_id='test', host_id='fixture', clock=case.clock,
-            config_bundle=rf.BUNDLE)
-        self.addCleanup(active.close)
+        with self.no_dml():
+            active = station.open_station(path.parent, station_id='test', host_id='fixture', clock=case.clock,
+                config_bundle=rf.BUNDLE)
+            self.addCleanup(active.close)
         self.assertIsInstance(active.router, service.Router)
         fresh = station.open_station(path.parent / 'fresh-root', station_id='test', host_id='fixture',
             clock=case.clock, config_bundle=rf.BUNDLE, create=True)
@@ -210,12 +249,8 @@ class RetainedSupportTest(unittest.TestCase):
     def test_snapshot_and_no_dml(self):
         case = self.retained()
         path = self.disk(case)
-        statements, observations = [], []
+        observations = []
         original = sqlite3.connect
-        def connect(*args, **kwargs):
-            conn = original(*args, **kwargs)
-            conn.set_trace_callback(statements.append)
-            return conn
         qualify = reader.support_diagnostics
         def snapshot(store):
             self.assertTrue(store._conn.in_transaction)
@@ -223,20 +258,65 @@ class RetainedSupportTest(unittest.TestCase):
                 with self.assertRaises(sqlite3.OperationalError): contender.execute('BEGIN IMMEDIATE')
             observations.append(True)
             return qualify(store)
-        with patch.object(sqlite3, 'connect', connect):
+        with self.no_dml():
             api.open_store(path.parent / 'new.sqlite3', create=True).close()
-        with patch.object(sqlite3, 'connect', connect), patch.object(reader, 'support_diagnostics', snapshot):
+        with self.no_dml(), patch.object(reader, 'support_diagnostics', snapshot):
             router = service.Router.open(path, None)
             router.close()
             viewer = reader.HistoryReader.open(path)
         self.assertEqual(observations, [True, True])
         self.assertEqual(viewer.diagnostic(), dict(interpretation='historical_records', reason=None, deficiencies=[]))
-        self.assertEqual([s for s in statements if re.match(r'\s*(INSERT|UPDATE|DELETE|REPLACE)\b', s, re.I)], [])
         before = viewer.records('claims')
         with original(path, isolation_level=None) as durable:
             durable.execute("UPDATE claims SET status='quarantined' WHERE claim_id='clm_loadbear1'")
         self.assertEqual(viewer.records('claims'), before)
         self.assertNotEqual(reader.HistoryReader.open(path).records('claims'), before)
+
+    def test_no_dml_paths(self):
+        with tempfile.TemporaryDirectory() as root, self.no_dml():
+            store = api.open_store(Path(root) / 'fresh', create=True)
+            service.Router(store, None).close()
+        for deficient in (False, True):
+            case = self.retained()
+            if deficient:
+                self.deficient(case)
+            path = self.disk(case)
+            for entry in ('direct', 'open', 'history'):
+                with self.subTest(deficient=deficient, entry=entry), self.no_dml(case.db):
+                    if entry == 'history':
+                        viewer = reader.HistoryReader.open(path)
+                        self.assertEqual(bool(viewer.diagnostic()['deficiencies']), deficient)
+                        self.assertEqual(viewer.records('claims')['records'], case.store.select('claims'))
+                    else:
+                        opener = case.make_router if entry == 'direct' else lambda: service.Router.open(path, None)
+                        if deficient:
+                            with self.assertRaises(reader.ReconciliationRequired):
+                                opener()
+                        else:
+                            active = opener()
+                            if entry == 'open':
+                                active.close()
+            self.doCleanups()
+
+    def test_no_dml_oracle(self):
+        for prefix in ('', '-- canary\n', '/* canary */\n', 'WITH increment(n) AS (VALUES (1))\n'):
+            for sql in ("INSERT INTO witness VALUES (2, 1)", 'UPDATE witness SET value=value+1',
+                        'DELETE FROM witness', 'REPLACE INTO witness VALUES (1, 2)'):
+                with self.subTest(prefix=prefix, sql=sql), sqlite3.connect(':memory:', isolation_level=None) as conn:
+                    conn.executescript('CREATE TABLE witness (id INTEGER PRIMARY KEY, value INTEGER); INSERT INTO witness VALUES (1, 1);')
+                    before = conn.execute('SELECT * FROM witness').fetchall()
+                    with self.assertRaisesRegex(AssertionError, 'application-table DML'):
+                        with self.no_dml(conn):
+                            conn.execute(prefix + sql)
+                    self.assertNotEqual(conn.execute('SELECT * FROM witness').fetchall(), before)
+        with self.no_dml(), sqlite3.connect(':memory:') as conn:
+            conn.executescript('CREATE TABLE witness (id INTEGER); CREATE INDEX witness_id ON witness(id); '
+                'CREATE VIEW witness_view AS SELECT * FROM witness; DROP VIEW witness_view; DROP TABLE witness; '
+                'CREATE TEMP TABLE witness (id INTEGER); DROP TABLE witness;')
+        with self.assertRaisesRegex(AssertionError, 'application-table DML'):
+            with self.no_dml(), sqlite3.connect(':memory:') as conn:
+                conn.executescript('CREATE TABLE witness (id INTEGER); DROP TABLE witness; '
+                    'CREATE TABLE witness (id INTEGER); INSERT INTO witness VALUES (1);')
 
     def test_history_compatibility_and_schema(self):
         with tempfile.TemporaryDirectory() as root:

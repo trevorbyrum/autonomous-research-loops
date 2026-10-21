@@ -6188,3 +6188,62 @@ Production is 13,709 engine / 12,256 gateway lines; service.py is 1,460 lines.
 Frozen-source provenance, stopped attempts, actual footprint and completion:
 private/evidence/2d-4c-part4b2c2/COMPLETION.md. Independent acceptance is not
 claimed; reconciliation decisions remain reserved for Trevor.
+
+#### 2d-4c part 4b2c2 repair 1 — design before test changes (2026-10-21)
+
+Read the named Astra review and prior completion first, then the repair brief,
+parent Required/Constraints/rulings, charter, boundary contract and V-4/V-8.
+Repository-only AGENTS lookup found none. Before repository changes, the exact
+reviewed test reproduced C1: bare opening UPDATE fails by assertion; commented
+and CTE opening UPDATEs and commented installation INSERT pass despite confirmed
+writes. Raw outcomes and exact old test bytes are retained in the repair evidence.
+
+ROOT-CAUSE: replace SQL-prefix classification with SQLite authorizer observation
+of INSERT/UPDATE/DELETE actions on every observed connection, including existing
+caller-owned connections. Allow only SQLite's schema catalogs, so installation
+DDL remains valid. Always return SQLITE_OK: this observes rather than prevents
+writes, and injected successful writes fail by assertion without authorization
+errors. The authorizer conservatively observes compiled write operations, even
+if they affect no rows or later roll back; it is not a committed-change counter.
+Retain snapshot/contender/frozen-readback assertions. Cover installation, direct
+and owned admission (qualified/refused), historical readback and station/engine
+startup; qualify bare/comment/CTE canaries with actual changed-row evidence.
+
+ROOT-CAUSE for NB1: give activation/restoration mocks valid recorded bundle
+results, and close unexpected successful starts before asserting refusal. Preserve
+all no-effects assertions. Compare all original 13 methods with exact cf52bd1
+service/station bytes; credit assertion failures only, never mock errors.
+
+Estimate: about 170 handwritten repository additions (test observer, path and
+oracle qualifications about 115; startup mock changes about 15; dossier about 40).
+Private retained drivers are estimated separately at 250 lines. Only this test
+module and DOSSIER change; no production/schema/fixture/harness/ledger change.
+Run full gen2-test, trigger-order, composition, startup/station/engine, complete
+2D4C4B2C2 mutation family, and eight static gates before the implementation commit.
+No shared fixture is edited. Copy snapshot venv with cp -a and check landing units
+before each heavy start. Evidence: private/evidence/2d-4c-p4b2c2-repair-1/.
+
+**Repair 1 implemented and validated, 2026-10-21.** C1 is ROOT-CAUSE: the
+observer uses SQLite actions on new and caller-owned connections, independent
+of SQL spelling. It permits catalog writes and consumes the specific DELETE
+authorization associated with a DROP schema object; DML after same-name schema
+recreation is still caught. Every callback returns SQLITE_OK. Exact review
+canaries now execute and fail by assertion with zero errors; additional bare/CTE
+installation INSERTs and 16 syntax/verb combinations qualify the same oracle.
+The path probe supplies 33 clean assertion failures across qualified/refused
+admission, history and startup. All original snapshot and no-effects assertions
+remain except the replaced regex. NB1 is ROOT-CAUSE: valid recorded bundle
+results let all 13 original methods run against exact original service/station
+bytes with 18 assertion failures, zero errors/skips; all four startup subcases
+fail for missing refusal. New-reader behavior gets no original-reader credit.
+
+Required gates pass on the frozen test bytes: 4,370 engine tests (two existing
+skips); 339 reversed triggers / 6,149 identical Store outcomes; six composition
+and 221 direct/transitive station/engine methods; all 12 affected mutants killed
+with 12 passing pairings across four distinct controls; all eight static checks.
+No shared fixture, production, DDL, schema, hash pin, harness or control entry
+changes. Production remains 13,709 engine / 12,256 gateway lines. The frozen
+1,321-input manifest differs from final source only by this appended execution
+note. Exact old false-acceptance evidence, qualified canaries, disclosed failed
+development attempts, scope, commands/exits and completion are retained under
+private/evidence/2d-4c-p4b2c2-repair-1/. Independent acceptance remains pending.
