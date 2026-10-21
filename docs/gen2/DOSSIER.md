@@ -6145,3 +6145,17 @@ lines, plus the tool-generated identity/section scaffolding, bringing the
 handwritten estimate to about 515. This remains about 500 for one coherent
 interface; report the generated templates and conservative total separately.
 No harness redesign, source-contract exception or reconciliation is added.
+
+**4b2c2 station-effect correction, before changing station wiring.** The
+startup audit also has to treat Spool construction as an effect: its constructor
+creates the spool directory before the current Router.open call. Configuration,
+supervisor and listener assertions alone miss that filesystem effect. Admit the
+Router with no staged-byte reader first, then construct and bind the station's
+spool before exposing the station; close the owned Router if spool construction
+fails. This is composition wiring using the existing constructor contract, with
+no new callable flag or active/history mode. Add Spool to the refused-start
+no-effects oracle and a separate accepted-start paired mutant. Allow about 25
+additional handwritten lines; revised guide footprint is about 540, plus generated
+control/ledger scaffolding. Stop the first frozen engine/order/full-inventory
+attempts and rerun them on corrected frozen bytes; unchanged gateway inputs may
+finish independently. No stopped attempt supplies passing-gate credit.
