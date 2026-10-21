@@ -5827,3 +5827,17 @@ Stop and retain the first engine/order/inventory attempts without passing credit
 freeze the corrected candidate and rerun those full gates. The independent gateway
 run may finish: its source, tests and runners are unchanged. No harness, loader,
 lockfile, timeout, new domain decision or metrics exemption is needed.
+
+**4b2b prior-consumer isolation correction (before test correction).** The
+focused 4b2a audit kills 12/14 mutants; stored-topic and stored-verifier survive
+because the new independent basis gate rejects those same corrupt columns first.
+Restore causal isolation in the older detailed-only stored-operands experiment:
+suspend only `_has_basis` on that Router instance around its promotion assertion,
+using stdlib patch.object so normal and exceptional exits restore it. Preserve
+all original state/diagnostic assertions and unchanged mutant/control definitions.
+Current basis tests and every accepted control keep the basis predicate active.
+This is a test-coverage root cause, not a production exception or harness fix.
+Allow about five test lines and these notes within the 480-line slice estimate.
+Retain the 12/14 result and stopped second full attempts; freeze final test bytes
+and rerun every engine gate, including the full inventory. No timeout or pairing
+changes. Capture/refence and retained-state work remain explicitly deferred.
