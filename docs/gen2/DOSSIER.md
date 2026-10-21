@@ -5890,3 +5890,112 @@ refusal/diagnostic/readback/schema-only-installation tests remain later slices.
 The October 20 ruling is not waived or claimed implemented. Reconciliation
 remains a proposal with the operator decisions reserved above; no procedure,
 installation DML, opening-time demotion or grandfathering is introduced.
+
+#### 2d-4c part 4b2c — re-estimate and guard boundary; stopped before code
+
+2026-10-21, branch `gen2`, starting at `07d8fa3`. Read the complete task,
+Required/Constraints and every ruling/continuation; all of §2d-4c, including
+the 4b design and 4b2/4b2a/4b2b notes; BUILD-CHARTER/BOUNDARIES, V-4/V-8,
+accepted quote/capture dossier notes, named flow S4/S8 and adjudication
+(b)5/7/(c)2, methodology synthesis, and the named 4b2b completion/Astra review.
+Repository-only AGENTS lookup found none. The existing BUILD-STATE working
+edit is external and remains untouched. **INCOMPLETE: design only.**
+
+**Open operator choice: the active-use and historical-inspection interface.**
+The October 20 ruling settles refusal, preserved history and schema-only
+installation. It does not choose which callable surfaces constitute active
+use, or how inspection is selected without yielding an active Router. The
+newest continuation explicitly names these as choices requiring a stop after
+DOSSIER. This is a remaining interface decision within that ruling, not a
+request to reconsider refusal or approve a reconciliation procedure.
+
+Concrete entry-point audit:
+
+- `store.db.connect` checks compatibility/schema and opens a durable read/write
+  connection. `api.open_store` and `adopt_in_memory` expose the same Store
+  primitives. There is no inspection opener or read-only Store capability.
+- `Router.open` delegates to the public `Router(store, spool, ...)` constructor.
+  That constructor composes collaborators without checking retained support.
+  An open-only check would leave direct construction uncovered.
+- The same Router exposes `receipt` (historical operation readback), `status`,
+  mutations, and `candidate_units`/`evidence_inventory`/`coverage_snapshot`.
+  `read_inventory` supplies stored claim statuses; accounting's candidate-unit
+  computation counts latest accepted claims without detailed qualification.
+  A write-only fence would therefore leave an active accepted-evidence read.
+- `_snapshot` uses the ordinary writable Store transaction. Status and health
+  refrain from writing by convention; their transaction is not an inspection
+  capability. Health currently means that the Router can commit.
+- `open_station` constructs the Router before restoring/activating configuration
+  and creating the supervisor. The engine serves operator status only after
+  this station opens. Rejecting startup alone would remove that inspection
+  route; keeping a full Router alive for status would need an explicit fence
+  over its remaining routes. Neither interface is selected by the ruling.
+
+**Recommendation for Trevor, not implemented:** admit the normal Router only
+after a store-wide, snapshot-consistent check of every stored
+`accepted_support`, load-bearing claim revision against the complete relation,
+including canonical-only governed captures. Cover both construction paths and
+station startup before configuration or supervisor effects. Do not restrict the
+check to the requested topic or only the latest revision. Fresh and fully
+qualified retained stores retain normal use. Refuse deficient activation with
+an explicit `reconciliation_required` diagnostic identifying affected topic,
+claim/revision and deficiency; do not change any row.
+
+Provide a separate explicitly opened history-reader object in the Router
+subsystem, with a closed read-only interface for stored claims, receipts,
+checks, bases and audit history plus the refusal diagnostic. It must expose
+neither a normal Router nor write/launch/configuration/approval/export methods,
+accepted-evidence accounting, completion inputs or a commit-capable health
+answer. Label returned statuses as historical records. Inspection is a distinct
+capability, never a flag that skips validation on an otherwise active Router.
+Trevor must approve this division and inspection selection before code; the
+precise callable interface follows that approved boundary. Store compatibility
+and schema identity remain enforced. Reconciliation authority, approved
+manifest/request hash, stale-preview pins, store/topic scope and authorized
+quarantine transitions remain reserved by the existing proposal above.
+
+**Conditional remainder estimate: about 610 handwritten repository lines**,
+including documentation, excluding generated controls: item 1, capture/final
+refence, **250** (collaborator candidate/capture/refence logic 55, thin wiring 5,
+isolated tests 125, mutants/integration 35, dossier notes 30); item 2, guard and
+proposed history interface, **360** (collaborator/inspection logic 100, store/
+Router/station integration 30, refusal/readback/schema-only tests 140,
+mutants/integration 35, dossier notes 55). Private retained drivers are about
+300 lines, reported separately. The previous 220+200 allowance did not budget
+a concrete inspection capability and all activation/read entry paths. This
+estimate depends on approval of the recommendation; a different boundary
+requires re-estimation. Harness/loader integration is not included and, if
+needed, must remain its own slice.
+
+Under the continuation's sizing rule, 610 is well above about 500: after the
+operator resolves this choice, implement item 1 only and stop, with the guard
+explicitly pending. **This dispatch stops before either item**, as required
+by the unsettled guard choice. Item 1 must extend/carry `require_support`'s
+same candidate through canonical capture binding, never pool separate receipt
+searches. Its completed-commit refence runs after all evidence/receipts, inside
+the existing writer transaction, over accepted captures checked by this
+operation only; it preserves SQL 12's quarantine behavior and both commit
+kinds. No intermediate missing receipt may quarantine a later complete commit.
+Read actual records/bases independently of SQL views and preserve every
+accepted tier/use/ceiling/contract/tier-0 gate and historical interpretation.
+
+Future implementation needs isolated Router regressions in both trigger orders,
+non-pooling, historical/adjudication/ceiling/capture failures and accepted
+controls, operation/status scoping, replay/conflict/rollback, and paired
+mutants with qualified separate accepted controls. Guard tests must additionally
+prove fresh/qualified retained activation, explicit deficient refusal, preserved
+inspection/readback, direct construction coverage and zero installation/opening
+DML. Full gen2-test, trigger-order, composition, mutation inventory, gateway and
+all eight static gates remain required for implementation; no such execution
+credit is claimed here. This documentation-only stop has no affected runtime,
+fixture, schema, trigger, pin, mutation family or production-line change.
+
+Carry-forward evidence hygiene labels the named 4b2b `control-preservation.json`
+as preliminary, preserving its original 23 count and identifying the accepted
+final count of 24 from the named completion/review; it is not a new inventory
+run. Evidence, source/input hashes, exact interface audit and resumable next
+steps: private/evidence/2d-4c-part4b2c/PROGRESS.md and COMPLETION.md. Commit this
+estimate alone before code. No provider call, database migration, retained-row
+repair, protected-register edit, push or merge occurs. No heavy run is needed;
+future heavy starts must first wait for no active gen2-landing-* user unit and
+copy any snapshot venv with cp -a. Whole 4b2/part 4 remains **INCOMPLETE**.
