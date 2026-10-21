@@ -131,3 +131,38 @@ for name, target, old, new, killer, control in (
         target=target, old=old, new=new))
     CONTROLS[mid] = dict(controls=[CAPTURE_ROUTER + control],
         why='Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled.')
+
+# 4b2c2: one guarded admission and a closed, detached history capability.
+START = 'test_retained_support.RetainedSupportTest.test_'
+HISTORY = 'gen2/router/history.py'
+for name, target, old, new, killer, control in (
+        ('constructor', 'gen2/router/service.py', 'require_retained_support(self._store)',
+            'None', 'refusal_and_owned_close', 'control'),
+        ('snapshot', 'gen2/router/service.py', 'with self._snapshot():\n            require_retained_support(self._store)',
+            'if True:\n            require_retained_support(self._store)', 'snapshot_and_no_dml', 'control'),
+        ('refuse', HISTORY, 'if deficiencies:', 'if False:', 'refusal_and_owned_close', 'control'),
+        ('all-claims', HISTORY, 'for claim in store.select("claims", {"status": "accepted_support", "load_bearing": 1}):',
+            'for claim in store.select("claims", {"status": "accepted_support", "load_bearing": 1})[:1]:',
+            'every_revision_and_topic', 'control'),
+        ('all-revisions', HISTORY, 'try:\n            checks.require_support',
+            'if any(c["revision"] > claim["revision"] for c in store.select("claims", {"claim_id": claim["claim_id"]})): continue\n        try:\n            checks.require_support',
+            'every_revision_and_topic', 'control'),
+        ('qualify', HISTORY, 'checks.require_support(claim, captures._quote_support_valid)',
+            'None', 'complete_relation', 'control'),
+        ('capture', HISTORY, 'captures._quote_support_valid', 'lambda doc: True', 'capture_refusal', 'capture_control'),
+        ('history-snapshot', HISTORY, 'with store.transaction():', 'if True:', 'snapshot_and_no_dml', 'history_control'),
+        ('closed-family', HISTORY, 'if family not in _FAMILIES:', 'if False:', 'history_closed_readback', 'history_control'),
+        ('record-copy', HISTORY, 'deepcopy(self._records[family])', 'self._records[family]', 'history_closed_readback', 'history_control'),
+        ('diagnostic-copy', HISTORY, 'deepcopy(self._diagnostic)', 'self._diagnostic', 'history_closed_readback', 'history_control')):
+    mid = '2D4C4B2C2-' + name
+    MUTATIONS.append(Mutation(mid, '2d-4c part 4b2c2', name, (START + killer,), target=target, old=old, new=new))
+    CONTROLS[mid] = dict(controls=[START + control],
+        why='Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior.')
+
+mid = '2D4C4B2C2-station-order'
+MUTATIONS.append(Mutation(mid, '2d-4c part 4b2c2', 'spool effects precede guarded admission',
+    (START + 'startup_before_effects',), target='gen2/app/station.py',
+    old='router = Router.open(root / "store.sqlite3", None, create=create, clock=clock, **(router_options or {}))\n    try:\n        spool = Spool(root / "spool")\n    except BaseException:\n        router.close()\n        raise\n    router._spool = spool  # finish composition only after retained-state admission',
+    new='spool = Spool(root / "spool")\n    router = Router.open(root / "store.sqlite3", spool, create=create, clock=clock, **(router_options or {}))'))
+CONTROLS[mid] = dict(controls=[START + 'startup_control'],
+    why='Separate qualified-retained station startup binds the real spool and preserves ordinary configuration/supervisor behavior.')

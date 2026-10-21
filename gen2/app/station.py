@@ -66,8 +66,15 @@ def open_station(root: str | Path, *, station_id: str, host_id: str, clock: Call
     under it, whatever bundle it pins. It cannot be combined with a mounted
     bundle."""
     root = Path(root)
-    spool = Spool(root / "spool")
-    router = Router.open(root / "store.sqlite3", spool, create=create, clock=clock, **(router_options or {}))
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
+    router = Router.open(root / "store.sqlite3", None, create=create, clock=clock, **(router_options or {}))
+    try:
+        spool = Spool(root / "spool")
+    except BaseException:
+        router.close()
+        raise
+    router._spool = spool  # finish composition only after retained-state admission
     if fixture_policy is not None:
         if config_bundle is not None:
             router.close()

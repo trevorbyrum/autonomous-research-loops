@@ -63,6 +63,7 @@ from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
 from gen2.router.evidence_writer import EvidenceWriter
 from gen2.router.extractions import ExtractionRecords
 from gen2.router.detailed_checks import DetailedChecks
+from gen2.router.history import require_retained_support
 from gen2.router.extractor_registry import EXTRACTOR_COMMANDS, ExtractorRegistry
 from gen2.router.lifecycle import LIFECYCLE_COMMANDS, Lifecycle, is_episode_hold
 from gen2.router.observations import Observations
@@ -214,6 +215,8 @@ class Router:
     def __init__(self, store: api.Store, spool, *, clock: Callable[[], str] = utc_now, new_id: Callable[[str], str] = random_id,
                  extensions=None, fault: Callable[[str], None] | None = None, schemas: SchemaSet | None = None, gateway_captures=None) -> None:
         self._store = store
+        with self._snapshot():
+            require_retained_support(self._store)
         self._spool = spool
         self._clock = clock
         self._new_id = new_id
@@ -240,7 +243,12 @@ class Router:
 
     @classmethod
     def open(cls, path: str | Path, spool, *, create: bool = False, **kwargs) -> "Router":
-        return cls(api.open_store(path, create=create), spool, **kwargs)
+        store = api.open_store(path, create=create)
+        try:
+            return cls(store, spool, **kwargs)
+        except BaseException:
+            store.close()
+            raise
 
     def close(self) -> None:
         self._store.close()

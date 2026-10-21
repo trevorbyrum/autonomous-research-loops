@@ -129,6 +129,7 @@ from gen2_ddl_triggers import installed_triggers  # noqa: E402
 # mutant exists only in the child tree.
 FILE_TARGETS = {
     "gen2/schema/verification-receipt.schema.json": ("attr", "test_span_cap", "RECEIPT_SCHEMA"),
+    "gen2/router/history.py": ("module", "gen2.router.history", "gen2.router.service", "gen2.app.station", "gen2.tests.router_fixtures"),
     "gen2/router/detailed_checks.py": ("module", "gen2.router.detailed_checks", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/router/observations.py": ("module", "gen2.router.observations", "gen2.router.service", "gen2.tests.router_fixtures"),
     "tools/gen2_json_member_domain.py": ("disk",),

@@ -133,19 +133,16 @@ class LockWaitTest(unittest.TestCase):
         clock = {"now": E_MINUS}
         issued = threading.Event()
 
-        def act() -> dict:  # a connection is used on the thread that opened it
-            store = api.open_store(self.world.directory / "store.sqlite3")
-            store._conn.set_trace_callback(lambda sql: issued.set() if sql == "BEGIN IMMEDIATE" else None)
-            router = service.Router(store, self.world.spool, clock=lambda: clock["now"])
-            try:
-                return getattr(router, operation)(request)
-            finally:
-                router.close()
+        def admitted():  # admission finishes before the operation's lock wait
+            router = service.Router.open(self.world.directory / "store.sqlite3", self.world.spool, clock=lambda: clock["now"])
+            router._store._conn.set_trace_callback(lambda sql: issued.set() if sql == "BEGIN IMMEDIATE" else None)
+            return router
 
-        self.world.db.execute("BEGIN IMMEDIATE")
-        try:
-            with ThreadPoolExecutor(1) as pool:
-                pending = pool.submit(act)
+        with ThreadPoolExecutor(1) as pool:
+            router = pool.submit(admitted).result(timeout=10)
+            try:
+                self.world.db.execute("BEGIN IMMEDIATE")
+                pending = pool.submit(getattr(router, operation), request)
                 if not issued.wait(10):
                     pending.result(timeout=0)  # an error before the lock is the failure to report
                     self.fail("the router never asked for the write lock")
@@ -153,9 +150,10 @@ class LockWaitTest(unittest.TestCase):
                     clock["now"] = E
                 self.world.db.execute("ROLLBACK")
                 return pending.result(timeout=10)
-        finally:
-            if self.world.db.in_transaction:
-                self.world.db.execute("ROLLBACK")
+            finally:
+                if self.world.db.in_transaction:
+                    self.world.db.execute("ROLLBACK")
+                pool.submit(router.close).result(timeout=10)
 
     def instants(self) -> set:
         """Every instant the cancellation wrote: the request and the end, the transition, the lease's release, the topic's update and the audit event."""

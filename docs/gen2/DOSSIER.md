@@ -6172,3 +6172,19 @@ family's transaction identity, not a weakened temporal rule. Allow about 40
 additional test/documentation lines (about 580 handwritten overall). Stop B's
 engine/full-inventory attempts and rerun on a new freeze. B's Store-order and
 completed gateway/composition runs retain byte-identical inputs and may stand.
+
+**4b2c2 implemented and validated, 2026-10-21.** Both Router constructor
+paths now qualify every stored accepted load-bearing revision in one snapshot;
+station admission precedes spool/configuration/supervisor effects. Deficiencies
+raise `reconciliation_required` without changing rows. HistoryReader returns
+only detached, labelled historical records and diagnostics after closing its
+checked Store. No reconciliation procedure or validation-skipping mode exists.
+Final-source gates pass: 4,368 engine tests (two skips), 339 triggers / 6,149
+identical order outcomes, six composition and 175 startup/engine tests;
+3,720/3,720 full and 1,476/1,476 affected mutants; two 1,540-test gateway suites
+and 413/413 gateway mutants; all eight static checks. All 3,708 prior controls
+remain unchanged; twelve new and six temporal pairings have native path proof.
+Production is 13,709 engine / 12,256 gateway lines; service.py is 1,460 lines.
+Frozen-source provenance, stopped attempts, actual footprint and completion:
+private/evidence/2d-4c-part4b2c2/COMPLETION.md. Independent acceptance is not
+claimed; reconciliation decisions remain reserved for Trevor.

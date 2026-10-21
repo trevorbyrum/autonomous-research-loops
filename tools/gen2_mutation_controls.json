@@ -24614,5 +24614,89 @@
    "test_router_capture_support.RouterCaptureSupportTest.test_control"
   ],
   "why": "Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled."
+ },
+ "2D4C4B2C2-all-claims": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-all-revisions": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-capture": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_capture_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-closed-family": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_history_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-constructor": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-diagnostic-copy": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_history_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-history-snapshot": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_history_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-qualify": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-record-copy": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_history_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-refuse": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-snapshot": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_control"
+  ],
+  "why": "Separate qualified-retained activation, canonical capture, or accepted historical read reaches this predicate without losing its permitted behavior."
+ },
+ "2D4C4B2C2-station-order": {
+  "by_hand": true,
+  "controls": [
+   "test_retained_support.RetainedSupportTest.test_startup_control"
+  ],
+  "why": "Separate qualified-retained station startup binds the real spool and preserves ordinary configuration/supervisor behavior."
  }
 }
