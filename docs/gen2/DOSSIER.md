@@ -5740,3 +5740,78 @@ promotion/final refence and retained-state active-use refusal remain for later
 4b2 sub-parts. Reconciliation is a proposal only, requiring operator approval.
 No opening-time demotion, installation DML, grandfathering policy, provider
 call, real migration, protected-register edit, push or merge is introduced.
+
+#### 2d-4c part 4b2b — remainder estimate before code (2026-10-21)
+
+Branch `gen2`, starting at `380de3a`; accepted Router slice `0464983`.
+Read the task and all rulings/continuations, all of §2d-4c (including the
+4b design, `0f3d9cd` estimate and 4b2a notes), BUILD-CHARTER/BOUNDARIES,
+V-4/V-8, named flow S4/adjudication/methodology authority, previous completion
+and Astra's accepted 4b2a review. Repository-only AGENTS lookup found none.
+The existing BUILD-STATE edit is external and remains untouched. No necessary
+operator choice is open for this slice; reconciliation remains a proposal.
+
+**Concrete remainder: about 900 handwritten repository additions/changes**:
+same-candidate basis consumption and isolated regressions/mutants/notes 480;
+canonical-only capture promotion and operation-scoped completed-commit refence
+with independent tests/mutants/notes 220; retained-state active-use refusal,
+inspection/readback and schema-only installation tests/mutants/notes 200.
+Generated control data is separate. Private retained audit/trace/gate drivers
+are estimated at 300 lines and reported separately. This corrects the earlier
+basis-only allowance: independent selected-record content qualification and
+counterfactuals need their own budget, beyond the detailed-record selector.
+
+**Implement only the first coherent sub-part, 4b2b, about 480 lines**:
+DetailedChecks basis/content consumption and stored-column overlays 100;
+isolated public Router qualification, complementary-receipt and transaction
+regressions 225; paired predicate mutants/control registration 60; fixture
+integration 15; this estimate and completion notes 80. Extend the existing
+`require_support` candidate loop: each candidate must satisfy both the detailed
+records and its actual acquisition/extraction basis before returning. Never
+add an independent existential search that can choose a different receipt.
+No harness or loader change belongs to this slice.
+
+Read actual source_acquisitions and their selected retained response records,
+with exact topic/work/version/verifier/hash/gateway-call/time/route bindings.
+Independently apply the existing recorded-nonblank/1+ucd17.0.0 content ceiling
+and searched_ok/full_text condition; no SQL42, bound-basis or content-tier view
+supplies the Python oracle. Canonical receipts retain their acquiring invocation
+binding. Own extraction consumes its pinned extraction with exact acquisition,
+verifier, producing invocation/tool and output tier. Validated extraction
+consumes its exact successful independent /2 validation, target basis and exact
+validator output ceiling. Retain the validation's historical interpretation;
+no current-registry reinterpretation is introduced at promotion. Extraction
+tier-0 alarms remain non-authorizing. Overlay stored acquisition and extraction
+invocation columns, as already done for the other actual receipt operands.
+Admission authentication and immutable history remain their existing boundaries;
+this consumer binds recorded relationships, not scientific correctness.
+
+Tests isolate Python by omitting SQL promotion guards and making the support,
+bound-basis and content-tier views permissive after pristine Router record
+admission. Explicit retained/corruption operands exercise acquisition bindings,
+selected-record/coverage/content/output ceilings, own/validated identity and
+lineage, unsuccessful/historical validation, tier-0, and complementary receipts.
+Controls span three methods/both orders; both output tiers must independently
+constrain validated support. Preserve replay/conflict/rollback and all earlier
+consumer controls. Gate suspensions, if needed for old predicate experiments,
+remain scoped, restored on every exit and test-only. Retain failing-before /
+passing-after public probes and separate accepted-control traces.
+
+**Explicitly deferred:** canonical-only capture promotion/final refence and
+the retained-state refusal guard, reconciliation diagnostic, immutable historical
+readback and no-installation-DML tests. The October 20 ruling is binding but is
+not implemented by this basis slice. No opening change, grandfathering, demotion,
+installation DML, accounting change or reconciliation procedure is added.
+Astra's reserved reconciliation decisions remain with Trevor: authenticated
+operator authority, approved request/manifest hash and stale-preview revision
+checks, topic/store scope and authorized quarantine transitions. New verifier
+evidence must always pass normal independent authenticated admission.
+
+Before the implementation commit: full gen2-test, trigger-order, composition,
+full mutation inventory (superset of affected complete --only families),
+gen2-gateway and all eight static gates; qualify new accepted-control paths
+and preserve every old pairing. No DDL/schema/pin change is planned. Every
+heavy start waits for no active/activating gen2-landing-* user unit. Snapshot
+venvs use cp -a. Evidence, attempts and resumable PROGRESS.md are under
+private/evidence/2d-4c-part4b2b/. Commit this note alone before code; implement
+only this first bounded sub-part and stop. Whole 4b2/part 4 remains INCOMPLETE.
