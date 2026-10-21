@@ -3040,3 +3040,24 @@ The post-2q Gate D is renumbered #5.
   - (1) Remaining 4b2: same-receipt acquisition/bound-extraction qualification (extend the **same candidate selection**, not a separate existential check), capture promotion and final refence, and the retained-state guard.
   - (2) The reconciliation proposal is reserved for Trevor before any implementation. To settle: authenticated operator identity (never a caller label), manifest/request hash and stale-preview checks, topic vs whole-store scope, and authorized quarantine transitions. A preview or manifest can't confer support.
 - **Landing at 0464983:** `gen2-check` green (7,313 s), `gen2-gateway` green (1,014 s).
+
+## 2026-10-21: 2d-4c part 4b2b (same-receipt basis qualification in the Router, 380de3a..43772c5): PASS on the first review. Accepted
+- **Astra** (`bd741a59`; `private/reviews/gen2-2d-4c-p4b2b-astra-review-20261021.md`): **A, B and C all PASS, ROOT-CAUSE.** Blocking: none.
+- **Candidate loop:** `require_support` runs detailed qualification and `_has_basis(row, rank)` in the same candidate loop, and both must pass before that candidate returns. There's no pooling; a later complete candidate is still allowed.
+- **Acquisition and content:**
+  - acquisition uses the actual topic/work/version/verifier and the obtained hash, gateway call, retrieval and route;
+  - canonical support binds the acquiring invocation;
+  - content is selected by the retained record identity, and nonblank parity with SQL 16 was checked over 1,112,064 scalar values.
+- **Extraction:**
+  - own extraction needs the non-NULL pin, declared tool, invocation, verifier ownership, output tier and lineage;
+  - validated extraction needs the exact `/2` `independent_extraction` result (policy 2, succeeded) and both output ceilings;
+  - tier-0 alarms stay non-authorizing.
+- **SQL comparison:** Astra compared against SQL 15/16/32/33/34/42 and found nothing weaker.
+- **Corrections:**
+  - the decoder now reuses `canonical.parse_json_strict` (NaN and duplicate-member gaps closed), with a paired mutant;
+  - the `_has_basis` suspension is scoped to the older 4b2a test only, restored, and test-only.
+- **Carry-forward:**
+  - (1) capture/final refence, ~220 lines;
+  - (2) the retained-state guard, ~200 lines; reconciliation decisions are still reserved for Trevor;
+  - (3) evidence hygiene: the preliminary `control-preservation.json` count says 23 where the final is 24.
+- **Landing at 43772c5:** `gen2-check` green (7,458 s), `gen2-gateway` green (1,014 s).
