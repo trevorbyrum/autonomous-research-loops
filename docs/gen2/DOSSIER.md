@@ -5999,3 +5999,61 @@ estimate alone before code. No provider call, database migration, retained-row
 repair, protected-register edit, push or merge occurs. No heavy run is needed;
 future heavy starts must first wait for no active gen2-landing-* user unit and
 copy any snapshot venv with cp -a. Whole 4b2/part 4 remains **INCOMPLETE**.
+
+#### 2d-4c part 4b2c1 — Router capture consumption and final refence
+
+Implements item 1 of the `117573a` design only. DetailedChecks.require_support
+extends its complete candidate loop with EvidenceWriter's canonical capture
+predicate. Detailed records, acquisition/basis, claim-owned use/tier and exact
+capture binding must qualify on that same receipt. Stored quote_check_id joins
+the existing stored-column overlays; detached receipt labels cannot select a
+different check. The former separate existential capture search is removed.
+Quarantined captures remain blocked for non-load-bearing claims as well.
+
+EvidenceWriter.refence_captures runs after all evidence and receipts, immediately
+before the final audit row in the existing writer transaction. It reads this
+operation's governed check identities and rechecks only accepted claim revisions;
+blocked support becomes quarantined, preserving SQL12 semantics. Interim and
+final outcomes share this boundary. No intermediate missing receipt is settled.
+Neither SQL42 nor governed/bound/content SQL views supply the Python oracle.
+SQL admission and final-audit guards remain installed in production.
+
+Eight isolated public Router tests cover both orders, complementary canonical /
+extraction receipts, later complete candidates, stored check identity, historical
+readback, detailed/basis refusals at refence, both commit kinds, operation/status
+scope, non-load-bearing quarantine and replay/conflict/rollback. Nine new mutants
+have separate passing controls and native trace/chooser qualification; all prior
+pairing entries and their order remain. Three existing mutant text anchors follow
+the relocated predicate/wiring; their identities, killers and controls remain.
+Full execution results will be recorded here and in the private completion.
+
+This is ROOT-CAUSE within item 1: one candidate now carries all qualifications,
+and completed commits independently recheck the exact operation scope. It binds
+recorded relationships, never scientific truth. Guard, opening/construction,
+station, inspection, accounting and reconciliation are unimplemented and remain
+outside this dispatch. Whole 4b2/part 4 remains INCOMPLETE pending the operator's
+active-use/inspection ruling. Evidence and resumable progress are retained in
+private/evidence/2d-4c-part4b2c1/. No DDL/schema/hash-pin change is needed.
+
+Execution gates pass: 4,355 engine tests (two existing skips), 339 triggers /
+6,149 identical trigger-order outcomes, six composition tests, all eight static
+gates and both 1,540-test gateway suites with 413/413 gateway mutants killed.
+The corrected full engine inventory kills 3,708/3,708 mutants, with 3,691
+separate passing controls and zero invalid/surviving cases. Explicit affected
+families kill 1,279/1,279 with 1,275 separate controls. All 3,699 prior control
+entries and their order are preserved; the nine new and three relocated older
+mutants have native accepted-control trace/chooser qualification. The existing
+11 in-killer cases and six exceptions remain unchanged. No exemption is added.
+
+The original-consumer probe has five assertion failures across the exact final
+eight-test module, zero errors; the implemented module passes all eight. An
+initial full-inventory attempt exposed one remaining stale mutation text anchor;
+only its location changed before rerunning both inventories. Runtime tests and
+production are byte-identical across the two pinned 1,318-input snapshots. The
+sole difference after the second freeze is this execution note. Exact manifests,
+logs, attempts and scope are in private/evidence/2d-4c-part4b2c1/COMPLETION.md.
+Production is 13,610 engine / 12,256 gateway lines; service.py is 1,452 lines.
+Item 1 is implemented; independent acceptance and whole-part-4 completion are
+not claimed. Guard/inspection and the operator's pending interface ruling remain
+outside this change. No protected register, provider, gen-1 runtime, real
+database migration, push or merge is involved.

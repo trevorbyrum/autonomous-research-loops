@@ -860,7 +860,7 @@ class Router:
 
     # -- commit_outcome ----------------------------------------------------------
     def _require_detailed_support(self, claim: dict) -> None:
-        self._detailed_checks.require_support(claim)
+        self._detailed_checks.require_support(claim, self._evidence_writer._quote_support_valid)
 
     def commit_outcome(self, envelope: Mapping) -> dict:
         op_id = envelope.get("operation_id") if isinstance(envelope, Mapping) else None
@@ -1067,6 +1067,7 @@ class Router:
         written.update(detailed_records)
         written.update(extraction_records)
         self._fault("in_transaction:evidence")
+        self._evidence_writer.refence_captures(env["operation_id"])
         self._store.insert("audit_events", {"audit_event_id": audit_id, "at": now, "kind": "commit_outcome", "topic_id": inv["topic_id"],
                                             "invocation_id": inv["invocation_id"], "operation_id": env["operation_id"],
                                             "detail": {**written, "receipt_id": receipt_id,

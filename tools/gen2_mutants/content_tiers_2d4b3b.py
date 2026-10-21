@@ -93,6 +93,6 @@ CONTROLS[mid] = {"controls": ["test_store_capture_support.CaptureDDLTest.test_ca
 mid = "2D4B3B-pending-python-capture"
 MUTATIONS.append(Mutation(mid, "2d-4b3b-repair-1", "Router capture support consumes an authoritative method",
     ("test_capture_support.RouterGuardTest.test_pending_cannot_borrow_historical_canonical",),
-    old='and v["extraction_method"] == "canonical_bytes"', new='', target="gen2/router/evidence_writer.py"))
+    old='doc["extraction"]["method"] == "canonical_bytes" and ', new='', target="gen2/router/evidence_writer.py"))
 CONTROLS[mid] = {"controls": ["test_capture_support.RouterGuardTest.test_control"],
     "why": "The matching canonical receipt qualifies Router support with the independent SQL capture consumers removed."}

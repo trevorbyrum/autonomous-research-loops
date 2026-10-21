@@ -56,7 +56,7 @@ ROUTER = 'test_router_detailed_support.RouterDetailedSupportTest.test_'
 DETAIL = 'gen2/router/detailed_checks.py'
 for name, target, old, new, killer in (
         ('writer', 'gen2/router/evidence_writer.py', 'self._core._require_detailed_support(row)', 'None', 'historical_shapes'),
-        ('delegate', 'gen2/router/service.py', 'self._detailed_checks.require_support(claim)', 'None', 'historical_shapes'),
+        ('delegate', 'gen2/router/service.py', 'self._detailed_checks.require_support(claim, self._evidence_writer._quote_support_valid)', 'None', 'historical_shapes'),
         ('load-bearing', DETAIL, 'if not claim["load_bearing"]:', 'if True:', 'historical_shapes'),
         ('verdict', DETAIL, 'row["verdict"] != "supports"', 'False', 'claim_owned_gates'),
         ('use', DETAIL, 'row["use"] != "load_bearing"', 'False', 'claim_owned_gates'),
@@ -105,3 +105,29 @@ for name, old, new, killer in (
     MUTATIONS.append(Mutation(mid, '2d-4c part 4b2b', name, (BASIS + killer,), target=DETAIL, old=old, new=new))
     CONTROLS[mid] = dict(controls=[BASIS + 'control'],
         why='Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive.')
+
+# 4b2c1: capture binding is part of that candidate, then refenced once at end.
+CAPTURE_ROUTER = 'test_router_capture_support.RouterCaptureSupportTest.test_'
+WRITER = 'gen2/router/evidence_writer.py'
+for name, target, old, new, killer, control in (
+        ('candidate', DETAIL, 'if not capture_valid(doc):', 'if False:', 'no_pooling', 'control'),
+        ('canonical', WRITER, 'doc["extraction"]["method"] == "canonical_bytes" and self._quote_receipt_valid(doc)',
+            'self._quote_receipt_valid(doc)', 'no_pooling', 'control'),
+        ('binding', WRITER, 'and self._quote_receipt_valid(doc)', 'and True', 'capture_binding_and_columns', 'control'),
+        ('stored-check', DETAIL, '"quote_check_id": row["quote_check_id"]',
+            '"quote_check_id": row["receipt"]["quote_check_id"]', 'capture_binding_and_columns', 'control'),
+        ('final-wiring', 'gen2/router/service.py', 'self._evidence_writer.refence_captures(env["operation_id"])',
+            'None', 'final_missing_and_history', 'final_control'),
+        ('final-operation', WRITER, '{"recorded_by_operation_id": operation_id}',
+            'None', 'scope_and_status', 'final_control'),
+        ('final-status', WRITER, 'if claim["status"] != "accepted_support":',
+            'if False:', 'scope_and_status', 'final_control'),
+        ('final-detailed', WRITER, 'self._core._require_detailed_support(claim)',
+            'None', 'final_records_and_basis', 'final_control'),
+        ('final-quarantine', WRITER, 'self._require_quote_support(claim)',
+            'None', 'scope_and_status', 'final_control')):
+    mid = '2D4C4B2C1-' + name
+    MUTATIONS.append(Mutation(mid, '2d-4c part 4b2c1', name, (CAPTURE_ROUTER + killer,),
+        target=target, old=old, new=new))
+    CONTROLS[mid] = dict(controls=[CAPTURE_ROUTER + control],
+        why='Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled.')

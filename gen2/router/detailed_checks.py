@@ -15,11 +15,11 @@ class DetailedChecks:
     def __init__(self, core: ExtractionCore) -> None:
         self._core = core
 
-    def require_support(self, claim: dict) -> None:
+    def require_support(self, claim: dict, capture_valid: Callable[[dict], bool]) -> None:
         """V-4/V-8 consumption in the existing writer transaction.
 
-        Detailed records and basis qualify on one candidate, independently of
-        SQL support views. Governed capture consumers remain separate gates.
+        Detailed records, basis and governed capture qualify on one candidate,
+        independently of SQL support views.
         """
         if not claim["load_bearing"]:
             return
@@ -36,6 +36,7 @@ class DetailedChecks:
                 "claim": {"claim_id": row["claim_id"], "claim_revision": row["claim_revision"]},
                 "source": {"work_id": row["work_id"], "source_version": row["source_version"]},
                 "cited_spans": row["cited_spans"], "verifier_invocation_id": row["verifier_invocation_id"],
+                "quote_check_id": row["quote_check_id"],
                 "obtained_content_hash": row["obtained_content_hash"], "acquisition": row["acquisition"], "extraction": {
                     **row["receipt"]["extraction"], "method": row["extraction_method"],
                     "produced_by_invocation_id": row["extraction_invocation_id"],
@@ -53,6 +54,8 @@ class DetailedChecks:
             except Refusal:
                 continue
             if not self._has_basis(row, rank):
+                continue
+            if not capture_valid(doc):
                 continue
             return
         raise Refusal("payload_invalid", "support requires exactly bound performed detailed checks (V-4, V-8)")

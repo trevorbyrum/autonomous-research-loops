@@ -24551,5 +24551,68 @@
    "test_router_support_basis.RouterSupportBasisTest.test_control"
   ],
   "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2C1-binding": {
+  "by_hand": true,
+  "controls": [
+   "test_router_capture_support.RouterCaptureSupportTest.test_control"
+  ],
+  "why": "Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled."
+ },
+ "2D4C4B2C1-candidate": {
+  "by_hand": true,
+  "controls": [
+   "test_router_capture_support.RouterCaptureSupportTest.test_control"
+  ],
+  "why": "Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled."
+ },
+ "2D4C4B2C1-canonical": {
+  "by_hand": true,
+  "controls": [
+   "test_router_capture_support.RouterCaptureSupportTest.test_control"
+  ],
+  "why": "Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled."
+ },
+ "2D4C4B2C1-final-detailed": {
+  "by_hand": true,
+  "controls": [
+   "test_router_capture_support.RouterCaptureSupportTest.test_final_control"
+  ],
+  "why": "Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled."
+ },
+ "2D4C4B2C1-final-operation": {
+  "by_hand": true,
+  "controls": [
+   "test_router_capture_support.RouterCaptureSupportTest.test_final_control"
+  ],
+  "why": "Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled."
+ },
+ "2D4C4B2C1-final-quarantine": {
+  "by_hand": true,
+  "controls": [
+   "test_router_capture_support.RouterCaptureSupportTest.test_final_control"
+  ],
+  "why": "Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled."
+ },
+ "2D4C4B2C1-final-status": {
+  "by_hand": true,
+  "controls": [
+   "test_router_capture_support.RouterCaptureSupportTest.test_final_control"
+  ],
+  "why": "Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled."
+ },
+ "2D4C4B2C1-final-wiring": {
+  "by_hand": true,
+  "controls": [
+   "test_router_capture_support.RouterCaptureSupportTest.test_final_control"
+  ],
+  "why": "Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled."
+ },
+ "2D4C4B2C1-stored-check": {
+  "by_hand": true,
+  "controls": [
+   "test_router_capture_support.RouterCaptureSupportTest.test_control"
+  ],
+  "why": "Separate real-record canonical captures promote or remain accepted through completed interim/final commits in both trigger orders with SQL authority views disabled."
  }
 }

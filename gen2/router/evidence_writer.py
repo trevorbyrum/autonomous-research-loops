@@ -135,11 +135,27 @@ class EvidenceWriter:
         checks = self._capture_checks(claim["claim_id"], claim["revision"])
         if any(q["quote_quarantined"] for q in checks):
             raise Refusal("payload_invalid", "governed quarantined quote cannot supply support (V-6)")
-        if checks and claim["load_bearing"]:
-            receipts = self._core._store.select("verification_receipts", {"claim_id": claim["claim_id"], "claim_revision": claim["revision"]})
-            if not any(v["verdict"] == "supports" and v["use"] == "load_bearing" and v["extraction_method"] == "canonical_bytes"
-                    and self._quote_receipt_valid(v["receipt"]) for v in receipts):
-                raise Refusal("payload_invalid", "support needs a receipt bound to this governed capture (V-1, V-6)")
+
+    def _quote_support_valid(self, doc: dict) -> bool:
+        """DetailedChecks applies this to its same, stored-column candidate."""
+        if not self._capture_checks(doc["claim"]["claim_id"], doc["claim"]["claim_revision"]):
+            return True
+        return doc["extraction"]["method"] == "canonical_bytes" and self._quote_receipt_valid(doc)
+
+    def refence_captures(self, operation_id: str) -> None:
+        """SQL12 parity at completed commit, inside the existing writer fence."""
+        captures = {(q["claim_id"], q["claim_revision"]) for q in self._core._store.select(
+            "quote_checks", {"recorded_by_operation_id": operation_id}) if q["match_result"] is not None}
+        for claim_id, revision in sorted(captures):
+            key = {"claim_id": claim_id, "revision": revision}
+            claim = self._core._one("claims", key)
+            if claim["status"] != "accepted_support":
+                continue
+            try:
+                self._require_quote_support(claim)
+                self._core._require_detailed_support(claim)
+            except Refusal:
+                self._core._store.update("claims", key, {"status": "quarantined"})
 
     def bind_source_artifacts(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> None:
         records = payload.get("source_artifacts", [])

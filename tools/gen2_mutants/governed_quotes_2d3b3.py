@@ -73,7 +73,8 @@ capture_guard("python-spans", "test_span", '(q["span_start"], q["span_end"]) in 
     also=(('and spans <= {(q["span_start"], q["span_end"]) for q in bound}', 'and True'),))
 capture_guard("python-each-span", "test_multi_unchecked", 'and spans <= {(q["span_start"], q["span_end"]) for q in bound}', 'and True', control="test_multi_control")
 capture_guard("python-quarantine", "test_non_load_bearing", 'if any(q["quote_quarantined"] for q in checks):', 'if False:')
-capture_guard("python-existing-receipt", "test_existing_receipt_matching_check", 'if checks and claim["load_bearing"]:', 'if False:')
+capture_guard("python-existing-receipt", "test_existing_receipt_matching_check",
+    'return doc["extraction"]["method"] == "canonical_bytes" and self._quote_receipt_valid(doc)', 'return True')
 capture_guard("python-capture-quarantine", "test_same_capture_cannot_clear", 'if support and any(q["quote_quarantined"] for q in checks):', 'if False:')
 
 for name, killer, clause in (("work", "test_work", "AND q.work_id = v.work_id"),
