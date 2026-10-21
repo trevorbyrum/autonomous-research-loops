@@ -3061,3 +3061,16 @@ The post-2q Gate D is renumbered #5.
   - (2) the retained-state guard, ~200 lines; reconciliation decisions are still reserved for Trevor;
   - (3) evidence hygiene: the preliminary `control-preservation.json` count says 23 where the final is 24.
 - **Landing at 43772c5:** `gen2-check` green (7,458 s), `gen2-gateway` green (1,014 s).
+
+## 2026-10-21: 2d-4c part 4b2c1 (Router governed-capture promotion and final refence, 11828ff..b4b30e1): PASS on the first review. Accepted
+- **Astra** (`87853626`; `private/reviews/gen2-2d-4c-p4b2c1-astra-review-20261021.md`): **A, B and C all PASS, ROOT-CAUSE.** No blocking or new non-blocking findings.
+- **One candidate:** `require_support` carries a single candidate through verdict/use, claim tier, detailed records, basis/content and capture.
+  - `quote_check_id` comes from the stored column. Canonical bytes are required when governed captures exist.
+  - The former existential receipt search is removed, so there's no pooling; a later complete candidate is still accepted.
+  - It matches SQL 12, and no SQL view supplies the Python decision.
+- **`refence_captures`:**
+  - selects only quote checks recorded by the committing operation, deduped by claim and revision;
+  - leaves every status except `accepted_support` alone, and quarantines only revisions that fail qualification;
+  - never sweeps the whole store, a whole topic, or the latest revision.
+- **Placement:** it runs after all evidence and receipts, immediately before the final audit, inside the existing writer transaction, for both commit kinds. Replay, conflict and rollback are intact.
+- **Landing at b4b30e1:** `gen2-check` green (7,560 s), `gen2-gateway` green (1,000 s).
