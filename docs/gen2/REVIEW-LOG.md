@@ -3074,3 +3074,17 @@ The post-2q Gate D is renumbered #5.
   - never sweeps the whole store, a whole topic, or the latest revision.
 - **Placement:** it runs after all evidence and receipts, immediately before the final audit, inside the existing writer transaction, for both commit kinds. Replay, conflict and rollback are intact.
 - **Landing at b4b30e1:** `gen2-check` green (7,560 s), `gen2-gateway` green (1,000 s).
+
+## 2026-10-21: 2d-4c part 4b2c2 (retained-state guard + read-only history viewer, cf52bd1..5b01b6e): BLOCK, round 1
+- **Astra** (`c7fcf7b5`; `private/reviews/gen2-2d-4c-p4b2c2-astra-review-20261021.md`): **A PASS, B PASS, C BLOCK.**
+  - The guarded admission (both constructors and station startup, store-wide snapshot, `ReconciliationRequired` with topic/claim/revision/deficiency) is **ROOT-CAUSE** and conforms to the 2026-10-20/21 rulings.
+  - So is the detached `HistoryReader` (closed data interface) and the temporal-fixture correction.
+  - No production DML was found.
+- **C1 (blocking):** `test_snapshot_and_no_dml` detects DML with the first-keyword regex `\s*(INSERT|UPDATE|DELETE|REPLACE)\b`.
+  - Astra reproduced comment-prefixed and CTE-led opening `UPDATE`s and a `-- trace:`-style installation `INSERT` that change rows yet **pass** the test. A bare `UPDATE` correctly fails it.
+  - Charter class (e): the test claims an operator-ratified property it doesn't enforce.
+- **NB1:** the original-code comparison has 4 mock-induced errors in the startup subcases; fold into the repair.
+- **Size:** 591 hand-written lines against the ~500 guide. Not required to split further.
+- **Completeness:** Astra found no further missing production V-8 consumption step in 2d-4c. **2d-4c is complete once C1 is repaired and accepted.**
+- **Landing at 5b01b6e:** `gen2-check` green (7,532 s), `gen2-gateway` green (1,018 s).
+- **Routed:** `docs/gen2/tasks/2d-4c-p4b2c2-repair-1.md`: a ROOT-CAUSE, database-aware application-write oracle qualified by bare, commented and CTE canaries; NB1 folded in; test-only.
