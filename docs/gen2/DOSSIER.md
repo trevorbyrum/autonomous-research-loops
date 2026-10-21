@@ -5815,3 +5815,15 @@ heavy start waits for no active/activating gen2-landing-* user unit. Snapshot
 venvs use cp -a. Evidence, attempts and resumable PROGRESS.md are under
 private/evidence/2d-4c-part4b2b/. Commit this note alone before code; implement
 only this first bounded sub-part and stop. Whole 4b2/part 4 remains INCOMPLETE.
+
+**4b2b content-decoder audit correction (before correction code).** A public
+isolated probe finds that the candidate's default json.loads can authorize
+content containing NaN or choose a later repeated member. Acquisition admission
+already uses canonical.parse_json_strict. Reuse that exact parser at consumption,
+retaining its existing source-byte domain, and add malformed/repeated-member
+refusal operands plus a paired decoder mutant. The 480-line slice allowance
+still covers this correction (about ten additional code/test/mutant lines).
+Stop and retain the first engine/order/inventory attempts without passing credit;
+freeze the corrected candidate and rerun those full gates. The independent gateway
+run may finish: its source, tests and runners are unchanged. No harness, loader,
+lockfile, timeout, new domain decision or metrics exemption is needed.
