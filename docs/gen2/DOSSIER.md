@@ -5613,3 +5613,80 @@ follow-up records its verification and completes the harness integration.
 **4b1 is implemented; whole part 4 remains INCOMPLETE.** Independent Router
 consumers and the operator-ruled retained-state refusal remain for 4b2. No
 activation guard, opening change, installation DML or reconciliation is added.
+
+
+#### 2d-4c part 4b2 — re-estimate before code (2026-10-21)
+
+Branch `gen2`; accepted SQL slice `b07a68f`, design `2aeef44`. Read the
+complete task/rulings, this entire section, BUILD-CHARTER/BOUNDARIES, the
+named 4b design evidence and 4b1 completion/Astra review. Repository-only
+AGENTS.md lookup found none. The October 20 ruling settles retained state:
+refuse active use pending reconciliation, preserve history/readback, no
+installation DML or opening-time demotion. No new operator choice is needed
+for this split; the reconciliation procedure remains a proposal only.
+
+**Concrete remaining estimate: about 900 handwritten repository lines**:
+Router detailed-record promotion consumption and isolated regressions 250;
+independent acquisition/extraction-basis consumption 160; governed capture
+and operation-scoped completed-commit refence with isolated regressions 170;
+retained-state activation/refusal/readback tests 130; mutants/control and
+fixture integration 80; dossier design/completion notes 110. Generated
+controls are separate; private audit/trace/gate drivers about 300 lines.
+The original 410-line remainder did not budget these independent paths and
+activation tests adequately. Split before code and stop after the first part.
+
+**Implement 4b2a only, about 460 repository lines**: DetailedChecks performs
+closed /2, all-four performed-record consumption at claim promotion, reusing
+its existing independent exact-binding/projection checks (45); EvidenceWriter
+and wiring-only core delegate (10); isolated Router matrices, accepted controls
+and replay/conflict/rollback (210); historical predicate-isolation integration
+and p4b1 NB2 CHECK-policy restoration assertions (35); paired mutants/control
+registration (60); this design and completion notes (100). Do not pull basis,
+capture/refence, activation, accounting or harness/loader work into this slice.
+Re-estimate before any material expansion. This first gate must read actual
+records in the writer transaction and use the claim's own tier/load-bearing
+flag and one supporting load-bearing-use receipt. No /1 summary, partial map,
+missing reference, unperformed outcome or adjudication can waive a record.
+Reuse require_receipt for exact topic/verifier/kind/outcome/claim revision/full
+ordered spans/source/hash/basis-selected examined bytes. No SQL42 view query
+supplies this Router gate. Existing SQL independently retains all basis,
+content/output ceiling, tier-0, contract and capture gates throughout staging.
+
+**Explicitly pending after 4b2a:** independent Router acquisition and bound
+extraction qualification on that same candidate receipt (including both output
+ceilings and no pooling); canonical-only governed-capture promotion and the
+operation-scoped completed-commit final refence; the retained-state active-use
+guard/diagnostic and all its history/readback/no-installation-DML tests. The
+new detailed-record gate alone does not claim independent basis consumption,
+whole part 4 completion or implementation of the retained-state ruling.
+Historical tests of earlier predicates may explicitly suspend this new gate,
+with exact restoration; current detailed-support controls never suspend it.
+Keep harness/loader integration in another slice if needed.
+
+**Reconciliation proposal for Trevor, not implemented.** A future explicit
+operator-authorized Router maintenance command would name the store/topic,
+claim revisions and an expected state revision, carry an immutable request ID,
+operator identity and reason, and enumerate the exact deficient receipts and
+record/basis diagnostics. A read-only preview would retain that manifest.
+After approval, one existing Router writer transaction would recheck the pins
+and deficiencies, then either consume newly authenticated independent verifier
+receipts through normal admission or quarantine the explicitly listed claims.
+It would append an immutable audit/operation receipt binding before/after
+statuses, qualifying record/receipt IDs, operator approval and manifest hash;
+equal request replay adds nothing and conflicts refuse. It would never rewrite
+receipt/check history, infer judgments or change unrelated claims. Failure
+rolls everything back; activation remains refused until the complete support
+check passes. Exact authorization, quarantine authority and command schema
+require Trevor's approval before implementation. No repair command, automatic
+reverification, bypass switch or opening-time row update is authorized here.
+
+Gates before the implementation commit: full gen2-test, trigger-order,
+composition, full mutation inventory (required conservative superset),
+gen2-gateway and all eight static gates. Separate accepted controls and Python
+changed-path traces qualify new predicates. Preserve the old paired controls;
+no DDL/schema edit or hash repin is planned. Any unforeseen fixture or loader
+need is re-estimated rather than silently broadening this slice. Every heavy
+start waits for no active gen2-landing-* user unit; disposable snapshot venvs
+use cp -a. Evidence, attempts and resumable progress:
+private/evidence/2d-4c-part4b2/. Commit this estimate alone before code, then
+implement only 4b2a and stop. Whole part 4 remains INCOMPLETE.
