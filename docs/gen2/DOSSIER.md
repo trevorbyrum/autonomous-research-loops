@@ -5841,3 +5841,52 @@ Allow about five test lines and these notes within the 480-line slice estimate.
 Retain the 12/14 result and stopped second full attempts; freeze final test bytes
 and rerun every engine gate, including the full inventory. No timeout or pairing
 changes. Capture/refence and retained-state work remain explicitly deferred.
+
+#### 2d-4c part 4b2b — implementation and validation (2026-10-21)
+
+Pre-code estimate `cf82907`, with correction notes `91fe5ec` and `f86cda7`.
+Implements only same-candidate Router acquisition and bound-basis consumption.
+After its existing exact detailed-record check, require_support qualifies that
+same stored receipt's acquisition, selected recorded content and own extraction
+or successful independent /2 validation. Actual columns govern acquisition and
+extraction invocation; both validated output ceilings, the historical pin,
+exact acquisition lineage and extraction tier-0 fence apply. No SQL support,
+bound-extraction or content-tier view supplies this independent Python oracle.
+The reader reuses acquisition admission's strict JSON parser and independently
+matches SQL16's pinned nonblank rule. These are recorded relationships and
+content ceilings, never assessment correctness or execution certification.
+
+Seven new isolated tests cover methods/orders/tiers, bindings, selected content,
+both output ceilings, validation history, no pooling, accepted controls and
+replay/conflict/rollback. Controls use pristine Router-admitted records; target
+and validator bytes differ on validated paths. Original Python accepts the six
+bad-acquisition probe operands; the candidate refuses six, with six accepted
+controls in both. Fresh-store decoder probes change two inappropriate accepts
+into refusals. Nonblank parity covers all 1,112,064 Unicode scalar values and
+seven type/NUL controls, with zero differences from SQL16.
+
+All 24 new mutants have separate passing controls and native chooser traces:
+one control method spans twelve method/order/tier cases, not 24 distinct methods.
+All 3,675 prior pairing records and their order are unchanged. The older detailed
+stored-column experiment now suspends only the newer basis predicate around its
+assertion, restored by stdlib patch.object on every exit. Its original assertions
+remain; the 12/14 audit becomes 14/14. No production bypass, harness, loader,
+timeout, schema, DDL, pin, service wiring or accounting change was made.
+
+Final frozen-source gates pass: 4,347 engine tests (two skips; 3,330.996 unittest
+seconds); 339 triggers / 6,149 identical order outcomes; six composition tests;
+3,699/3,699 mutants killed, 3,682 separate controls passing, zero invalid/surviving
+cases and every trigger covered. The existing 11 in-killer and six documented
+exceptions remain. Gateway passes both 1,540-test suites and 413/413 mutants on
+its unchanged 180-input source/test/runner set. Eight static gates pass without
+an exemption; production is 13,590 engine / 12,256 gateway lines, service.py 1,451.
+Snapshot /tmp/gen2-4b2b-u_o87hu9 pins 1,317 inputs with a real cp -a venv copy.
+Earlier stopped attempts are uncredited. Exact scope, hashes, exits, corrections
+and reading chronology are in private/evidence/2d-4c-part4b2b/COMPLETION.md.
+
+**4b2b basis slice implemented; whole 4b2/part 4 remains INCOMPLETE.** Stop here.
+Canonical-only capture promotion/final refence and retained-state active-use
+refusal/diagnostic/readback/schema-only-installation tests remain later slices.
+The October 20 ruling is not waived or claimed implemented. Reconciliation
+remains a proposal with the operator decisions reserved above; no procedure,
+installation DML, opening-time demotion or grandfathering is introduced.

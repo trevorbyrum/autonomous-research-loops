@@ -73,3 +73,35 @@ for name, target, old, new, killer in (
     MUTATIONS.append(Mutation(mid, '2d-4c part 4b2a', name, (ROUTER + killer,), target=target, old=old, new=new))
     CONTROLS[mid] = dict(controls=[ROUTER + 'control'],
         why='Separate public Router promotions consume four real exactly bound performed records in both orders for all three methods, with SQL support consumers omitted.')
+
+# 4b2b: the SAME candidate also needs its acquisition and durable basis.
+BASIS = 'test_router_support_basis.RouterSupportBasisTest.test_'
+for name, old, new, killer in (
+        ('decoder', 'canonical.parse_json_strict(acquired["response_bytes"])', '__import__("json").loads(acquired["response_bytes"])', 'content'),
+        ('same-candidate', 'if not self._has_basis(row, rank):', 'if False:', 'no_pooling'),
+        ('hash', 'acquired["content_hash"] != row["obtained_content_hash"]', 'False', 'acquisition'),
+        ('call', 'acquired["gateway_call_ref"] != row["acquisition"]["gateway_call_ref"]', 'False', 'acquisition'),
+        ('time', 'acquired["retrieved_at"] != row["acquisition"]["retrieved_at"]', 'False', 'acquisition'),
+        ('route', '"gateway:" + acquired["lane"] != row["acquisition"]["route"]', 'False', 'acquisition'),
+        ('content', 'self._content_rank(acquired) < rank[row["access_tier"]]', 'False', 'content'),
+        ('acquirer', 'acquired["acquired_by_invocation_id"] == row["extraction_invocation_id"]', 'True', 'acquisition'),
+        ('lineage', 'elif all(basis[k] == acquired[k] for k in\n                    ("topic_id", "work_id", "source_version", "event_id", "verifier_invocation_id")):', 'elif True:', 'extraction'),
+        ('validation-method', 'validation["method"] != "independent_extraction"', 'False', 'validation'),
+        ('validation-policy', 'validation["policy_version"] != 2', 'False', 'validation'),
+        ('validation-outcome', 'validation["outcome"] != "succeeded"', 'False', 'validation'),
+        ('validation-verifier', 'validation["validator_invocation_id"] != row["verifier_invocation_id"]', 'False', 'validation'),
+        ('independent-tier', 'rank[independent[0]["supported_tier"]] < rank[row["access_tier"]]', 'False', 'validation'),
+        ('target-tier', 'rank[basis["supported_tier"]] < rank[row["access_tier"]]', 'False', 'extraction'),
+        ('pin', 'basis["extractor_registry_version"] is None', 'False', 'extraction'),
+        ('invocation', 'basis["extracting_invocation_id"] != row["extraction_invocation_id"]', 'False', 'extraction'),
+        ('tool', 'basis["extractor_identity"] != row["receipt"]["extraction"]["extractor"]', 'False', 'extraction'),
+        ('own-verifier', 'basis["extracting_invocation_id"] != row["verifier_invocation_id"]', 'False', 'extraction'),
+        ('tier0', 'row["receipt"]["checks"].get("tier0", {}).get("signal") == "alarm"', 'False', 'extraction'),
+        ('selected-record', 'record.get("identity") == acquired["provider_record_id"]', 'True', 'content'),
+        ('coverage', 'searched and record.get("kind") == "full_text"', 'record.get("kind") == "full_text"', 'content'),
+        ('full-text', 'record.get("kind") == "full_text" and self._nonblank(record.get("text"))', 'record.get("kind") == "full_text"', 'content'),
+        ('abstract', 'else 2 if self._nonblank(record.get("abstract")) else 1', 'else 2', 'content')):
+    mid = '2D4C4B2B-' + name
+    MUTATIONS.append(Mutation(mid, '2d-4c part 4b2b', name, (BASIS + killer,), target=DETAIL, old=old, new=new))
+    CONTROLS[mid] = dict(controls=[BASIS + 'control'],
+        why='Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive.')

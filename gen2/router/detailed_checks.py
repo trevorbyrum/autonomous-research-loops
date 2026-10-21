@@ -18,8 +18,8 @@ class DetailedChecks:
     def require_support(self, claim: dict) -> None:
         """V-4/V-8 consumption in the existing writer transaction.
 
-        Detailed-record authority is independent of the SQL42 relation. The
-        remaining acquisition/extraction and capture gates still apply in SQL.
+        Detailed records and basis qualify on one candidate, independently of
+        SQL support views. Governed capture consumers remain separate gates.
         """
         if not claim["load_bearing"]:
             return
@@ -36,8 +36,9 @@ class DetailedChecks:
                 "claim": {"claim_id": row["claim_id"], "claim_revision": row["claim_revision"]},
                 "source": {"work_id": row["work_id"], "source_version": row["source_version"]},
                 "cited_spans": row["cited_spans"], "verifier_invocation_id": row["verifier_invocation_id"],
-                "obtained_content_hash": row["obtained_content_hash"], "extraction": {
+                "obtained_content_hash": row["obtained_content_hash"], "acquisition": row["acquisition"], "extraction": {
                     **row["receipt"]["extraction"], "method": row["extraction_method"],
+                    "produced_by_invocation_id": row["extraction_invocation_id"],
                     "validation_ref": row["extraction_validation_ref"]}}
             entries = doc.get("detailed_checks")
             if (doc.get("receipt_version") != "verification-receipt/2" or not isinstance(entries, dict)
@@ -51,8 +52,95 @@ class DetailedChecks:
                 self.require_receipt(doc)
             except Refusal:
                 continue
+            if not self._has_basis(row, rank):
+                continue
             return
         raise Refusal("payload_invalid", "support requires exactly bound performed detailed checks (V-4, V-8)")
+
+    def _has_basis(self, row: dict, rank: dict) -> bool:
+        """Re-read SQL 15/32/33/34 operands; admission owns their authentication."""
+        method = row["extraction_method"]
+        basis = None if method == "canonical_bytes" else self._extraction_basis(row, rank)
+        if method != "canonical_bytes" and basis is None:
+            return False
+        acquisitions = self._core._store.select("source_acquisitions", {k: row[k] for k in
+            ("topic_id", "work_id", "source_version", "verifier_invocation_id")})
+        for acquired in acquisitions:
+            if (acquired["content_hash"] != row["obtained_content_hash"]
+                    or acquired["gateway_call_ref"] != row["acquisition"]["gateway_call_ref"]
+                    or acquired["retrieved_at"] != row["acquisition"]["retrieved_at"]
+                    or "gateway:" + acquired["lane"] != row["acquisition"]["route"]
+                    or self._content_rank(acquired) < rank[row["access_tier"]]):
+                continue
+            if method == "canonical_bytes":
+                if acquired["acquired_by_invocation_id"] == row["extraction_invocation_id"]:
+                    return True
+            elif all(basis[k] == acquired[k] for k in
+                    ("topic_id", "work_id", "source_version", "event_id", "verifier_invocation_id")):
+                return True
+        return False
+
+    def _extraction_basis(self, row: dict, rank: dict) -> dict | None:
+        method = row["extraction_method"]
+        validation = None
+        if method == "validated_extraction":
+            validations = self._core._store.select("extraction_validations_v2", {
+                "validation_id": row["extraction_validation_ref"]})
+            validation = next(iter(validations), None)
+            if (validation is None or validation["method"] != "independent_extraction"
+                    or validation["policy_version"] != 2 or validation["outcome"] != "succeeded"
+                    or validation["validator_invocation_id"] != row["verifier_invocation_id"]):
+                return None
+            independent = self._core._store.select("source_extractions", {
+                "extraction_id": validation["validator_extraction_id"]})
+            if not independent or rank[independent[0]["supported_tier"]] < rank[row["access_tier"]]:
+                return None
+        if method not in ("verifier_extraction", "validated_extraction"):
+            return None
+        if row["receipt"]["checks"].get("tier0", {}).get("signal") == "alarm":
+            return None
+        extraction_id = (validation["target_extraction_id"] if validation else
+            row["receipt"]["extraction"].get("extraction_id"))
+        bases = self._core._store.select("source_extractions", {"extraction_id": extraction_id})
+        if not bases:
+            return None
+        basis = bases[0]
+        if (basis["extractor_registry_version"] is None
+                or basis["extracting_invocation_id"] != row["extraction_invocation_id"]
+                or basis["extractor_identity"] != row["receipt"]["extraction"]["extractor"]
+                or rank[basis["supported_tier"]] < rank[row["access_tier"]]
+                or (method == "verifier_extraction" and basis["extracting_invocation_id"] != row["verifier_invocation_id"])):
+            return None
+        return basis
+
+    def _content_rank(self, acquired: dict) -> int:
+        try:
+            response = canonical.parse_json_strict(acquired["response_bytes"])
+        except (ValueError, UnicodeDecodeError):
+            return 1
+        records = response.get("records") if isinstance(response, dict) else None
+        if not isinstance(records, list):
+            return 1
+        observations = self._core._store.select("search_observations", {"observation_id": acquired["observation_id"]})
+        searched = bool(observations and observations[0]["coverage_state"] == "searched_ok")
+        tiers = [1]
+        for record in records:
+            if isinstance(record, dict) and record.get("identity") == acquired["provider_record_id"]:
+                tiers.append(3 if searched and record.get("kind") == "full_text" and self._nonblank(record.get("text"))
+                    else 2 if self._nonblank(record.get("abstract")) else 1)
+        return max(tiers)
+
+    @staticmethod
+    def _nonblank(value: object) -> bool:
+        # recorded-nonblank/1+ucd17.0.0, exactly the SQL16 pinned ranges.
+        ranges = ((9,13),(32,32),(133,133),(160,160),(5760,5760),(8192,8202),(8232,8233),
+            (8239,8239),(8287,8287),(12288,12288),(173,173),(847,847),(1564,1564),
+            (4447,4448),(6068,6069),(6155,6159),(8203,8207),(8234,8238),(8288,8303),
+            (12644,12644),(65024,65039),(65279,65279),(65440,65440),(65520,65528),
+            (113824,113827),(119155,119162),(917504,921599))
+        # SQLite's GLOB stops at NUL; retain that recorded-content interpretation.
+        return isinstance(value, str) and any(not any(lo <= ord(c) <= hi for lo, hi in ranges)
+            for c in value.split("\0", 1)[0])
 
     def authenticate(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> None:
         records = payload.get("detailed_check_records", [])

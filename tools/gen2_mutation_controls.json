@@ -24383,5 +24383,173 @@
    "test_mutation_verdict.BaselineModesTest.test_sql_selection_runs_its_baseline"
   ],
   "why": "Separate loading mode preserves its required baseline and existing refusal; the full inventory still selects SQL."
+ },
+ "2D4C4B2B-same-candidate": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-hash": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-call": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-time": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-route": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-content": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-acquirer": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-lineage": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-validation-method": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-validation-policy": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-validation-outcome": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-validation-verifier": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-independent-tier": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-target-tier": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-pin": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-invocation": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-tool": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-own-verifier": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-tier0": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-selected-record": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-coverage": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-full-text": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-abstract": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
+ },
+ "2D4C4B2B-decoder": {
+  "by_hand": true,
+  "controls": [
+   "test_router_support_basis.RouterSupportBasisTest.test_control"
+  ],
+  "why": "Separate public promotion controls consume real admitted detailed records and the same acquired canonical/own/validated basis at abstract and full-text tiers in both trigger orders, with SQL authority views permissive."
  }
 }
