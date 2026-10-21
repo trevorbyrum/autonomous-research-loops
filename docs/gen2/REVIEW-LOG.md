@@ -3026,3 +3026,17 @@ The post-2q Gate D is renumbered #5.
   - NB1 size: 674 hand-written lines against a ~470 estimate and the ~500 guide. Not blocked (production SQL is 111 lines); keep 4b2 separate and re-estimate it.
   - NB2: the history-catalog test should request `unchecked=True` and assert `ignore_check_constraints` restoration. Astra's 8-case probe found no defect; fold into 4b2.
 - **Landing at b07a68f:** `gen2-check` green (7,195 s), `gen2-gateway` green (1,013 s).
+
+## 2026-10-21: 2d-4c part 4b2a (Router detailed-record consumption at promotion, d737331..0464983): PASS on the first review. Accepted
+- **Astra** (`c8651983`; `private/reviews/gen2-2d-4c-p4b2a-astra-review-20261021.md`): **A, B and C all PASS, ROOT-CAUSE** within the slice. Blocking: none.
+- **What it does:** `DetailedChecks.require_support` reads the stored claim's load-bearing designation and tier, plus the actual receipt columns. Detached JSON labels can't redirect it.
+  - A `/2` receipt must carry exactly four performed kinds, each bound through the independent `require_receipt`, all on one candidate receipt.
+  - It never queries SQL 42. It runs inside the existing writer transaction.
+  - `service.py` gains only a 3-line delegate (1,451 of 1,500).
+- **Survivor fix ROOT-CAUSE:** `1B-store-refusal-swallowed` survived because the new Router gate pre-empted the Store-refusal test.
+  - The test now suspends only that Router instance's predicate (`patch.object`, restored on every exit) and asserts the Store-origin diagnostic.
+  - The suspension is test-only, with no production bypass.
+- **Carry-forward:**
+  - (1) Remaining 4b2: same-receipt acquisition/bound-extraction qualification (extend the **same candidate selection**, not a separate existential check), capture promotion and final refence, and the retained-state guard.
+  - (2) The reconciliation proposal is reserved for Trevor before any implementation. To settle: authenticated operator identity (never a caller label), manifest/request hash and stale-preview checks, topic vs whole-store scope, and authorized quarantine transitions. A preview or manifest can't confer support.
+- **Landing at 0464983:** `gen2-check` green (7,313 s), `gen2-gateway` green (1,014 s).
