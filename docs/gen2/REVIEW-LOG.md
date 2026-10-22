@@ -3107,3 +3107,9 @@ The post-2q Gate D is renumbered #5.
   - Reproduced at the real opening seam via a test wrapper.
 - **Orchestrator check:** production gen2 code makes **no** use of `blobopen`, `backup`, `serialize` or `deserialize` (grep). The gap is in what the test claims to cover, not in production behavior.
 - **Round cap reached:** escalated to Trevor for disposition, with no fourth round.
+
+## 2026-10-22: 2d-4c-p4b2c2-closure (native-API gate + narrowed claim, 323a18d..9ff9e54): PASS. 2d-4c part 4b2c2 accepted; **2d-4c COMPLETE**
+- **Astra** (`13e93bf3`; `private/reviews/gen2-2d-4c-p4b2c2-closure-astra-review-20261022.md`): **A, B, C, maintainability and independent full verification all PASS; ROOT-CAUSE** under the operator-amended contract (2026-10-22). Blocking: none. **C1 closed.**
+- **The gate:** `tools/check_gen2_sqlite_native.py` forbids `blobopen`, `backup`, `deserialize`, `enable_load_extension` and `load_extension` across the B-3 Python surface (tests exempt). It covers attribute access on any receiver, plus literal and attribute-qualified `getattr`, and fails closed on read or parse errors. It's wired into `gen2-check`.
+- **The narrowed claim:** the `no_dml` docstring and DOSSIER now state the scope as SQL application-row writes plus SQL-boundary state, and cite the gate. The test module differs only in that docstring; all 17 methods are AST-identical, and all 73 fixtures behave as expected (56 failures, 17 controls).
+- **First independent-verifier round:** Sonnet verifier `ed4b5338` ran `gen2-check` on a clean clone of `9ff9e54`: **exit 0, 7,644 s**. Gateway was carried forward from `5b01b6e`. The coder ran targeted checks only.
