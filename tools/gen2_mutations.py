@@ -743,7 +743,7 @@ def main(argv: list[str] | None = None) -> int:
     baselines += [Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target == target for k in tested(m)), target=target)
                   for target in sorted({m.target for m in selected if FILE_TARGETS.get(m.target, ("",))[0] == "attr"})]
     baseline_outcomes = [{"target": "store", "ran": sorted(base.ran),
-                          "failed": sorted(base.failed), "errored": base.errored, "skipped": sorted(base.skipped)}]
+                          "failed": sorted(base.failed), "errored": base.errored, "skipped": sorted(base.skipped)}] if base is not None else []
     for clean in baselines:
         res = _run_file_mutation_unmutated(clean)
         baseline_outcomes.append({"target": clean.target, "ran": sorted(res.ran),

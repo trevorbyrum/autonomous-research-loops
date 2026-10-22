@@ -822,7 +822,8 @@ class CarriedFormsTest(of.CommandWorld):
         text = mcp["result"]["content"][0]["text"]
         inner = self.decoded(text)
         self.assertIs(mcp["result"]["isError"], False)
-        self.assertEqual({fact["capability"]: fact["detail"] for fact in rest["capability_facts"]}, details)
+        self.assertEqual({fact["capability"]: fact["detail"] for fact in rest["capability_facts"]},
+                         {**details, "tier-0": "tier-0 disabled"})
         self.assertEqual({**inner, "at": rest["at"]}, rest)
         self.assertGreaterEqual(inner["at"], rest["at"])
         self.assertEqual((decodings(text) > auth.MAX_DECODINGS, max(decodings(run) for run in text.split(" ")) <= auth.MAX_DECODINGS), (past_bound, True))

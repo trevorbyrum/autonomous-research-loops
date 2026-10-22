@@ -24698,5 +24698,61 @@
    "test_retained_support.RetainedSupportTest.test_startup_control"
   ],
   "why": "Separate qualified-retained station startup binds the real spool and preserves ordinary configuration/supervisor behavior."
+ },
+ "2D5-fresh-missing": {
+  "by_hand": true,
+  "controls": [
+   "test_tier0_disabled.Tier0ActivationTest.test_config_activation_control"
+  ],
+  "why": "Separate accepted startup/status path executes the changed code and checks unrelated config or capability visibility."
+ },
+ "2D5-retained-missing": {
+  "by_hand": true,
+  "controls": [
+   "test_tier0_disabled.Tier0ActivationTest.test_config_activation_control"
+  ],
+  "why": "Separate accepted startup/status path executes the changed code and checks unrelated config or capability visibility."
+ },
+ "2D5-performed": {
+  "by_hand": true,
+  "controls": [
+   "test_tier0_disabled.Tier0ActivationTest.test_config_activation_control"
+  ],
+  "why": "Separate accepted startup/status path executes the changed code and checks unrelated config or capability visibility."
+ },
+ "2D5-retained-performed": {
+  "by_hand": true,
+  "controls": [
+   "test_tier0_disabled.Tier0ActivationTest.test_config_activation_control"
+  ],
+  "why": "Separate accepted startup/status path executes the changed code and checks unrelated config or capability visibility."
+ },
+ "2D5-healthy": {
+  "by_hand": true,
+  "controls": [
+   "test_tier0_disabled.Tier0ActivationTest.test_config_activation_control"
+  ],
+  "why": "Separate accepted startup/status path executes the changed code and checks unrelated config or capability visibility."
+ },
+ "2D5-last-success": {
+  "by_hand": true,
+  "controls": [
+   "test_tier0_disabled.Tier0ActivationTest.test_config_activation_control"
+  ],
+  "why": "Separate accepted startup/status path executes the changed code and checks unrelated config or capability visibility."
+ },
+ "2D5-redated": {
+  "by_hand": true,
+  "controls": [
+   "test_tier0_disabled.Tier0ActivationTest.test_config_activation_control"
+  ],
+  "why": "Separate accepted startup/status path executes the changed code and checks unrelated config or capability visibility."
+ },
+ "2D5-status-omission": {
+  "by_hand": true,
+  "controls": [
+   "test_tier0_disabled.Tier0StatusTest.test_other_capability_facts_remain_visible_control"
+  ],
+  "why": "Separate accepted startup/status path executes the changed code and checks unrelated config or capability visibility."
  }
 }

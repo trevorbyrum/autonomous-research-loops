@@ -138,7 +138,8 @@ class ConfigBundleTest(RouterTestCase):
         try:
             router = service.Router(api.adopt_in_memory(db), rf.Spool(), clock=rf.Clock())
             self.assertIsNone(router.restore_config_bundle())
-            self.assertEqual(db.execute("SELECT count(*) FROM capability_facts").fetchone(), (0,))
+            self.assertEqual(db.execute("SELECT capability, state, detail FROM capability_facts").fetchall(),
+                             [("tier-0", "unknown", "tier-0 disabled")])
         finally:
             db.close()
 
