@@ -23,10 +23,17 @@ class RetainedSupportTest(unittest.TestCase):
 
     @contextmanager
     def no_dml(self, *connections):
-        """Observe compiled writes and application rows; permit schema-only DDL.
+        """Observe SQL application-row writes on supplied and newly opened connections.
 
-        SQLITE_OK lets canaries execute. Zero-row and rolled-back writes also
-        violate the no-DML contract; this is not a committed-change counter.
+        Cover SQL statements on any observed connection, including final and
+        intermediate SQL-boundary state; permit schema-only DDL. SQLITE_OK lets
+        canaries execute. Zero-row and rolled-back writes also violate the
+        no-DML contract; this is not a committed-change counter.
+
+        Native write/replace APIs are excluded from this guarantee because
+        tools/check_gen2_sqlite_native.py (make gen2-sqlite-native, included in
+        gen2-check) forbids them in production. Final native-change regressions
+        remain, but native write/restore between snapshots is not observed.
         """
         writes, changes, observation_errors = [], [], []
         observers = {}

@@ -14,9 +14,9 @@ PYTHON ?= $(GEN2_VENV)/bin/python
 
 GEN2_SQLITE_REPORT ?=
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-boundaries gen2-source gen2-metrics gen2-metrics-rebaseline gen2-metrics-admit gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-source gen2-metrics gen2-metrics-rebaseline gen2-metrics-admit gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
-gen2-check: gen2-sqlite gen2-boundaries gen2-source gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
+gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-source gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
 # (Re)built when either lock changes; `venv --clear` starts from an empty
@@ -38,6 +38,10 @@ $(GEN2_VENV)/.gen2-installed: gen2/requirements.txt gen2/requirements-dev.txt
 # also appends that record to PATH (CI: the job summary). Exit 1 = refused.
 gen2-sqlite: gen2-venv
 	$(PYTHON) -m gen2.store.compat $(if $(GEN2_SQLITE_REPORT),--report "$(GEN2_SQLITE_REPORT)")
+
+# Native writes bypass the retained-support SQL observer (2d-4c-p4b2c2 closure).
+gen2-sqlite-native: gen2-venv
+	$(PYTHON) tools/check_gen2_sqlite_native.py
 
 gen2-boundaries: gen2-venv
 	$(PYTHON) tools/check_boundaries.py

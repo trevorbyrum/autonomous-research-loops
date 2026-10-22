@@ -6320,3 +6320,24 @@ frozen inputs match the validated helper snapshot. Superseded/stopped runs get
 no passing credit. Execution records, setup corrections, source provenance and
 ROOT-CAUSE classifications are in private/evidence/2d-4c-p4b2c2-repair-2/.
 Independent acceptance remains the reviewer's responsibility.
+
+#### 2d-4c part 4b2c2 closure — native API prohibition (2026-10-22)
+
+The operator's 2026-10-22 ruling supersedes the repair-2 description's complete
+application-write claim. `test_retained_support.py` guarantees observation of
+application-row changes through SQL statements on any observed connection
+(caller-supplied or opened during observation), at final and intermediate SQL
+boundaries. Compiled DML, including zero-row and rolled-back operations, and
+all existing row/snapshot assertions remain unchanged. The 17 test methods
+and 73-fixture qualification are preserved.
+
+Native write/replace APIs are excluded from that guarantee because
+`tools/check_gen2_sqlite_native.py`, run by `make gen2-sqlite-native` in
+`make gen2-check`, forbids `blobopen`, `backup`, `deserialize`,
+`enable_load_extension` and `load_extension` in tracked Python across the
+INVARIANTS B-3 surface, excluding test trees. It rejects attribute access on
+any receiver and literal-name `getattr`, while accepting unrelated local names.
+Existing native-change regressions remain; native write/restore between
+observation points is not claimed. Dynamic code generation is outside this
+gate's scope; the existing `make gen2-source` gate already forbids `eval`/`exec`
+in engine and gateway production (`docs/gen2/SOURCE-CONTRACT.md`).
