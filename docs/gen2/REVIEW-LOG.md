@@ -3096,3 +3096,14 @@ The post-2q Gate D is renumbered #5.
   - This still violates schema-only installation (class e). The full guarantee is classed MITIGATION/incomplete.
 - **Landing at d954236:** `gen2-check` green (7,563 s). Production unchanged.
 - **Routed:** `docs/gen2/tasks/2d-4c-p4b2c2-repair-2.md`, the **final** round (3 of 3). It adds database-content observation (created tables must be empty, dropped tables must have been empty) plus a broad self-qualified canary set. If round 3 fails, escalate to Trevor.
+
+## 2026-10-22: 2d-4c part 4b2c2 repair-2 (fca05ef): BLOCK, round 3 (cap reached; escalated to Trevor)
+- **Astra** (`9f136232`; `private/reviews/gen2-2d-4c-p4b2c2-r3-astra-review-20261022.md`):
+  - A PASS and B PASS; prior ROOT-CAUSE acceptance preserved; production unchanged; no new defect.
+  - Maintainability PASS.
+  - **C BLOCK:** C1 is MITIGATION/incomplete at the family level.
+- **Repaired:** data-bearing DDL. Populated CTAS and DROP now fail by contents assertion. All 73 fixtures behave as expected.
+- **Still open:** native SQLite row changes that are **written then restored** between observation points pass the test. The examples are `blobopen().write` and `Connection.backup`, which bypass the authorizer and trace callbacks.
+  - Reproduced at the real opening seam via a test wrapper.
+- **Orchestrator check:** production gen2 code makes **no** use of `blobopen`, `backup`, `serialize` or `deserialize` (grep). The gap is in what the test claims to cover, not in production behavior.
+- **Round cap reached:** escalated to Trevor for disposition, with no fourth round.
