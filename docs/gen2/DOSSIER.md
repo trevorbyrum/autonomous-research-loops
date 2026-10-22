@@ -6247,3 +6247,76 @@ changes. Production remains 13,709 engine / 12,256 gateway lines. The frozen
 note. Exact old false-acceptance evidence, qualified canaries, disclosed failed
 development attempts, scope, commands/exits and completion are retained under
 private/evidence/2d-4c-p4b2c2-repair-1/. Independent acceptance remains pending.
+
+#### 2d-4c part 4b2c2 repair 2 — design before test changes (2026-10-21)
+
+C1 family ROOT-CAUSE: compiled DML and database contents are independent
+observations. Keep the SQLite authorizer, including zero-row/rolled-back DML,
+and add before/after typed row multisets for every non-`sqlite_` table in main,
+TEMP and attached databases. Empty tables contribute no rows, so empty CREATE,
+CTAS and DROP, indexes and triggers remain schema-only controls. Include new
+and removed tables, duplicate rows, generated columns and accessible
+rowids. Compare at statement boundaries and before subject-owned connections
+close, retaining any observed difference even if later DDL reverses it. Establish
+an attached database's baseline when it first becomes reachable; observe it
+before DETACH. Retry incomplete callback snapshots during schema construction;
+mandatory final/close snapshots must succeed. Bind baselines to schema aliases
+until DETACH, so native database replacement cannot reset the baseline by
+changing the filename. Caller-owned connections keep their existing transaction
+and ownership semantics.
+
+ALTER ADD COLUMN DEFAULT on a populated table is a data change for this oracle:
+although SQLite can implement it by changing schema text alone, existing rows
+subsequently expose additional values. The operator's unchanged-application-data
+rule is about observable records, not physical page writes. DROP COLUMN and
+added virtual generated values likewise change records. A column rename alone
+preserves values; moving populated rows to another table name does not preserve
+the table-to-rows mapping.
+
+SQLite documentation audit covers the complete SQL statement index, CTAS, DROP,
+ALTER and VACUUM, plus writable_schema and the Python-exposed backup/blob APIs.
+ALTER DROP COLUMN removes stored values without lexical DML; ADD DEFAULT and
+ADD VIRTUAL change readable tuples; VACUUM may renumber implicit rowids.
+Validate those along with catalog-induced changes, virtual-table creation,
+backup/deserialization replacement and incremental BLOB writes. Retain source URLs, fetched
+pages and the complete fixture results in repair-2 evidence. SQLite authorizers
+must not query their connection; content reads run outside the authorizer.
+
+Estimate: about 260 handwritten repository additions (observer about 110,
+regressions about 105, dossier about 45), below the slice guide; private drivers
+estimated separately at 300 lines. Only test_retained_support.py and DOSSIER
+change. Preserve NB1, existing path/snapshot/no-effects assertions, mutation
+inventory, control mappings, production, SQL and schema pins. Required full
+engine/order, composition/startup, affected-mutant and eight static gates run
+on a frozen snapshot with a cp -a venv copy, after landing-unit waits.
+
+
+**Repair 2 implemented and validated, 2026-10-22.** C1's application-write
+family is ROOT-CAUSE: unchanged compiled-DML authorization is paired with typed
+application-row multisets, including new/dropped tables, generated values,
+accessible rowids, TEMP and attached schemas. Statement-boundary and pre-close
+snapshots retain differences; final snapshots must succeed. Schema aliases keep
+their baseline until DETACH, including native database replacement. Virtual-table
+input parameters/cursor pointers are excluded from row values; ordinary,
+generated and shadow-table data remain observed. Empty CREATE/DROP and zero-row
+CTAS, index/trigger/view creation and existing-virtual-table controls pass.
+
+All 15 original test methods and the authorizer callback are unchanged; NB1 and
+all snapshot/no-effects assertions remain. Two permanent regressions reject the
+old helper. The independent 73-case qualification yields 56 expected assertions
+and 17 accepted controls, zero errors/skips, with every operation completing.
+The exact installation CTAS retains its written row and fails by contents
+assertion; zero-row/schema-only controls pass. All original canaries and 33 path
+assertions pass qualification. Primary SQLite documentation, statement-family
+coverage and actual before/after rows are retained in repair-2 evidence.
+
+Required gates pass: 4,372 full engine tests (two existing skips), 339 reversed
+triggers / 6,149 identical Store outcomes, six composition and 221 startup tests,
+all 12 affected mutants killed with all paired controls passing, and all eight
+static checks. No production, schema, pin, shared fixture, harness or control
+changes. Production remains 13,709 engine / 12,256 gateway lines. Final full
+execution uses an independent local git clone and a cp -a venv copy; all 1,322
+frozen inputs match the validated helper snapshot. Superseded/stopped runs get
+no passing credit. Execution records, setup corrections, source provenance and
+ROOT-CAUSE classifications are in private/evidence/2d-4c-p4b2c2-repair-2/.
+Independent acceptance remains the reviewer's responsibility.

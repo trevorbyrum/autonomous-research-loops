@@ -3,7 +3,8 @@ import json
 import sqlite3
 import tempfile
 import unittest
-from contextlib import contextmanager
+from collections import Counter
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -22,14 +23,75 @@ class RetainedSupportTest(unittest.TestCase):
 
     @contextmanager
     def no_dml(self, *connections):
-        """Observe compiled writes, including triggers; permit schema-catalog DDL.
+        """Observe compiled writes and application rows; permit schema-only DDL.
 
         SQLITE_OK lets canaries execute. Zero-row and rolled-back writes also
         violate the no-DML contract; this is not a committed-change counter.
         """
-        writes = []
+        writes, changes, observation_errors = [], [], []
+        observers = {}
+        def quoted(name):
+            return '"' + name.replace('"', '""') + '"'
         def observe(conn):
             dropped = set()
+            before = {}
+            checking = False
+            def snapshot(_sql=None):
+                nonlocal checking
+                if checking:
+                    return
+                checking = True
+                try:
+                    # Ignore row factories; retain storage classes, duplicates
+                    # and accessible implicit rowids in the content comparison.
+                    cursor = conn.cursor()
+                    cursor.row_factory = None
+                    try:
+                        databases = {name for _, name, _ in cursor.execute('PRAGMA database_list')}
+                        databases.add('temp')
+                        states = {}
+                        for database in databases:
+                            schema = quoted(database)
+                            state = {}
+                            tables = cursor.execute(f'PRAGMA {schema}.table_list').fetchall()
+                            for _, table, kind, _, without_rowid, _ in tables:
+                                if kind == 'view' or table.startswith('sqlite_'):
+                                    continue
+                                # hidden=1 denotes virtual-table input parameters
+                                # (e.g. FTS cursor pointers), not stored row values.
+                                # Generated columns (hidden=2/3) remain included.
+                                names = [r[1] for r in cursor.execute(f'PRAGMA {schema}.table_xinfo({quoted(table)})') if r[6] != 1]
+                                if not without_rowid:
+                                    rowid = next((n for n in ('rowid', '_rowid_', 'oid')
+                                        if n not in {c.lower() for c in names}), None)
+                                    if rowid:
+                                        names.insert(0, rowid)
+                                columns = ','.join(f'typeof({quoted(n)}),{quoted(n)}' for n in names)
+                                rows = Counter(cursor.execute(f'SELECT {columns} FROM {schema}.{quoted(table)}').fetchall())
+                                if rows:
+                                    state[table] = rows
+                            states[database] = state
+                        for database in before.keys() - states.keys():
+                            del before[database]  # DETACH changes reachability, not rows.
+                        for database, state in states.items():
+                            # ATTACH exposes existing rows; subsequent statements
+                            # must preserve them. main/TEMP are baselined at open.
+                            if database not in before:
+                                before[database] = state
+                            elif state != before[database]:
+                                changes.append((database, sorted(t for t in state.keys() | before[database].keys()
+                                    if state.get(t) != before[database].get(t))))
+                    finally:
+                        cursor.close()
+                except Exception as exc:
+                    # A trace can run inside incomplete virtual-table/schema
+                    # construction. Retry at the next boundary; the mandatory
+                    # final/close snapshot must succeed. Never compare a partial
+                    # snapshot, or throw an exception SQLite would discard.
+                    if _sql is None:
+                        observation_errors.append((type(exc).__name__, str(exc)))
+                finally:
+                    checking = False
             def authorize(action, table, column, database, trigger):
                 # DROP authorizes a DELETE on the dropped object as well as
                 # catalog writes. Consume that specific schema operation only.
@@ -43,18 +105,34 @@ class RetainedSupportTest(unittest.TestCase):
                     writes.append((action, table, column, database, trigger))
                 return sqlite3.SQLITE_OK
             conn.set_authorizer(authorize)
+            snapshot()
+            conn.set_trace_callback(snapshot)
+            observers[conn] = snapshot
             return conn
         original = sqlite3.connect
+        class ObservedConnection(sqlite3.Connection):
+            def close(self):
+                if self in observers:
+                    observers.pop(self)()
+                    self.set_trace_callback(None)
+                    self.set_authorizer(None)
+                super().close()
         def connect(*args, **kwargs):
+            kwargs['factory'] = ObservedConnection
             return observe(original(*args, **kwargs))
         for conn in connections:
             observe(conn)
         try:
             with patch.object(sqlite3, 'connect', connect):
                 yield
+            for snapshot in list(observers.values()):
+                snapshot()
+            self.assertEqual(observation_errors, [], 'application-data observation errors')
             self.assertEqual(writes, [], 'application-table DML')
+            self.assertEqual(changes, [], 'application-table contents changed')
         finally:
-            for conn in connections:
+            for conn in observers:
+                conn.set_trace_callback(None)
                 conn.set_authorizer(None)
 
     def retained(self, method='canonical_bytes', reverse=False):
@@ -317,6 +395,69 @@ class RetainedSupportTest(unittest.TestCase):
             with self.no_dml(), sqlite3.connect(':memory:') as conn:
                 conn.executescript('CREATE TABLE witness (id INTEGER); DROP TABLE witness; '
                     'CREATE TABLE witness (id INTEGER); INSERT INTO witness VALUES (1);')
+
+    def test_no_data_changes_oracle(self):
+        cases = (
+            ('exact CTAS', "-- trace: review populated DDL canary\nCREATE TABLE review_application_rows\n"
+                "AS SELECT 1 AS id, 'written' AS value;", True),
+            ('empty CTAS', 'CREATE TABLE added AS SELECT * FROM witness WHERE 0;', False),
+            ('populated DROP', 'DROP TABLE witness;', True),
+            ('empty DROP', 'DROP TABLE empty;', False),
+            ('insert select', 'CREATE TABLE added(id,value); INSERT INTO added SELECT * FROM witness;', True),
+            ('default values', "ALTER TABLE witness ADD COLUMN added TEXT DEFAULT 'written';", True),
+            ('removed values', 'ALTER TABLE witness DROP COLUMN value;', True),
+            ('generated values', 'ALTER TABLE witness ADD COLUMN added AS (id+1);', True),
+            ('virtual rows', "CREATE VIRTUAL TABLE added USING fts5(value,content='witness',content_rowid='id');", True),
+            ('column rename', 'ALTER TABLE witness RENAME COLUMN value TO renamed;', False),
+            ('table rename', 'ALTER TABLE witness RENAME TO renamed;', True),
+            ('TEMP CTAS', 'CREATE TEMP TABLE added AS SELECT * FROM witness;', True),
+            ('attached CTAS', 'CREATE TABLE extra.added AS SELECT * FROM witness;', True),
+            ('attached DROP', 'DROP TABLE extra.witness;', True),
+            ('detached CTAS', 'CREATE TABLE extra.added AS SELECT * FROM witness; DETACH extra;', True),
+            ('transient CTAS', 'CREATE TABLE added AS SELECT * FROM witness; DROP TABLE added;', True),
+            ('drop recreate', 'DROP TABLE witness; CREATE TABLE witness AS SELECT 1 AS id, 1 AS value;', True),
+            ('zero row DML', 'UPDATE witness SET value=2 WHERE 0;', True),
+            ('rolled back DML', 'BEGIN; DELETE FROM witness; ROLLBACK;', True),
+            ('schema control', 'CREATE TABLE added(id); DROP TABLE added; CREATE INDEX by_value ON witness(value); '
+                'CREATE TRIGGER unused AFTER INSERT ON empty BEGIN UPDATE witness SET value=2; END;', False),
+        )
+        for label, sql, changes in cases:
+            with self.subTest(label=label), sqlite3.connect(':memory:', isolation_level=None) as conn:
+                conn.executescript('CREATE TABLE witness(id INTEGER PRIMARY KEY,value); '
+                    "INSERT INTO witness VALUES(1,1); CREATE TABLE empty(id); ATTACH ':memory:' AS extra; "
+                    'CREATE TABLE extra.witness AS SELECT * FROM witness;')
+                expected = self.assertRaisesRegex(AssertionError, 'application-table (DML|contents changed)') if changes else nullcontext()
+                with expected, self.no_dml(conn):
+                    conn.executescript(sql)
+        for sql in ('CREATE TABLE added AS SELECT 1 AS value;',
+                    'CREATE TEMP TABLE added AS SELECT 1 AS value;',
+                    "ATTACH ':memory:' AS extra; CREATE TABLE extra.added AS SELECT 1 AS value; DETACH extra;"):
+            with self.subTest(closed_connection=sql), self.assertRaisesRegex(AssertionError, 'application-table contents changed'):
+                with self.no_dml():
+                    conn = sqlite3.connect(':memory:', isolation_level=None)
+                    conn.executescript(sql)
+                    conn.close()
+        with sqlite3.connect(':memory:', isolation_level=None) as conn:
+            conn.executescript("CREATE VIRTUAL TABLE existing USING fts5(value); INSERT INTO existing VALUES('retained');")
+            with self.no_dml(conn):
+                conn.executescript('CREATE TABLE empty(id); DROP TABLE empty;')
+
+    def test_no_data_changes_native_writes(self):
+        for operation in ('blob', 'backup', 'deserialize'):
+            with self.subTest(operation=operation), tempfile.TemporaryDirectory() as root, \
+                    sqlite3.connect(Path(root) / 'target', isolation_level=None) as target, \
+                    sqlite3.connect(':memory:', isolation_level=None) as source:
+                for conn, value in ((target, "x'6f6c64'"), (source, "x'6e6577'")):
+                    conn.executescript(f'CREATE TABLE witness(value BLOB); INSERT INTO witness VALUES({value});')
+                with self.assertRaisesRegex(AssertionError, 'application-table contents changed'), self.no_dml(target):
+                    if operation == 'blob':
+                        with target.blobopen('witness', 'value', 1) as blob:
+                            blob.write(b'new')
+                    elif operation == 'backup':
+                        source.backup(target)
+                    else:
+                        target.deserialize(source.serialize())
+                self.assertEqual(target.execute('SELECT value FROM witness').fetchall(), [(b'new',)])
 
     def test_history_compatibility_and_schema(self):
         with tempfile.TemporaryDirectory() as root:
