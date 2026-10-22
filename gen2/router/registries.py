@@ -105,9 +105,11 @@ class RegistriesCore(Protocol):
 
 
 class Registries:
-    """Two writes here are not made inside `_guarded` but in a transaction of their own, as in the historical mixin implementation, now the one the core hands out
-    (`_core._transaction()`): the dated fact a refused bundle leaves (a store error there propagates as it is; it is not a second refusal) and a start's
-    recovery fact (the clock is read only when there is an active bundle). Every other write is inside `_guarded`."""
+    """Two paths write outside `_guarded`, in their own `_core._transaction()`:
+    a refused bundle's dated fact (a store error propagates, not a second refusal)
+    and restoration's disabled/recovery facts. Restoration reads the clock even
+    without an active bundle to record the first tier-0 disabled fact; subsequent
+    restoration without a transition writes nothing. Every other write is inside `_guarded`."""
 
     def __init__(self, core: RegistriesCore) -> None:
         self._core = core

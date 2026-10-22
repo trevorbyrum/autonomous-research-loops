@@ -643,9 +643,14 @@ class AckDeliveryTest(RouterTestCase):
                                                tombstones_acknowledged=False, acked_at=None))["status"], "recorded")
 
     def test_failures_raise_capability_facts_on_transitions(self) -> None:
+        unrelated_facts = "SELECT * FROM capability_facts WHERE capability <> 'export-connector:warehouse' ORDER BY fact_id"
+        startup = self.rows(unrelated_facts)
+        self.assertEqual(self.rows("SELECT capability, state, detail FROM capability_facts"),
+                         [("tier-0", "unknown", "tier-0 disabled")])
         self.assertEqual(self.ack(self.receipt("exr_000000000001", "failed", capability_fact_id="fact_warehouse01"))["status"], "recorded")
-        self.assertEqual(self.rows("SELECT fact_id, capability, state, since FROM capability_facts"),
+        self.assertEqual(self.rows("SELECT fact_id, capability, state, since FROM capability_facts WHERE capability = 'export-connector:warehouse'"),
                          [("fact_warehouse01", "export-connector:warehouse", "failing", "2026-09-27T12:00:00Z")])
+        self.assertEqual(self.rows(unrelated_facts), startup)
         # a second failure while failing names the current fact; a new id would claim a transition that did not happen
         self.assertEqual(self.ack(self.receipt("exr_000000000002", "failed", attempt=2, capability_fact_id="fact_warehouse01"))["status"], "recorded")
         before = self.state(exclude=())
@@ -659,3 +664,4 @@ class AckDeliveryTest(RouterTestCase):
         facts = self.rows("SELECT state, superseded_by_fact_id IS NULL FROM capability_facts WHERE capability = 'export-connector:warehouse' ORDER BY rowid")
         self.assertEqual(facts, [("failing", 0), ("unknown", 0), ("healthy", 1)])
         self.assertEqual(self.rows("SELECT status FROM export_delivery_receipts ORDER BY attempt"), [("failed",), ("failed",), ("outcome_unknown",), ("delivered",)])
+        self.assertEqual(self.rows(unrelated_facts), startup)

@@ -123,8 +123,9 @@ class ConfigBundleTest(RouterTestCase):
         """H-2, RG-9 on a start with nothing mounted (Astra 1d-repair review
         finding 2): restoring the active bundle names it and records the
         recovery once, the failure kept as history; restoring it again, with
-        nothing to recover from, writes nothing, as it does in a store with
-        no bundle to restore."""
+        nothing to recover from, writes nothing. Without a bundle, the first
+        restoration records the tier-0 disabled fact; later restorations
+        preserve it without another write."""
         self.assertEqual(self.activate(bundle(2, policy={"supervisor": {"launch_attempt": 1}}))["status"], "refused")
         self.assertEqual(self.router.restore_config_bundle(), CONFIG)
         facts = self.rows("SELECT fact_id, state, superseded_by_fact_id FROM capability_facts WHERE capability = 'config-bundle' ORDER BY rowid")
@@ -140,6 +141,9 @@ class ConfigBundleTest(RouterTestCase):
             self.assertIsNone(router.restore_config_bundle())
             self.assertEqual(db.execute("SELECT capability, state, detail FROM capability_facts").fetchall(),
                              [("tier-0", "unknown", "tier-0 disabled")])
+            startup = db.execute("SELECT * FROM capability_facts").fetchall()
+            self.assertIsNone(router.restore_config_bundle())
+            self.assertEqual(db.execute("SELECT * FROM capability_facts").fetchall(), startup)
         finally:
             db.close()
 
