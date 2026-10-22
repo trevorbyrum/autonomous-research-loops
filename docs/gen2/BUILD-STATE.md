@@ -3,6 +3,20 @@
 Maintained by the orchestrator loop. One entry per wake with material change; quiet wakes don't append.
 
 ## Current
+- **Operator rulings 2026-10-22: build efficiency** (Astra process review `private/reviews/gen2-process-efficiency-astra-review-20261022.md` plus five research reports; plan in `private/reviews/gen2-efficiency-plan-20261022.md`).
+  - **Three roles.** The coder runs targeted checks only. An **independent verifier** runs the full set once per round: a fresh Sonnet 5.5 agent per `docs/gen2/VERIFIER.md` until CI qualifies, then CI. Astra judges. The orchestrator only routes.
+  - **Mechanical batches** of up to about 800–1,200 lines.
+  - **Acceptance contracts** agreed before coding.
+  - Recorded in BUILD-CHARTER.
+  - **Not adopted:** pipelining successors, the shared rule table, generated evidence.
+  - **CI:** Trevor is doing the activation steps:
+    1. merge ci-cd #12→#15;
+    2. tag v1.2.0 and repoint JCasC;
+    3. build image `:2`;
+    4. merge gen2 PR #2.
+
+    The coder's CI completion task and §4 qualification follow.
+  - The in-flight p4b2c2 repair-2 landing stays orchestrator-run, as it started before the ruling. The new roles apply from the next round.
 - **OPEN ITEM, CI rollout stalled (raised to the operator 2026-10-17).**
   - **Where it stands:**
     - CI-DESIGN was approved 2026-10-05, and ci-cd PRs #5–#11 merged.
