@@ -599,7 +599,8 @@ class StationProbeTest(FakeRunnerCase):
             reply = station.probe.run({"provider": "codex", "requested_by": "alice"})
             self.assertLess(time.monotonic() - started, 4.5)
             self.assertEqual((reply["status"], reply["outcome"], reply["fact"]["state"]), ("recorded", "runner_error", "unknown"))
-            self.assertEqual(station.router.status({})["capability_facts"][-1]["detail"], "runner_error: codex login ran past the probe timeout")
+            facts = [f for f in station.router.status({})["capability_facts"] if f["capability"] == CAP]
+            self.assertEqual([f["detail"] for f in facts], ["runner_error: codex login ran past the probe timeout"])
         finally:
             station.close()
 

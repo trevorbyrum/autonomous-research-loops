@@ -137,6 +137,7 @@ class Registries:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
 
     def _activate_in_transaction(self, doc: dict, bundle_hash: str, now: str) -> dict:
+        self._fact("tier-0", "unknown", "tier-0 disabled", now)  # operator 2026-10-10 / DEBT-037
         stored = self._core._one("config_bundles", {"bundle_hash": bundle_hash})
         if stored is not None:
             if stored["status"] != "active":
@@ -184,6 +185,7 @@ class Registries:
         review finding 2): the failure stays history."""
         with self._core._transaction():
             active = self._active_bundle()
+            self._fact("tier-0", "unknown", "tier-0 disabled", self._core._now())
             if active is not None:
                 self._fact(BUNDLE_CAPABILITY, "healthy", f"bundle version {active['version']} active (restored)", self._core._now())
         return None if active is None else active["bundle_hash"]

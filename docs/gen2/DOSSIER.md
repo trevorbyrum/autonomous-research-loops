@@ -82,7 +82,7 @@ and split again before exceeding about 500 lines. Documentation is additional.
 | 2 | 1 | Durable branch/window association admission and provenance-derived window pins; missing/cross-topic/forged cases. 400. |
 | 3 | Existing quote/receipt schema | Byte/span verification against exact source artifact with explicit normalization; quarantine and capture-owner notification before optional NLI. 430. |
 | 4 | 3 | Verifier typed re-access/extraction and tier/route/table checks, independent detailed check receipts and disagreement holds; fixture execution only. 450. |
-| 5 | 3–4 | Optional tier-0 screen/alarm and audit/regression records, no promotion; bounded sampling hand-off. 350. |
+| 5 | 3–4 | Under the 2026-10-10 ruling, only the dated `tier-0 disabled` capability fact and status regressions (2d-5, below). Checker and audit policy remain DEBT-037 / Phase 3. About 150–250. |
 | 6 | 1–4 | Coherent snapshot/read adapter and lossless rich stopping dossier persistence with actual coverage/challenge/verification gates; concurrency/workload cases. 490; split snapshot and rich representation if estimate grows. |
 | 7 | 6 | Fresh scientific-review record admission, exact dossier completion candidate/approval and material-change refusal. 400. |
 | 8 | 6–7 | Approved-revision /2 bundle assembly, full history/licence binding and manifest enablement; /1 compatibility and short-lock tests. 480. |
@@ -6341,3 +6341,57 @@ Existing native-change regressions remain; native write/restore between
 observation points is not claimed. Dynamic code generation is outside this
 gate's scope; the existing `make gen2-source` gate already forbids `eval`/`exec`
 in engine and gateway production (`docs/gen2/SOURCE-CONTRACT.md`).
+
+## 2d-5: dated tier-0 disabled capability fact (2026-10-22, before code)
+
+The fixed continuation contract and 2026-10-10 operator ruling narrow slice 5
+to the explicit `tier-0 disabled` capability fact. DEBT-037 stays open;
+checker selection, execution, screening, sampling, alarms and enablement are
+outside this slice. No operator decision is needed.
+
+Trace: flow §4.2, INVARIANTS H-2, BOUNDARIES Router (sole writer), Operator
+(dated capability facts) and Tier-0 checker (no promotion authority).
+Reuse `Registries._fact`, the existing dated transition/idempotence writer,
+inside mounted config activation and retained config restoration. Those are
+the configured engine's two `open_station` activation routes. Bare Router
+opening and retained-state admission preserve their accepted no-DML contract;
+status remains a read, not an activation or a replacement for a missing fact.
+The test-only `fixture_policy` route is outside configured activation.
+Capability `tier-0` has state `unknown`, exact detail
+`tier-0 disabled`, activation-time `since`/`recorded_at`, no last success and
+no affected lanes. The existing state vocabulary has no disabled member;
+unknown truthfully records that no check was performed and grants no pass.
+Restarts retain the first fact/date instead of adding observations. A failed
+write prevents successful activation through the existing transaction/error
+paths; no synthetic status fact substitutes for durable recording.
+
+`router/status.py` already lists current capability facts, and
+`operator/status.py` passes them through. Both remain read-only. The frozen
+HistoryReader exposes selected evidence/audit families, not capability facts;
+its conditional capability-fact clause needs no new history surface.
+No receipt, promotion or completion consumer changes; `service.py` is unchanged.
+
+Controls: literal SQL and real operator HTTP assertions for the dated unknown
+fact; mounted, retained legacy (fact absent) and empty-store activation;
+restart/replay/read idempotence; no last success, healthy state, receipt or
+detailed-check record attributed to tier-0. Pair omission and false-pass
+mutants with controls that exercise activation while asserting unrelated
+config behavior. Existing promotion tests remain unchanged. Run affected
+modules, composition, affected `--only` mutants and static gates; full suites
+belong to the independent verifier. Estimate: 150–250 hand-written lines,
+mostly regressions/controls; no schema or Router-core growth.
+
+The first implementation placed the write in collaborator initialization;
+the unchanged retained-state regressions correctly rejected its fresh-opening
+DML. Move recording into the existing activation/restoration transactions,
+preserving the no-DML installation/admission/history guarantee. This is an
+implementation correction, not an amendment of that accepted guarantee.
+
+Targeted-check prerequisite: Python-only `--only` selection already skips the
+unrelated Store baseline, but the harness's new baseline reporting dereferences
+that absent result (`base.ran`). Existing BaselineModesTest regressions reproduce
+the error. Make the Store report entry conditional on a Store baseline actually
+running, preserving baseline selection and all verdict rules. This one-line
+validation-only root-cause correction enables the mandated targeted check;
+it adds no engine behavior or operator policy. Select affected file targets and
+the changed tests' killer/control consumers, rather than broad SQL families.

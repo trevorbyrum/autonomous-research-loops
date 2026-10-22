@@ -31,23 +31,24 @@ class StatusOrderTest(rf.RouterTestCase):
 
     def test_status_lists_the_current_capability_facts_by_capability_name(self) -> None:
         facts = self.router.status({})["capability_facts"]
-        self.assertEqual([(f["capability"], f["state"]) for f in facts], [(ALPHA, "unknown"), (ZETA, "failing")])
+        self.assertEqual([(f["capability"], f["state"]) for f in facts], [(ALPHA, "unknown"), (ZETA, "failing"), ("tier-0", "unknown")])
 
     def test_status_lists_the_open_global_holds_in_the_order_they_were_opened(self) -> None:
         holds = self.router.status({})["holds"]
         self.assertEqual([h["subject_ref"] for h in holds], ["capability:" + ZETA, "capability:" + ALPHA])
 
     def test_control_the_fixtures_hold_two_rows_each_that_the_two_orders_tell_apart(self) -> None:
-        """Raw SQL, not status: two current facts and two open holds of no topic, the facts written zeta first and named alpha first, the holds opened zeta first, strictly later."""
+        """Raw SQL: startup fact, then zeta/alpha probes; two holds opened zeta first, strictly later."""
         written = self.rows("SELECT capability FROM capability_facts WHERE superseded_by_fact_id IS NULL ORDER BY rowid")
-        self.assertEqual(written, [(ZETA,), (ALPHA,)])
-        self.assertEqual(sorted(written), [(ALPHA,), (ZETA,)])
+        self.assertEqual(written, [("tier-0",), (ZETA,), (ALPHA,)])
+        self.assertEqual(sorted(written), [(ALPHA,), (ZETA,), ("tier-0",)])
         opened = self.rows("SELECT subject_ref, created_at FROM holds WHERE topic_id IS NULL AND cleared_at IS NULL ORDER BY rowid")
         self.assertEqual([subject for subject, _ in opened], ["capability:" + ZETA, "capability:" + ALPHA])
         self.assertLess(opened[0][1], opened[1][1])
-        self.assertNotEqual([subject.removeprefix("capability:") for subject, _ in opened], [name for (name,) in sorted(written)])
+        self.assertNotEqual([subject.removeprefix("capability:") for subject, _ in opened],
+                            [name for (name,) in sorted(written) if name in (ALPHA, ZETA)])
 
     def test_control_status_lists_the_same_two_rows_of_each_whatever_their_order(self) -> None:
         doc = self.router.status({})
-        self.assertEqual(sorted(f["capability"] for f in doc["capability_facts"]), [ALPHA, ZETA])
+        self.assertEqual(sorted(f["capability"] for f in doc["capability_facts"]), [ALPHA, ZETA, "tier-0"])
         self.assertEqual(sorted(h["subject_ref"] for h in doc["holds"]), ["capability:" + ALPHA, "capability:" + ZETA])
