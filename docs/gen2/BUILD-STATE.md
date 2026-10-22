@@ -17,6 +17,7 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 
     The coder's CI completion task and §4 qualification follow.
   - The in-flight p4b2c2 repair-2 landing stays orchestrator-run, as it started before the ruling. The new roles apply from the next round.
+  - **PR-only gen2 (2026-10-22):** gen2 is being locked for auto-merge on Jenkins green (the ci-cd session applies the protection). Every change goes through a PR from a task or `orch/records-*` branch. main (gen-1) isn't touched. Charter "PR-only gen2".
 - **OPEN ITEM, CI rollout stalled (raised to the operator 2026-10-17).**
   - **Where it stands:**
     - CI-DESIGN was approved 2026-10-05, and ci-cd PRs #5–#11 merged.
