@@ -3113,3 +3113,13 @@ The post-2q Gate D is renumbered #5.
 - **The gate:** `tools/check_gen2_sqlite_native.py` forbids `blobopen`, `backup`, `deserialize`, `enable_load_extension` and `load_extension` across the B-3 Python surface (tests exempt). It covers attribute access on any receiver, plus literal and attribute-qualified `getattr`, and fails closed on read or parse errors. It's wired into `gen2-check`.
 - **The narrowed claim:** the `no_dml` docstring and DOSSIER now state the scope as SQL application-row writes plus SQL-boundary state, and cite the gate. The test module differs only in that docstring; all 17 methods are AST-identical, and all 73 fixtures behave as expected (56 failures, 17 controls).
 - **First independent-verifier round:** Sonnet verifier `ed4b5338` ran `gen2-check` on a clean clone of `9ff9e54`: **exit 0, 7,644 s**. Gateway was carried forward from `5b01b6e`. The coder ran targeted checks only.
+
+## 2026-10-22: 2d slice 5 (tier-0 disabled capability fact, d6376ad, PR #4): BLOCK, round 1
+- **Astra** (`25dca0bd`; `private/reviews/gen2-2d-5-astra-review-20261022.md`): **A PASS, B PASS, C BLOCK.**
+  - The implementation is ROOT-CAUSE: the existing `_fact` writer records `tier-0`/`unknown`/"tier-0 disabled" on both activation and restoration.
+  - Status passes stored facts through, and absence never reads as a pass.
+  - Opening and history stay read-only. No consumer reads the fact. The existing tier-0 *alarm* receipt guards are preserved (contract clarification).
+- **B1:** the verifier's full `gen2-check` failed (1 of 4,403). `test_router_ops.AckDeliveryTest.test_failures_raise_capability_facts_on_transitions` expects only the connector fact. This is an overlooked consumer of the new row, found by the independent verifier rather than the coder's targeted checks. `gen2-gateway` passed.
+- **NB1:** stale restoration descriptions in `registries.py` and `test_router_registries.py`.
+- **Process finding:** PR #4 auto-merged (06:40Z, `54ce832`) before the verifier and Astra finished, because the Jenkins PR check runs only T0 static gates. gen2 therefore carries the B1 failure until the repair lands. Escalated to Trevor.
+- **Routed:** `docs/gen2/tasks/2d-5-repair-1.md`, a family-level fix to the capability-fact consumers, on a new branch with auto-merge held.
