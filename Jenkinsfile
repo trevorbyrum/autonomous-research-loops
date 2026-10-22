@@ -1,10 +1,17 @@
 // CI (trevorbyrum/ci-cd): runs gen2's own gate suite in its declared reference
 // environment (docs/gen2/ENVIRONMENT.md): Python 3.12.3 + SQLite 3.45.1, the
-// ci-py312-noble image on cir. Measured 2026-10-04: ~32 min under CI limits.
+// ci-py312-noble:1 image on cir (ci-2 amendment, 2026-10-18).
+// Branch pushes and PR merge jobs run T0 + complete trigger-order + units 1/8.
+// This is NOT full acceptance.
+// Engine/gateway acceptance modes are separate Make invocations; scheduling
+// their shards needs the platform extension described in docs/gen2/CI-RUNNER.md.
+// Image :2 / gateway DB remain off until the operator deploys and confirms :2.
 standardPipeline(
   image: 'ci-py312-noble:1',
-  lint: 'make gen2-boundaries gen2-size',
+  cleanWorkspace: true,
+  recordIdentity: true,
   build: 'make gen2-venv',
-  unit: 'make gen2-check',
+  unit: 'make gen2-ci-default',
+  junit: 'build/ci-evidence/**/*.xml',
   timeoutMinutes: 50
 )

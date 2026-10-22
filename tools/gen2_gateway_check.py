@@ -19,6 +19,7 @@ dependency (psycopg) in the running Python. Exit status 0 only if every step pas
 from __future__ import annotations
 
 import glob
+import argparse
 import os
 import shutil
 import subprocess
@@ -47,9 +48,16 @@ def step(label: str, argv: list[str], env: dict, cwd: Path) -> bool:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--mode", choices=("all", "no-db", "db", "mutants"), default="all")
+    args = parser.parse_args()
     base = {k: v for k, v in os.environ.items() if not k.startswith("RESEARCH_GATEWAY_")}
     suite = [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", "."]
-    ok = step("gateway suite without a database", suite, base, GATEWAY)
+    ok = True
+    if args.mode in ("all", "no-db"):
+        ok = step("gateway suite without a database", suite, base, GATEWAY)
+    if args.mode == "no-db":
+        return 0 if ok else 1
     initdb, pg_ctl = pg_bin("initdb"), pg_bin("pg_ctl")
     if not (initdb and pg_ctl):
         print("gen2-gateway: FAILED: no PostgreSQL server binaries (initdb, pg_ctl): the database cases and "
@@ -65,8 +73,10 @@ def main() -> int:
             env = {**base, "RESEARCH_GATEWAY_DSN": f"postgresql://gateway@/gateway_check?host={sock}", "RESEARCH_GATEWAY_TEST_OK": "1"}
             ok &= step("schema and seed", [sys.executable, "-m", "research_gateway.registry.load", "--schema", "--load",
                                            "--seed-operational"], env, GATEWAY)
-            ok &= step("gateway suite on a throwaway database", suite, env, GATEWAY)
-            ok &= step("gateway mutants", [sys.executable, str(ROOT / "tools" / "gen2_gateway_mutations.py")], env, ROOT)
+            if args.mode in ("all", "db"):
+                ok &= step("gateway suite on a throwaway database", suite, env, GATEWAY)
+            if args.mode in ("all", "mutants"):
+                ok &= step("gateway mutants", [sys.executable, str(ROOT / "tools" / "gen2_gateway_mutations.py")], env, ROOT)
         finally:
             subprocess.run([pg_ctl, "-D", str(data), "-m", "fast", "-w", "stop"], stdout=subprocess.DEVNULL)
     print(f"gen2-gateway: {'all checks passed' if ok else 'FAILED'}")

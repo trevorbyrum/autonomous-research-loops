@@ -79,7 +79,7 @@ their controls included); every module and disk target's killers and
 controls together over one unmutated child tree; and each path-handed
 ("attr") target's killers and controls over its own unmutated copy. The
 whole unmutated suite runs once per build, in make gen2-test. Workers are
-bounded (default: one fewer than the cores, a core left for the children the
+bounded (default: one fewer than quota/affinity CPU slots, a slot left for the children the
 killers start), and each verdict is printed as its worker finishes; no test
 timeout is changed. How long a run takes depends on the host's load and is
 not a property of the inventory: recorded runs of the same inventory before
@@ -118,6 +118,15 @@ if str(ROOT / "tools") not in sys.path:
     sys.path.append(str(ROOT / "tools"))
 from gen2_mutants import MUTATIONS, SECOND_LAYER, SECOND_LAYER_TRIGGERS, Mutation  # noqa: E402 (path set above)
 from gen2_ddl_triggers import installed_triggers  # noqa: E402
+from gen2_workers import mutation_workers  # noqa: E402
+from gen2_ci_evidence import in_shard, shard_spec, write_json  # noqa: E402
+
+_EVIDENCE: Path | None = None
+
+
+def mutation_record(name: str, value: object) -> None:
+    if _EVIDENCE is not None:
+        write_json(_EVIDENCE / name, value)
 
 # File targets: how the named tests are pointed at a mutated copy. ("attr",
 # module, name): the file is written to a temp dir and module.name is set to
@@ -667,19 +676,34 @@ def _evaluate(m: Mutation) -> str:
             finally:
                 fx.DDL_TEXT, fx.CONNECTION_TEXT = ddl0, conn0
     except ValueError as exc:
+        mutation_record("mutants/" + m.mid + ".json", {"id": m.mid, "verdict": "INVALID", "reason": str(exc)})
         return f"INVALID   {m.mid}: {exc}"
-    return verdict(m, res, controls_of(m))
+    outcome = verdict(m, res, controls_of(m))
+    mutation_record("mutants/" + m.mid + ".json", {
+        "id": m.mid, "verdict": outcome.split()[0], "killers": list(m.killers),
+        "controls": list(controls_of(m)), "ran": sorted(res.ran),
+        "failed": sorted(res.failed), "errored": res.errored, "skipped": sorted(res.skipped),
+    })
+    return outcome
 
 
 def main(argv: list[str] | None = None) -> int:
-    global _FX
+    global _FX, _EVIDENCE
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--only", help="run only mutations whose id starts with this prefix (several: comma-separated)")
     parser.add_argument("--list", action="store_true", help="print the inventory and exit")
-    parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1),
-                        help="worker processes (default: one fewer than the cores, one left for the killers' children)")
+    parser.add_argument("--jobs", type=int, help="worker processes, capped by quota/affinity minus one for children")
+    parser.add_argument("--shard", type=shard_spec, default=(1, 1),
+                        help="exhaustive INDEX/TOTAL partition; retains ALL inventory checks and baselines")
     parser.add_argument("--no-disk", action="store_true", help="swap modules in memory only; children import the unmutated tree (shows the 1b gap)")
     args = parser.parse_args(argv)
+    # Children running the harness's own tests must not overwrite this run's
+    # evidence with their deliberately partial/counterfactual harness runs.
+    directory = os.environ.pop("GEN2_CI_EVIDENCE", None)
+    _EVIDENCE = Path(directory) if directory else None
+    args.jobs = mutation_workers(args.jobs)
+    if args.only and args.shard != (1, 1):
+        parser.error("--only and --shard cannot be combined")
     global DISK
     DISK = not args.no_disk
     if args.list:
@@ -717,8 +741,12 @@ def main(argv: list[str] | None = None) -> int:
         if tree_targets else []  # one unmutated child tree covers every module and disk target: the same loading mode
     baselines += [Mutation("baseline", "-", "unmutated", tuple(k for m in selected if m.target == target for k in tested(m)), target=target)
                   for target in sorted({m.target for m in selected if FILE_TARGETS.get(m.target, ("",))[0] == "attr"})]
+    baseline_outcomes = [{"target": "store", "ran": sorted(base.ran),
+                          "failed": sorted(base.failed), "errored": base.errored, "skipped": sorted(base.skipped)}]
     for clean in baselines:
         res = _run_file_mutation_unmutated(clean)
+        baseline_outcomes.append({"target": clean.target, "ran": sorted(res.ran),
+                                  "failed": sorted(res.failed), "errored": res.errored, "skipped": sorted(res.skipped)})
         if res.failed or res.errored:
             print(f"BASELINE NOT GREEN ({clean.target if FILE_TARGETS[clean.target][0] == 'attr' else 'the child tree'}): "
                   f"failed={sorted(res.failed)} errored={res.errored}", file=sys.stderr)
@@ -736,6 +764,14 @@ def main(argv: list[str] | None = None) -> int:
     if missing and not args.only:
         print(f"UNCOVERED TRIGGERS (add a mutant or document a second layer): {missing}", file=sys.stderr)
         return 1
+    full_inventory = [m.mid for m in selected]
+    selected = [m for m in selected if in_shard(m.mid, args.shard)]
+    if not selected:
+        parser.error("mutation shard is empty")
+    mutation_record("engine-mutation-inventory.json", {"expected": full_inventory,
+           "selected": [m.mid for m in selected], "shard": args.shard,
+           "baselines": baseline_outcomes,
+           "uncovered_triggers": missing})
     _FX = fx
     bad = 0
 

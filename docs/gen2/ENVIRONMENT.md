@@ -117,3 +117,18 @@ whether the gateway should get a hash-locked environment of its own is an open q
 ## Changing a dependency
 
 A new runtime dependency is an architecture change. It needs a `third_party` grant in `gen2/boundaries.toml`, and it goes through the charter's review path. Whether runtime or dev, a new dependency, or a version change, updates the lock with the complete transitive graph and every hash (from PyPI, for the exact release). For a platform-specific wheel, that means the CPython 3.12 wheels at least. A change to either lock rebuilds `.venv-gen2` on the next `make` run.
+
+## ci-2 amendment: current Jenkins path and prepared gateway environment
+
+The October 18 amendment uses `ci-py312-noble:1` while the operator builds `:2`
+on cir. Jenkins runs `make gen2-ci-default`: T0, the full trigger-order suite,
+and unit partition 1/8, with `cleanWorkspace` and `recordIdentity`. Other engine modes have
+independent Make targets; the deployed library cannot select them separately.
+This result is not full acceptance. See [CI-RUNNER.md](CI-RUNNER.md) for mode
+commands, quota budgeting, expected identities and platform prerequisites.
+
+`gateway/requirements-ci.txt` prepares the complete hash-locked Python 3.12
+Linux amd64 gateway closure (psycopg, psycopg-binary and typing-extensions).
+The opt-in `gen2-gateway-venv` and `gen2-gateway-ci` targets use a separate
+`.venv-gateway-ci`; they stay off the default path until the image follow-up.
+The local `gen2-gateway` interpreter and exhaustive default remain unchanged.
