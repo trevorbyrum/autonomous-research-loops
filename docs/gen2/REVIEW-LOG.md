@@ -3151,3 +3151,14 @@ The post-2q Gate D is renumbered #5.
   - NB2: full-read p95 is about 1 s and readers delay checkpoints, so measure live operands and reader effects later (folded into part 2);
   - NB3: device/inode checks are not the lifecycle or freshness proof (parts 3–4 and 6b1).
 - Auto-merge enabled after both passed; merged.
+
+## 2026-10-23: 2d slice 6a part 2 (fe03b1b, PR #11): BLOCK, round 1
+- **Astra** (`431f883f`; `private/reviews/gen2-2d-6a-p2-astra-review-20261023.md`): **A PASS, B PASS, C BLOCK.**
+  - The production change is ROOT-CAUSE: the readers no longer convert under the writer transaction.
+  - 2a's behaviour preservation is confirmed, and the memory reading (149.5 MiB against ≤192 MiB) is honest.
+- **C1:** the `boundary.py` mutation reload tuple omitted `gen2.router.accounting`, the new `Refusal` importer. This was the verifier's sole failure (1 of 4,441). Astra reproduced the stale-alias effect.
+- **Verifier** (Sonnet `77b0c329`): gen2-check exit 2 (stopped at gen2-test); gen2-gateway exit 0.
+- **Repair** `768364a` was dispatched as soon as the verifier flagged the failure, before Astra finished: reload order fixed, 45-entry audit, stronger guards.
+  - Re-verification is gen2-check only; the gateway is carried forward from `fe03b1b`, since no gateway input changed.
+  - **Round 2** dispatched (Astra `a61b039c`).
+- **Non-blocking items:** full-route read p95 is about 2.7 s and reader lifetime about 0.9 s (allowed by R3; keep measuring); freshness and authority remain with parts 3–4 and 6b1.
