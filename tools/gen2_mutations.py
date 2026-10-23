@@ -189,7 +189,7 @@ FILE_TARGETS = {
     "gen2/router/boundary.py": ("module", "gen2.router.boundary", "gen2.router.lifecycle", "gen2.router.registries", "gen2.router.amendments",
                                 "gen2.router.scheduling", "gen2.router.capabilities", "gen2.router.assessments", "gen2.router.extractor_registry",
                                 "gen2.router.acquisitions", "gen2.router.extractions", "gen2.router.evidence_writer", "gen2.router.observations",
-                                "gen2.router.detailed_checks", "gen2.router.status", "gen2.router.service", "gen2.tests.router_fixtures"),
+                                "gen2.router.detailed_checks", "gen2.router.status", "gen2.router.accounting", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/router/schemas.py": ("attr", "test_router_schemas", "VALIDATOR"),  # the oracle tool loads the mutated copy
     # task 1d: the router's mixins (their dependents reloaded after them), and the composition root
     "gen2/router/registries.py": ("module", "gen2.router.registries", "gen2.router.service", "gen2.app.station", "gen2.tests.router_fixtures"),
