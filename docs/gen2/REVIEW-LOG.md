@@ -3121,5 +3121,5 @@ The post-2q Gate D is renumbered #5.
   - Opening and history stay read-only. No consumer reads the fact. The existing tier-0 *alarm* receipt guards are preserved (contract clarification).
 - **B1:** the verifier's full `gen2-check` failed (1 of 4,403). `test_router_ops.AckDeliveryTest.test_failures_raise_capability_facts_on_transitions` expects only the connector fact. This is an overlooked consumer of the new row, found by the independent verifier rather than the coder's targeted checks. `gen2-gateway` passed.
 - **NB1:** stale restoration descriptions in `registries.py` and `test_router_registries.py`.
-- **Process finding:** PR #4 auto-merged (06:40Z, `54ce832`) before the verifier and Astra finished, because the Jenkins PR check runs only T0 static gates. gen2 therefore carries the B1 failure until the repair lands. Escalated to Trevor.
+- **Process finding:** PR #4 auto-merged (06:40Z, `54ce832`) before the verifier and Astra finished, because the Jenkins PR check runs only T0 static gates. gen2 therefore carries the B1 failure until the repair lands. Escalated: **Trevor ruled 2026-10-23** that auto-merge is enabled only after the verifier is green and Astra accepts (charter, PR-only gen2).
 - **Routed:** `docs/gen2/tasks/2d-5-repair-1.md`, a family-level fix to the capability-fact consumers, on a new branch with auto-merge held.
