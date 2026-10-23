@@ -507,8 +507,8 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/core/canonical.py
-- limit: 19
-- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity, and 2d-4b added the pure acquisition validator (15 to 16). Task 2d-4b2 adds the admission adapter (16 to 17), comparing trusted attempted-request octets with the existing canonical serializer; no second hashing or serialization mechanism. JSON2 adds Observations (17 to 18), using the same logical-member checks and exact-byte SHA-256 helper. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only.
+- limit: 20
+- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity, and 2d-4b added the pure acquisition validator (15 to 16). Task 2d-4b2 adds the admission adapter (16 to 17), comparing trusted attempted-request octets with the existing canonical serializer; no second hashing or serialization mechanism. JSON2 adds Observations (17 to 18), using the same logical-member checks and exact-byte SHA-256 helper. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only. Task 2d-6a1 adds one fixed capture module (19 to 20) reusing canonical row/manifest hashes outside the writer transaction.
 - task: 2d-4c part 1
 
 ### ML-0078
@@ -1070,3 +1070,66 @@ IDs own their respective budgets. Cross-service imports belong to repo.
 - target: engine|reach|gen2/router/service.py->gen2/router/history.py
 - reason: Both Router constructor paths qualify retained support before configuration effects; station and engine inherit that admission before supervisor or listener creation.
 - task: 2d-4c part 4b2c2
+
+### ML-0172
+- action: admit
+- target: engine|edge|gen2/store/api.py->gen2/store/capture.py
+- reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
+- task: 2d-6a1
+
+### ML-0173
+- action: admit
+- target: engine|edge|gen2/store/capture.py->gen2/core/canonical.py
+- reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
+- task: 2d-6a1
+
+### ML-0174
+- action: admit
+- target: engine|file|gen2/store/capture.py
+- reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
+- task: 2d-6a1
+
+### ML-0175
+- action: admit
+- target: engine|reach|gen2/app/engine.py->gen2/store/capture.py
+- reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
+- task: 2d-6a1
+
+### ML-0176
+- action: admit
+- target: engine|reach|gen2/app/station.py->gen2/store/capture.py
+- reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
+- task: 2d-6a1
+
+### ML-0177
+- action: admit
+- target: engine|reach|gen2/router/history.py->gen2/store/capture.py
+- reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
+- task: 2d-6a1
+
+### ML-0178
+- action: admit
+- target: engine|reach|gen2/router/service.py->gen2/store/capture.py
+- reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
+- task: 2d-6a1
+
+### ML-0179
+- action: admit
+- target: engine|reach|gen2/store/api.py->gen2/store/capture.py
+- reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
+- task: 2d-6a1
+
+### ML-0180
+- action: admit
+- target: engine|reach|gen2/store/capture.py->gen2/core/canonical.py
+- reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
+- task: 2d-6a1
+
+### ML-0181
+- action: budget
+- metric: fan_out
+- location: engine:gen2/store/api.py
+- limit: 4
+- reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
+- task: 2d-6a1
+
