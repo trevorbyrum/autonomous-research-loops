@@ -7274,3 +7274,86 @@ documentation only. No 2a or 2b implementation commit is claimed. Commit this
 stop record after debt/locator gates and update private
 `evidence/2d-6a-p2/COMPLETION.md`, then stop for redesign direction. The complete
 part-2 contract, memory budget and DEBT-035/036 obligations remain unchanged.
+
+### Part-2 memory redesign proposal (2026-10-23; not ratified)
+
+Documentation only; no code or new measurements. Sources: the existing
+[raw trial](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a-memory.json),
+[driver](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a_memory.py)
+and its pinned measured-source copies. The failed prototype remains private;
+current runtime is restored. Parts 2a/2b remain incomplete.
+
+**Where the peak comes from.** One complete raw capture stayed live while
+conversion built the typed coverage/inventory, then while hashing built its
+manifest. Selected JSON and BLOBs were each 32 MiB. Raw capture peaked at
+96.972481 MiB; live allocation rose from 96.905708 MiB after capture to
+137.331550 MiB after conversion: **40.425841 MiB additional live allocation**.
+Conversion peaked at 138.849843 MiB; hashing raised the overall peak to
+149.524398 MiB. These are traced allocations, not RSS or the standalone size
+of the typed result: some immutable scalar objects are shared.
+
+Source inspection explains possible contributors: decoded JSON strings and
+containers, retained search identities/query text, typed dataclasses and tuples,
+join sets/maps, and the hash's ordered row-digest lists. The original JSON text
+and retained BLOBs still belonged to the raw capture. There is **no per-field,
+per-group or allocation-type profile** apportioning the 40.426 MiB to JSON
+expansion versus typed objects; subtracting peaks does not isolate hash memory.
+Moving hashing earlier alone cannot remove the already failing conversion peak.
+The reader was closed before conversion, and subsequent TRUNCATE checkpoints
+succeeded, so retained database readers do not explain this measured overlap.
+
+**Structural options and contract effects:**
+
+| Option | Changed flow and feasibility limits | Clauses kept / operator-owned amendments |
+|---|---|---|
+| **A — exclusive consuming handoff** | After reader closure, transfer the capture to one internal owner. Produce digests/typed operands and release consumed raw references. Large groups need row-level draining; whole-group conversion may still peak too high. All aliases to original snapshot/table/row containers must disappear: a generator over a retained `TopicCapture` frees nothing. | Keeps the existing part-1 exact immutable return and coherent snapshot; records are not mutated. **Approve a consuming part-2 lifetime/result contract:** no complete original raw snapshot remains alongside typed output. If post-conversion raw availability is required, amend that clause. Digests are not lossless history. Changing the capture return shape would separately reopen part 1. |
+| **B — hash before conversion, after closure** | Finish the content hash and release hash temporaries before A's conversion. Alternatively digest each raw row/group before release, assembling the manifest in original order. Hash-first alone leaves the failing conversion peak. | Keeps outside-transaction hashing, exact inputs and `dossier-input/1`, including order/empties/history/BLOB tags. Hashing **during capture** instead needs an amendment to part 1's no-hashing/read-lifetime boundary and risks longer checkpoint delay; not recommended. |
+| **C — digest references plus lazy BLOBs** | After closure, retain exact row identity, metadata, length/digest and provenance; release bytes and reload only for an actual byte consumer. SQL 14's immutable/retained rows help, but reloaded bytes must authenticate against the original digest; missing/mismatched operands refuse. Measure realization with all other live operands: it may recreate the peak. | A digest-only capture return conflicts with part 1's **exact raw BLOB records**; post-return replacement needs part-2 representation approval. Lazy I/O must be separate from pure conversion and establish same-record immutability/identity/lifecycle guarantees. A later snapshot cannot silently substitute mutable operands; parts 3–4's unimplemented guards cannot be assumed. |
+
+**Feasibility and recommendation.** A combined with B's outside-reader digest
+ordering is **plausible, not demonstrated**, at ≤128 MiB. The 64 MiB selected
+payload is not itself an impossibility proof: full raw capture already fits;
+the proposal removes overlapping representations rather than shrinking inputs.
+The final required typed/history representation has not been measured alone.
+No passing peak is promised; C is not an assumed 32 MiB deduction.
+
+Recommend A+B with part 1's existing entry unchanged and explicit internal
+ownership transfer after return. Keep retained BLOB bytes exact in this first
+proposal; do not introduce lazy reads. Preserve all mandatory
+raw uncertainty, contexts/pins, adverse/supporting receipts, attention and
+provenance required by part 2 and DEBT-035. Digest references cannot replace
+those fields. If an operand cannot be released without losing required evidence,
+retain it and report the resulting budget outcome. Public signatures/results
+and scientific gates remain unchanged; changing them is not mechanical work.
+
+Prefer the existing full `input_hash` immediately after closure, then ownership
+transfer/consumption, avoiding a new hash algorithm. An incremental alternative
+must reproduce the existing manifest exactly. Capture closes before decoding or
+hashing. Required controls: digest equality, alias/lifetime/failure cleanup,
+lossless histories, both workload legs with every live operand, reader/checkpoint
+effects and disposal before retry. No cache, second store, spool or query
+framework; any new failed budget stops again.
+
+**Re-estimate, pending new briefs:** about **970 remaining handwritten lines**
+(planning range 850–1,150), replacing 620: a new ownership/lifetime foundation
+about 300; existing-reader relocation/closure about 470; dossier route, retained
+evidence and adapter controls about 200. The foundation is new behavior, not a
+mechanical-batch exception. This exceeds the currently authorized 700-line
+combined cap; the operator must approve a revised scope/split before code.
+Part 3's global-generation DDL remains about 480: all 37 dependency tables stay
+covered even when their in-memory bodies are released. Part 4 rises from about
+440 to about 500 for binding only a completed, history-preserving result and
+testing disposal of partially consumed/previous-attempt inputs; re-estimate and
+split if it exceeds the new-behavior guide. Proof and content-hash versions stay
+separate. The consuming-owner change needs its own controls; existing conversion
+still needs the agreed rope/RefactoringMiner/Hypothesis/replay evidence.
+
+**Operator decisions:** (M1) approve A+B's exclusive consumption and completed
+input representation, subject to the lossless-history obligations, or require
+complete raw-plus-typed retention and request another representation design;
+recommend the former. (M2) approve re-estimation/new briefs around 300/470/200,
+or keep the existing scope cap and leave implementation stopped; recommend
+the revised briefs. Neither decision relaxes 128 MiB or the D1 workload.
+Retain the frozen prototype as a conversion/reference-test source, not an
+implementation to tune or an accepted ownership design. Keep its failed trial
+and source identities intact. Stop after committing this proposal for rulings.
