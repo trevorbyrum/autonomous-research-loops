@@ -61,7 +61,7 @@ from typing import Iterator, Mapping
 
 from gen2.core import canonical
 from gen2.core.canonical import CanonicalizationError
-from gen2.store import compat, db
+from gen2.store import capture, compat, db
 
 # RA8: identity, revision, generation and counter columns, bounded to
 # [0, 2**53-1] by canonical.identity_integer, by value, in every table.
@@ -289,6 +289,13 @@ class Store:
         return expected + 1
 
     # -- reads -------------------------------------------------------------
+    def capture_topic(self, topic_id: str) -> capture.TopicCapture:
+        """Internal fixed raw capture; the Router must already hold its snapshot.
+        Hashing/conversion is the caller's work after the transaction ends.
+        """
+        self._require_transaction()
+        return capture.read(self._conn, self._json, topic_id)
+
     def bound_extraction_receipt(self, receipt_id: str) -> bool:
         """SQL 34's durable basis predicate, including both output ceilings."""
         self._require_usable()

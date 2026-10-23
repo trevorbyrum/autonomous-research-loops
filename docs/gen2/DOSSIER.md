@@ -6669,3 +6669,61 @@ This update records the rulings and concrete re-estimate only. Run debt and
 locator gates before its commit, push it to the existing PR #8 with auto-merge
 disabled, and report the size stop. No 6a implementation or workload pass is
 claimed, and 6b1 remains outside this dispatch.
+
+### 6a1 implementation and D1 budget stop (2026-10-23)
+
+The orchestrator confirmed the 6a1/6a2/6a3 sub-split and the complete 6a1
+acceptance contract in this session. The combined 6a contract is unchanged.
+This dispatch implements **6a1 only**; 6a2 has not started.
+
+`gen2/store/api.py::Store.capture_topic` requires an already active Store-owned
+transaction, reached in tests and measurements through `Router._snapshot`.
+It delegates fixed relation selections to `gen2/store/capture.py`; it does not
+open another connection or transaction. Shared work/record/lineage and quote/
+validation rows use topic-bound relationships; artifacts use `artifact_topics`
+authorization, and registry/tool rows use historical extraction pins. The
+capture retains every selected raw column, JSON-column metadata, stable row
+order and explicit empty groups in frozen records containing only tuples and
+SQLite scalars. No JSON decoding, hashing, arithmetic, spool reads or DML is
+performed by capture. Existing accounting consumers remain unchanged.
+
+The separate pure `input_hash` uses the existing canonical helper after the
+transaction. `dossier-input/1` binds topic, explicit history, group/column/JSON
+metadata, empty groups and row order. BLOBs use tagged exact-byte digests;
+per-row digests bound serialization memory while the raw preimage stays in
+the snapshot. This supplies no approval or commit-freshness authority.
+
+Tests in `gen2/tests/test_topic_capture.py` exercise fresh fixture capture,
+reopened disposable WAL stores, exact records and historical contracts,
+shared authorization, historical registry pins, both validation histories,
+lineage/quote isolation, ownership, no DML/computation during capture,
+immutable containers and an independently serialized literal hash oracle.
+The 2D6A1 family pairs each removal with an accepted capture/hash control.
+No existing conversion code moved, so no refactor-tool evidence is claimed.
+ML-0172–0181 and the ML-0077 extension record only this fixed module's existing
+Store/canonical dependencies; no metrics baseline or exemption changed.
+
+**Acceptance stopped at D1:** on the zero-unrelated-records reference case,
+capture p95 was **682.815164 ms**, exceeding the ratified **250 ms** budget.
+Cold capture was 537.711973 ms. Selected inputs contained exactly 32 MiB JSON
+and 32 MiB BLOBs, 10,000 observations/retrievals/work links/works, 1,000
+invocations, 1,000 claims and 1,000 receipts, with proportional histories.
+Capture-only allocation peak was 96.883419 MiB; capture plus input hashing
+peaked at **109.028010 MiB**, within **128 MiB**. Timing covers BEGIN IMMEDIATE
+through COMMIT; allocation tracing runs separately from the latency samples.
+The cold sample is the first capture after checked WAL open, not an assertion
+that the OS page cache was cold. Host facts and all 20 warmed samples are in
+private `evidence/2d-6/6a1-workload.json`.
+
+The benchmark's source used an initial `slots=True` dataclass spelling.
+Parallel static validation refused that spelling under SOURCE-CONTRACT v2;
+it was corrected to the established `@dataclass(frozen=True)` form while the
+measurement was finishing. Fixed queries and the capture/hash algorithm did
+not change. The measured source is retained as `measured-capture.py` beside
+the driver and raw results. **These measurements do not qualify the final
+commit's performance.** No timing was repeated after the failure, and no
+capture implementation was tuned. The 100,000-unrelated comparison was not
+run because the zero-unrelated case already triggered the mandatory stop.
+6a1 is therefore **not accepted / not complete**; its D1 budgets remain fixed.
+The candidate is retained for review and redesign, with checks and exact
+commit identities in private `evidence/2d-6/COMPLETION.md`.

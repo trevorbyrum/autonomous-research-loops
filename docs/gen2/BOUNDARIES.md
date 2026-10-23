@@ -229,6 +229,15 @@ refused. Durable table-locator binding remains subsequent 2d-4b3 work.
 - **Checked by:** Gate A; lifecycle release gates (spawn/receipt uncertainty, timeout, cancellation across all kinds); state-integrity audit sampling.
 
 ## Evidence accounting
+
+The internal Store `capture_topic` primitive (2d-6a1) copies a fixed set of
+topic-related raw rows inside a Router-owned snapshot. Frozen tuple/scalar
+records retain JSON text, BLOBs, column metadata and empty groups; a separate
+pure `dossier-input/1` hash binds that raw preimage and explicit history after
+capture. It grants no write, completion, approval or commit-freshness authority.
+Existing accounting readers are unchanged; 6a2/6a3 own conversion and commit
+consumption. D1 latency acceptance failed; the full assembly path is not ready.
+
 - **Definition:** pure arithmetic over typed records; no model calls, ever.
 - **Owns:** aggregation of novelty/yield/accrual/coverage/verification tiers from event-derived inventories; stopping-dossier assembly against the contract's declared profile; the four candidate units (retrieved records / deduplicated works / assessed candidates / accepted claims).
 - **Produces:** versioned dossiers with per-rule operands and `satisfied / not_satisfied / unknown`; conjunctive-gate status; per-branch accrual views.

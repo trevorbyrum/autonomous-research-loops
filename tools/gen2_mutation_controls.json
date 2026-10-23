@@ -24754,5 +24754,124 @@
    "test_tier0_disabled.Tier0StatusTest.test_other_capability_facts_remain_visible_control"
   ],
   "why": "Separate accepted startup/status path executes the changed code and checks unrelated config or capability visibility."
+ },
+ "2D6A1-ownership": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-topic": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-authorization": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-works": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-links": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-lineage": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-quotes": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-pins": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-groups": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-immutable-value": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-immutable-table": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-immutable-rows": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-history": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-blob": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-hash-groups": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-hash-order": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
+ },
+ "2D6A1-json-metadata": {
+  "by_hand": true,
+  "controls": [
+   "test_topic_capture.CaptureTest.test_hash_control"
+  ],
+  "why": "Independent accepted Router-owned capture and outside-lock native hash execute the changed path; assert topic identity and digest form without the removed property."
  }
 }
