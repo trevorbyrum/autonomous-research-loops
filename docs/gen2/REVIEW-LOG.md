@@ -3130,3 +3130,12 @@ The post-2q Gate D is renumbered #5.
   - **NB1 resolved:** docstring-only; the AST is otherwise identical.
 - **Verifier** (Sonnet `71bc2783`): gen2-check exit 0 (7,670 s; 4,403 tests OK, trigger-order OK, mutants killed); gen2-gateway exit 0 (1,013 s).
 - **Auto-merge** enabled by the orchestrator after both passed; merged as `72c4ac1`. **2d slice 5 is complete.**
+
+## 2026-10-23: 2d slice 6a redesign: design review (Astra `1e949316`)
+- **Recommends D** for Phase 2: a store-wide generation in one WAL read snapshot, compared under BEGIN IMMEDIATE, with bounded recapture.
+  - B is sound but disproportionate for one-topic operation. C has more proof obligations and no measured advantage. A leaves the writer-fenced reread unresolved.
+  - DEBT-036 doesn't require topic-minimal invalidation. That cost came from the slice's own contract.
+  - Revised remaining 6a estimate: about 1,800 lines (B would be about 2,320).
+  - R2 and R3 approved in principle, with precision on zero-row DML and rollback.
+- **Operator ruled D plus up to two automatic recaptures** (2026-10-23).
+- **Disclosed deviation:** at the start of the review, Astra ran one AGENTS.md filename search across `/home/trevor/work`, before reading the path limit. Outside filenames were returned, but no files were opened. No action needed beyond the record.
