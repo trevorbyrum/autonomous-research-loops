@@ -63,11 +63,11 @@ pure("branch-disagreement", "test_disagreement_and_unrelated", "test_control_cur
 pure("reopened-id", "test_rescreening_recorded_only", "test_control_reopened", 'r.assessment_id in reopened and ', '')
 pure("reopened-exclusion", "test_rescreening_recorded_only", "test_control_reopened", 'and r.decision == "exclude"', '')
 for name, old, new in (
-    ("read-current", 'current = approved[0]["revision"] if approved else None', 'current = None'),
-    ("read-approved", '"status": "approved"', '"status": "draft"'),
-    ("read-kind", '"kind": "contract"', '"kind": "brief"'),
-    ("read-topic", 'rows.select("amendment_impacts", {**where, "kind": "contract"})', 'rows.select("amendment_impacts", {"kind": "contract"})'),
+    ("read-current", 'approved = [r for r in records(rows, "contract_revisions") if r["status"] == "approved"]\n    current = approved[0]["revision"] if approved else None', 'approved = [r for r in records(rows, "contract_revisions") if r["status"] == "approved"]\n    current = None'),
+    ("read-approved", 'r["status"] == "approved"', 'r["status"] == "draft"'),
+    ("read-kind", 'r["kind"] == "contract"', 'r["kind"] == "brief"'),
+    ("read-topic", '{predicate} ORDER BY', "{predicate if name != 'amendment_impacts' else '1=1'} ORDER BY"),
     ("read-standing", 'tuple(a.RevisionStanding(**s) for s in doc.get("standing", ()))', '()'),
     ("read-reopened", 'tuple(doc.get("reopened_exclusions", ()))', '()')):
     guard(name, SNAPSHOT + "test_reframe_inventory", SNAPSHOT + ("test_control_empty_topic" if name in ("read-current", "read-approved") else "test_control_initial" if name == "read-kind" else "test_control_context"), old, new,
-          "gen2/router/accounting.py")
+          "gen2/store/capture.py" if name == "read-topic" else "gen2/router/accounting.py")

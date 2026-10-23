@@ -20,12 +20,12 @@ guard("write", "test_control", 'for record in payload.get("branch_windows", []):
 guard("read-branch", "test_unverified_branch", 'if branch is None or branch.registry_id != record["registry_id"] or record["window_invocation_id"] not in windows:', target=READER)
 guard("read-commit", "test_unverified_commit", 'if not receipts or (receipts[0]["topic_id"], receipts[0]["invocation_id"]) != (topic_id, record["invocation_id"]):', target=READER)
 guard("read-contract", "test_unverified_contract", 'if not contracts or contracts[0]["status"] not in ("approved", "superseded") or contracts[0]["approved_by_decision_id"] is None:', 'if not contracts:', READER)
-guard("pin-kind", "test_pin_kind", '{"topic_id": topic_id, "kind": "research_pass", "admission_context": "contract/1"}', '{"topic_id": topic_id, "admission_context": "contract/1"}', READER)
-guard("historical-pin", "test_historical_pins", 'contracts[0]["revision"]))', 'max(r["revision"] for r in rows.select("contract_revisions", {"topic_id": topic_id}))))', READER)
+guard("pin-kind", "test_pin_kind", 'r["kind"] == "research_pass" and r["admission_context"] == "contract/1"', 'r["admission_context"] == "contract/1"', READER)
+guard("historical-pin", "test_historical_pins", 'contracts[0]["revision"]))', 'max(r["revision"] for r in records(rows, "contract_revisions"))))', READER)
 guard("schema-attribution", "test_forged_pins_and_attribution", '"type": "object", "additionalProperties": false,', '"type": "object", "additionalProperties": true,', SCHEMA)
 guard("schema-subjects", "test_required_subjects", '"association_id", "registry_id", "branch_disposition_id", "window_invocation_id"', '"association_id", "branch_disposition_id", "window_invocation_id"', SCHEMA)
-guard("snapshot-history", "test_unknown_and_snapshot", '"""Capture admitted links and invocation-derived pins; compute views after returning."""\n        if history not in ("native", "legacy_unknown"):', '"""Capture admitted links and invocation-derived pins; compute views after returning."""\n        if False:', "gen2/router/service.py")
-guard("snapshot-topic", "test_unknown_and_snapshot", 'if self._one("queue_entries", {"topic_id": topic_id}) is None:\n                raise Refusal("unknown_topic", topic_id)\n            return read_coverage_snapshot', 'if False:\n                raise Refusal("unknown_topic", topic_id)\n            return read_coverage_snapshot', "gen2/router/service.py")
+guard("snapshot-history", "test_unknown_and_snapshot", 'if history not in ("native", "legacy_unknown"):', target=READER)
+guard("snapshot-topic", "test_unknown_and_snapshot", 'if not next(t.rows for t in raw.tables if t.name == "queue_entries"):', target=READER)
 
 for suffix in ("branch", "window", "commit", "immutable_u", "immutable_d"):
     trigger = "branch_windows_" + suffix

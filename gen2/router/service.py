@@ -53,7 +53,7 @@ from typing import Callable, Mapping
 
 from gen2 import accounting
 from gen2.core import canonical, instants, pagination
-from gen2.router.accounting import CoverageSnapshot, read_coverage_snapshot, read_inventory
+from gen2.router.accounting import Accounting, CoverageSnapshot
 from gen2.router.assessments import Assessments
 from gen2.router.acquisitions import ACQUISITION_COMMANDS, AcquisitionAdmission
 from gen2.router import boundary
@@ -226,6 +226,7 @@ class Router:
             **COMMANDS["$defs"], **LIFECYCLE_COMMANDS, **REGISTRY_COMMANDS, **AMENDMENT_COMMANDS, **SCHEDULING_COMMANDS,
             **STATUS_COMMANDS, **CAPABILITY_COMMANDS, **ACQUISITION_COMMANDS, **EXTRACTOR_COMMANDS}}})
         self._status = Status(self)
+        self._accounting = Accounting(self)
         self._capabilities = Capabilities(self)
         self._registries = Registries(self)
         self._lifecycle = Lifecycle(self)
@@ -262,33 +263,18 @@ class Router:
 
     def candidate_units(self, topic_id: str, *, history: accounting.History) -> accounting.CandidateUnits:
         """Durable accounting in one snapshot; provenance is explicit (E-8)."""
-        if history not in ("native", "legacy_unknown"):
-            raise ValueError("history must be native or legacy_unknown")
-        with self._snapshot():
-            if self._one("queue_entries", {"topic_id": topic_id}) is None:
-                raise Refusal("unknown_topic", topic_id)
-            return accounting.candidate_units(read_inventory(self._store, topic_id, history))
+        return self._accounting.candidate_units(topic_id, history=history)
 
     def record_capability_probe(self, request: Mapping) -> dict:
         return self._capabilities.record_capability_probe(request)
 
     def evidence_inventory(self, topic_id: str, *, history: accounting.History) -> accounting.Inventory:
         """Raw attributed operands, including semantic history, in one snapshot."""
-        if history not in ("native", "legacy_unknown"):
-            raise ValueError("history must be native or legacy_unknown")
-        with self._snapshot():
-            if self._one("queue_entries", {"topic_id": topic_id}) is None:
-                raise Refusal("unknown_topic", topic_id)
-            return read_inventory(self._store, topic_id, history)
+        return self._accounting.evidence_inventory(topic_id, history=history)
 
     def coverage_snapshot(self, topic_id: str, *, history: accounting.History) -> CoverageSnapshot:
         """Capture admitted links and invocation-derived pins; compute views after returning."""
-        if history not in ("native", "legacy_unknown"):
-            raise ValueError("history must be native or legacy_unknown")
-        with self._snapshot():
-            if self._one("queue_entries", {"topic_id": topic_id}) is None:
-                raise Refusal("unknown_topic", topic_id)
-            return read_coverage_snapshot(self._store, topic_id, history)
+        return self._accounting.coverage_snapshot(topic_id, history=history)
 
     def record_gateway_facts(self, request: Mapping) -> dict:
         return self._capabilities.record_gateway_facts(request)

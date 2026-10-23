@@ -45,9 +45,9 @@ capture transaction at their admission pin.** Their dependency admissions and
 budget remain accurate; those reasons are historical, not the current mechanism.
 Accepted part 1 (`73a676f`) changed capture to a checked, Store-owned WAL read
 transaction on the same authoritative file, ending before conversion/hash.
-Existing Router accounting readers still use their original snapshot until
-part 2 closes those consumers. This note changes no identity, admission, budget,
-baseline or exemption; current boundaries are described in BOUNDARIES/DOSSIER.
+Part 2 closes the existing accounting consumers onto that capture and pure
+conversion. This note changes no identity, admission, budget, baseline or
+exemption; current boundaries are described in BOUNDARIES/DOSSIER.
 
 ### ML-0001
 - action: admit
@@ -193,8 +193,8 @@ baseline or exemption; current boundaries are described in BOUNDARIES/DOSSIER.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/router/boundary.py
-- limit: 15
-- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority. Task 2d-4b3e1 adds one caller (10 to 11), reusing the existing staged-artifact authentication and typed refusal paths. JSON2 adds Observations (11 to 12), reusing normalization and observation checks before the existing writer transaction. Task 2d-4b3e2 adds ExtractorRegistry (12 to 13), reusing normalization and typed refusals for audited operator admission. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only. Task 2d-4c part 4b2c2 adds one historical-support reader (14 to 15), reusing the existing Refusal vocabulary without swallowing infrastructure failures.
+- limit: 16
+- reason: The prior assessment collaborator raised boundary fan-in to 9. Acquisition admission adds one caller (9 to 10), reusing the same schema normalization and Refusal vocabulary under Router authority. Task 2d-4b3e1 adds one caller (10 to 11), reusing the existing staged-artifact authentication and typed refusal paths. JSON2 adds Observations (11 to 12), reusing normalization and observation checks before the existing writer transaction. Task 2d-4b3e2 adds ExtractorRegistry (12 to 13), reusing normalization and typed refusals for audited operator admission. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only. Task 2d-4c part 4b2c2 adds one historical-support reader (14 to 15), reusing the existing Refusal vocabulary without swallowing infrastructure failures. Task 2d-6a-p2 adds the accounting collaborator (15 to 16) to preserve explicit-history and unknown-topic refusals outside the Router core; it adds no new authority.
 - task: 2d-4c part 4b2c2
 
 ### ML-0025
@@ -517,8 +517,8 @@ baseline or exemption; current boundaries are described in BOUNDARIES/DOSSIER.
 - action: budget
 - metric: fan_in
 - location: engine:gen2/core/canonical.py
-- limit: 20
-- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity, and 2d-4b added the pure acquisition validator (15 to 16). Task 2d-4b2 adds the admission adapter (16 to 17), comparing trusted attempted-request octets with the existing canonical serializer; no second hashing or serialization mechanism. JSON2 adds Observations (17 to 18), using the same logical-member checks and exact-byte SHA-256 helper. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only. Task 2d-6a1 adds one fixed capture module (19 to 20) reusing canonical row/manifest hashes outside the writer transaction.
+- limit: 21
+- reason: Task 2d-4 increased canonical fan-in from 14 to 15 for deterministic hold identity, and 2d-4b added the pure acquisition validator (15 to 16). Task 2d-4b2 adds the admission adapter (16 to 17), comparing trusted attempted-request octets with the existing canonical serializer; no second hashing or serialization mechanism. JSON2 adds Observations (17 to 18), using the same logical-member checks and exact-byte SHA-256 helper. Task 2d-4c part 1 adds one DetailedChecks collaborator using the same serialization/authentication boundary; service remains wiring only. Task 2d-6a1 adds one fixed capture module (19 to 20) reusing canonical row/manifest hashes outside the writer transaction. Task 2d-6a-p2 adds the pure accounting converter (20 to 21), reusing strict JSON decoding only after Store-owned capture closes; no alternate codec or cache.
 - task: 2d-4c part 1
 
 ### ML-0078
@@ -1142,4 +1142,34 @@ baseline or exemption; current boundaries are described in BOUNDARIES/DOSSIER.
 - limit: 4
 - reason: Fixed raw dossier-input capture under an existing Router-owned transaction, plus pure outside-lock canonical input hashing; transitive readers gain no write, store-opening, provider or completion authority.
 - task: 2d-6a1
+
+### ML-0182
+- action: admit
+- target: engine|edge|gen2/router/accounting.py->gen2/core/canonical.py
+- reason: Relocate fixed captured inventory, context and branch-provenance conversion behind the Router accounting collaborator; canonical JSON decoding runs after Store-owned WAL capture closes. The new direct capture/canonical/boundary edges add no persistence, gate or freshness authority.
+- task: 2d-6a-p2
+
+### ML-0183
+- action: admit
+- target: engine|edge|gen2/router/accounting.py->gen2/router/boundary.py
+- reason: Relocate fixed captured inventory, context and branch-provenance conversion behind the Router accounting collaborator; canonical JSON decoding runs after Store-owned WAL capture closes. The new direct capture/canonical/boundary edges add no persistence, gate or freshness authority.
+- task: 2d-6a-p2
+
+### ML-0184
+- action: admit
+- target: engine|edge|gen2/router/accounting.py->gen2/store/capture.py
+- reason: Relocate fixed captured inventory, context and branch-provenance conversion behind the Router accounting collaborator; canonical JSON decoding runs after Store-owned WAL capture closes. The new direct capture/canonical/boundary edges add no persistence, gate or freshness authority.
+- task: 2d-6a-p2
+
+### ML-0185
+- action: admit
+- target: engine|reach|gen2/router/accounting.py->gen2/router/boundary.py
+- reason: Relocate fixed captured inventory, context and branch-provenance conversion behind the Router accounting collaborator; canonical JSON decoding runs after Store-owned WAL capture closes. The new direct capture/canonical/boundary edges add no persistence, gate or freshness authority.
+- task: 2d-6a-p2
+
+### ML-0186
+- action: admit
+- target: engine|reach|gen2/router/accounting.py->gen2/store/capture.py
+- reason: Relocate fixed captured inventory, context and branch-provenance conversion behind the Router accounting collaborator; canonical JSON decoding runs after Store-owned WAL capture closes. The new direct capture/canonical/boundary edges add no persistence, gate or freshness authority.
+- task: 2d-6a-p2
 

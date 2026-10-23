@@ -146,14 +146,17 @@ class SnapshotTest(ContractWorld):
         self.approve(self.propose(3, reframed), "reframe_approval")
         state = self.state(exclude=())
         self.router._clock = lambda: self.fail("read used clock")
-        select = self.store.select
+        from unittest.mock import patch
+        from gen2.store import capture
+        read = capture.read
         tables = []
-        def in_snapshot(table, where=None):
+        def in_snapshot(conn, columns, topic):
             self.assertTrue(self.db.in_transaction)
-            tables.append(table)
-            return select(table, where)
-        self.store.select = in_snapshot
-        inv = self.router.evidence_inventory(TOPIC, history="native")
+            raw = read(conn, columns, topic)
+            tables.extend(t.name for t in raw.tables)
+            return raw
+        with patch.object(capture, "read", in_snapshot):
+            inv = self.router.evidence_inventory(TOPIC, history="native")
         self.assertEqual(inv.current_contract_revision, 3)
         self.assertEqual(len(inv.amendment_impacts), 1)
         self.assertEqual(inv.amendment_impacts[0].standing, (a.RevisionStanding(2, "reframed"),))

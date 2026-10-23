@@ -234,14 +234,16 @@ The internal Store `capture_topic` primitive (2d-6a D part 1) copies a fixed set
 of topic-related raw rows in a checked Store-owned read snapshot. Durable
 capture opens a DML-prohibited reader of the same authoritative WAL file;
 in-memory fixtures reuse their checked connection with temporary query-only
-protection. Readers close before pure work, including on failure. Existing
-Router `_snapshot` paths keep their writer transaction until consumer conversion.
+protection. Readers close before pure work, including on failure. The accounting
+collaborator closes all three existing readers and branch provenance onto this
+capture and pure conversion; other Router `_snapshot` paths retain their fence.
 Frozen tuple/scalar
 records retain JSON text, BLOBs, column metadata and empty groups; a separate
 pure `dossier-input/1` hash binds that raw preimage and explicit history after
 capture. It grants no write, completion, approval or commit-freshness authority.
-Existing accounting readers are unchanged; D parts 2–4 own conversion, the
-operator-ratified store-wide generation and commit consumption/bounded recapture.
+Public accounting signatures/results and pre-contract inventory behavior are
+preserved. D parts 3–4 own the operator-ratified store-wide generation and
+commit consumption/bounded recapture.
 The original writer-capture D1 trial failed; the full assembly path is not ready.
 
 - **Definition:** pure arithmetic over typed records; no model calls, ever.
@@ -251,7 +253,7 @@ The original writer-capture D1 trial failed; the full assembly path is not ready
 - **Checked by:** Gate A; denominator-zero / repeated-study / changed-protocol / unresolved-contradiction test fixtures (Gate C-reviewed).
 - **Contract confidence declaration (2c-4a part 1):** Contract v2 optionally declares a closed, plan-specific categorical scheme with id/version and a rubric for every allowed label; no engine scale or implicit legacy default. The existing Router amendment collaborator treats the complete declaration as protocol content, including addition/removal, and the existing contract hash/approval and G-1 impact path bind it. `gen2/tests/test_confidence_contract.py` and schema counterfactuals cover this declaration; recorded-confidence admission, reconciliation and `/2` remain part 2 (ACCOUNTING.md).
 - **Reconciliation operands (2c-4a2 first slice):** `gen2/accounting/reconciliation.py` defines explicit assessment/open records and a complete supplied history envelope. Its pure confidence check requires the exact supplied contract revision/hash and topic/protocol/framing pins, and scheme id/version/label membership; unknown keeps its reason, and open has no assessed confidence. These fixture operands establish consistency only, with no proof of approval, provenance or durable admission. DEBT-033 (2d) owns admission/assembly and DEBT-034 (2e2) judgment production. Tests are `gen2/tests/test_reconciliation_operands.py`, paired by 2C4A2 mutants. The lossless mapper/inverse into additive `export-bundle/2` (task 2c-4a3) is accepted: `gen2/schema/export-bundle-v2.schema.json`, checked by `gen2/tests/test_reconciliation_bundle.py` and paired 2C4A3 mutants, including the end-to-end unresolved-contradiction fixture at the explicit-operand scope; `/1` is byte-unchanged. No Router or export wiring is added; enabling `/2` on the approval/assembly path is DEBT-033 (2d).
-- **Attributable operands (2c-2a):** `gen2/router/assessments.py` is a Router collaborator for the optional outcome/1 semantic-assessment section and its source-lineage extensions. `Assessments.validate` admits only contract-admitted primary invocations with matching protocol/framing pins and topic-retrieved subjects; the existing commit boundary binds evidence artifact references. `Assessments.write` repeats admission under the commit lock and appends immutable records with the invocation, operation and Router date. This records labels without producing judgments (2e), granting provider authority or changing work identity. `Router.evidence_inventory` reads these histories beside the four-unit inventories in one `_snapshot()`; lineage inherits exact attribution from its assessment. Current-framing/lifecycle/accrual selection is 2c-2b; this read exposes raw history only.
+- **Attributable operands (2c-2a):** `gen2/router/assessments.py` is a Router collaborator for the optional outcome/1 semantic-assessment section and its source-lineage extensions. `Assessments.validate` admits only contract-admitted primary invocations with matching protocol/framing pins and topic-retrieved subjects; the existing commit boundary binds evidence artifact references. `Assessments.write` repeats admission under the commit lock and appends immutable records with the invocation, operation and Router date. This records labels without producing judgments (2e), granting provider authority or changing work identity. `Router.evidence_inventory` reads these histories beside the four-unit inventories in one Store-owned capture, then converts after reader closure; lineage inherits exact attribution from its assessment. Current-framing/lifecycle/accrual selection is 2c-2b; this read exposes raw history only.
 
 - **Dated lifecycle (2c-2b1):** The same collaborator appends `source_lifecycle` with primary authority and Router attribution, topic-retrieved subjects/related works, pinned protocol/framing, retained evidence and explicit same-subject predecessors. A successor must follow its predecessor in recording time. The inventory reads lifecycle history in its existing snapshot; pure `gen2/accounting.lifecycle_view` applies explicit replacements as of an exact UTC instant and retains competing active records. It does not grant support authority. Contradiction/branch dispositions, current-framing/accrual selection and G-1/E-9 remain 2c-2b2.
 

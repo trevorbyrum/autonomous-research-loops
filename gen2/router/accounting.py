@@ -1,14 +1,54 @@
-"""Minimal read adapter; called inside the Router's snapshot, no arithmetic."""
+"""Checked capture entries and pure conversion of fixed detached operands."""
 from dataclasses import dataclass
 from typing import Mapping, Protocol
 
 from gen2 import accounting as a
 from gen2.accounting import views as v
-from gen2.core import pagination
+from gen2.core import canonical, pagination
+from gen2.router.boundary import Refusal
+from gen2.store.capture import TopicCapture
 
 
 class Rows(Protocol):
+    def capture_topic(self, topic_id: str) -> TopicCapture: ...
     def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
+
+
+class AccountingCore(Protocol):
+    _store: Rows
+
+
+class Accounting:
+    def __init__(self, core: AccountingCore) -> None:
+        self._core = core
+
+    def capture(self, topic_id: str, history: a.History) -> TopicCapture:
+        if history not in ("native", "legacy_unknown"):
+            raise ValueError("history must be native or legacy_unknown")
+        raw = self._core._store.capture_topic(topic_id)
+        if not next(t.rows for t in raw.tables if t.name == "queue_entries"):
+            raise Refusal("unknown_topic", topic_id)
+        return raw
+
+    def candidate_units(self, topic_id: str, *, history: a.History) -> a.CandidateUnits:
+        return a.candidate_units(convert_inventory(topic_id, self.capture(topic_id, history), history))
+
+    def evidence_inventory(self, topic_id: str, *, history: a.History) -> a.Inventory:
+        return convert_inventory(topic_id, self.capture(topic_id, history), history)
+
+    def coverage_snapshot(self, topic_id: str, *, history: a.History) -> "CoverageSnapshot":
+        return convert_coverage_snapshot(self.capture(topic_id, history), topic_id, history)
+
+
+def records(snapshot: TopicCapture, name: str):
+    """Decode one fixed captured group lazily, without a Store/query interface."""
+    table = next(t for t in snapshot.tables if t.name == name)
+    for row in table.rows:
+        record = dict(zip(table.columns, row))
+        for column in table.json_columns:
+            if record.get(column) is not None:
+                record[column] = canonical.parse_json_strict(record[column])
+        yield record
 
 
 @dataclass(frozen=True)
@@ -19,16 +59,19 @@ class CoverageSnapshot:
 
 
 def read_coverage_snapshot(rows: Rows, topic_id: str, history: a.History) -> CoverageSnapshot:
-    inventory = read_inventory(rows, topic_id, history)
-    pins = read_window_pins(rows, topic_id)
+    return convert_coverage_snapshot(rows.capture_topic(topic_id), topic_id, history)
+
+def convert_coverage_snapshot(rows: TopicCapture, topic_id: str, history: a.History) -> CoverageSnapshot:
+    inventory = convert_inventory(topic_id, rows, history)
+    pins = convert_window_pins(rows, topic_id)
     windows = {p.invocation_id for p in pins}
     branches = {r.disposition_id: r for r in inventory.registry_dispositions if r.registry_kind == "branch"}
     links = set()
-    for record in rows.select("branch_windows", {"topic_id": topic_id}):
+    for record in records(rows, "branch_windows"):
         branch = branches.get(record["branch_disposition_id"])
         if branch is None or branch.registry_id != record["registry_id"] or record["window_invocation_id"] not in windows:
             continue  # unverified branch/window provenance supplies no authority
-        receipts = rows.select("operation_receipts", {"operation_id": record["recorded_by_operation_id"]})
+        receipts = [r for r in records(rows, "operation_receipts") if r["operation_id"] == record["recorded_by_operation_id"]]
         if not receipts or (receipts[0]["topic_id"], receipts[0]["invocation_id"]) != (topic_id, record["invocation_id"]):
             continue
         links.add((branch.registry_id, record["window_invocation_id"]))
@@ -36,9 +79,12 @@ def read_coverage_snapshot(rows: Rows, topic_id: str, history: a.History) -> Cov
 
 
 def read_window_pins(rows: Rows, topic_id: str) -> tuple[v.WindowPin, ...]:
+    return convert_window_pins(rows.capture_topic(topic_id), topic_id)
+
+def convert_window_pins(rows: TopicCapture, topic_id: str) -> tuple[v.WindowPin, ...]:
     pins = []
-    for window in rows.select("invocations", {"topic_id": topic_id, "kind": "research_pass", "admission_context": "contract/1"}):
-        contracts = rows.select("contract_revisions", {"topic_id": topic_id, "revision": window["contract_revision"]})
+    for window in (r for r in records(rows, "invocations") if r["kind"] == "research_pass" and r["admission_context"] == "contract/1"):
+        contracts = [r for r in records(rows, "contract_revisions") if r["revision"] == window["contract_revision"]]
         if not contracts or contracts[0]["status"] not in ("approved", "superseded") or contracts[0]["approved_by_decision_id"] is None:
             continue
         # The exact revision's document retains protocol/framing; never use
@@ -48,28 +94,31 @@ def read_window_pins(rows: Rows, topic_id: str) -> tuple[v.WindowPin, ...]:
 
 
 def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory:
+    return convert_inventory(topic_id, rows.capture_topic(topic_id), history)
+
+def convert_inventory(topic_id: str, rows: TopicCapture, history: a.History) -> a.Inventory:
     where = {"topic_id": topic_id}
     observations = tuple(a.Observation(o["observation_id"], o["invocation_id"], o["lane"], o["request_identity"],
                                        pagination.request_type(o["request"]), o["completeness"], o["page_outcome"], o["result_count"],
                                        read_page(o))
-                         for o in rows.select("search_observations", where))
-    retrievals = tuple(a.Retrieval(r["event_id"], r["observation_id"]) for r in rows.select("retrieval_events", where))
+                         for o in records(rows, "search_observations"))
+    retrievals = tuple(a.Retrieval(r["event_id"], r["observation_id"]) for r in records(rows, "retrieval_events"))
     events = {r.event_id for r in retrievals}
-    works = {w["work_id"] for w in rows.select("works")}
-    links = tuple(a.WorkLink(l["event_id"], l["work_id"]) for l in rows.select("record_work_links")
+    works = {w["work_id"] for w in records(rows, "works")}
+    links = tuple(a.WorkLink(l["event_id"], l["work_id"]) for l in records(rows, "record_work_links")
                   if l["event_id"] in events and l["work_id"] in works)
-    assessments = tuple(a.Assessment(s["work_id"]) for s in rows.select("screening_assessments", where))
-    claims = tuple(a.Claim(c["claim_id"], c["revision"], c["status"]) for c in rows.select("claims", where))
-    passes = tuple(a.Pass(p["invocation_id"], p["kind"], p["state"], p["parent_invocation_id"]) for p in rows.select("invocations", where))
+    assessments = tuple(a.Assessment(s["work_id"]) for s in records(rows, "screening_assessments"))
+    claims = tuple(a.Claim(c["claim_id"], c["revision"], c["status"]) for c in records(rows, "claims"))
+    passes = tuple(a.Pass(p["invocation_id"], p["kind"], p["state"], p["parent_invocation_id"]) for p in records(rows, "invocations"))
     semantic = tuple(a.SemanticAssessment(s["assessment_id"], s["work_id"], s["source_version"], s["contract_revision"],
         s["eligibility_protocol_version"], s["framing_version"], s["novelty"], s["independence"], s["applicability"], s["contribution"],
         tuple(a.EvidenceReference(**ref) for ref in s["evidence_refs"]), s["actor_kind"], s["invocation_id"],
-        s["recorded_by_operation_id"], s["created_at"]) for s in rows.select("semantic_assessments", where))
+        s["recorded_by_operation_id"], s["created_at"]) for s in records(rows, "semantic_assessments"))
     ids = {s.assessment_id for s in semantic}
-    lineage = tuple(a.SourceLineage(**l) for l in rows.select("source_lineage") if l["assessment_id"] in ids)
-    lifecycle = tuple(read_lifecycle(r) for r in rows.select("source_lifecycle", where))
-    dispositions = tuple(read_registry_disposition(r) for r in rows.select("registry_dispositions", where))
-    current, impacts, screening = read_context(rows, where)
+    lineage = tuple(a.SourceLineage(**l) for l in records(rows, "source_lineage") if l["assessment_id"] in ids)
+    lifecycle = tuple(read_lifecycle(r) for r in records(rows, "source_lifecycle"))
+    dispositions = tuple(read_registry_disposition(r) for r in records(rows, "registry_dispositions"))
+    current, impacts, screening = convert_context(rows, where)
     return a.Inventory(history, observations, retrievals, links, assessments, claims, passes, semantic, lineage, lifecycle, dispositions,
                        current, impacts, screening)
 
@@ -80,6 +129,14 @@ def read_context(rows: Rows, where: Mapping[str, object]) -> tuple[int | None, t
     impacts = tuple(read_impact(r) for r in rows.select("amendment_impacts", {**where, "kind": "contract"}))
     screening = tuple(a.ScreeningAssessment(**{k: v for k, v in r.items() if k not in {"topic_id", "criterion_results"}})
                       for r in rows.select("screening_assessments", where))
+    return current, impacts, screening
+
+def convert_context(rows: TopicCapture, where: Mapping[str, object]):
+    approved = [r for r in records(rows, "contract_revisions") if r["status"] == "approved"]
+    current = approved[0]["revision"] if approved else None
+    impacts = tuple(read_impact(r) for r in (r for r in records(rows, "amendment_impacts") if r["kind"] == "contract"))
+    screening = tuple(a.ScreeningAssessment(**{k: v for k, v in r.items() if k not in {"topic_id", "criterion_results"}})
+                      for r in records(rows, "screening_assessments"))
     return current, impacts, screening
 
 

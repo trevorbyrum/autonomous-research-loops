@@ -7275,7 +7275,7 @@ stop record after debt/locator gates and update private
 `evidence/2d-6a-p2/COMPLETION.md`, then stop for redesign direction. The complete
 part-2 contract, memory budget and DEBT-035/036 obligations remain unchanged.
 
-### Part-2 memory redesign proposal (2026-10-23; not ratified)
+### Part-2 memory redesign proposal (2026-10-23; not adopted, later option)
 
 Documentation only; no code or new measurements. Sources: the existing
 [raw trial](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a-memory.json),
@@ -7357,3 +7357,25 @@ the revised briefs. Neither decision relaxes 128 MiB or the D1 workload.
 Retain the frozen prototype as a conversion/reference-test source, not an
 implementation to tune or an accepted ownership design. Keep its failed trial
 and source identities intact. Stop after committing this proposal for rulings.
+
+### Part-2 memory ruling and resumed scope (Trevor, 2026-10-23)
+
+The operator restates D1's memory bound as **peak detached-input memory ≤3×
+selected data: ≤192 MiB at the ratified 32 MiB JSON plus 32 MiB BLOB workload**.
+This supersedes the earlier 128 MiB bound above; earlier failed trials retain
+their original verdicts and source identities. Measurement still includes all
+live operands through capture, conversion and hashing, with tracemalloc separate
+from latency sampling and both zero and 100,000 unrelated-record legs.
+Writer-lock occupation budgets remain **p95 ≤250 ms each** for capture and
+revalidation. A new bound failure stops again, without tuning.
+
+**A+B is not adopted now**; the proposal above remains a documented later
+option. Complete raw-snapshot retention during conversion is permitted. Resume
+the preserved prototype under the unchanged part-2 acceptance contract, except
+for the explicit memory amendment: one review round, two implementation commits
+on `task/2d-6a-p2` (PR #11), **2a about 470** for the behavior-preserving
+conversion/reader/provenance relocation with complete refactor evidence and
+consumer closure, then **2b about 150** for the internal dossier-input route,
+retained histories and DEBT-035 adapter controls. The combined stop remains
+about **700 handwritten changed lines**, and 2b alone about 500. Parts 3 and 4
+remain outside this dispatch. No generation, freshness, retry or export claim.
