@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import sqlite3
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from gen2.store import compat
@@ -148,3 +149,77 @@ def connect(path: str | Path, *, create: bool = False) -> tuple[sqlite3.Connecti
         conn.close()
         raise
     return conn, observed
+
+
+def capture_file(conn: sqlite3.Connection) -> tuple | None:
+    """Pin the admitted file identity; in-memory fixtures reuse their connection."""
+    filename = next(row[2] for row in conn.execute("PRAGMA database_list") if row[1] == "main")
+    if not filename:
+        return None
+    path = Path(filename).resolve()
+    stat = path.stat()
+    return path, (stat.st_dev, stat.st_ino)
+
+
+def _check_capture_file(identity: tuple) -> None:
+    path, expected = identity
+    stat = path.stat()
+    if (stat.st_dev, stat.st_ino) != expected:
+        raise StoreOpenError("capture refuses a replaced authoritative file")
+
+
+def _release_reader(conn: sqlite3.Connection, identity: tuple | None, query_only: int | None) -> None:
+    if identity is not None:
+        conn.close()
+        return
+    try:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        if query_only is not None:
+            conn.execute(f"PRAGMA query_only = {query_only}")
+            if conn.execute("PRAGMA query_only").fetchone()[0] != query_only:
+                raise StoreOpenError("capture could not restore the fixture connection")
+    except BaseException:
+        conn.close()
+        raise
+
+
+@contextmanager
+def capture_reader(source: sqlite3.Connection, identity: tuple | None):
+    """One checked, DML-prohibited snapshot; no read-to-write upgrade.
+
+    Durable readers open the admitted WAL file read-only. The connection and
+    transaction end before returning detached inputs. Existing in-memory test
+    stores reuse their admitted connection and restore its query-only setting.
+    """
+    conn, query_only = source, None
+    if identity is not None:
+        _check_capture_file(identity)
+        conn = sqlite3.connect(identity[0].as_uri() + "?mode=ro", uri=True, isolation_level=None)
+    try:
+        if identity is not None:
+            compat.check_connection(conn)
+            if conn.execute("PRAGMA journal_mode").fetchone()[0] != "wal":
+                raise StoreOpenError("capture requires the authoritative WAL file")
+            for name, value, expected in OPERATIONAL_PRAGMAS[1:]:
+                conn.execute(f"PRAGMA {name} = {value}")
+                if conn.execute(f"PRAGMA {name}").fetchone()[0] != expected:
+                    raise StoreOpenError(f"capture PRAGMA {name} did not read back")
+        query_only = conn.execute("PRAGMA query_only").fetchone()[0]
+        conn.execute("PRAGMA query_only = ON")
+        if conn.execute("PRAGMA query_only").fetchone()[0] != 1:
+            raise StoreOpenError("capture reader is not query-only")
+        conn.execute("BEGIN DEFERRED")
+        check_schema_identity(conn)
+        if identity is not None:
+            _check_capture_file(identity)
+        yield conn
+        conn.execute("COMMIT")
+    except BaseException as exc:
+        try:
+            _release_reader(conn, identity, query_only)
+        except BaseException as cleanup_error:
+            exc.add_note(f"capture reader cleanup failed; connection closed: {cleanup_error!r}")
+        raise
+    else:
+        _release_reader(conn, identity, query_only)

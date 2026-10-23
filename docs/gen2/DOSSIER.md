@@ -6395,3 +6395,726 @@ running, preserving baseline selection and all verdict rules. This one-line
 validation-only root-cause correction enables the mandated targeted check;
 it adds no engine behavior or operator policy. Select affected file targets and
 the changed tests' killer/control consumers, rather than broad SQL families.
+
+## 2d-6: coherent snapshot and rich stopping dossier (2026-10-23, design only)
+
+Input pin: `72c4ac1105a88cde76407d12fb730ba8f4bb70d0` (`origin/gen2`).
+The dispatch authority is the newest slice-6 continuation in
+`/home/trevor/work/gen2-orch/docs/gen2/tasks/2d.md` (records PR #7); the
+repository's task copy does not yet contain it. The orchestrator confirmed
+the split and the complete 6a contract in this session on 2026-10-23. Trevor
+ratified D1/D2/D3 as option A on that date (recorded below). Implementation
+is authorized for 6a only, subject to its size and workload stop conditions.
+The implementation preflight below triggers the size stop before runtime edits.
+
+Sources: flow architecture S6–S8 and §4.8; methodology synthesis §§5–7;
+the task's sources and follow-throughs; BOUNDARIES “Router”, “Evidence
+accounting”, “Verifier” and “Operator”; INVARIANTS E-4/E-6/E-7, RG-U,
+G-1/G-8/G-9 and V-1–V-10; ACCOUNTING's 2c-3/2c-4 hand-offs; EXPORT-API §2;
+DEBT-035/036. The charter's PR-only and independent-verifier rules apply;
+this dispatch's explicit **no auto-merge** instruction governs this PR.
+
+### Inventory: reuse and gaps
+
+All implementation/test paths in this inventory are under `gen2/`.
+These are existing enforcement claims, not claims that slice 6 is complete.
+
+| Area | Existing DDL, code and regression citations | Gap and owner |
+|---|---|---|
+| Coherent reads and writer ownership | [store/api.py](../../gen2/store/api.py) `Store.transaction` is `BEGIN IMMEDIATE`; `Store.select` decodes rows. [router/service.py](../../gen2/router/service.py) `Router._snapshot`, `evidence_inventory`, `coverage_snapshot` each use one transaction. [router/accounting.py](../../gen2/router/accounting.py) `read_inventory`, `read_coverage_snapshot`, `read_window_pins` supply durable operands. `tests/test_accounting.py::DurableAccountingTest.test_reads_committed_inventories_without_writes_or_clock`, `tests/test_research_views.py::SnapshotTest.test_unrelated_topic_and_read_only`, `tests/test_branch_windows.py::AdmissionTest.test_unknown_and_snapshot` cover read-only/topic/pin behavior. | Existing snapshots do not bind later assembly commits. `candidate_units` calculates inside the writer transaction; inventory reads scan whole shared `works`, `record_work_links`, `source_lineage` tables. 6a adds detached capture and exact-input revalidation, moves accounting conversion/calculation out of the lock and assesses scoped reads. It does not call successive public reads to simulate one snapshot. |
+| Coverage, branch and G-1 operands | [SQL 03](../../gen2/store/schema/03-evidence-and-decisions.sql) observations/retrievals/work links/claims; [SQL 05–09](../../gen2/store/schema/order.txt) semantic assessments, lifecycle, registry dispositions, obligations and branch/window records; SQL 04 amendment impacts. `router/accounting.py` derives window pins from approved/historical contracts and checks branch association provenance. `accounting/__init__.py` `window_standings`, `candidate_units`, `label_standing`; `accounting/views.py` `coverage_view`, `depth_view`. `tests/test_branch_windows.py` historical/forged/missing-provenance cases and `tests/test_research_views.py` unknown/competing-history cases cover these inputs. | Capture these histories and their exact contract documents together, including absent associations and indeterminate windows. Do not rebuild admission or infer branch links. Actual coverage-integrity gate consumption belongs to 6b, not the read adapter. |
+| Rich stopping results and supported mechanisms | [accounting/stopping.py](../../gen2/accounting/stopping.py) `RuleResult`, `ProfileResult`, `CoverageOperands`, `KnownItemOperands`, `GateResult`, `evaluate_binding`, `evaluate_profile` retain context, scope, window revisions/standing/reasons, bounds, sentinel reference/identities, gate references and three-valued results. `bind_rule` admits automatic descriptive/coverage/retrieval-known-item evaluators only; reviewed rules have no automatic evaluator. `tests/test_stopping.py` truth tables/gates/context/unknowns, `tests/test_stopping_protocol.py` scope/reuse/invalidation, and `tests/test_coverage_dependencies.py` overlapping/scoped/uncertain first-owner cases cover the pure mechanism. | No rich durable codec, dossier assembler or authoritative gate producer. Descriptive results remain unknown as stopping predicates. Reused compatible results keep original contexts; stale results cannot contribute to current completion. 6a supplies inputs without changing these evaluators; 6b preserves their full results. |
+| Dossier rows, approval and hash truth | [SQL 02](../../gen2/store/schema/02-invocations-and-records.sql) `dossiers` is immutable, references an artifact and requires a historically approved contract; operator decisions bind the exact dossier revision/hash. [SQL 01](../../gen2/store/schema/01-queue-and-contracts.sql) `queue_completion_needs_current_dossier_approval` also requires the current dossier and active approved contract. `tests/test_store_ddl_contracts.py::ContractGovernanceTest.test_completion_needs_approval_of_current_dossier` and `tests/test_router_ops.py` `test_completion_binds_to_the_current_dossier` exercise approval binding with fixture-inserted dossiers. `Router._require_subject_hash_truth` recomputes contract/brief/report/proposal hashes, but its other-subject branch returns without checking dossier bytes. | An artifact FK and matching hash labels do not prove an assembled document's truth. 6b must authenticate and persist code-assembled rich bytes and bind row/document/artifact identities. Slice 7 owns the fresh scientific review and complete approval/material-change closure, including the dossier subject hash-truth consumer. No existing approval test proves full dossier assembly. |
+| `/1` and current `/2` stopping representation | [schema/export-bundle.schema.json](../../gen2/schema/export-bundle.schema.json) `$defs/stopping_dossier` allows scalar observed counts, numeric thresholds, gate identity/status; satisfied rules forbid unknown operands. [schema/export-bundle-v2.schema.json](../../gen2/schema/export-bundle-v2.schema.json) reuses that exact field. `accounting/reconciliation.py` maps reconciliation operands, not `ProfileResult`. `tests/test_reconciliation_bundle.py` `test_exact_fixture_and_inverse`, `test_v1_still_valid` establish that codec's scope and `/1` compatibility. | DEBT-035 needs a lossless rich representation and an explicit export mapping. A bound can be satisfied while raw windows remain indeterminate; converting them to completed counts is invalid. Decide D2 before 6b. Persisted-dossier → approved-bundle removal evidence requires slice 8 as well; 6a cannot close DEBT-035. |
+| Challenge and competing explanations | The contract's [completion profile schema](../../gen2/schema/contract-v2.schema.json) requires `challenge_pass_completed`, `coverage_integrity`, `load_bearing_verification_tiers`. `accounting/stopping.py::GateResult` merely accepts supplied status/references; `tests/test_stopping.py::StoppingTest.test_gates_override_any_and_unknown` proves conjunction, not evidence authenticity. SQL 02 invocations/artifacts/operation receipts and SQL 07 registry dispositions can anchor execution/evidence/contradiction identities. `schema/outcome-document.schema.json` and `router/evidence_writer.py` have no typed challenge-result admission or dossier writer. | A successful invocation, free artifact or supplied `GateResult` is insufficient. 6b needs attributable bounded counterevidence-search records covering the exact load-bearing claim revisions and one competing-explanation test per open contradiction, pinned to the snapshot. Missing/failed/stale execution cannot satisfy the gate. 2e2 produces the actual scientific judgments/execution; 2d admits and consumes records, never invents them. |
+| Required verification and retained dissent | SQL 03 receipt role/claim/source/tier bindings; SQL 12 governed capture; SQL 14–34 acquisition/extraction bases; [SQL 35–42](../../gen2/store/schema/order.txt) attributed detailed checks and mandatory consumption. SQL 42 `detailed_support_receipts` and `governed_captures_blocked`, plus `router/detailed_checks.py::DetailedChecks.require_support` and `router/evidence_writer.py` promotion/final refence, enforce one exact qualifying receipt, not pooled checks. `tests/test_router_detailed_support.py`, `tests/test_store_detailed_support.py` cover retained bindings, missing/unperformed checks and no pooling; `tests/test_retained_support.py` covers retained-state admission/history. | Read all exact claim revisions, receipts and their durable bases; accepted status alone is insufficient evidence for the dossier gate. Reuse the accepted predicates through an outside-lock operand adapter; do not create a competing verification policy. Gate consumption is 6b, with its own contract and paired controls. |
+| Adverse receipts and attention | [router/verification.py](../../gen2/router/verification.py) retains receipt-specific owned holds; SQL 02 protects identity/clearance. `tests/test_verification_attention.py::AttentionTest.test_competing_receipt_preserves_hold` retains an adverse receipt and hold after later support. BOUNDARIES and task follow-through NB2 say this attention is not a promotion veto. | 6a retains both histories without selection/clearance. 6b must explicitly consume unresolved `partially_supports` / `does_not_support` alongside later support, under D3's ruling; no latest-receipt-wins shortcut. Scheduling/escalation remain 2e2. Tier-0 stays disabled and contributes no positive gate evidence. |
+
+### Split and estimates
+
+The original 490-line placeholder omitted rich serialization/persistence,
+typed challenge admission and full gate-consumer closure. The revised estimate
+is **about 1,890 hand-written lines**, split into independently reviewed parts.
+Estimates include tests, mutants, fixture/ledger/boundary integration; exclude
+generated controls, documentation and private evidence. Re-estimate before
+each implementation; split again if a part would exceed about 500 lines.
+
+| Part | Dependency and deliverable | Estimate |
+|---|---|---|
+| **6a, first implementation only after agreement** | Existing 2d-1–5. One detached authoritative input snapshot, topic-scoped shared reads, outside-lock conversion/accounting, revision/hash and exact-input revalidation seam, concurrency/workload controls. | **480**: capture/scoped Store reads 100; adapter/revalidation/thin wiring 100; regressions/workload fixture 190; mutants/composition/ledger 90. No new DDL. |
+| 6b1 | 6a and D2. Closed rich dossier schema/codec, exact round trip and immutable artifact/row persistence through Router authority. Retain raw uncertainty, scopes, provenance, bounds and stale history. | **480**: representation/codec 130; persistence/binding 90; tests 170; mutants/integration 90. |
+| 6b2 | 6a/6b1. Governed challenge/competing-explanation record admission, durable attribution, evidence authentication, exact claim/contradiction/contract pins, replay/rollback and missing-evidence controls. | **470**: schema/ordered DDL 130; admission 100; tests 160; mutants/integration 80. |
+| 6b3 | 6b1/6b2 and D3. Actual conjunctive coverage/challenge/verification consumption, retained dissent handling and integrated persistence/concurrency controls. | **460**: operand adapters/gates 150; tests 210; mutants/integration 100. |
+
+6b1 may persist diagnostic unknown/stale results; it cannot declare a qualified
+completion without the remaining gates. Slice 7 still owns fresh review and
+completion approval; slice 8 owns approved-revision export assembly. Those
+slice-map dependencies remain. The three DEBT-035 cases must survive 6b1
+persistence and slice 8's approved bundle, with gate consumption added in 6b3.
+Neither a part landing nor diagnostic persistence closes either debt alone.
+
+### Agreed 6a mechanism (confirmed 2026-10-23)
+
+Keep the existing short `BEGIN IMMEDIATE` capture transaction for this part;
+introducing a separate connection/read-transaction lifecycle is unnecessary
+unless the agreed workload demonstrates a problem. Add a Router collaborator
+using narrow core/Store protocols. The core opens transactions and only wires
+delegates. Fixed Store read primitives perform topic-filtered joins for shared
+tables; they are not a query builder. Accounting remains store-free.
+
+Capture a detached, recursively immutable record value in one transaction.
+Include the topic state revision, exact active approved contract/hash and
+historical approved contracts; inventory/capture and G-1 histories; admitted
+window/branch provenance; obligation and contradiction/branch histories;
+claims/links, all verdicts, quote checks, detailed checks, source/acquisition/
+extraction/validation bases and their pinned registries; related artifact
+metadata/authorization, holds/clearances and existing dossier identities.
+Shared records are selected by the topic's admitted relationships, never by
+whole-table reads followed by Python filtering. Keep stable existing event
+order where window allocation depends on it. Include empty relation groups:
+a newly inserted receipt or observation must invalidate the old selection.
+Future challenge tables join this fixed capture in 6b2; absence now supplies
+no positive challenge evidence. Do not copy unrelated artifacts or perform
+spool I/O in capture.
+
+After releasing capture, convert to the existing typed inventory/window/link
+operands and compute canonical input hash, counts, views and stopping results.
+The hash binds a versioned manifest of the selected records, their identities,
+revisions, stored hashes, byte digests of retained BLOB operands and explicit
+history provenance. Compute those byte digests outside capture as well; retain
+the original immutable bytes for exact revalidation. `native` versus
+`legacy_unknown` stays explicit; the adapter cannot infer trustworthy history
+from an empty queue row. No caller-authored total, pin, gate result or token
+becomes authority. The detached value is a per-operation input, not a cache,
+second store or general in-memory query facade.
+
+At the later writer fence, before the operation's first material write, re-read the
+same fixed selection, compare the topic revision/approved contract hash and
+the exact selected records with the captured manifest (including emptiness).
+This checks the material input hash's original preimage without repeating
+serialization, hashing, evaluation or source-body parsing under the lock.
+Comparing only queue revision or only the previously named rows is inadequate:
+observations, holds or new receipts can change without that counter changing.
+A difference refuses as stale; rebuilding starts with a new capture. A stable
+selection permits the caller's existing fenced transaction to proceed. It
+never releases and reacquires the lock between revalidation and that write.
+6a exposes this internal prerequisite and tests it in a controlled Router
+transaction; 6b1 must use it on the actual dossier persistence path.
+
+### Agreed first-part acceptance contract (6a, confirmed 2026-10-23)
+
+- **Property:** every 6a assembly input comes from one coherent authoritative
+  local-store snapshot. Typed conversion, accounting, serialization, hashing
+  and artifact I/O occur after capture releases the writer transaction. The
+  commit prerequisite revalidates topic revision, approved contract/hash and
+  the complete selected input manifest under the writer fence; changed inputs
+  refuse before effects. Unknown capture and historical provenance survive.
+- **Entry paths:** the new Router dossier-input read and private commit-time
+  revalidation prerequisite; existing `candidate_units`, `evidence_inventory`
+  and `coverage_snapshot` reads share the capture/conversion mechanism while
+  preserving their signatures and results. Exercise fresh and retained
+  compatible stores, explicit `native` / `legacy_unknown` histories, unknown
+  topics and missing approved contracts. 6a tests the prerequisite in a
+  controlled Router write transaction; actual dossier persistence starts in
+  6b1 and must invoke it. No public submission of caller-made snapshots.
+- **Expected outcomes:** one topic-scoped captured record set with exact
+  current/historical pins, stable event order and a deterministic versioned
+  input hash; unchanged supported inputs retain existing counts/views/rule
+  results. Empty or missing evidence stays explicit, with existing unknown
+  semantics. All adverse/supporting receipts and attention history remain
+  available; no receipt is silently selected away and no hold is cleared.
+  Unknown topics refuse; a dossier-input read without an approved contract
+  refuses, while existing pre-contract inventory reads keep their behavior.
+  Pure work runs with no Store transaction active. A stable manifest passes
+  the commit prerequisite; any selected-row, membership, revision or hash
+  change refuses without a commit effect. A write confined to unrelated topic
+  records does not contaminate or invalidate the selected inputs.
+- **Required regressions and controls:** hand-written expected operands for
+  topic isolation, retained history, historical pins, missing associations,
+  partial/failed capture and no read-side DML; guards/control pairs for input
+  hash binding, mutable-result isolation and no pure work or spool I/O under
+  the lock. Use two connections to a disposable WAL database and deterministic
+  barriers: commit a writer between capture and the guarded commit, including
+  an observation/new receipt that leaves queue revision unchanged; revalidation
+  must refuse before a controlled write. Pair it with an unchanged-input
+  commit control, an unrelated-topic write control, and a contract-amendment
+  refusal. Exercise a writer attempting to interleave during capture: the
+  returned value must be wholly before or wholly after its commit. Removing
+  manifest revalidation must fail the stale-input regression; no sleeps or
+  scheduler timing serve as its oracle. Preserve adverse-then-support history
+  and existing promotion tests without adding a hold veto. Carry DEBT-035's
+  three cases through the adapter and existing pure evaluators: satisfied
+  lower bound with an indeterminate window retained; conservative unknown
+  with lower/upper bounds retained; stale G-1 context unavailable for current
+  completion credit with original records still present. Durable/export legs
+  of those cases remain mandatory in 6b1/6b3 and slice 8. Assess capture and
+  revalidation separately at D1's agreed workload, recording rows/query
+  scope, lock duration and memory; paired unrelated-volume runs must expose
+  accidental whole-table loading. Performance measurements are evidence,
+  not timing-dependent unit assertions.
+- **Limits:** supported arithmetic stays descriptive, coverage and retrieval
+  known-item checks with existing three-valued composition/G-1 reuse; no new
+  scientific evaluator or sufficiency judgment. No rich dossier persistence,
+  positive challenge/verification gates, completion/publication transition,
+  export enablement, dissent-resolution policy, tier-0 checker, scheduling or
+  escalation in 6a. No cache, second store, query framework, real migration,
+  provider call or gen-1 access. Passing the prerequisite alone is not a
+  production claim that a dossier is fresh; 6b1 must demonstrate its actual
+  write consumer before that claim. DEBT-035 stays open; DEBT-036 advances
+  subject to workload evidence and later assembly integration.
+- **Size:** about **480 hand-written repository lines** as broken down above;
+  generated controls, documentation and private evidence are separate. New
+  responsibilities live in collaborators/modules; `service.py` (1,460/1,500
+  at the input pin) receives wiring only and stays within the file/metrics
+  limits. If the estimate grows past about 500, stop and split before coding.
+
+### Operator rulings (Trevor, 2026-10-23)
+
+The orchestrator relayed these rulings in this session and confirmed the
+6a/6b1/6b2/6b3 split and complete 6a acceptance contract as its definition
+of done. The operator selected **A** for all three decisions.
+
+| ID / scope | Ratified ruling |
+|---|---|
+| **D1 — 6a workload and acceptance budgets. A.** | The synthetic reference workload is ratified: one topic with 10,000 observations/retrievals/work links, 1,000 invocations, 1,000 claim revisions and 1,000 receipts, proportional histories, and 100,000 unrelated records in each shared inventory table. Use 1 KiB typical observation/receipt JSON, 32 MiB selected JSON and up to 32 MiB selected retained byte operands; report both sizes separately. Compare with zero unrelated records. Record one cold and 20 warmed samples separately for capture and revalidation. The acceptance budgets on the recorded host are **p95 writer-lock occupation ≤250 ms for capture and for revalidation, each; peak detached-input memory ≤128 MiB**. If a budget fails, stop and report for redesign or re-estimate. No caching and no relaxing the budgets. These are now acceptance requirements, not proposals or claimed measurements. |
+| **D2 — 6b1 rich durable/export shape. A.** | A new closed, versioned rich dossier artifact plus an explicit rich member in `export-bundle/2`. The existing scalar member and its rules stay; `/1` is unchanged. Retain every raw indeterminate window, context and provenance; refuse any projection that cannot be truthful. Switching to B (a new bundle version) needs a new ruling. This governs 6b1, not 6a. |
+| **D3 — 6b3 unresolved adverse verification. A.** | Unresolved `partially_supports` / `does_not_support` receipts leave the affected **completion** verification gate unknown until a durable attributed adjudication reference names each handled receipt, claim revision and resolution evidence. New support or generic hold clearance cannot manufacture it. Promotion behavior is unchanged. 2e2 owns scheduling and producing the judgments. This governs 6b3, not 6a. |
+
+There are no outstanding operator policy decisions for 6a. D2 and D3 are
+settled for their later parts; neither authorizes starting 6b in this dispatch.
+
+### Step-1 validation and stop condition
+
+For this documentation-only candidate, run `make gen2-debt gen2-locators`
+before committing. Stage/commit only `docs/gen2/DOSSIER.md`, push `task/2d-6`
+and open a PR targeting `gen2`, with auto-merge disabled. Record the design
+commit, PR and pending decisions in private `evidence/2d-6/PROGRESS.md`, then
+stop. No production, schema, test or tooling implementation in this dispatch.
+The later coder runs affected tests (including composition and transitive
+fixture consumers), affected `--only` mutants and static gates; one full run
+per implementation round belongs to the independent verifier. If moving
+existing conversion is a refactor, apply the charter's established refactor
+evidence standard rather than introducing custom proof tooling.
+
+
+### 6a implementation preflight: re-estimate and size stop (2026-10-23)
+
+No runtime, schema, test or tooling edit has been made. The agreed contract's
+size clause applies: **“If the estimate grows past about 500, stop and split
+before coding.”** The charter also requires larger work to be sequentially
+landed/reviewed and each part's definition of done agreed before coding.
+The full 6a definition of done remains ratified; this preflight does not narrow
+it, drop controls or use the mechanical-batch exception for new behavior.
+
+The refined estimate is **about 1,180 hand-written repository lines**, replacing
+the 480-line 6a placeholder. The 6b estimates remain 480/470/460; the revised
+slice-6 total is about **2,590**. Generated controls, documentation, private
+benchmark/fixture scripts and private refactor evidence are excluded. These
+are estimates, not implemented or measured line counts.
+
+The original 6a estimate underestimated three concrete pieces of its existing
+contract:
+
+- **Complete scoped capture:** `router/accounting.py` is already 112 lines
+  of reads and conversion, coupled through `Rows.select`; it cannot simply
+  be copied outside the transaction while retaining live Store reads. SQL 03
+  `works`, `record_work_links`, `quote_checks`; SQL 05 `source_lineage`; and
+  SQL 22/29 validation rows have no `topic_id`. Each needs an explicit bound
+  relation selection. Artifact authorization must join SQL 02 `artifact_topics`
+  rather than filter artifacts by their original recording topic; extractor
+  registry/tool capture must select historical pinned revisions. Whole-table
+  filtering or a generic in-memory query facade would violate the contract.
+- **Immutable raw operands and consumer closure:** `Store.select` returns
+  mutable dicts and decodes JSON. The agreed no-source-body-parsing writer
+  fence and D1 memory budget require a detached raw scalar/tuple capture,
+  outside-lock JSON/BLOB-hash conversion and exact raw-preimage comparison.
+  The existing three public accounting reads, branch provenance lookups and
+  composition declarations must all move together while preserving results,
+  signatures and meaningful existing test assertions. `service.py` remains
+  wiring only. This is not a new cache or second store.
+- **Independent controls:** the 190-line test allowance did not cover complete
+  relation membership/empty-set invalidation, fixed-selection isolation,
+  recursive mutation resistance/BLOB binding, every existing read consumer,
+  both controlled WAL interleavings and the three DEBT-035 adapter cases.
+  These remain required. A clock-based concurrency assertion, fixture-only
+  fake revalidation or omitted transitive consumers cannot substitute for them.
+
+Proposed sequential sub-split, **pending orchestrator confirmation of each
+part's acceptance contract before code**:
+
+| Part | Deliverable and retained controls | Hand-written estimate |
+|---|---|---|
+| **6a1 — detached scoped capture** | Fixed topic-related Store reads and immutable raw snapshot value; stable order, explicit empty groups, JSON metadata and BLOB bindings; outside-lock deterministic input hash including explicit history. No public dossier assembly route yet. Real disposable-store controls for shared/no-topic relations, cross-topic authorized artifacts, historical registry pins, empty membership, raw-byte/hash binding, recursive mutation resistance and no DML. Measure the complete capture side of D1, including unrelated-volume comparison. | **440**: fixed capture reads 120; immutable value/manifest/hash 70; tests 170; paired mutants 40; source/boundary/ledger integration 40. |
+| **6a2 — accounting conversion and read consumers** | Pure conversion from 6a1 values, existing `candidate_units` / `evidence_inventory` / `coverage_snapshot` consumer closure, new Router dossier-input read and collaborator composition. Preserve public signatures and pre-contract behavior; unknown topic/missing approved dossier contract refuse as agreed. Retain native/legacy, branch/G-1, adverse-then-support history and DEBT-035's three adapter cases. All conversion/arithmetic outside the lock; no generic query facade. | **390**: conversion/adapter changes 120; collaborator/thin wiring 35; tests/transitive fixture adjustments 150; paired mutants 35; composition/source/boundary/ledger integration 50. |
+| **6a3 — guarded revalidation and 6a acceptance closure** | Re-read the same fixed selection and compare its complete raw preimage under the existing writer fence before effects. Same-store stable control; changed observation/receipt without queue revision, amendment and membership/empty-group refusals; unrelated-topic positive control; deterministic two-connection WAL barriers during capture and between capture/commit; refusal rolls back the controlled write. Finish capture/revalidation D1 measurements and memory evidence at the full agreed workload. | **350**: revalidation/core delegation 60; controls/concurrency/regressions 210; paired mutants 40; composition/source/boundary/ledger integration 40. |
+
+The 6a1 acceptance proposal is its row's property and controls through the
+internal fixed Store capture entry, exercised inside Router-owned snapshot
+transactions on disposable fresh/retained stores. Expected outputs are exact
+immutable topic-related raw records with current/historical pins and explicit
+empty groups, deterministic history-bound hash after the transaction, no DML,
+and D1 capture/memory budgets met. Limits: no typed inventory consumer, public
+dossier route, commit-freshness claim, persistence, gate policy or export.
+The remaining original 6a entry paths and commit controls stay with 6a2/6a3;
+6a is not complete until all three meet the original ratified contract.
+
+Before 6a2's movement of existing conversion, perform the mechanical extraction
+with rope where applicable, describe the frozen commit range with the pinned
+offline RefactoringMiner wrapper and explicit expected counts, and gate the
+move with affected existing tests/mutants, Hypothesis old/new checks on pure
+conversion and the accepted replay at landing. No refactor has happened in
+this preflight, so there is no detector/replay result to claim now.
+
+This update records the rulings and concrete re-estimate only. Run debt and
+locator gates before its commit, push it to the existing PR #8 with auto-merge
+disabled, and report the size stop. No 6a implementation or workload pass is
+claimed, and 6b1 remains outside this dispatch.
+
+### 6a1 implementation and D1 budget stop (2026-10-23)
+
+The orchestrator confirmed the 6a1/6a2/6a3 sub-split and the complete 6a1
+acceptance contract in this session. The combined 6a contract is unchanged.
+This dispatch implements **6a1 only**; 6a2 has not started.
+
+`gen2/store/api.py::Store.capture_topic` requires an already active Store-owned
+transaction, reached in tests and measurements through `Router._snapshot`.
+It delegates fixed relation selections to `gen2/store/capture.py`; it does not
+open another connection or transaction. Shared work/record/lineage and quote/
+validation rows use topic-bound relationships; artifacts use `artifact_topics`
+authorization, and registry/tool rows use historical extraction pins. The
+capture retains every selected raw column, JSON-column metadata, stable row
+order and explicit empty groups in frozen records containing only tuples and
+SQLite scalars. No JSON decoding, hashing, arithmetic, spool reads or DML is
+performed by capture. Existing accounting consumers remain unchanged.
+
+The separate pure `input_hash` uses the existing canonical helper after the
+transaction. `dossier-input/1` binds topic, explicit history, group/column/JSON
+metadata, empty groups and row order. BLOBs use tagged exact-byte digests;
+per-row digests bound serialization memory while the raw preimage stays in
+the snapshot. This supplies no approval or commit-freshness authority.
+
+Tests in `gen2/tests/test_topic_capture.py` exercise fresh fixture capture,
+reopened disposable WAL stores, exact records and historical contracts,
+shared authorization, historical registry pins, both validation histories,
+lineage/quote isolation, ownership, no DML/computation during capture,
+immutable containers and an independently serialized literal hash oracle.
+The 2D6A1 family pairs each removal with an accepted capture/hash control.
+No existing conversion code moved, so no refactor-tool evidence is claimed.
+ML-0172–0181 and the ML-0077 extension record only this fixed module's existing
+Store/canonical dependencies; no metrics baseline or exemption changed.
+
+**Acceptance stopped at D1:** on the zero-unrelated-records reference case,
+capture p95 was **682.815164 ms**, exceeding the ratified **250 ms** budget.
+Cold capture was 537.711973 ms. Selected inputs contained exactly 32 MiB JSON
+and 32 MiB BLOBs, 10,000 observations/retrievals/work links/works, 1,000
+invocations, 1,000 claims and 1,000 receipts, with proportional histories.
+Capture-only allocation peak was 96.883419 MiB; capture plus input hashing
+peaked at **109.028010 MiB**, within **128 MiB**. Timing covers BEGIN IMMEDIATE
+through COMMIT; allocation tracing runs separately from the latency samples.
+The cold sample is the first capture after checked WAL open, not an assertion
+that the OS page cache was cold. Host facts and all 20 warmed samples are in
+private `evidence/2d-6/6a1-workload.json`.
+
+The benchmark's source used an initial `slots=True` dataclass spelling.
+Parallel static validation refused that spelling under SOURCE-CONTRACT v2;
+it was corrected to the established `@dataclass(frozen=True)` form while the
+measurement was finishing. Fixed queries and the capture/hash algorithm did
+not change. The measured source is retained as `measured-capture.py` beside
+the driver and raw results. **These measurements do not qualify the final
+commit's performance.** No timing was repeated after the failure, and no
+capture implementation was tuned. The 100,000-unrelated comparison was not
+run because the zero-unrelated case already triggered the mandatory stop.
+6a1 is therefore **not accepted / not complete**; its D1 budgets remain fixed.
+The candidate is retained for review and redesign, with checks and exact
+commit identities in private `evidence/2d-6/COMPLETION.md`.
+
+### 6a redesign proposal after the D1 stop (2026-10-23; not ratified)
+
+This is a documentation-only proposal requested by the orchestrator after
+`fea623b29c32e58683bff40038d8838b178f3c17`. It changes no capture code and
+claims no new measurements. D1, D2 and D3 remain rulings. The amendments below
+require operator decisions; the previously agreed contracts remain binding
+until those decisions are relayed. 6a1 remains unaccepted; 6a2/6a3 and 6b1
+have not started. The earlier statement that 6a had no open decisions describes
+the pre-failure design; the new decisions are listed here.
+
+#### Existing evidence: cost and limits of attribution
+
+The sources are the retained [raw samples and group counts](/home/trevor/work/research-loops-public/private/evidence/2d-6/6a1-workload.json),
+[measurement driver](/home/trevor/work/research-loops-public/private/evidence/2d-6/capture_workload.py),
+[measured capture source](/home/trevor/work/research-loops-public/private/evidence/2d-6/measured-capture.py)
+and [source identities and failure record](/home/trevor/work/research-loops-public/private/evidence/2d-6/COMPLETION.md).
+Only the zero-unrelated leg ran. The host was Linux 6.8.0-146 x86_64,
+Python 3.12.3, 24 CPUs with affinity 0–23. Existing results are:
+
+| Operand or measurement | Recorded result |
+|---|---|
+| Selected JSON / retained BLOBs | 32 MiB / 32 MiB, separately counted |
+| Principal row populations | 10,000 each observations, retrievals, links and works; 1,000 each invocations, claims and receipts; 9,999 each semantic assessments and lineage rows; all remaining groups recorded in the raw file |
+| First capture after checked WAL open | 537.711973 ms; not an OS-cache-cold claim |
+| 20 warmed captures | minimum 443.814962 ms; p95 682.815164 ms; every sample exceeds 250 ms |
+| Separately traced allocation peaks | capture 96.883419 MiB; capture plus outside-lock hash 109.028010 MiB, below 128 MiB; not process RSS |
+
+The timer surrounds `Router._snapshot()` / `Store.capture_topic`, including
+BEGIN IMMEDIATE, all fixed SELECTs, raw TEXT/BLOB materialization, Python
+row/container allocation and COMMIT. JSON decoding, input hashing, byte-size
+accounting and garbage collection before each sample are outside that timer.
+There is no per-query profile, lock-acquisition split, payload-size sweep or
+row-count sweep. **The evidence cannot attribute a percentage to copying the
+64 MiB payload versus row overhead, joins/scans, page access or transaction
+overhead.** The memory peaks do not supply that missing time decomposition.
+Claiming that payload copying dominates, or inventing a copy-only throughput,
+would exceed the evidence. The unrelated-volume comparison was stopped, so
+it supplies no evidence of unrelated-row scaling either.
+
+The measured source used `slots=True`; `fea623b` uses the supported frozen
+dataclass spelling without slots. The pinned measured sources and driver
+remain the evidence identities. There is no qualifying timing of `fea623b`
+and no performance rerun in this proposal.
+
+#### Why the current mechanism is insufficient
+
+The measured candidate fails D1 even without unrelated records. It reserves
+the writer for an amount of work proportional to every selected row and raw
+byte, including the 64 MiB payload. The final spelling correction removes
+none of that work. The samples do not prove a universal 250 ms lower bound
+for every possible implementation, but they do rule out accepting this trial;
+no evidence supports claiming that the final candidate meets D1. Optimizing
+the same loop or queries after this stop would be tuning, not this redesign.
+
+As specified, 6a3 must reread the complete raw preimage under BEGIN IMMEDIATE
+and then compare it. That repeats the same selection/materialization class
+of cost, with comparison added, while reserving the writer. Revalidation has
+not been implemented or timed, so its p95 cannot be equated to 682.815164 ms.
+Moving capture alone off the writer does not resolve this second exposure.
+
+#### Options and contract amendments
+
+All options retain the fixed selection's exact records, history and pins,
+explicit empty groups, immutable detached values and outside-transaction
+conversion/hash. They keep Router ownership, the existing public read results,
+the DEBT-035 adapter cases, no read-side DML and the limits excluding dossier
+persistence, gates and export. None introduces a cache or a second database.
+
+| Option | Mechanism and trade-off | Ratified clauses needing operator amendment |
+|---|---|---|
+| **A — WAL reader; full raw comparison at commit** | Capture in a separate read transaction on the same authoritative WAL database; retain the complete writer-fenced reread for revalidation. No new invalidation metadata or shared-write fan-out. Snapshot isolation preserves coherent capture, and exact comparison still detects selected changes and permits unchanged/unrelated inputs. It leaves the demonstrated class of cost in revalidation, so it is not recommended as a complete D1 solution. | Replace BEGIN IMMEDIATE capture with a Router-owned read transaction. Keep complete raw-preimage comparison and stable-manifest semantics. No evidence that the revalidation budget will pass. |
+| **B — WAL reader plus topic input generation; recommended** | The same read transaction captures a durable topic generation and the complete raw inputs. Ordered DDL maintains that generation atomically for every mutation affecting that topic's exact selection. Commit compares a bounded number of indexed scalar records under the existing writer fence, rather than rereading bodies. This is O(1) in selected rows/bytes at revalidation, not constant physical I/O latency. Completeness of invalidation becomes a schema obligation; shared mutations can fan out to many topic generations. | Replace BEGIN IMMEDIATE capture; replace complete raw-preimage comparison with a generation/identity proof binding the detached hash. Permit refusal after a relevant change-and-restore even when final bytes match. Keep unchanged-generation and unrelated-topic positive controls, all stale-input refusals and D1 budgets. |
+| **C — WAL reader plus membership generations and shared-object version vector** | Capture topic/group membership generations and versions of selected mutable shared objects; immutable pinned records rely only on proven DDL immutability. At commit compare these compact metadata records, including membership guards for empty groups and new rows. A shared work update increments one object version instead of every dependent topic. Revalidation is O(k) version records, potentially 10,000 works here, though it avoids the 64 MiB body reread. More phantom/membership proof obligations and no demonstrated 250 ms bound. | Replace BEGIN IMMEDIATE capture and complete raw-preimage comparison with version-vector/membership proof. As with B, monotone versions conservatively refuse relevant change-and-restore. Unchanged/unrelated controls and the budgets remain. |
+
+SQLite documents a stable read snapshot across concurrent committed writes
+on separate connections. A deferred transaction's first SELECT establishes
+the read transaction; BEGIN IMMEDIATE instead starts a write transaction.
+These are the basis of the proposed mechanism, not performance measurements.
+([SQLite isolation](https://www.sqlite.org/isolation.html),
+[transaction modes](https://www.sqlite.org/lang_transaction.html).)
+
+For B or C, the Router requests a narrow Store-owned read context on a checked
+connection to **the same authoritative file**, with DML prohibited, no shared
+cache and no dirty reads. It is not a copied database, SQLite backup, alternate
+inventory or general query facade. Connection/path/schema admission, closure
+on failure and compatibility checks belong to Store; collaborators open no
+transactions. Existing in-memory fixture entry paths must retain their behavior
+without silently creating a separate in-memory database. Concurrency and D1
+claims use fresh and reopened disposable file-backed WAL stores.
+
+The first read pins the token and inputs in one snapshot; reading a token after
+capture on another snapshot would be unsound. End the read transaction before
+conversion/hash. Never upgrade the old read transaction into a writer. The
+later commit uses the existing Router BEGIN IMMEDIATE and checks its current
+topic generation/vector, topic state revision, approved contract identity/hash,
+and schema/history/store identity against the internally bound capture **before
+the first material effect**. Keep that fence through the controlled write.
+A relevant writer committing after the snapshot was pinned, including during
+capture or after capture, changes the token and causes refusal without effects;
+there is no automatic stale retry. A writer committing before the first read
+is included wholly. An unchanged token binds the already computed input hash
+only through complete mutation coverage and Router-owned immutable inputs;
+the generation is not itself a content hash or caller-supplied authority.
+
+#### Mutation coverage, shared records and unrelated writes
+
+This is a required coverage inventory, not permission to select every reachable
+foreign-key row. The selection in `gen2/store/capture.py` remains the scope.
+A uses those exact predicates again at commit. B uses the routes below to bump
+affected topic generations; C uses the same routes for membership guards and
+per-object versions where a raw shared row can change. In each case a mutation
+to a selected shared row is relevant even if initiated by another topic.
+
+| Relation | Scope that B must invalidate; corresponding C guard/version |
+|---|---|
+| Direct `topic_id` groups, including observations, receipts, contracts, invocations, acquisitions, holds and operation history | Every actual raw-row or order change and membership addition/removal affects its OLD/NEW topic union, even with unchanged queue revision. C guards topic/group membership and mutable local records. A new previously empty group is covered. |
+| `record_work_links` and `works` (SQL 03) | Link membership belongs to the retrieval event's topic; adding another topic's link to an already shared work does not change the first topic's selection. A change to a selected work, including mutable `study_group_id`, affects all topics retrieving it. B resolves that inverse relation through links/events; C changes the work version, with link/event membership guards catching first/last membership. A lineage-only reference does not itself select that work. |
+| `quote_checks` (SQL 03/11/13) | Resolve the exact `(claim_id, claim_revision)` to its topic; retain all selected check history. C guards that claim revision's check membership and any mutable check version. A new check cannot escape through an initially empty set. |
+| `source_lineage` (SQL 05) | Resolve `assessment_id` to the selected semantic assessment's topic. C guards that lineage membership; existing immutable lineage is not a reason to omit insert coverage. The related work's other topics are not automatically in scope. |
+| `extraction_validations` and `_v2` (SQL 22/29) | Both histories are selected through the **target** extraction's topic, not a global validation scan or the validator's topic alone. C guards target-validation membership and any permitted mutation. Changes to extraction membership/pins are also covered by the direct topic guards; no additional unselected validator records are invented. |
+| Shared `artifacts` and `artifact_topics` (SQL 02) | Authorization belongs to each `artifact_topics` topic, not the artifact's original recording topic. A new authorization invalidates that newly authorized topic. Artifact metadata is currently immutable; any permitted future shared-row mutation must affect every authorized topic (B) or its object version (C). Retained BLOB operands in acquisitions remain direct-topic inputs. Spool contents are not a second mutable database snapshot. |
+| `extractor_registry_revisions`, `extractor_tools` and `audit_events` (SQL 28 and capture's pins) | Route only through registry versions pinned by that topic's `source_extractions`, including historical pins. Tool inserts into an already pinned version must be covered even though existing entries are immutable. The registry's referenced audit event is selected even with NULL `topic_id`; ordinary audit rows use their own topic. B bumps pinned dependents; C guards pinned-version tool membership and selected audit versions. Appending an unpinned registry revision does not invalidate old captures. A new topic extraction both changes that topic and establishes its pin dependency. |
+
+For B, ordered DDL must cover raw SQL writes as well as all Router entry paths:
+allowed INSERT/UPDATE/DELETE, OLD and NEW membership, selected column changes
+and row-order changes. Existing immutability guards remain; forbidden mutations
+must still refuse. No-op updates need not bump; rolled-back mutations must roll
+back their bumps. Generations cannot decrease, reset, be deleted/reused or wrap;
+exhaustion or a missing/incompatible guard refuses. Captures are ephemeral and
+bound to one admitted Store lifetime; maintenance, schema replacement or restore
+invalidates live captures rather than reusing tokens. Supported schema changes
+must extend coverage before the changed capture can be authoritative. New
+generation state/indexes belong in ordered DDL with fresh/retained admission
+controls, never lazy read-side initialization or a real-database migration in
+this work. Do not enable the shortcut with incomplete trigger coverage.
+
+Use indexed inverse joins for B's shared fan-out; account for that maintenance
+on the original writer. It relocates work to relevant writes and can increase
+their latency; O(1) revalidation does not mean O(1) shared mutation cost. C avoids
+that fan-out but pays for metadata comparison at commit. Neither can use a
+database-global change flag: an unrelated-topic commit must leave the topic
+proof valid. Neither can substitute MAX/COUNT or a selection's old row versions
+without membership guards; those miss changed values or newly inserted rows.
+Required controls include shared-work changes affecting two topics, unrelated
+links and unpinned registries passing, pinned tool/audit additions refusing,
+empty-to-nonempty relations, raw SQL mutation coverage, rollback, no-op updates
+and change-and-restore, alongside the already agreed deterministic barriers.
+
+#### Recommendation, validation and revised size
+
+Recommend **B**: move bulk capture to a WAL reader and use an exact topic-scoped
+invalidation generation for optimistic commit revalidation. This addresses both
+writer reservations structurally, preserves one coherent authoritative input
+and keeps the detached hash as the content/provenance identity. It follows
+DEBT-036's revision/hash-at-commit intent through a schema-backed unchanged-input
+proof, but **does amend its agreed full-preimage mechanism**; approval cannot
+be inferred from that intent. C is the alternative if shared-write fan-out is
+unacceptable. A is only a partial redesign and cannot be offered as acceptance
+closure without independently passing revalidation.
+
+D1 stays **p95 writer-lock occupation ≤250 ms for capture and revalidation,
+each, and peak detached-input memory ≤128 MiB**, with the same payloads, host
+record, cold plus 20 warmed samples and zero/100,000-unrelated comparison.
+A read transaction takes no writer reservation; that is a mechanism claim,
+not a measured zero or a claim that capture wall time becomes ≤250 ms. Future
+evidence must separately report total capture elapsed time, actual writer-lock
+occupation and concurrent-writer delay, with revalidation measured under the
+writer fence. Do not relabel the old whole-call timing as a new passing result.
+Include generation-maintenance/shared-fan-out writer cases and preserve existing
+writer behavior; report added cost rather than hiding it outside capture timing.
+Long readers can delay WAL checkpoints, so bound the read lifetime to capture,
+close it before pure work and report WAL growth/checkpoint effects in workload
+evidence. ([SQLite WAL concurrency](https://www.sqlite.org/wal.html#concurrency).)
+Any future failed D1 budget again stops for redesign/re-estimation; no caching,
+tuning around a failure or budget relaxation is authorized by this proposal.
+
+Revised **remaining-work** estimates for B are below, replacing 440/390/350.
+These count handwritten production, SQL, tests, mutants and tooling, not just
+the small guard method; documentation, generated controls and private evidence
+remain separate. The prior 307 changed implementation/test/tooling lines are
+reported as spent work, not acceptance credit or subtracted from these estimates.
+
+| Part | Proposed remaining scope | Estimate |
+|---|---|---:|
+| **6a1** | Checked Store/Router WAL-read lifecycle and capture adaptation; failure/closure/coherent-reader controls, composition and capture-side D1 evidence. No freshness authority before complete 6a3 coverage. | **460** |
+| **6a2** | Pure conversion and all existing read consumers/new internal dossier-input route, transitive fixtures, DEBT-035 cases, refactor evidence and composition. | **420** |
+| **6a3** | Ordered generation DDL, full invalidation closure, guarded commit integration and complete acceptance evidence. Must split before implementation as below. | **1,440** |
+| 6a3a | Generation lifecycle/direct-topic coverage, retained/fresh schema controls and paired mutation controls. | 470 |
+| 6a3b | Shared/no-topic routing, inverse indexes, membership/pin/fan-out isolation controls and paired mutants. | 490 |
+| 6a3c | Capture/token/hash binding, writer-fenced check, deterministic interleavings and full affected-consumer/D1 closure including mutation-maintenance costs. | 480 |
+
+Remaining total: **about 2,320 handwritten lines**, versus the earlier 1,180
+whole-6a estimate. Each proposed part needs its acceptance contract agreed
+before code; none is a mechanical-batch exception. Re-estimate again at each
+preflight and stop/split if a part exceeds about 500. Intermediate generation
+work must not advertise complete coverage or authorize a production commit.
+Keep new responsibilities outside `service.py`; preserve its file/metrics
+limits. Apply the established rope/offline RefactoringMiner, pure old/new
+Hypothesis, affected tests/mutants and accepted replay standard when conversion
+moves in 6a2. The independent verifier owns the full suite.
+
+**Disposition of `fea623b`: adapt, not accept or silently discard.** Retain its
+fixed selectors, immutable raw shape, outside-lock content hash and useful
+literal/isolation controls as the starting material. Replace the exclusive
+capture ownership assumption with the checked read context; add the bound
+generation proof only after complete DDL coverage. Do not implement the planned
+full raw reread as the production freshness guard under B. Preserve the failed
+samples and measured-source discrepancy permanently; the final adapted source
+will require its own qualifying evidence. No code changes occur in this dispatch.
+
+#### Open operator decisions
+
+| ID | Options | Recommendation |
+|---|---|---|
+| **R1 — capture and commit mechanism** | **B:** same-file WAL read transaction plus ordered-DDL topic generation, amending BEGIN IMMEDIATE capture and complete raw-preimage comparison. **C:** same-file WAL read plus membership/shared-object vector with its larger commit read. **A:** WAL read plus full comparison, retaining unresolved revalidation cost. | **B**, with the complete coverage/guard controls above; ratify the remaining-work split and agree each part's contract before implementation. The second connection is to the existing authoritative store, not a second store. |
+| **R2 — intervening change restored to identical bytes** | **A:** a relevant generation change refuses even if later restored; unchanged generations, no-op writes, rollback and unrelated-topic writes still pass. **B:** require every byte-identical final manifest to pass despite intervening changes; reject this monotone-generation shortcut and request another fingerprint design. | **A**, explicitly amending the stable-manifest-passes clause for this case and retaining the write-between-capture-and-commit refusal. Do not silently reinterpret that clause. |
+| **R3 — D1 measurement boundary after changing transaction mode** | **A:** retain the ratified writer-lock budgets and 128 MiB memory budget, report full read elapsed time separately and demonstrate concurrent writer progress, revalidation lock time and shared-write maintenance cost. **B:** additionally require total capture elapsed time ≤250 ms; this is an extra requirement with no passing design/evidence here. | **A**, retaining D1's stated writer-lock criterion, payloads and sampling requirements. Explicitly confirm the boundary before a read transaction is used to claim a pass. No old sample is relabeled and no budget is relaxed. |
+
+This subsection is a proposal only. Run debt/locator documentation gates,
+commit only this document with the Sol trailer, push PR #8 without auto-merge
+and stop for rulings. No new code, performance runs or acceptance claims.
+
+### 6a redesign rulings and D part-1 preflight (2026-10-23)
+
+Trevor's rulings, relayed by the orchestrator after [Astra's independent
+review](/home/trevor/work/research-loops-public/private/reviews/gen2-2d-6a-redesign-astra-review-20261023.md),
+supersede the preceding B recommendation and its open R1–R3 decisions:
+
+- **R1: D, not B.** Capture inputs and one durable **store-wide generation**
+  in one checked WAL read snapshot of the authoritative store. Ordered-DDL
+  row triggers advance it for every INSERT, UPDATE and DELETE in every
+  capture-dependent table, without topic filtering: currently 37 tables / 111
+  event triggers. Protect the singleton, exclude recursive self-bumping,
+  refuse exhaustion and missing/incompatible guards, initialize only through
+  ordered DDL, and invalidate live captures for DDL, restore or file replacement.
+  Compare generation plus existing revision, contract and lifecycle pins under
+  Router BEGIN IMMEDIATE before effects, bind it internally to the precomputed
+  content hash, and retain the fence through persistence. An operation's own
+  writes occur after validation and are not an intervening-generation check.
+- **Contract amendments approved.** Replace BEGIN IMMEDIATE capture and full
+  raw-preimage revalidation with the checked read snapshot and guarded proof.
+  Unrelated-topic non-invalidation and stable-manifest acceptance are amended:
+  any committed covered row event may cause refusal, including unrelated-topic,
+  restored and same-value updates. Fully rolled-back changes (including
+  savepoint rollback) and zero-row DML need not invalidate. Selection remains
+  topic-scoped; all history, uncertainty, authority and scientific gates stay.
+- **Retry ruling.** Permit an initial attempt plus at most two automatic
+  recaptures, solely after an effect-free typed generation-mismatch refusal,
+  within one finite caller deadline/cancellation scope. Without a finite
+  deadline, refuse explicitly. Free the old detached value first; recompute
+  from new inputs without transferring approvals to a new hash. Never retry
+  authority, schema, integrity or ambiguous-effect failures; uncertain commit
+  replies use existing replay/reconciliation. Exhaustion is visible typed
+  contention, not scientific uncertainty or success. Record stale refusals /
+  attempts, exhausted requests / requests, attempts per success, capture-to-fence
+  duration, commit wait and maintenance cost. The global token cannot attribute
+  false refusals; that requires labeled workload evidence. Telemetry must not
+  create its own intervening covered write. Show bounded exit under sustained
+  interference and success after interference ceases; no eventual-success
+  guarantee under arbitrary continuous writes is claimed.
+- **R3 approved.** Keep p95 writer-lock occupation **≤250 ms each** for capture
+  and revalidation, and peak detached-input memory **≤128 MiB**. Keep payloads,
+  host facts, cold plus 20 warm samples and zero/100,000-unrelated comparison.
+  Separately report full read elapsed time/lifetime, lock-acquisition wait,
+  fenced interval, original-writer maintenance cost, concurrent-writer progress
+  and WAL/checkpoint effects. Later conversion/retry measurements must include
+  all live inputs/temporaries. Any new failed D1 budget again stops for redesign;
+  no caching, tuning around failure or budget relaxation.
+
+Version the freshness-proof format separately from `dossier-input/1`'s content
+hash. Before multi-topic production, review refusal/exhaustion evidence: replace
+D with B if unrelated writes dominate; consider C if measured shared-write
+fan-out makes B unsuitable. Any upgrade uses admitted ordered DDL, discards
+outstanding old-proof captures and keeps the writer-fenced consumer. No B/C
+dependency machinery is authorized speculatively. DEBT-035/036 remain open;
+persistence/freshness consumption still belongs to 6b1.
+
+The confirmed D split replaces the B remaining-work estimate:
+
+| Part | Scope | Handwritten estimate |
+|---|---|---:|
+| D part 1 | Checked WAL-read lifecycle and capture adaptation/controls | 460 |
+| D part 2 | Pure conversion, existing readers, dossier-input route, DEBT-035 cases | 420 |
+| D part 3 | Global generation DDL, lifecycle protection and coverage controls | 480 |
+| D part 4 | Token binding, writer fence, bounded recapture, metrics and acceptance | 440 |
+| Remaining 6a | All four parts; each separately reviewed | **1,800** |
+
+The 6b1/6b2/6b3 estimates remain 480/470/460, for about 3,210 remaining slice-6
+lines. The prior 307 changed implementation/test/tooling lines remain spent
+work, not acceptance credit. Documentation, generated controls and private
+evidence remain separate; no mechanical-batch exception applies.
+
+**Part-1 re-estimate before code: 460 handwritten repository lines**: checked
+reader/lifecycle 95; Store capture adaptation 20; fresh/retained, concurrency,
+failure and compatibility controls 240; paired mutants 50; integration and
+existing-test changes 55. No conversion movement or Router-core behavior change
+is needed. Adapt `fea623b`'s selectors/immutable values/hash without tuning them.
+If this grows past about 500 or D1 capture fails, stop and report.
+
+The orchestrator pre-confirmed the following part-1 acceptance contract within
+that size limit:
+
+- **Property and entry:** internal `Store.capture_topic` owns a checked,
+  DML-prohibited read transaction on the same authoritative WAL file. Bound
+  its lifetime to capture and close it before pure work. Return the same exact
+  immutable topic-scoped raw records, current/historical pins and explicit
+  empty groups as 6a1; compute its unchanged history-bound content hash outside
+  the transaction. Durable capture uses a separate checked reader of the same
+  file. Preserve existing in-memory fixture behavior and existing Router read
+  signatures/results; do not turn `_snapshot` into a different transaction in
+  this part.
+- **Controls and expected outcomes:** deterministically commit from another
+  connection during capture and return one coherent old snapshot, then the
+  new snapshot on recapture. Exercise fresh and reopened disposable WAL stores,
+  closure after successful and failed reads, actual DML refusal, ownership,
+  connection/schema checks, exact existing immutable/hash oracles and retained
+  in-memory paths. Pure hashing must see no open capture transaction.
+- **Evidence:** affected tests including composition and transitive fixture
+  consumers, affected `--only` mutant families and static gates; no full suite.
+  Capture-side D1 at both zero and 100,000 unrelated records: full read elapsed
+  time/lifetime, writer-lock occupation/acquisition wait, memory, concurrent
+  writer progress and WAL/checkpoint effects. Generation maintenance is not
+  implemented in this part; report it as not applicable, not measured zero.
+- **Limits:** no generation token, freshness claim, revalidation, retry,
+  conversion consumer, public dossier route, persistence, gate policy or export.
+  No provider calls, gen-1 access or migration against a real database. Parts
+  2–4 have not started; the complete amended 6a contract remains their combined
+  definition of done.
+
+### D part-1 implementation and capture evidence (2026-10-23)
+
+`Store.capture_topic` now refuses an already active writer transaction and
+owns a checked read context. For a durable store, that context opens the same
+admitted file with `mode=ro`, verifies compatibility, WAL and operational
+settings, enables/read-backs query-only, begins a deferred transaction and
+checks exact schema identity in the snapshot. It closes the connection on
+success or failure. A pinned device/inode check refuses a replaced pathname;
+this is not the full lifecycle/freshness proof reserved to parts 3–4. In-memory
+fixtures reuse their admitted connection, close/roll back the read transaction
+and restore the original query-only setting. Uncertain cleanup closes it.
+
+The fixed selectors, raw value shape and content-hash algorithm are unchanged.
+Existing Router `_snapshot`, accounting readers and signatures are unchanged.
+No conversion moved, so no behavior-preserving extraction/refactor is claimed.
+Tests retain the original selection/hash oracles and add fresh/reopened WAL,
+deterministic writer-commit/coherence, actual DML refusal, success/failure
+closure, schema/connection admission and pragma read-back refusal controls.
+The mutation target reloads Store/Router/fixture consumers of the DB module;
+new reader guards have accepted-path control pairs.
+
+The new [raw workload evidence](/home/trevor/work/research-loops-public/private/evidence/2d-6/d-part1-workload.json)
+and [driver](/home/trevor/work/research-loops-public/private/evidence/2d-6/d_part1_workload.py)
+retain cold plus 20 warmed samples per leg, exact source copies/hashes, host
+facts, selected counts/bytes and writer/checkpoint probes. The original failed
+trial and measured-source discrepancy remain intact. Current production bytes
+must match the new retained measured sources before the implementation commit.
+
+| Capture-side D1 metric | Zero unrelated | 100,000 unrelated |
+|---|---:|---:|
+| Selected JSON / BLOBs | 32 / 32 MiB | 32 / 32 MiB |
+| First full read elapsed | 574.524261 ms | 890.574424 ms |
+| Warm full read p95 | 968.594392 ms | 1,074.533230 ms |
+| Warm reader lifetime p95 | 959.781565 ms | 1,062.194764 ms |
+| Capture writer occupation p95 | 0 ms: no writer reservation requested | 0 ms: no writer reservation requested |
+| Capture-plus-hash traced peak | 109.106917 MiB | 109.107299 MiB |
+| Concurrent writer commits / attempts | 21 / 21 | 21 / 21 |
+| Probe writer acquisition wait p95 | 0.013967 ms | 0.025247 ms |
+| Probe complete writer fence p95 | 14.994064 ms | 10.913559 ms |
+
+The zero writer-reservation bound follows the audited read-only connection,
+query-only setting and BEGIN DEFERRED/SELECT/COMMIT path; it is not an OS lock
+profiler measurement or a zero-elapsed-time claim. Capture has no writer-lock
+acquisition wait; the table separately records the interfering writer's wait.
+Full elapsed includes connection/schema admission and the injected writer and
+PASSIVE checkpoint probe. No latency tracing allocation overlaps those samples.
+Cold means first capture after checked open, not purged OS caches. Memory is
+traced Python allocation, not RSS, and qualifies only the implemented raw capture
+and hash; later conversion/recapture requires its own live-input measurements.
+
+In both legs, the first probe grew the WAL from 0 to 4,152 bytes; PASSIVE during
+the reader reported `(0, 1, 0)`, leaving that frame uncheckpointed. After reader
+closure and fixture restoration, TRUNCATE reported `(0, 0, 0)` and WAL size 0.
+All probe/checkpoint samples are retained. Generation-maintenance cost is **not
+applicable yet**, not a measured zero. Both legs return the same selected counts
+and `sha256:45c45b5076114c8c9941d38e2da66cebee69dd78260fe6a88c4c2d8f8a476658`.
+The capture workload exits 0: writer occupation ≤250 ms and raw capture/hash
+memory ≤128 MiB pass without changing the workload or tuning selectors. This
+does not qualify revalidation, generation, retry, conversion or persistence.
+Targeted checks, final line counts and the commit identity are recorded in
+private `evidence/2d-6/COMPLETION.md`; stop after D part 1.

@@ -137,6 +137,7 @@ def mutation_record(name: str, value: object) -> None:
 # ("disk",): a file only children run (a script started by path); the
 # mutant exists only in the child tree.
 FILE_TARGETS = {
+    "gen2/store/capture.py": ("module", "gen2.store.capture", "gen2.store.api", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/schema/verification-receipt.schema.json": ("attr", "test_span_cap", "RECEIPT_SCHEMA"),
     "gen2/router/history.py": ("module", "gen2.router.history", "gen2.router.service", "gen2.app.station", "gen2.tests.router_fixtures"),
     "gen2/router/detailed_checks.py": ("module", "gen2.router.detailed_checks", "gen2.router.service", "gen2.tests.router_fixtures"),
@@ -159,7 +160,7 @@ FILE_TARGETS = {
                                "gen2.router.detailed_checks", "gen2.router.status", "gen2.router.service", "gen2.tests.router_fixtures",
                                "gen2.gateway_client.observe", "gen2.gateway_client.client"),   # capabilities, observe: gateway_fact_id (2b-repair-2)
     "gen2/store/compat.py": ("module", "gen2.store.compat"),
-    "gen2/store/db.py": ("module", "gen2.store.db"),
+    "gen2/store/db.py": ("module", "gen2.store.db", "gen2.store.api", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/store/api.py": ("module", "gen2.store.api", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/accounting/__init__.py": ("module", "gen2.accounting", "gen2.router.accounting", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/accounting/reconciliation.py": ("module", "gen2.accounting.reconciliation"),
