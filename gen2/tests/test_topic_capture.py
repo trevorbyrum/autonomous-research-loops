@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from gen2.core import canonical
 from gen2.router.service import Router
-from gen2.store import api, capture
+from gen2.store import api, capture, db
 from gen2.tests.router_fixtures import TOPIC, OTHER, Spool
 from gen2.tests.test_extraction_records import RecordCase
 from gen2.tests import test_semantic_assessments as semantic, test_governed_quotes as quotes
@@ -22,8 +22,7 @@ def group(snapshot, name):
 
 class CaptureTest(RecordCase):
     def snap(self, topic=TOPIC):
-        with self.router._snapshot():
-            return self.store.capture_topic(topic)
+        return self.store.capture_topic(topic)
 
     def test_control(self):
         snap = self.snap()
@@ -70,8 +69,7 @@ class CaptureTest(RecordCase):
         self.assertEqual([r[0] for r in group(snap, 'extractor_registry_revisions').rows], [1])
         self.assertEqual([r[:3] for r in group(snap, 'extractor_tools').rows], [(1, 'tool-a', 'family-a'), (1, 'tool-b', 'family-b')])
         self.assertEqual([r[0] for r in group(snap, 'extraction_validations').rows], ['validation-1'])
-        with self.router._snapshot():
-            foreign = self.store.capture_topic(OTHER)
+        foreign = self.store.capture_topic(OTHER)
         self.assertEqual(group(foreign, 'extraction_validations').rows, ())
         self.assertEqual(group(foreign, 'extractor_tools').rows, ())
 
@@ -93,8 +91,7 @@ class CaptureTest(RecordCase):
                     self.assertEqual(case.send([case.record()])['status'], 'committed')
                 else:
                     case.accepted()
-                with case.router._snapshot():
-                    own, foreign = case.store.capture_topic(TOPIC), case.store.capture_topic(OTHER)
+                own, foreign = case.store.capture_topic(TOPIC), case.store.capture_topic(OTHER)
                 self.assertEqual([r[0] for r in group(own, table).rows], [expected])
                 self.assertEqual(group(foreign, table).rows, ())
             finally:
@@ -118,12 +115,14 @@ class CaptureTest(RecordCase):
             self.assertTrue(capture.input_hash(snap, 'native').startswith('sha256:'))
 
     def test_requires_owned_transaction(self):
-        with self.assertRaises(api.StoreWriteError):
-            self.store.capture_topic(TOPIC)
-        self.db.execute('BEGIN')
-        try:
+        with self.store.transaction(), patch.object(db, 'capture_reader'), patch.object(capture, 'read', return_value=None):
             with self.assertRaises(api.StoreWriteError):
                 self.store.capture_topic(TOPIC)
+        self.db.execute('BEGIN')
+        try:
+            with patch.object(db, 'capture_reader'), patch.object(capture, 'read', return_value=None):
+                with self.assertRaises(api.StoreWriteError):
+                    self.store.capture_topic(TOPIC)
         finally:
             self.db.execute('ROLLBACK')
 
@@ -149,8 +148,7 @@ class CaptureTest(RecordCase):
             retained = Router.open(path, Spool())
             try:
                 for _ in range(2):
-                    with retained._snapshot():
-                        actual = retained._store.capture_topic(TOPIC)
+                    actual = retained._store.capture_topic(TOPIC)
                     self.assertEqual(actual, expected)
                     self.assertEqual(capture.input_hash(actual, 'native'), capture.input_hash(expected, 'native'))
             finally:
@@ -181,6 +179,5 @@ class SuccessorTest(RecordCase):
     def test_successor_control(self):
         self.basis()
         self.assertEqual(self.send(self.verifier, 'op_capture_v2', extraction_validations_v2=[self.validation(policy_version=2)])['status'], 'committed')
-        with self.router._snapshot():
-            snap = self.store.capture_topic(TOPIC)
+        snap = self.store.capture_topic(TOPIC)
         self.assertEqual([r[0] for r in group(snap, 'extraction_validations_v2').rows], ['validation-1'])

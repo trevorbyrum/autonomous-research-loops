@@ -1,4 +1,4 @@
-"""Fixed dossier-input reads; Router owns the transaction (2d-6a1).
+"""Fixed dossier-input reads; Store owns the read transaction (2d-6a D1).
 
 Raw SQLite scalars remain immutable and JSON remains text. No parsing, byte
 hashing, arithmetic, spool I/O or write occurs during capture. No query API.
@@ -44,7 +44,7 @@ class TopicCapture:
 
 
 def read(conn, json_columns: dict, topic_id: str) -> TopicCapture:
-    """Called only by Store.capture_topic within the Router-owned snapshot."""
+    """Called only by Store.capture_topic within its checked read snapshot."""
     tables = []
     selections = [(name, "r.topic_id=:topic") for name in TOPIC_TABLES]
     for name, predicate in (*selections, *SHARED.items()):

@@ -6949,3 +6949,172 @@ will require its own qualifying evidence. No code changes occur in this dispatch
 This subsection is a proposal only. Run debt/locator documentation gates,
 commit only this document with the Sol trailer, push PR #8 without auto-merge
 and stop for rulings. No new code, performance runs or acceptance claims.
+
+### 6a redesign rulings and D part-1 preflight (2026-10-23)
+
+Trevor's rulings, relayed by the orchestrator after [Astra's independent
+review](/home/trevor/work/research-loops-public/private/reviews/gen2-2d-6a-redesign-astra-review-20261023.md),
+supersede the preceding B recommendation and its open R1–R3 decisions:
+
+- **R1: D, not B.** Capture inputs and one durable **store-wide generation**
+  in one checked WAL read snapshot of the authoritative store. Ordered-DDL
+  row triggers advance it for every INSERT, UPDATE and DELETE in every
+  capture-dependent table, without topic filtering: currently 37 tables / 111
+  event triggers. Protect the singleton, exclude recursive self-bumping,
+  refuse exhaustion and missing/incompatible guards, initialize only through
+  ordered DDL, and invalidate live captures for DDL, restore or file replacement.
+  Compare generation plus existing revision, contract and lifecycle pins under
+  Router BEGIN IMMEDIATE before effects, bind it internally to the precomputed
+  content hash, and retain the fence through persistence. An operation's own
+  writes occur after validation and are not an intervening-generation check.
+- **Contract amendments approved.** Replace BEGIN IMMEDIATE capture and full
+  raw-preimage revalidation with the checked read snapshot and guarded proof.
+  Unrelated-topic non-invalidation and stable-manifest acceptance are amended:
+  any committed covered row event may cause refusal, including unrelated-topic,
+  restored and same-value updates. Fully rolled-back changes (including
+  savepoint rollback) and zero-row DML need not invalidate. Selection remains
+  topic-scoped; all history, uncertainty, authority and scientific gates stay.
+- **Retry ruling.** Permit an initial attempt plus at most two automatic
+  recaptures, solely after an effect-free typed generation-mismatch refusal,
+  within one finite caller deadline/cancellation scope. Without a finite
+  deadline, refuse explicitly. Free the old detached value first; recompute
+  from new inputs without transferring approvals to a new hash. Never retry
+  authority, schema, integrity or ambiguous-effect failures; uncertain commit
+  replies use existing replay/reconciliation. Exhaustion is visible typed
+  contention, not scientific uncertainty or success. Record stale refusals /
+  attempts, exhausted requests / requests, attempts per success, capture-to-fence
+  duration, commit wait and maintenance cost. The global token cannot attribute
+  false refusals; that requires labeled workload evidence. Telemetry must not
+  create its own intervening covered write. Show bounded exit under sustained
+  interference and success after interference ceases; no eventual-success
+  guarantee under arbitrary continuous writes is claimed.
+- **R3 approved.** Keep p95 writer-lock occupation **≤250 ms each** for capture
+  and revalidation, and peak detached-input memory **≤128 MiB**. Keep payloads,
+  host facts, cold plus 20 warm samples and zero/100,000-unrelated comparison.
+  Separately report full read elapsed time/lifetime, lock-acquisition wait,
+  fenced interval, original-writer maintenance cost, concurrent-writer progress
+  and WAL/checkpoint effects. Later conversion/retry measurements must include
+  all live inputs/temporaries. Any new failed D1 budget again stops for redesign;
+  no caching, tuning around failure or budget relaxation.
+
+Version the freshness-proof format separately from `dossier-input/1`'s content
+hash. Before multi-topic production, review refusal/exhaustion evidence: replace
+D with B if unrelated writes dominate; consider C if measured shared-write
+fan-out makes B unsuitable. Any upgrade uses admitted ordered DDL, discards
+outstanding old-proof captures and keeps the writer-fenced consumer. No B/C
+dependency machinery is authorized speculatively. DEBT-035/036 remain open;
+persistence/freshness consumption still belongs to 6b1.
+
+The confirmed D split replaces the B remaining-work estimate:
+
+| Part | Scope | Handwritten estimate |
+|---|---|---:|
+| D part 1 | Checked WAL-read lifecycle and capture adaptation/controls | 460 |
+| D part 2 | Pure conversion, existing readers, dossier-input route, DEBT-035 cases | 420 |
+| D part 3 | Global generation DDL, lifecycle protection and coverage controls | 480 |
+| D part 4 | Token binding, writer fence, bounded recapture, metrics and acceptance | 440 |
+| Remaining 6a | All four parts; each separately reviewed | **1,800** |
+
+The 6b1/6b2/6b3 estimates remain 480/470/460, for about 3,210 remaining slice-6
+lines. The prior 307 changed implementation/test/tooling lines remain spent
+work, not acceptance credit. Documentation, generated controls and private
+evidence remain separate; no mechanical-batch exception applies.
+
+**Part-1 re-estimate before code: 460 handwritten repository lines**: checked
+reader/lifecycle 95; Store capture adaptation 20; fresh/retained, concurrency,
+failure and compatibility controls 240; paired mutants 50; integration and
+existing-test changes 55. No conversion movement or Router-core behavior change
+is needed. Adapt `fea623b`'s selectors/immutable values/hash without tuning them.
+If this grows past about 500 or D1 capture fails, stop and report.
+
+The orchestrator pre-confirmed the following part-1 acceptance contract within
+that size limit:
+
+- **Property and entry:** internal `Store.capture_topic` owns a checked,
+  DML-prohibited read transaction on the same authoritative WAL file. Bound
+  its lifetime to capture and close it before pure work. Return the same exact
+  immutable topic-scoped raw records, current/historical pins and explicit
+  empty groups as 6a1; compute its unchanged history-bound content hash outside
+  the transaction. Durable capture uses a separate checked reader of the same
+  file. Preserve existing in-memory fixture behavior and existing Router read
+  signatures/results; do not turn `_snapshot` into a different transaction in
+  this part.
+- **Controls and expected outcomes:** deterministically commit from another
+  connection during capture and return one coherent old snapshot, then the
+  new snapshot on recapture. Exercise fresh and reopened disposable WAL stores,
+  closure after successful and failed reads, actual DML refusal, ownership,
+  connection/schema checks, exact existing immutable/hash oracles and retained
+  in-memory paths. Pure hashing must see no open capture transaction.
+- **Evidence:** affected tests including composition and transitive fixture
+  consumers, affected `--only` mutant families and static gates; no full suite.
+  Capture-side D1 at both zero and 100,000 unrelated records: full read elapsed
+  time/lifetime, writer-lock occupation/acquisition wait, memory, concurrent
+  writer progress and WAL/checkpoint effects. Generation maintenance is not
+  implemented in this part; report it as not applicable, not measured zero.
+- **Limits:** no generation token, freshness claim, revalidation, retry,
+  conversion consumer, public dossier route, persistence, gate policy or export.
+  No provider calls, gen-1 access or migration against a real database. Parts
+  2–4 have not started; the complete amended 6a contract remains their combined
+  definition of done.
+
+### D part-1 implementation and capture evidence (2026-10-23)
+
+`Store.capture_topic` now refuses an already active writer transaction and
+owns a checked read context. For a durable store, that context opens the same
+admitted file with `mode=ro`, verifies compatibility, WAL and operational
+settings, enables/read-backs query-only, begins a deferred transaction and
+checks exact schema identity in the snapshot. It closes the connection on
+success or failure. A pinned device/inode check refuses a replaced pathname;
+this is not the full lifecycle/freshness proof reserved to parts 3–4. In-memory
+fixtures reuse their admitted connection, close/roll back the read transaction
+and restore the original query-only setting. Uncertain cleanup closes it.
+
+The fixed selectors, raw value shape and content-hash algorithm are unchanged.
+Existing Router `_snapshot`, accounting readers and signatures are unchanged.
+No conversion moved, so no behavior-preserving extraction/refactor is claimed.
+Tests retain the original selection/hash oracles and add fresh/reopened WAL,
+deterministic writer-commit/coherence, actual DML refusal, success/failure
+closure, schema/connection admission and pragma read-back refusal controls.
+The mutation target reloads Store/Router/fixture consumers of the DB module;
+new reader guards have accepted-path control pairs.
+
+The new [raw workload evidence](/home/trevor/work/research-loops-public/private/evidence/2d-6/d-part1-workload.json)
+and [driver](/home/trevor/work/research-loops-public/private/evidence/2d-6/d_part1_workload.py)
+retain cold plus 20 warmed samples per leg, exact source copies/hashes, host
+facts, selected counts/bytes and writer/checkpoint probes. The original failed
+trial and measured-source discrepancy remain intact. Current production bytes
+must match the new retained measured sources before the implementation commit.
+
+| Capture-side D1 metric | Zero unrelated | 100,000 unrelated |
+|---|---:|---:|
+| Selected JSON / BLOBs | 32 / 32 MiB | 32 / 32 MiB |
+| First full read elapsed | 574.524261 ms | 890.574424 ms |
+| Warm full read p95 | 968.594392 ms | 1,074.533230 ms |
+| Warm reader lifetime p95 | 959.781565 ms | 1,062.194764 ms |
+| Capture writer occupation p95 | 0 ms: no writer reservation requested | 0 ms: no writer reservation requested |
+| Capture-plus-hash traced peak | 109.106917 MiB | 109.107299 MiB |
+| Concurrent writer commits / attempts | 21 / 21 | 21 / 21 |
+| Probe writer acquisition wait p95 | 0.013967 ms | 0.025247 ms |
+| Probe complete writer fence p95 | 14.994064 ms | 10.913559 ms |
+
+The zero writer-reservation bound follows the audited read-only connection,
+query-only setting and BEGIN DEFERRED/SELECT/COMMIT path; it is not an OS lock
+profiler measurement or a zero-elapsed-time claim. Capture has no writer-lock
+acquisition wait; the table separately records the interfering writer's wait.
+Full elapsed includes connection/schema admission and the injected writer and
+PASSIVE checkpoint probe. No latency tracing allocation overlaps those samples.
+Cold means first capture after checked open, not purged OS caches. Memory is
+traced Python allocation, not RSS, and qualifies only the implemented raw capture
+and hash; later conversion/recapture requires its own live-input measurements.
+
+In both legs, the first probe grew the WAL from 0 to 4,152 bytes; PASSIVE during
+the reader reported `(0, 1, 0)`, leaving that frame uncheckpointed. After reader
+closure and fixture restoration, TRUNCATE reported `(0, 0, 0)` and WAL size 0.
+All probe/checkpoint samples are retained. Generation-maintenance cost is **not
+applicable yet**, not a measured zero. Both legs return the same selected counts
+and `sha256:45c45b5076114c8c9941d38e2da66cebee69dd78260fe6a88c4c2d8f8a476658`.
+The capture workload exits 0: writer occupation ≤250 ms and raw capture/hash
+memory ≤128 MiB pass without changing the workload or tuning selectors. This
+does not qualify revalidation, generation, retry, conversion or persistence.
+Targeted checks, final line counts and the commit identity are recorded in
+private `evidence/2d-6/COMPLETION.md`; stop after D part 1.

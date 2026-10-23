@@ -120,6 +120,7 @@ class Store:
         self.compatibility = compatibility
         self._in_transaction = False  # inside this Store's own transaction() context
         self._unusable: str | None = None  # why the connection was closed after a failed rollback
+        self._capture_file = db.capture_file(conn)
         self._columns: dict[str, dict[str, str]] = {}
         self._json: dict[str, frozenset[str]] = {}
         for table, sql in conn.execute("SELECT name, sql FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"):
@@ -290,11 +291,14 @@ class Store:
 
     # -- reads -------------------------------------------------------------
     def capture_topic(self, topic_id: str) -> capture.TopicCapture:
-        """Internal fixed raw capture; the Router must already hold its snapshot.
+        """Internal fixed raw capture in a Store-owned, checked read snapshot.
         Hashing/conversion is the caller's work after the transaction ends.
         """
-        self._require_transaction()
-        return capture.read(self._conn, self._json, topic_id)
+        self._require_usable()
+        if self._in_transaction or self._conn.in_transaction:
+            raise StoreWriteError("capture requires no active writer transaction")
+        with db.capture_reader(self._conn, self._capture_file) as reader:
+            return capture.read(reader, self._json, topic_id)
 
     def bound_extraction_receipt(self, receipt_id: str) -> bool:
         """SQL 34's durable basis predicate, including both output ceilings."""
