@@ -3121,5 +3121,12 @@ The post-2q Gate D is renumbered #5.
   - Opening and history stay read-only. No consumer reads the fact. The existing tier-0 *alarm* receipt guards are preserved (contract clarification).
 - **B1:** the verifier's full `gen2-check` failed (1 of 4,403). `test_router_ops.AckDeliveryTest.test_failures_raise_capability_facts_on_transitions` expects only the connector fact. This is an overlooked consumer of the new row, found by the independent verifier rather than the coder's targeted checks. `gen2-gateway` passed.
 - **NB1:** stale restoration descriptions in `registries.py` and `test_router_registries.py`.
-- **Process finding:** PR #4 auto-merged (06:40Z, `54ce832`) before the verifier and Astra finished, because the Jenkins PR check runs only T0 static gates. gen2 therefore carries the B1 failure until the repair lands. Escalated to Trevor.
+- **Process finding:** PR #4 auto-merged (06:40Z, `54ce832`) before the verifier and Astra finished, because the Jenkins PR check runs only T0 static gates. gen2 therefore carries the B1 failure until the repair lands. Escalated: **Trevor ruled 2026-10-23** that auto-merge is enabled only after the verifier is green and Astra accepts (charter, PR-only gen2).
 - **Routed:** `docs/gen2/tasks/2d-5-repair-1.md`, a family-level fix to the capability-fact consumers, on a new branch with auto-merge held.
+
+## 2026-10-23: 2d slice 5 repair-1 (a891329, PR #6): ACCEPTED, round 2
+- **Astra** (`a0c49495`; `private/reviews/gen2-2d-5-r2-astra-review-20261023.md`): **A PASS, B PASS, C PASS, ROOT-CAUSE.**
+  - **B1 resolved at family level:** connector selection by capability identity, an exact tier-0 startup assertion, and full-row preservation of unrelated facts. Astra independently re-ran the consumer audit (38-module inventory matches) plus ten fault probes, all of which fail by assertion.
+  - **NB1 resolved:** docstring-only; the AST is otherwise identical.
+- **Verifier** (Sonnet `71bc2783`): gen2-check exit 0 (7,670 s; 4,403 tests OK, trigger-order OK, mutants killed); gen2-gateway exit 0 (1,013 s).
+- **Auto-merge** enabled by the orchestrator after both passed; merged as `72c4ac1`. **2d slice 5 is complete.**
