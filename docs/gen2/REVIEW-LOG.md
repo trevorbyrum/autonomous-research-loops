@@ -3139,3 +3139,15 @@ The post-2q Gate D is renumbered #5.
   - R2 and R3 approved in principle, with precision on zero-row DML and rollback.
 - **Operator ruled D plus up to two automatic recaptures** (2026-10-23).
 - **Disclosed deviation:** at the start of the review, Astra ran one AGENTS.md filename search across `/home/trevor/work`, before reading the path limit. Outside filenames were returned, but no files were opened. No action needed beyond the record.
+
+## 2026-10-23: 2d slice 6a part 1 (WAL-read capture, 73a676f, PR #8): ACCEPTED, first review
+- **Astra** (`f99c2961`; `private/reviews/gen2-2d-6a-p1-astra-review-20261023.md`): **A, B and C PASS, ROOT-CAUSE.**
+  - Capture moved to a checked Store-owned `mode=ro` WAL reader (BEGIN DEFERRED, query-only, schema identity, device/inode checks), so the writer reservation is gone.
+  - The concurrency regression is deterministic. In-memory fixtures don't reopen an empty `:memory:` database. 27 direct and 10 shared groups, with exact bytes and pins. Router and `service.py` unchanged.
+  - D1 capture: no writer reservation; memory within budget; the measured sources match the committed bytes.
+- **Verifier** (Sonnet `a855e9e0`): gen2-check exit 0 (7,740 s; 4,429 tests; mutants 3,755/3,755); gen2-gateway exit 0 (1,005 s; 413/413 killed).
+- **Non-blocking items:**
+  - NB1: the ML-0172–0181 ledger rationales describe the earlier Router-owned capture (folded into part 2);
+  - NB2: full-read p95 is about 1 s and readers delay checkpoints, so measure live operands and reader effects later (folded into part 2);
+  - NB3: device/inode checks are not the lifecycle or freshness proof (parts 3–4 and 6b1).
+- Auto-merge enabled after both passed; merged.
