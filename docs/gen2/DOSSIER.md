@@ -7118,3 +7118,86 @@ memory ≤128 MiB pass without changing the workload or tuning selectors. This
 does not qualify revalidation, generation, retry, conversion or persistence.
 Targeted checks, final line counts and the commit identity are recorded in
 private `evidence/2d-6/COMPLETION.md`; stop after D part 1.
+
+### D part-2 preflight: consumer closure and size stop (2026-10-23)
+
+The orchestrator reports D part 1 **ACCEPTED** at `73a676f`, with Astra A/B/C
+PASS / ROOT-CAUSE and independent `gen2-check` and `gen2-gateway` exits 0.
+PR #8 is merged. This dispatch starts from fetched `origin/gen2` on
+`task/2d-6a-p2`. [Astra's complete part-1 review](/home/trevor/work/research-loops-public/private/reviews/gen2-2d-6a-p1-astra-review-20261023.md)
+was read, including NB1–NB3. The ledger now clarifies NB1 without changing
+ML-0172–0181's historical reasons or admitting any new dependency/budget.
+
+**Re-estimate before code: about 620 handwritten changed repository lines**,
+replacing 420. As in part 1, count additions plus removals for production,
+tests and tooling; report documentation, generated controls and private evidence
+separately. This exceeds the orchestrator's about-500 stop condition. **No
+runtime, test, mutant or refactor implementation has started.** The pre-confirmed
+whole-part acceptance contract was conditional on size; it does not authorize
+silently splitting the work or dropping consumer closure/controls.
+
+| Required work | Revised estimate | Concrete closure obligation |
+|---|---:|---|
+| Pure conversion and branch provenance | 150 | Replace Store reads throughout `router/accounting.py`'s inventory, context, historical window pins and branch receipt lookup with fixed captured operands and outside-transaction JSON conversion. Retain exact historical filters and order; no generic in-memory query facade. |
+| Collaborator and internal dossier-input value/route | 85 | Narrow core/Store protocol, captured-topic/approved-contract admission, internally bound content hash and retained raw histories, alongside existing read delegates. No freshness authority. |
+| Router wiring and composition closure | 55 | Replace three in-core reader bodies with thin delegation, compose the collaborator and keep public signatures/return types, history validation, unknown-topic and pre-contract behavior. |
+| Existing consumer/fixture adaptations | 85 | Migrate direct adapter callers and the branch provenance seams to captured values; restore fixture DDL before checked capture while preserving invalid-history assertions. |
+| New acceptance controls | 165 | Pure-work boundary and immutability/isolation controls, approved-contract admission, adverse-then-support/attention retention, native/legacy history and DEBT-035's three adapter/evaluator cases. |
+| Paired mutants and their consumer registration | 80 | Retarget existing snapshot/provenance guards, add dossier/boundary/history controls, and close mutation-loading/control consumers. Generated control JSON is separate. |
+| **Total** | **620** | Full part-2 scope retained; no code or memory result claimed. |
+
+The size increase is supported by the existing entry paths, not a new policy:
+
+- [The adapter](../../gen2/router/accounting.py) has Store reads throughout
+  `read_inventory`, `read_context`, `read_window_pins` and
+  `read_coverage_snapshot`. The latter also reads operation receipts for branch
+  attribution. Moving only arithmetic or the top-level inventory call would
+  leave branch provenance dependent on live Store access.
+- [Router readers](../../gen2/router/service.py) currently do topic admission,
+  Store reads and conversion inside `_snapshot`. `service.py` must receive
+  wiring only, so collaborator/protocol/composition changes belong to the
+  same closure rather than three independent partial migrations.
+- Direct `read_inventory(self.store, ...)` consumers exist in
+  [attempted requests](../../gen2/tests/test_attempted_request_bytes.py),
+  [failed retention](../../gen2/tests/test_failed_attempt_retention.py) and
+  [opaque attempts](../../gen2/tests/test_opaque_attempts.py). Their byte,
+  unknown-denominator and replay assertions must keep their current meaning.
+- [Branch tests](../../gen2/tests/test_branch_windows.py) currently mock
+  `Store.select` to supply unverified contract pins and deliberately drop
+  branch DDL guards to prepare invalid histories. Those seams will no longer
+  reach pure captured conversion, and schema-altered fixtures cannot pass
+  part 1's checked reader. Restore the existing schema before capture and
+  supply unverified captured operands where required; do not weaken admission
+  or remove the original near-miss assertions. The existing disposable-history
+  helper is the established restoration pattern.
+- [Branch mutants](../../tools/gen2_mutants/branch_windows_2d2.py) target the
+  old Store-select predicates and Router snapshot bodies. Retarget those
+  guards and their controls with the consumer move rather than leaving dead
+  mutation text or changing what a killer asserts.
+
+Proposed sequential sub-split, **requiring orchestrator confirmation before
+implementation**; the complete part-2 acceptance scope remains unchanged:
+
+| Proposed part | Definition of done | Estimate |
+|---|---|---:|
+| **2a — conversion and existing reader closure** | Pure conversion of the part-1 raw value; all three existing Router reads and branch provenance on that path through a collaborator, with signatures/results/pre-contract/unknown/history semantics preserved. Close existing fixtures, composition and paired mutants together. Use rope where applicable, pinned offline RefactoringMiner with explicit expected counts, Hypothesis old/new pure properties and accepted replay at landing. Measure live raw plus converted operands through hashing against 128 MiB at both reference-workload legs; report closed-reader and checkpoint effects. Stop if size or memory fails. No new dossier-input route yet. | **470** |
+| **2b — internal dossier-input and rich adapter cases** | Add the internal collaborator-wired dossier-input read; unknown topic and missing approved contract refuse. Retain all raw adverse/supporting receipt and attention history without clearing holds. Exercise DEBT-035's satisfied lower bound with retained indeterminate window, conservative unknown with both bounds, and stale G-1 context unavailable for current credit with original records retained, through the adapter and existing pure evaluators. Add paired controls and measure the actual route's live operands/hash and reader/checkpoint effects. | **150** |
+
+These are provisional estimates for new briefs, not authorization to implement
+either subpart in this size-stop dispatch. Re-estimate each before coding;
+retain the about-500 guide. The split uses no mechanical-batch exception and
+does not add generation, revalidation, retry, persistence, gate policy or export.
+
+NB2 is an outstanding implementation acceptance requirement: the accepted
+109.107 MiB capture/hash peak does not qualify conversion or an input value
+retaining both raw and typed operands. No conversion-memory measurement is
+available in this preflight, and no assumption of passing is made. Release
+readers before pure work and report checkpoint effects; a new failed budget
+must stop rather than trigger tuning. NB3 remains owned by parts 3–4 and 6b1:
+file identity checks alone supply no lifecycle/freshness proof.
+
+This dispatch records the size stop and ledger clarification only. Run debt
+and locator gates, commit explicit documentation paths with the Sol trailer,
+open a PR to `gen2` without auto-merge and record private
+`evidence/2d-6a-p2/COMPLETION.md`. Stop for the proposed split; no part-2 or
+part-3 implementation, refactor evidence or memory pass is claimed.

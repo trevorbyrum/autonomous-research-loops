@@ -39,6 +39,16 @@ reason, and task. Targets use service|kind|location; file identities own fan-out
 fan-in; function IDs own both scores; edge, reach, self_calls, cycle, smell and aggregate
 IDs own their respective budgets. Cross-service imports belong to repo.
 
+Historical capture rationale clarification (2026-10-23, task 2d-6a-p2;
+Astra part-1 review NB1): **ML-0172–0181 describe the earlier Router-owned
+capture transaction at their admission pin.** Their dependency admissions and
+budget remain accurate; those reasons are historical, not the current mechanism.
+Accepted part 1 (`73a676f`) changed capture to a checked, Store-owned WAL read
+transaction on the same authoritative file, ending before conversion/hash.
+Existing Router accounting readers still use their original snapshot until
+part 2 closes those consumers. This note changes no identity, admission, budget,
+baseline or exemption; current boundaries are described in BOUNDARIES/DOSSIER.
+
 ### ML-0001
 - action: admit
 - target: engine|edge|gen2/router/accounting.py->gen2/accounting/__init__.py
