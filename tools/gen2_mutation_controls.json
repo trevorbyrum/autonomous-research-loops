@@ -24964,5 +24964,47 @@
    "test_branch_windows.AdmissionTest.test_control"
   ],
   "why": "The existing result oracle exercises the relocated reader with valid inputs; a read-only writer transaction changes no result, while the separate boundary killer requires conversion after closure."
+ },
+ "2D6A2-approved": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A2-attributed": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A2-hash-history": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A2-receipts": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A2-attention": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A2-route-hash-codec": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
  }
 }

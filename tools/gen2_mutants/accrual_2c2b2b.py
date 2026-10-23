@@ -64,7 +64,7 @@ pure("reopened-id", "test_rescreening_recorded_only", "test_control_reopened", '
 pure("reopened-exclusion", "test_rescreening_recorded_only", "test_control_reopened", 'and r.decision == "exclude"', '')
 for name, old, new in (
     ("read-current", 'approved = [r for r in records(rows, "contract_revisions") if r["status"] == "approved"]\n    current = approved[0]["revision"] if approved else None', 'approved = [r for r in records(rows, "contract_revisions") if r["status"] == "approved"]\n    current = None'),
-    ("read-approved", 'r["status"] == "approved"', 'r["status"] == "draft"'),
+    ("read-approved", 'records(rows, "contract_revisions") if r["status"] == "approved"', 'records(rows, "contract_revisions") if r["status"] == "draft"'),
     ("read-kind", 'r["kind"] == "contract"', 'r["kind"] == "brief"'),
     ("read-topic", '{predicate} ORDER BY', "{predicate if name != 'amendment_impacts' else '1=1'} ORDER BY"),
     ("read-standing", 'tuple(a.RevisionStanding(**s) for s in doc.get("standing", ()))', '()'),

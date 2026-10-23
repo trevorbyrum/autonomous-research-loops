@@ -53,7 +53,7 @@ from typing import Callable, Mapping
 
 from gen2 import accounting
 from gen2.core import canonical, instants, pagination
-from gen2.router.accounting import Accounting, CoverageSnapshot
+from gen2.router.accounting import Accounting, CoverageSnapshot, DossierInput
 from gen2.router.assessments import Assessments
 from gen2.router.acquisitions import ACQUISITION_COMMANDS, AcquisitionAdmission
 from gen2.router import boundary
@@ -275,6 +275,9 @@ class Router:
     def coverage_snapshot(self, topic_id: str, *, history: accounting.History) -> CoverageSnapshot:
         """Capture admitted links and invocation-derived pins; compute views after returning."""
         return self._accounting.coverage_snapshot(topic_id, history=history)
+
+    def _dossier_inputs(self, topic_id: str, *, history: accounting.History) -> DossierInput:
+        return self._accounting.dossier_inputs(topic_id, history=history)
 
     def record_gateway_facts(self, request: Mapping) -> dict:
         return self._capabilities.record_gateway_facts(request)

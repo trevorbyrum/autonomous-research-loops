@@ -137,7 +137,7 @@ def mutation_record(name: str, value: object) -> None:
 # ("disk",): a file only children run (a script started by path); the
 # mutant exists only in the child tree.
 FILE_TARGETS = {
-    "gen2/store/capture.py": ("module", "gen2.store.capture", "gen2.store.api", "gen2.router.service", "gen2.tests.router_fixtures"),
+    "gen2/store/capture.py": ("module", "gen2.store.capture", "gen2.store.api", "gen2.router.accounting", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/schema/verification-receipt.schema.json": ("attr", "test_span_cap", "RECEIPT_SCHEMA"),
     "gen2/router/history.py": ("module", "gen2.router.history", "gen2.router.service", "gen2.app.station", "gen2.tests.router_fixtures"),
     "gen2/router/detailed_checks.py": ("module", "gen2.router.detailed_checks", "gen2.router.service", "gen2.tests.router_fixtures"),
@@ -157,7 +157,7 @@ FILE_TARGETS = {
     "gen2/core/canonical.py": ("module", "gen2.core.canonical", "gen2.router.boundary", "gen2.router.lifecycle", "gen2.router.registries", "gen2.router.amendments",
                                "gen2.router.scheduling", "gen2.router.capabilities", "gen2.router.assessments", "gen2.router.extractor_registry",
                                "gen2.router.acquisitions", "gen2.router.extractions", "gen2.router.evidence_writer", "gen2.router.verification", "gen2.router.observations",
-                               "gen2.router.detailed_checks", "gen2.router.status", "gen2.router.service", "gen2.tests.router_fixtures",
+                               "gen2.router.detailed_checks", "gen2.router.status", "gen2.store.capture", "gen2.store.api", "gen2.router.accounting", "gen2.router.service", "gen2.tests.router_fixtures",
                                "gen2.gateway_client.observe", "gen2.gateway_client.client"),   # capabilities, observe: gateway_fact_id (2b-repair-2)
     "gen2/store/compat.py": ("module", "gen2.store.compat"),
     "gen2/store/db.py": ("module", "gen2.store.db", "gen2.store.api", "gen2.router.service", "gen2.tests.router_fixtures"),

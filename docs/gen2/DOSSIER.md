@@ -7379,3 +7379,32 @@ consumer closure, then **2b about 150** for the internal dossier-input route,
 retained histories and DEBT-035 adapter controls. The combined stop remains
 about **700 handwritten changed lines**, and 2b alone about 500. Parts 3 and 4
 remain outside this dispatch. No generation, freshness, retry or export claim.
+
+### D part-2 implementation candidate (2026-10-23)
+
+The read-leg cause of DEBT-036 was conversion and accounting beneath the
+Router's writer snapshot. Commit 2a relocates all three existing readers and
+historical branch provenance behind the accounting collaborator, using one
+Store-owned capture and pure conversion after closure. Compatibility entry
+signatures and the generic context helper remain; the new path uses fixed
+captured groups, not an in-memory Store/query facade. Existing pre-contract
+reads retain their results. Commit 2b adds only the internal dossier-input route:
+captured attributed approval is required, and the immutable result retains the
+complete raw preimage, typed coverage and history-bound content hash.
+
+The adapter cases retain a satisfied lower bound with an indeterminate window,
+an unknown result with both bounds, stale G-1 records without current completion
+credit, historical branch pins, both adverse verdict histories followed by
+support, and unchanged attention. The pure evaluators and gate policy are
+unchanged. DEBT-035's durable/export legs and DEBT-036's generation/revalidation
+and commit consumption remain later work; this is not a completed dossier or
+freshness claim.
+
+Coder evidence is in private `evidence/2d-6a-p2/COMPLETION.md`. Both 32+32 MiB
+workload legs pass the amended **192 MiB** live-operand bound (about 149.51 MiB
+peak) with no ownership redesign, cache or selection reduction. Capture requests
+no writer reservation; full read/route elapsed time, writer progress and reader
+checkpoint effects are reported separately. Revalidation is unimplemented, not
+a measured zero. Refactor evidence includes inspected rope output, pinned offline
+RefactoringMiner, old/new Hypothesis properties and exact accepted replay.
+Independent verification and review remain required. Stop after part 2.

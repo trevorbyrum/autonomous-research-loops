@@ -244,6 +244,11 @@ capture. It grants no write, completion, approval or commit-freshness authority.
 Public accounting signatures/results and pre-contract inventory behavior are
 preserved. D parts 3–4 own the operator-ratified store-wide generation and
 commit consumption/bounded recapture.
+The internal `Router._dossier_inputs` read delegates to that collaborator,
+requires a captured attributed approved contract, and returns immutable complete
+raw history, typed coverage and a history-bound content hash after closure. It
+refuses unknown topics and missing approval; existing pre-contract inventory
+reads remain available. It performs no persistence, adjudication or gate change.
 The original writer-capture D1 trial failed; the full assembly path is not ready.
 
 - **Definition:** pure arithmetic over typed records; no model calls, ever.

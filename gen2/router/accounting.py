@@ -6,7 +6,7 @@ from gen2 import accounting as a
 from gen2.accounting import views as v
 from gen2.core import canonical, pagination
 from gen2.router.boundary import Refusal
-from gen2.store.capture import TopicCapture
+from gen2.store.capture import TopicCapture, input_hash
 
 
 class Rows(Protocol):
@@ -39,6 +39,12 @@ class Accounting:
     def coverage_snapshot(self, topic_id: str, *, history: a.History) -> "CoverageSnapshot":
         return convert_coverage_snapshot(self.capture(topic_id, history), topic_id, history)
 
+    def dossier_inputs(self, topic_id: str, *, history: a.History) -> "DossierInput":
+        raw = self.capture(topic_id, history)
+        if not any(r["status"] == "approved" and r["approved_by_decision_id"] is not None for r in records(raw, "contract_revisions")):
+            raise Refusal("no_approved_contract", topic_id)
+        return DossierInput(raw, convert_coverage_snapshot(raw, topic_id, history), input_hash(raw, history))
+
 
 def records(snapshot: TopicCapture, name: str):
     """Decode one fixed captured group lazily, without a Store/query interface."""
@@ -56,6 +62,14 @@ class CoverageSnapshot:
     inventory: a.Inventory
     window_pins: tuple[v.WindowPin, ...]
     branch_links: tuple[v.BranchLink, ...]
+
+
+@dataclass(frozen=True)
+class DossierInput:
+    """Detached inputs and content binding, without commit-freshness authority."""
+    raw: TopicCapture
+    coverage: CoverageSnapshot
+    input_hash: str
 
 
 def read_coverage_snapshot(rows: Rows, topic_id: str, history: a.History) -> CoverageSnapshot:
