@@ -7201,3 +7201,76 @@ and locator gates, commit explicit documentation paths with the Sol trailer,
 open a PR to `gen2` without auto-merge and record private
 `evidence/2d-6a-p2/COMPLETION.md`. Stop for the proposed split; no part-2 or
 part-3 implementation, refactor evidence or memory pass is claimed.
+
+### Part-2 combined round ruling and memory stop (2026-10-23)
+
+The orchestrator confirmed **one review round with two implementation commits**
+on `task/2d-6a-p2` / PR #11. The complete pre-confirmed part-2 contract stays
+unchanged: 2a (about 470 lines) is behavior-preserving relocation under the
+charter's mechanical-batch allowance; 2b (about 150) is new behavior. This
+supersedes the preceding proposal for separate reviews. Existing signatures,
+results and assertion meaning must survive 2a. Stop if the combined handwritten
+total exceeds about 700, 2b exceeds about 500, or live-operand memory exceeds
+128 MiB. No part-3 work is authorized here.
+
+**Implementation stopped at the first memory trial.** The 2a prototype's
+zero-unrelated-records workload reached **149.524398 MiB**, above **128 MiB**.
+Even the conversion stage, before hashing, peaked at **138.849843 MiB**. No
+tuning, repeat or 100,000-unrelated leg followed. 2b did not start.
+
+The prototype used rope's `ExtractMethod` on the four existing conversion
+blocks, retained their entry signatures, adapted inventory/window/branch
+conversion to the fixed detached records, and wired the existing Router reads
+through a collaborator. A direct record iterator decoded JSON outside Store
+transactions; it did not implement a query facade. A legacy context helper was
+retained for its existing Mapping behavior. Existing raw selectors, raw-value
+shape, workload and content-hash algorithm were unchanged. Full fixture,
+composition and mutant closure had not yet been completed when memory failed;
+the prototype is not an accepted mechanical refactor.
+
+The [raw evidence](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a-memory.json)
+pins all five measured production files and the
+[driver](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a_memory.py).
+It measures one raw capture, its typed coverage/inventory and its content hash
+with both values live; no old/new captures overlap. It reuses the accepted
+synthetic seed with exactly 32 MiB JSON and 32 MiB BLOBs, 10,000 observations /
+retrievals / links / works, 1,000 invocations / claims / receipts and proportional
+histories. The resulting content hash remains
+`sha256:45c45b5076114c8c9941d38e2da66cebee69dd78260fe6a88c4c2d8f8a476658`.
+
+| Traced Python allocation, zero unrelated | MiB |
+|---|---:|
+| Raw capture peak | 96.972481 |
+| Live raw plus converted operands | 137.331550 |
+| Peak through conversion | 138.849843 |
+| Peak through conversion plus hash | **149.524398 — FAIL** |
+
+These are allocation peaks for the implemented operands, not RSS or a claim
+about every possible redesign. The stage measurements do not identify the
+allocation share of each field/object type. They establish that this prototype
+exceeds the budget before hashing; removing only hash temporaries would not
+make this trial pass.
+
+Reader/checkpoint controls passed in the same trial: the reader was closed
+before conversion; PASSIVE during capture reported `(0, 1, 0)`; TRUNCATE before
+conversion and after conversion/hash both reported `(0, 0, 0)`. Thus the memory
+failure is not presented as retained-reader evidence. The existing read-only
+capture mechanism remains accepted; this trial does not qualify part 2.
+
+Before the measurement, SOURCE-CONTRACT/2 passed and 61 focused capture,
+attempted-request, failed-retention and opaque-attempt tests passed. The rope
+script/output, measured source copies and exact
+[prototype patch](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a-prototype.patch)
+are retained privately. Measured bytes were matched before freezing the patch.
+The prototype comprised **121 handwritten changed lines** (82 added / 39
+removed), not the complete 470-line 2a estimate. RefactoringMiner, Hypothesis
+old/new properties, accepted replay, remaining targeted tests and paired-mutant
+closure were not completed before the mandatory memory stop; none is claimed.
+
+After preserving that evidence, the two partial runtime files were restored
+exactly to the committed preflight base. This is cleanup, not a tuned candidate
+or a new memory result. PR #11 therefore retains accepted runtime behavior and
+documentation only. No 2a or 2b implementation commit is claimed. Commit this
+stop record after debt/locator gates and update private
+`evidence/2d-6a-p2/COMPLETION.md`, then stop for redesign direction. The complete
+part-2 contract, memory budget and DEBT-035/036 obligations remain unchanged.
