@@ -6401,10 +6401,11 @@ the changed tests' killer/control consumers, rather than broad SQL families.
 Input pin: `72c4ac1105a88cde76407d12fb730ba8f4bb70d0` (`origin/gen2`).
 The dispatch authority is the newest slice-6 continuation in
 `/home/trevor/work/gen2-orch/docs/gen2/tasks/2d.md` (records PR #7); the
-repository's task copy does not yet contain it. This section proposes the
-contract; it does not ratify the decisions below or authorize implementation.
-Step 1 changes documentation only. Implementation waits for the orchestrator's
-confirmation in the same session and the applicable operator rulings.
+repository's task copy does not yet contain it. The orchestrator confirmed
+the split and the complete 6a contract in this session on 2026-10-23. Trevor
+ratified D1/D2/D3 as option A on that date (recorded below). Implementation
+is authorized for 6a only, subject to its size and workload stop conditions.
+The implementation preflight below triggers the size stop before runtime edits.
 
 Sources: flow architecture S6–S8 and §4.8; methodology synthesis §§5–7;
 the task's sources and follow-throughs; BOUNDARIES “Router”, “Evidence
@@ -6452,7 +6453,7 @@ slice-map dependencies remain. The three DEBT-035 cases must survive 6b1
 persistence and slice 8's approved bundle, with gate consumption added in 6b3.
 Neither a part landing nor diagnostic persistence closes either debt alone.
 
-### Proposed 6a mechanism
+### Agreed 6a mechanism (confirmed 2026-10-23)
 
 Keep the existing short `BEGIN IMMEDIATE` capture transaction for this part;
 introducing a separate connection/read-transaction lifecycle is unnecessary
@@ -6500,7 +6501,7 @@ never releases and reacquires the lock between revalidation and that write.
 6a exposes this internal prerequisite and tests it in a controlled Router
 transaction; 6b1 must use it on the actual dossier persistence path.
 
-### Proposed first-part acceptance contract (6a)
+### Agreed first-part acceptance contract (6a, confirmed 2026-10-23)
 
 - **Property:** every 6a assembly input comes from one coherent authoritative
   local-store snapshot. Typed conversion, accounting, serialization, hashing
@@ -6567,17 +6568,20 @@ transaction; 6b1 must use it on the actual dossier persistence path.
   at the input pin) receives wiring only and stays within the file/metrics
   limits. If the estimate grows past about 500, stop and split before coding.
 
-### Operator decisions (proposals, not rulings)
+### Operator rulings (Trevor, 2026-10-23)
 
-| ID / when needed | Options | Recommendation |
-|---|---|---|
-| **D1 — Intended workload and latency budget; before 6a code.** No source fixes the expected topic/global volume or acceptable writer occupation. | A: ratify the synthetic reference workload below; B: supply deployment-specific volumes, byte sizes and latency/memory budgets. | **A** initially: one topic with 10,000 observations/retrievals/work links, 1,000 invocations, 1,000 claim revisions and 1,000 receipts, plus proportional histories and 100,000 unrelated records in each shared inventory table. Use 1 KiB typical observation/receipt JSON and a documented 32 MiB selected-JSON workload, plus up to 32 MiB of selected retained byte operands; report both sizes separately. Compare with zero unrelated records. Record one cold and 20 warmed capture and revalidation samples separately; propose p95 writer-lock occupation ≤250 ms for each and peak detached-input memory ≤128 MiB on the recorded test host. These are proposed acceptance budgets, not claimed measurements or production guarantees. If they fail, re-design/re-estimate rather than add caching or silently relax them. |
-| **D2 — Rich durable/export shape; before 6b1 schema code.** `/1` cannot inline the rich result and `/2` inherits its scalar field. | A: new rich dossier artifact plus a lossless extension of `/2`, retaining an honest `/1` scalar projection; B: new bundle version for the rich field, preserving both existing bundle schemas. | **A**, subject to schema review: a closed versioned rich artifact and an explicit rich member in `/2`, retaining the existing scalar member's rules. A scalar satisfied rule may describe its known certain lower bound, but the rich member must permanently retain every raw indeterminate window, context and provenance; no erased operands or relabeled windows. If a truthful projection is impossible for a supported result, refuse that projection and use **B** by ruling. Do not weaken or edit `/1` semantics. This is a proposed `/2` contract amendment, not approval to ship it. |
-| **D3 — Unresolved adverse verification in dossier consumption; before 6b3 code.** Later support does not clear dissent; existing attention alone is not a promotion veto. | A: unresolved adverse receipts leave the affected completion verification gate unknown until explicit attributed adjudication handles them; B: permit qualified completion with retained unresolved dissent and explicit operator acknowledgment bound to that dossier. | **A**: require a durable adjudication reference that names each handled receipt, claim revision and resolution evidence, retaining all history. New support or generic hold clearance alone cannot manufacture that resolution. This would govern completion only; preserve existing promotion behavior. 2e2 still owns scheduling/escalation and production of adjudication judgments. |
+The orchestrator relayed these rulings in this session and confirmed the
+6a/6b1/6b2/6b3 split and complete 6a acceptance contract as its definition
+of done. The operator selected **A** for all three decisions.
 
-The split and first-part contract also require orchestrator confirmation. D2/D3
-need not block 6a once D1 and its contract are confirmed: 6a records operands
-without choosing an export projection or resolving a disagreement.
+| ID / scope | Ratified ruling |
+|---|---|
+| **D1 — 6a workload and acceptance budgets. A.** | The synthetic reference workload is ratified: one topic with 10,000 observations/retrievals/work links, 1,000 invocations, 1,000 claim revisions and 1,000 receipts, proportional histories, and 100,000 unrelated records in each shared inventory table. Use 1 KiB typical observation/receipt JSON, 32 MiB selected JSON and up to 32 MiB selected retained byte operands; report both sizes separately. Compare with zero unrelated records. Record one cold and 20 warmed samples separately for capture and revalidation. The acceptance budgets on the recorded host are **p95 writer-lock occupation ≤250 ms for capture and for revalidation, each; peak detached-input memory ≤128 MiB**. If a budget fails, stop and report for redesign or re-estimate. No caching and no relaxing the budgets. These are now acceptance requirements, not proposals or claimed measurements. |
+| **D2 — 6b1 rich durable/export shape. A.** | A new closed, versioned rich dossier artifact plus an explicit rich member in `export-bundle/2`. The existing scalar member and its rules stay; `/1` is unchanged. Retain every raw indeterminate window, context and provenance; refuse any projection that cannot be truthful. Switching to B (a new bundle version) needs a new ruling. This governs 6b1, not 6a. |
+| **D3 — 6b3 unresolved adverse verification. A.** | Unresolved `partially_supports` / `does_not_support` receipts leave the affected **completion** verification gate unknown until a durable attributed adjudication reference names each handled receipt, claim revision and resolution evidence. New support or generic hold clearance cannot manufacture it. Promotion behavior is unchanged. 2e2 owns scheduling and producing the judgments. This governs 6b3, not 6a. |
+
+There are no outstanding operator policy decisions for 6a. D2 and D3 are
+settled for their later parts; neither authorizes starting 6b in this dispatch.
 
 ### Step-1 validation and stop condition
 
@@ -6591,3 +6595,77 @@ fixture consumers), affected `--only` mutants and static gates; one full run
 per implementation round belongs to the independent verifier. If moving
 existing conversion is a refactor, apply the charter's established refactor
 evidence standard rather than introducing custom proof tooling.
+
+
+### 6a implementation preflight: re-estimate and size stop (2026-10-23)
+
+No runtime, schema, test or tooling edit has been made. The agreed contract's
+size clause applies: **“If the estimate grows past about 500, stop and split
+before coding.”** The charter also requires larger work to be sequentially
+landed/reviewed and each part's definition of done agreed before coding.
+The full 6a definition of done remains ratified; this preflight does not narrow
+it, drop controls or use the mechanical-batch exception for new behavior.
+
+The refined estimate is **about 1,180 hand-written repository lines**, replacing
+the 480-line 6a placeholder. The 6b estimates remain 480/470/460; the revised
+slice-6 total is about **2,590**. Generated controls, documentation, private
+benchmark/fixture scripts and private refactor evidence are excluded. These
+are estimates, not implemented or measured line counts.
+
+The original 6a estimate underestimated three concrete pieces of its existing
+contract:
+
+- **Complete scoped capture:** `router/accounting.py` is already 112 lines
+  of reads and conversion, coupled through `Rows.select`; it cannot simply
+  be copied outside the transaction while retaining live Store reads. SQL 03
+  `works`, `record_work_links`, `quote_checks`; SQL 05 `source_lineage`; and
+  SQL 22/29 validation rows have no `topic_id`. Each needs an explicit bound
+  relation selection. Artifact authorization must join SQL 02 `artifact_topics`
+  rather than filter artifacts by their original recording topic; extractor
+  registry/tool capture must select historical pinned revisions. Whole-table
+  filtering or a generic in-memory query facade would violate the contract.
+- **Immutable raw operands and consumer closure:** `Store.select` returns
+  mutable dicts and decodes JSON. The agreed no-source-body-parsing writer
+  fence and D1 memory budget require a detached raw scalar/tuple capture,
+  outside-lock JSON/BLOB-hash conversion and exact raw-preimage comparison.
+  The existing three public accounting reads, branch provenance lookups and
+  composition declarations must all move together while preserving results,
+  signatures and meaningful existing test assertions. `service.py` remains
+  wiring only. This is not a new cache or second store.
+- **Independent controls:** the 190-line test allowance did not cover complete
+  relation membership/empty-set invalidation, fixed-selection isolation,
+  recursive mutation resistance/BLOB binding, every existing read consumer,
+  both controlled WAL interleavings and the three DEBT-035 adapter cases.
+  These remain required. A clock-based concurrency assertion, fixture-only
+  fake revalidation or omitted transitive consumers cannot substitute for them.
+
+Proposed sequential sub-split, **pending orchestrator confirmation of each
+part's acceptance contract before code**:
+
+| Part | Deliverable and retained controls | Hand-written estimate |
+|---|---|---|
+| **6a1 — detached scoped capture** | Fixed topic-related Store reads and immutable raw snapshot value; stable order, explicit empty groups, JSON metadata and BLOB bindings; outside-lock deterministic input hash including explicit history. No public dossier assembly route yet. Real disposable-store controls for shared/no-topic relations, cross-topic authorized artifacts, historical registry pins, empty membership, raw-byte/hash binding, recursive mutation resistance and no DML. Measure the complete capture side of D1, including unrelated-volume comparison. | **440**: fixed capture reads 120; immutable value/manifest/hash 70; tests 170; paired mutants 40; source/boundary/ledger integration 40. |
+| **6a2 — accounting conversion and read consumers** | Pure conversion from 6a1 values, existing `candidate_units` / `evidence_inventory` / `coverage_snapshot` consumer closure, new Router dossier-input read and collaborator composition. Preserve public signatures and pre-contract behavior; unknown topic/missing approved dossier contract refuse as agreed. Retain native/legacy, branch/G-1, adverse-then-support history and DEBT-035's three adapter cases. All conversion/arithmetic outside the lock; no generic query facade. | **390**: conversion/adapter changes 120; collaborator/thin wiring 35; tests/transitive fixture adjustments 150; paired mutants 35; composition/source/boundary/ledger integration 50. |
+| **6a3 — guarded revalidation and 6a acceptance closure** | Re-read the same fixed selection and compare its complete raw preimage under the existing writer fence before effects. Same-store stable control; changed observation/receipt without queue revision, amendment and membership/empty-group refusals; unrelated-topic positive control; deterministic two-connection WAL barriers during capture and between capture/commit; refusal rolls back the controlled write. Finish capture/revalidation D1 measurements and memory evidence at the full agreed workload. | **350**: revalidation/core delegation 60; controls/concurrency/regressions 210; paired mutants 40; composition/source/boundary/ledger integration 40. |
+
+The 6a1 acceptance proposal is its row's property and controls through the
+internal fixed Store capture entry, exercised inside Router-owned snapshot
+transactions on disposable fresh/retained stores. Expected outputs are exact
+immutable topic-related raw records with current/historical pins and explicit
+empty groups, deterministic history-bound hash after the transaction, no DML,
+and D1 capture/memory budgets met. Limits: no typed inventory consumer, public
+dossier route, commit-freshness claim, persistence, gate policy or export.
+The remaining original 6a entry paths and commit controls stay with 6a2/6a3;
+6a is not complete until all three meet the original ratified contract.
+
+Before 6a2's movement of existing conversion, perform the mechanical extraction
+with rope where applicable, describe the frozen commit range with the pinned
+offline RefactoringMiner wrapper and explicit expected counts, and gate the
+move with affected existing tests/mutants, Hypothesis old/new checks on pure
+conversion and the accepted replay at landing. No refactor has happened in
+this preflight, so there is no detector/replay result to claim now.
+
+This update records the rulings and concrete re-estimate only. Run debt and
+locator gates before its commit, push it to the existing PR #8 with auto-merge
+disabled, and report the size stop. No 6a implementation or workload pass is
+claimed, and 6b1 remains outside this dispatch.
