@@ -89,9 +89,9 @@ The same functions run in three places:
 ## Local use
 
 ```
-make gen2-check                        # builds .venv-gen2 on first use (network: PyPI), then runs every check
+make gen2-accept                       # builds .venv-gen2 on first use (network: PyPI); trigger-order only for DDL changes
 make gen2-venv                         # (re)build the environment only
-make gen2-check PYTHON_BOOTSTRAP=python3.12   # choose the base interpreter explicitly
+make gen2-accept PYTHON_BOOTSTRAP=python3.12  # choose the base interpreter explicitly
 ```
 
 Run `make` directly, and do not pipe its output through `tail`, `grep` or `tee` unless `pipefail` is set. The exit status is the build result. The prior repair round had two masked-failure incidents from exactly that pattern.
@@ -121,8 +121,8 @@ A new runtime dependency is an architecture change. It needs a `third_party` gra
 ## ci-2 amendment: current Jenkins path and prepared gateway environment
 
 The October 18 amendment uses `ci-py312-noble:1` while the operator builds `:2`
-on cir. Jenkins runs `make gen2-ci-default`: T0, the full trigger-order suite,
-and unit partition 1/8, with `cleanWorkspace` and `recordIdentity`. Other engine modes have
+on cir. Jenkins runs `make gen2-ci-default`: T0 and unit partition 1/8,
+with `cleanWorkspace` and `recordIdentity`. Other engine modes have
 independent Make targets; the deployed library cannot select them separately.
 This result is not full acceptance. See [CI-RUNNER.md](CI-RUNNER.md) for mode
 commands, quota budgeting, expected identities and platform prerequisites.

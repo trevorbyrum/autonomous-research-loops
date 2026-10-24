@@ -18,15 +18,28 @@ GEN2_MUTATION_ARGS ?=
 GEN2_CI_MODE ?= push
 GEN2_CI_SHARD ?= 1/1
 GEN2_GATEWAY_MODE ?= all
+GEN2_BASE ?= origin/gen2
 
-.PHONY: gen2-check gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-source gen2-metrics gen2-metrics-rebaseline gen2-metrics-admit gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-accept gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-source gen2-metrics gen2-metrics-rebaseline gen2-metrics-admit gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
-gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-source gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size
+gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-source gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
+
+# Acceptance adds trigger-order only for committed DDL changes from the base.
+# A missing base or failed diff must fail acceptance, never imply no DDL change.
+gen2-accept: gen2-check
+	@ddl_changes=$$(git diff --name-only "$(GEN2_BASE)...HEAD" -- gen2/store/schema) || exit $$?; \
+	if [ -n "$$ddl_changes" ]; then \
+		echo "gen2-accept: running trigger-order (DDL changed: $(GEN2_BASE)...HEAD)"; \
+		$(MAKE) gen2-trigger-order; \
+	else \
+		echo "gen2-accept: skipping trigger-order (no DDL changes: $(GEN2_BASE)...HEAD)"; \
+	fi
+	@echo "gen2-accept: all checks passed"
 
 .PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-trigger-order gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db gen2-ci-gateway-mutants
 # T0 is deliberately separate from full acceptance. No acceptance verdict is
-# inferred from this target. Full local gen2-check remains exhaustive.
+# inferred from this target. Full acceptance uses gen2-accept.
 gen2-push: gen2-sqlite gen2-boundaries gen2-size gen2-schemas gen2-ddl gen2-catalog-check gen2-metrics gen2-debt gen2-locators gen2-source
 
 gen2-ci: gen2-venv

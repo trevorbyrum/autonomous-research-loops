@@ -1,10 +1,10 @@
 """The order `Router.status` lists its capability facts and its engine-wide holds in (task 2q-t3; DEBT-023 item 2, Astra's 2q-b3b review, ruling 5).
 
 status.py lists the current capability facts by capability name and the open holds of no topic by the instant each was opened. No test held two of either, so a reversal of
-either sort (one `reverse=True`) changed nothing the engine suite or the exact replay (tools/gen2_replay.py) observed. These fixtures hold two facts and two holds that tell the
+either sort (one `reverse=True`) changed nothing the engine suite observed. These fixtures hold two facts and two holds that tell the
 orders apart: the two probes are recorded in the reverse of their capabilities' alphabetical order, so the facts come out alphabetical, not as written, and the holds come out as
-opened, not alphabetical (the opposite orders). Everything is the router's own `record_capability_probe` over the test's clock and ids: no process, no real time, so the replay
-recorder sees the same records on every run (evidence/2q-t3/debt-023).
+opened, not alphabetical (the opposite orders). Everything is the router's own `record_capability_probe` over the test's clock and ids: no process, no real time, so the
+fixtures produce the same records on every run (evidence/2q-t3/debt-023).
 
 Expected orders are written by hand from the rule above. One control reads the rows back as raw SQL and shows the fixtures hold what the tests need them to; the other that status
 lists the same rows whichever order it puts them in. What this cannot show: the order of anything else status lists (its topics, bundles and invocations have their own keys), or
