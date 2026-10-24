@@ -25595,6 +25595,13 @@
   ],
   "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
  },
+ "2D6A3-reference-seed": {
+  "by_hand": true,
+  "controls": [
+   "test_reference_schema.ReferenceSchemaTest.test_other_dml_is_not_hidden"
+  ],
+  "why": "Separate reference-schema construction reaches the initialization filter and executes/observes unrelated canary DML; it does not require omission of the singleton seed."
+ },
  "2D6A3-renewal": {
   "by_hand": true,
   "controls": [

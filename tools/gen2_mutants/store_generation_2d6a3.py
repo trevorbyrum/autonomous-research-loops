@@ -40,3 +40,10 @@ for name, killer, old, new in (
     ('schema-cookie', 'ddl_and_vacuum_change_cookie',
      'return (*rows[0][1:], conn.execute("PRAGMA schema_version").fetchone()[0])', 'return (*rows[0][1:], 0)')):
     add(name, LIFE + killer, control=LIFE + 'control', target='gen2/store/db.py', old=old, new=new)
+
+add('reference-seed', 'test_reference_schema.ReferenceSchemaTest.test_reference_has_all_objects_without_seed_dml',
+    control='test_reference_schema.ReferenceSchemaTest.test_other_dml_is_not_hidden', target='gen2/store/db.py',
+    old='        text = text.replace("INSERT INTO store_generation VALUES (\'store\', lower(hex(randomblob(16))), 0);", \'\', 1)',
+    new='        pass')
+CONTROLS['2D6A3-reference-seed']['why'] = (
+    'Separate reference-schema construction reaches the initialization filter and executes/observes unrelated canary DML; it does not require omission of the singleton seed.')

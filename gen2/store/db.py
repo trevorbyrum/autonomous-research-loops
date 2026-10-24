@@ -61,11 +61,17 @@ def _schema_objects(conn: sqlite3.Connection) -> dict[tuple[str, str], str]:
 
 
 def reference_schema(ddl_text: str | None = None) -> tuple[dict[tuple[str, str], str], int]:
-    """The objects and user_version the DDL produces on a fresh connection."""
+    """Schema objects/version without executing the ordered singleton seed.
+
+    Only that exact initialization statement is omitted; other supplied SQL
+    still executes, including DML observed by admission's no-write controls.
+    """
     conn = sqlite3.connect(":memory:")
     try:
         compat.apply_connection_contract(conn)
-        conn.executescript(schema_text() if ddl_text is None else ddl_text)
+        text = schema_text() if ddl_text is None else ddl_text
+        text = text.replace("INSERT INTO store_generation VALUES ('store', lower(hex(randomblob(16))), 0);", '', 1)
+        conn.executescript(text)
         return _schema_objects(conn), conn.execute("PRAGMA user_version").fetchone()[0]
     finally:
         conn.close()

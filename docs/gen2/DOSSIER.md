@@ -7460,3 +7460,37 @@ Stop and report a split if the non-mechanical remainder exceeds about 500.
 This part grants no freshness authority: no token binding into capture, commit
 revalidation, retry or metrics. Those remain part 4; persistence remains 6b1.
 DEBT-035/036 remain open. BUILD-STATE, REVIEW-LOG and DEBT-REGISTER are untouched.
+
+### D part-3 round-1 repair, independent of the pending epoch ruling
+
+Read Astra's complete 2026-10-24 review of `6333f0b` and the completed verifier
+tracebacks. The orchestrator authorizes counter-oracle closure, replay epoch
+determinism, reference-schema construction without initialization, and ordinary
+REPLACE/UPSERT/conflict controls. Writable-open renewal and the retained/startup,
+restart/crash, lock-wait, operator-auth restart and open-beside-writer assertions
+are frozen pending Trevor's ruling. No lifecycle exception is newly authorized
+by this repair; the existing implementation remains pending that decision.
+
+Restore generation visibility in the shared default snapshot. Audited refusals
+and other explicitly allowed writes get explicit exact counter increments with
+stable singleton/epoch before comparison; retain all business and audit checks.
+Complete rollback and same-handle replay remain exact complete-state checks.
+The supervisor's allowed-table inventory includes generation maintenance, with
+an independent exact-event control; complete restart snapshots are unchanged.
+Replay-only SQL randomness is controlled at connection creation in the existing
+parent/child seams, with distinct counted epochs and ordinary randomness when
+seams are disabled. Recordings and exact comparisons retain every epoch/counter.
+Reference schema construction omits only the known ordered singleton seed;
+arbitrary DML remains observable by the existing canaries. No read-side repair.
+
+Estimate before coding: about 450 non-mechanical changed handwritten lines for
+helpers/controls (170), replay source seam/controls (100), reference admission
+and conflict regressions (100), and documentation/headroom (80). Uniform caller
+migrations of audited-refusal comparisons are a separate mechanical batch,
+estimated at 200–350 changed lines; every migrated call retains its original
+assertion and explicitly states the permitted increment. Re-estimate if needed.
+Logical local commits run debt/locator gates and stage explicit paths. No push
+until the orchestrator confirms. Targeted selection follows durable-open and
+snapshot/allowed-effect semantic impact, including supervisor/replay children;
+the independent verifier owns the full suite. Evidence stays under private
+`evidence/2d-6a-p3/repair-r1/`. Part 4 remains untouched.
