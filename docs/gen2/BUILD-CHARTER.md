@@ -23,6 +23,31 @@ Items 1–3 are cited by document identity (file name and dates). They belong to
 **Gate D — Whole-system architecture and complexity review** (the user, 2026-09-30). Gates A–C review one task's diff, so drift that accumulates across tasks is never seen whole; Gate D reviews the entire built system. It runs **when a task is fully accepted (every repair round cleared) and at each phase end**, and a BLOCK stops the next task from starting. Astra checks: (1) **traceability** — every stage, boundary, hand-off and release gate in the flow doc is either implemented and tested (naming where) or explicitly scheduled for a later phase; anything built differently from the doc is a finding; (2) **complexity** — the automated architecture metrics below, with every regression since the last Gate D explained, plus accidental complexity the metrics can't see: two mechanisms for one job, parallel representations of one fact, special cases added by repairs; (3) **quality-attribute risks** — a lightweight scenario review of the flow doc's release gates (crash, replay, fencing, stale lease, outage), naming risks and sensitivity points.
 **Gate D independence (the user, 2026-09-30: "I want a fresh Astra on the architecture review every time. I don't want other gates tainting it.").** Every Gate D run is a **new Astra session** that has never run another gate and is never resumed or reused for one, so no reviewer's working context carries over between gates. It works in the normal repository and may read anything there, including REVIEW-LOG.md and earlier review reports.
 
+**Gate S — Whole-system simplification (the user, 2026-10-24: "you guys tend to get overly focused on single issues… code in general is not made good or better by adding and stacking code").** Gates A–C judge one slice against its own contract. Gate D runs only when a whole task closes; 2d ran for weeks as one open task, so Gate D never fired while slice-level fixes accumulated. Gate S keeps the end goal in view continuously.
+- **Owner:** Fable (paseo `claude/claude-fable-5-1`), a **fresh session every run**, outside the coder/reviewer loop. It never codes, never gates a slice and never overrides an Astra verdict. A second independent opinion (for example a fresh Astra) is optional.
+- **Triggers.** The orchestrator checks these on every wake, using `git diff --shortstat <last Gate S SHA>..origin/gen2`:
+  1. Before any new task, slice or part is designed, so Gate S sees the plan before a contract is written.
+  2. After about **2,000 lines of net growth** since the last Gate S, counting production, SQL, tests and tooling together.
+  3. When a slice passes **2× its estimate**, or a **finding family recurs** in the same area. The orchestrator routes this to Gate S as a design question ("is there one change that resolves all of these?"), not to the coder as another patch.
+  4. At every phase gate.
+- **Each run answers:**
+  - Does the next planned work trace to a binding requirement?
+  - Is there one design that resolves the open findings together?
+  - Which mechanisms overlap?
+  - What can be deleted?
+  - Is the checking machinery proportionate, or generating its own work?
+  - What is the net size change since the last run?
+
+  Its cut list feeds the next brief. Anything that would amend an invariant, a ruling or a contract goes to the operator as a decision.
+- **Records:** each run gets a REVIEW-LOG entry. BUILD-STATE always shows the last Gate S SHA and the growth since.
+
+**Always-on simplicity rules (every brief and review).**
+- **Trace every obligation.** Each acceptance-contract item cites an invariant, an operator ruling or a DEBT-REGISTER entry. An item that can't be traced is cut, not built.
+- **Astra's proportionality question.** Every slice review also asks: is this the simplest design that meets the contract, and does any part duplicate an existing mechanism?
+- **Group before routing.** Before turning findings into a fix task, the orchestrator groups them by shared cause and looks for one design change. Recurring families go to Gate S.
+- **Honest size.** Estimates given to the operator are adjusted for the growth actually observed, not the plan figure. Every task-boundary size report includes tests and tooling next to production.
+- **Added code is a cost.** Prefer deletion and reuse. A slice that grows the total needs to justify it against the end goal.
+
 ## Architecture metrics (the user, 2026-09-30)
 Enforced by `make gen2-check`, implemented in-repo with the standard library only (like the boundary checker). Measured from the actual code, not the declared graph: dependency-structure metrics (propagation cost, per-module fan-in/fan-out and instability), architecture-smell detection (cyclic, hub-like and unstable dependencies; god components), and function-level cyclomatic and cognitive complexity. A git-history report of change coupling and hotspots is produced for Gate D but does not fail the build. Metrics are **ratcheted**: a baseline is recorded, and any regression fails the check unless a reviewed, reasoned exemption entry covers it.
 
