@@ -3226,3 +3226,31 @@ The post-2q Gate D is renumbered #5.
   - **B: 6a part 3 becomes a Store-level counter,** bumped once per committed transaction that writes a covered table. This amends R1:D's mechanism from "every covered row event" to "every committed covered write transaction, once". The no-writes-on-open and maintenance rulings stand.
 - The part 3 round 2 review (`401825cd`) and verifier (`9dbd8910`) of the trigger design `25f4ab9` were **stopped**. Before stopping, its gen2-test had passed 4,475 tests.
 - The counter redo was dispatched to Sol on PR #14. A Gate S plan for the remaining simplification batches was dispatched to Fable (`932fcdc2`).
+
+## 2026-10-24: Gate S #1 plan approved (operator)
+- **Fable plan** (`932fcdc2`; `private/reviews/gen2-simplification-plan-fable-20261024.md`): eight batches, one coder at a time.
+  - R1: records collapse I.
+  - S1: tiered checks and retirement of the replay, differential and move tools.
+  - S2: automatic mutation in place of the hand-written inventory and controls.
+  - S3: retirement of the metrics ratchet, ledger and source contract, in favour of radon ceilings.
+  - 6a part 4 (about 250 lines).
+  - S4: Router versions of the SQL 15/16/19/20 insertion rules.
+  - S5: deletion of the semantic DDL and its raw matrices.
+  - R2: INVARIANTS normative plus a generated traceability table.
+  - S6: deletion of the JSON member-domain DDL guards.
+  - Then 6b1 (about 350), 6b2 with 6b3 merged (about 450) and slice 7 (about 200).
+- **Expected size:** engine side about 180k lines down to about 102k (tooling about 51k down to about 4k; tests about 65k down to about 47k; production flat). To 2f: about 4,750 lines planned, about 9,500 when adjusted for observed growth, with a risk band of about 14,000.
+- **Operator approved all twelve decisions D1–D12 (Trevor, 2026-10-24):**
+  - D1: deletion batches are counted by file.
+  - D2: the replay, differential and move/inline tools are retired (charter refactor standard amended).
+  - D3: the span cap and link locator go to S5.
+  - D4: the JSON member-domain DDL guards go in S6, with `Store._prepare` as the single enforcement point.
+  - D5: blocking radon ceilings.
+  - D6: checks before 6a part 4.
+  - D7: new task **2g** after 2f owns slices 8–11 (DEBT-040–043); the export legs of DEBT-033 and DEBT-035 move to DEBT-040.
+  - D8: the `/2` rich member is deferred to slice 8.
+  - D9: Gate S #1 stands as the 15,000-line growth review.
+  - D10: the importer moves under `tools/` in S3.
+  - D11: 6b2 and 6b3 merge.
+  - D12: the CI-DESIGN amendment is drafted in R2.
+- 2f reports scientific completion at revision and hash; export delivery as `not_attempted`; currency as `unknown` (`never_ran`). It is not claimed current.

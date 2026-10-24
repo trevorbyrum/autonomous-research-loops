@@ -386,7 +386,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - owner: task 2d
 - what: `gen2/accounting/stopping.py` keeps a lot of detail for each stopping result: contexts, invocation scope, window pins, G-1 standing, reasons, certain-answer bounds, sentinel identities and gate evidence. `export-bundle/2` reuses `/1`'s `stopping_dossier`, which has only scalar `observed_count`s, numeric thresholds and gate identity/status. It also bans any unknown operand in a satisfied rule. Before the dossier or export is used authoritatively, 2d must define and test a mapping, or an additive representation, that keeps the evaluation context, scope, raw uncertainty, lower/upper bounds and evidence provenance. A satisfied bound must never turn an indeterminate window into completed evidence. The serializer must not erase the record behind a bound or silently weaken `/1`.
 - source: private/reviews/gen2-gate-d-6-astra-review.md (F1)
-- removal: a persisted dossier → approved bundle path handles three cases: a rule satisfied while some windows are still indeterminate; a conservative unknown; and a stale result.
+- removal: a persisted dossier → approved bundle path handles three cases: a rule satisfied while some windows are still indeterminate; a conservative unknown; and a stale result. **Amended 2026-10-24 (operator, Gate S #1 plan D7):** the persistence leg stays with task 2d (6b1); the export leg moves to DEBT-040 (task 2g).
 
 ### DEBT-036 - Gate D #6 F2: Router headroom and inventory reads under the writer lock (task 2d)
 - kind: obligation
@@ -440,3 +440,57 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - source: orchestrator landing 2026-10-14, `private/evidence/2d-4b3e2-part2/orchestrator/gen2-check.log`
 - recurrence 2026-10-19: the landing at `04c7af7` (span-cap repair-1) failed the mutation baseline on the same test after a green `gen2-test` (4,256) and trigger-order; rerun queued. This is the second landing cycle lost; schedule the root fix before part 4 (`private/evidence/2d-4c-cap-repair-1/orchestrator/gen2-check.attempt1.log`).
 - removal: the timing-dependent client and route tests pass deterministically under load, shown by a loaded rerun of the mutation baseline, and no deadline assertion depends on wall-clock scheduling.
+
+### DEBT-040 - approved-revision /2 bundle assembly (slice 8, moved after 2f)
+- kind: obligation
+- status: open
+- owner: task 2g
+- what: Assemble the export-bundle/2 for an approved dossier revision from the persisted rich dossier artifact (6b1) and the required histories, through the one export path (EXPORT-API, F7). It covers:
+  - licence binding and exact revision/hash binding;
+  - the explicit rich member in export-bundle/2 that D2 (2026-10-23, A) names, with `/1` unchanged;
+  - the DEBT-033 assembly leg (obligation assessments consumed through the authorized export path);
+  - the DEBT-035 export leg (a satisfied bound with indeterminate windows, a conservative unknown and a stale result all survive the bundle).
+
+  Mutable research state is never re-queried after approval to build a different bundle.
+- source: operator ruling 2026-10-24 (Gate S #1 Phase 2 reorder; plan D7, D8); plan-audit F7; DOSSIER slice map 8; D2 (2026-10-23); DEBT-033, DEBT-035
+- removal: 2g lands the assembler with the three DEBT-035 cases and the DEBT-033 consumption demonstrated against a persisted dossier, and its review confirms. Then DEBT-033 and DEBT-035 can close.
+
+### DEBT-041 - one JSONL/file connector with complete delivery guarantees (slice 9, after 2f)
+- kind: obligation
+- status: open
+- owner: task 2g
+- what: One reference file/JSONL connector (EXPORT-API §6.2; INVARIANTS P-2, P-5, P-7) with:
+  - ordered delivery by (generation, options revision);
+  - equal-pair replay and stale-pair refusal;
+  - tombstones and truthful written counts;
+  - `outcome_unknown` reconciliation by resend;
+  - pair atomicity on the destination.
+
+  No connector framework; other connectors belong to Phase 3.
+- source: operator ruling 2026-10-24; plan-audit F7; DOSSIER slice map 9
+- removal: the connector's crash, replay, stale, tombstone and unknown-outcome fixtures pass, and the 2g review confirms. EXPORT-API's Phase 2/3 text is updated.
+
+### DEBT-042 - durable feed facts (slice 10, after 2f)
+- kind: obligation
+- status: open
+- owner: task 2g
+- what: Durable per-feed facts (INVARIANTS P-6; §13 row "Surveillance feed liveness"):
+  - due time and last successful observation;
+  - cursor and coverage;
+  - successful-empty, failed and never-ran told apart;
+  - owner and retirement.
+
+  Poll and reopen scheduling stay with 2e2 and Phase 3. Until this lands, currency is reported as unknown.
+- source: operator ruling 2026-10-24; plan-audit F10; INVARIANTS §13
+- removal: feed facts are admitted through the Router with the P-6 outcome classes distinguishable, and a dead or early-failed feed makes currency degraded with the named reason. The 2g review confirms before Phase 2 closes.
+
+### DEBT-043 - freshness envelope and independent currency computation (slice 11, after 2f)
+- kind: obligation
+- status: open
+- owner: task 2g
+- what: Two things:
+  - the local served-revision freshness envelope (P-3), computed from local reads only;
+  - independent computation of completion, delivery and currency (P-4) from DEBT-040–042's records. A failed export never changes completion or currency.
+- source: operator ruling 2026-10-24; plan-audit F10; INVARIANTS P-3, P-4
+- removal: the envelope is produced from local state with newer-unapproved disclosure, the three facts are computed independently, and the 2g review confirms.
+
