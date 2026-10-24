@@ -20360,31 +20360,31 @@
  },
  "DBO-wal-switch-bypasses-the-wait": {
   "controls": [
-   "test_sqlite_gate.FirstOpenContentionTest.test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting"
+   "test_sqlite_gate.FirstOpenContentionTest.test_wal_pragmas_beside_a_writer_need_no_journal_retry"
   ],
   "why": "gen2/store/db.py: executes line 112; or executes line 111"
  },
  "DBO-wal-switch-no-budget": {
   "controls": [
-   "test_sqlite_gate.FirstOpenContentionTest.test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting"
+   "test_sqlite_gate.FirstOpenContentionTest.test_wal_pragmas_beside_a_writer_need_no_journal_retry"
   ],
   "why": "gen2/store/db.py: executes line 96"
  },
  "DBO-wal-switch-not-retried": {
   "controls": [
-   "test_sqlite_gate.FirstOpenContentionTest.test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting"
+   "test_sqlite_gate.FirstOpenContentionTest.test_wal_pragmas_beside_a_writer_need_no_journal_retry"
   ],
   "why": "gen2/store/db.py: leaves line 101 for a line outside 101-102 (or returns); or leaves line 99 for a line outside 98-106 (or returns)"
  },
  "DBO-wal-switch-retries-any-error": {
   "controls": [
-   "test_sqlite_gate.FirstOpenContentionTest.test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting"
+   "test_sqlite_gate.FirstOpenContentionTest.test_wal_pragmas_beside_a_writer_need_no_journal_retry"
   ],
   "why": "gen2/store/db.py: leaves line 101 for a line outside 101-102 (or returns); or leaves line 99 for a line outside 98-106 (or returns)"
  },
  "DBO-wal-switch-wait-unbounded": {
   "controls": [
-   "test_sqlite_gate.FirstOpenContentionTest.test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting"
+   "test_sqlite_gate.FirstOpenContentionTest.test_wal_pragmas_beside_a_writer_need_no_journal_retry"
   ],
   "why": "gen2/store/db.py: leaves line 103 for a line outside 103-104 (or returns); or leaves line 99 for a line outside 98-106 (or returns)"
  },
@@ -25006,5 +25006,852 @@
    "test_dossier_inputs.AdapterTest.test_control_route"
   ],
   "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A3-admission-row": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-amendment_impacts-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-amendment_impacts-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-amendment_impacts-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-artifact_topics-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-artifact_topics-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-artifact_topics-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-artifacts-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-artifacts-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-artifacts-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-audit_events-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-audit_events-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-audit_events-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-branch_windows-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-branch_windows-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-branch_windows-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-claim_source_links-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-claim_source_links-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-claim_source_links-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-claims-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-claims-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-claims-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-contract_revisions-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-contract_revisions-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-contract_revisions-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-counter-domain": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-detailed_check_records-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-detailed_check_records-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-detailed_check_records-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-dossiers-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-dossiers-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-dossiers-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-epoch-domain": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extraction_validations-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extraction_validations-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extraction_validations-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extraction_validations_v2-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extraction_validations_v2-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extraction_validations_v2-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extractor_registry_revisions-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extractor_registry_revisions-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extractor_registry_revisions-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extractor_tools-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extractor_tools-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-extractor_tools-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-facets-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-facets-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-facets-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-holds-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-holds-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-holds-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-invocations-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-invocations-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-invocations-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-leases-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-leases-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-leases-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-missing-row-write": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-no_delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-no_insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-obligation_assessments-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-obligation_assessments-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-obligation_assessments-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-obligations-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-obligations-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-obligations-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-operation_receipts-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-operation_receipts-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-operation_receipts-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-operator_decisions-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-operator_decisions-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-operator_decisions-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-queue_entries-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-queue_entries-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-queue_entries-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-quote_checks-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-quote_checks-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-quote_checks-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-record_work_links-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-record_work_links-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-record_work_links-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-registry_dispositions-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-registry_dispositions-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-registry_dispositions-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-renewal": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-retrieval_events-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-retrieval_events-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-retrieval_events-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-schema-cookie": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-screening_assessments-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-screening_assessments-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-screening_assessments-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-search_observations-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-search_observations-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-search_observations-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-semantic_assessments-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-semantic_assessments-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-semantic_assessments-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-singleton-domain": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_acquisitions-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_acquisitions-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_acquisitions-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_artifacts-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_artifacts-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_artifacts-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_extractions-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_extractions-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_extractions-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_lifecycle-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_lifecycle-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_lifecycle-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_lineage-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_lineage-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-source_lineage-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-step": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-verification_receipts-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-verification_receipts-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-verification_receipts-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-works-delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-works-insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-works-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
  }
 }

@@ -82,6 +82,19 @@ def check_schema_identity(conn: sqlite3.Connection, ddl_text: str | None = None)
         raise StoreOpenError(
             f"store schema is not the DDL in gen2/store/schema/ (user_version {stored_version}, expected {version}; "
             f"missing {missing[:5]}{'...' if len(missing) > 5 else ''}, unexpected {extra[:5]}, changed {changed[:5]})")
+    generation_state(conn)
+
+
+def generation_state(conn: sqlite3.Connection) -> tuple[str, int, int]:
+    """Epoch/counter/schema cookie; caller owns the snapshot or writer fence.
+
+    File identity is a separate admitted pin. This read never repairs state.
+    Binding into capture and commit consumption belong to D part 4.
+    """
+    rows = conn.execute("SELECT singleton, epoch, generation FROM store_generation").fetchall()
+    if len(rows) != 1 or rows[0][0] != 'store':
+        raise StoreOpenError("missing store generation singleton")
+    return (*rows[0][1:], conn.execute("PRAGMA schema_version").fetchone()[0])
 
 
 def _wal(conn: sqlite3.Connection) -> tuple:
@@ -144,7 +157,10 @@ def connect(path: str | Path, *, create: bool = False) -> tuple[sqlite3.Connecti
                 if conn.in_transaction:
                     conn.execute("ROLLBACK")
                 raise
+        conn.execute("BEGIN IMMEDIATE")
         check_schema_identity(conn)
+        conn.execute("UPDATE store_generation SET epoch = lower(hex(randomblob(16))) WHERE singleton = 'store'")
+        conn.execute("COMMIT")
     except BaseException:
         conn.close()
         raise

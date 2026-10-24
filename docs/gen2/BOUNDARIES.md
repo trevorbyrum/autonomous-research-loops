@@ -18,7 +18,9 @@ Format per component: *Definition* (what it is) / *Owns* (decisions only it make
 The registries collaborator records the dated `tier-0 disabled` capability
 fact in config activation/restoration transactions (2d-5, operator ruling
 2026-10-10 / DEBT-037). It remains unknown, with no last success; ordinary
-status reads expose it without writing. Bare opening/admission stays read-only.
+status reads expose it without writing. Bare opening/admission records no
+capability fact; its lifecycle write is D part 3's generation epoch renewal
+described under Evidence accounting below.
 
 The Router also composes `Verification` in `verification.py` (2d-4 part 1),
 with `VerificationCore` declaring only `_store` and `_one`. Its hold writer
@@ -242,8 +244,14 @@ records retain JSON text, BLOBs, column metadata and empty groups; a separate
 pure `dossier-input/1` hash binds that raw preimage and explicit history after
 capture. It grants no write, completion, approval or commit-freshness authority.
 Public accounting signatures/results and pre-contract inventory behavior are
-preserved. D parts 3–4 own the operator-ratified store-wide generation and
-commit consumption/bounded recapture.
+preserved. D part 3's ordered SQL 43 maintains a durable singleton generation
+for every row event on all 37 capture relations, including unrelated topics
+and same-value updates; rollback removes its bumps. It protects the singleton
+and refuses exhaustion or missing/incompatible schema guards. Checked durable
+open renews its epoch under a writer fence; offline restore/DDL closes all
+runtime handles before reopening. The epoch, schema cookie and admitted file
+identity supply lifecycle invalidation that row triggers cannot. D part 4
+owns their binding into capture, commit consumption and bounded recapture.
 The internal `Router._dossier_inputs` read delegates to that collaborator,
 requires a captured attributed approved contract, and returns immutable complete
 raw history, typed coverage and a history-bound content hash after closure. It

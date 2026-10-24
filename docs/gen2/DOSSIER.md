@@ -7408,3 +7408,55 @@ checkpoint effects are reported separately. Revalidation is unimplemented, not
 a measured zero. Refactor evidence includes inspected rope output, pinned offline
 RefactoringMiner, old/new Hypothesis properties and exact accepted replay.
 Independent verification and review remain required. Stop after part 2.
+
+### D part-3 preflight and acceptance contract (2026-10-24)
+
+The orchestrator pre-confirmed part 3: ordered DDL installs one durable
+store-wide generation and unconditional INSERT/UPDATE/DELETE row triggers on
+all 27 direct and ten shared capture relations. No topic filter, column list
+or value comparison is allowed. The generation relation never bumps itself.
+Singleton guards forbid insertion, deletion, reset and skipped increments;
+the interoperable integer ceiling is 9,007,199,254,740,991 and exhaustion
+refuses the complete statement. Missing singleton/guards or incompatible DDL
+refuse admission; capture never initializes state. Fresh stores and explicit
+offline application of the new ordered part to retained stores are covered.
+
+**Lifecycle choice:** a durable random 128-bit epoch, renewed by every checked
+writable durable open, accompanies the counter. Its renewal preserves the
+counter, including exhaustion. Part 4's proof must include epoch, counter,
+SQLite schema cookie and the admitted device/inode identity; those values
+must be captured in the same checked snapshot and compared under the writer
+fence, re-statting the admitted path rather than comparing only a cached file
+identity. DDL (including create/drop restoring identical SQL and VACUUM) changes
+the schema cookie even without covered row events. File replacement is
+refused by the admitted file identity. Restore and schema installation are
+offline lifecycle operations: close all runtime connections, perform the
+maintenance, then reopen through checked admission, which renews the durable
+epoch even when an old counter/cookie/file image was restored. Restoring
+bytes underneath live SQLite connections is outside the Store connection
+contract; it is not a supported restore route. New checked opens can cause
+conservative invalidation of captures on other connections. Row triggers
+alone cannot observe DDL, replacement or restoration of their own history.
+The in-memory fixture epoch is initialized by DDL; no read-side renewal occurs.
+
+Controls compare installed table/event inventory with capture's fixed selector
+inventory, independently exercise all event bodies in isolated relations, and
+exercise representative real relation families with their business guards.
+They distinguish transaction/savepoint rollback, zero-row DML, same-value and
+restored updates; test singleton protection, exhaustion, missing/incompatible
+guards, retained admission and lifecycle changes; and check trigger reversal
+on disposable stores. Mutants have separate accepted controls reaching each
+changed event body or guard. Writer maintenance timings compare representative
+paths with the current baseline and are informational, not a new budget.
+
+**Re-estimate before code:** about 470 non-mechanical handwritten repository
+lines (DDL guards 45; lifecycle/admission 40; tests 250; mutants/integration 85;
+headroom 50), plus one mechanical batch of 111 uniform trigger declarations,
+about 777 lines. The existing ordered mechanism accepts literal SQL, so use
+uniform SQL rather than introducing a generator into production. Documentation,
+generated control JSON and private benchmark evidence are reported separately.
+Stop and report a split if the non-mechanical remainder exceeds about 500.
+
+This part grants no freshness authority: no token binding into capture, commit
+revalidation, retry or metrics. Those remain part 4; persistence remains 6b1.
+DEBT-035/036 remain open. BUILD-STATE, REVIEW-LOG and DEBT-REGISTER are untouched.

@@ -433,13 +433,16 @@ class FirstOpenContentionTest(unittest.TestCase):
                 db._wal(Failing())
         self.assertIs(caught.exception, refusal)
 
-    def test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting(self) -> None:
+    def test_wal_pragmas_beside_a_writer_need_no_journal_retry(self) -> None:
         db.connect(self.path)[0].close()   # the first open makes it WAL
         self.writer()
+        # D part 3 admission now writes a lifecycle epoch. Isolate the
+        # original journal-switch regression; epoch admission has its own lock.
+        conn = sqlite3.connect(self.path, isolation_level=None)
+        self.addCleanup(conn.close)
         with mock.patch.object(db, "_sleep", side_effect=AssertionError("it waited with nothing to wait for")):
-            conn, observed = db.connect(self.path)
-        conn.close()
-        self.assertEqual(observed["operational"]["journal_mode"], "wal")
+            observed = db._apply_operational(conn)
+        self.assertEqual(observed["journal_mode"], "wal")
 
 
 class GateCommandTest(unittest.TestCase):

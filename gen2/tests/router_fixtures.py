@@ -205,8 +205,11 @@ class RouterTestCase(unittest.TestCase):
         found = self.rows(sql, *params)
         return found[0][0] if found else None
 
-    def state(self, exclude=("audit_events",)) -> dict[str, list[tuple]]:
-        """Every table's rows (audit excluded unless asked), for 'nothing changed' assertions."""
+    def state(self, exclude=("audit_events", "store_generation")) -> dict[str, list[tuple]]:
+        """Business rows; audit and its generation effects excluded unless asked.
+
+        exclude=() retains the complete rollback/no-effects oracle.
+        """
         names = [r[0] for r in self.rows("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
         return {n: self.rows(f"SELECT * FROM {n} ORDER BY rowid") for n in names if n not in exclude}
 
