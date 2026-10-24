@@ -3170,3 +3170,18 @@ The post-2q Gate D is renumbered #5.
   - Five in-memory counterfactuals each fail the strengthened guard by assertion, and no assertion was weakened.
 - **Verifier** (Sonnet `f9743b5f`): gen2-check exit 0 (7,777 s; 4,441 tests; trigger-order and mutants passed). The gateway carry-forward from `fe03b1b` is valid, since no gateway input changed.
 - Auto-merge enabled after both passed; merged. Part 3 dispatched.
+
+## 2026-10-24: 2d slice 6a part 3 (store-wide generation, 6333f0b, PR #14): BLOCK, round 1
+- **Verifier** (Sonnet `998135cb`): gen2-check exit 2, **382 failures of 4,460**; gen2-gateway exit 0 (413/413).
+  - The coder's targeted selection followed new files and direct Store consumers only. It missed durable-opener, no-DML, full-state, crash/restart, lock-wait, replay and supervisor consumers.
+- **Astra** (`0dbca75a`; `private/reviews/gen2-2d-6a-p3-astra-review-20261024.md`): **A PASS, B PASS, C BLOCK.**
+  - R1: incomplete migration of the metadata-sensitive oracle family (MITIGATION at family level).
+  - R2: the random epoch breaks exact replay stability.
+- **Disagreement on the open-time epoch write.**
+  - Astra treated it as a legitimate lifecycle write.
+  - Sol's diagnosis found that it violates no-write-at-open and startup-before-effects. The orchestrator confirmed that `HistoryReader.open` reaches the writable open, so the read-only viewer writes.
+  - Escalated as a boundary question. **Trevor ruled 2026-10-24: no writes on open**; restore detection goes through an explicit maintenance operation.
+- **Repair** in progress on the same branch:
+  - shared oracle fixes, deterministic replay epochs, reference-schema seed omission and conflict-policy regressions, as local commits up to `20f0b03`;
+  - then the no-write-open redesign.
+- **Process lesson (semantic-impact selection):** changes to `db.connect`, schema bootstrap or shared state fixtures require targeted checks over every durable-opener consumer, startup/history/no-DML, complete-state or allowed-effects, crash/restart, lock-wait, replay/recorder and supervisor test, including child processes.
