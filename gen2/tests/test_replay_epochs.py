@@ -14,7 +14,7 @@ SEAMS = runpy.run_path(str(Path(__file__).resolve().parents[2] / 'tools/gen2_rep
 
 
 class EpochSeamTest(unittest.TestCase):
-    def test_seed_renewal_and_child_draws_share_distinct_epochs(self):
+    def test_maintenance_and_child_draws_share_distinct_epochs(self):
         connect = SEAMS['sqlite_epochs'](sqlite3.connect)
         code = "import sqlite3,json; c=sqlite3.connect(':memory:'); print(json.dumps(c.execute('SELECT lower(hex(randomblob(16)))').fetchone()[0]))"
         for _ in range(2):
@@ -22,6 +22,10 @@ class EpochSeamTest(unittest.TestCase):
                 with connect(':memory:') as first, connect(':memory:') as second:
                     first.executescript(db.schema_text())
                     second.executescript(db.schema_text())
+                    for conn in (first, second):
+                        self.assertEqual(db.generation_state(conn)[:2], (None, 0))
+                        conn.execute("INSERT INTO store_generation VALUES ('store',NULL,0)")
+                        conn.execute("UPDATE store_generation SET epoch=lower(hex(randomblob(16)))")
                     self.assertEqual(db.generation_state(first)[:2], (f'{1:032x}', 0))
                     self.assertEqual(db.generation_state(second)[:2], (f'{2:032x}', 0))
                     first.execute("UPDATE store_generation SET epoch=lower(hex(randomblob(16)))")

@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from gen2.store import db
+from gen2.tests import store_fixtures as fx
 
 
 class ReferenceSchemaTest(unittest.TestCase):
@@ -33,10 +34,10 @@ class ReferenceSchemaTest(unittest.TestCase):
         self.assertIn(('trigger', 'store_generation_no_insert'), objects)
         self.assertEqual(writes, [])
         with sqlite3.connect(':memory:') as conn:
-            conn.executescript(db.schema_text())
+            conn.executescript(fx.DDL_TEXT)
             self.assertEqual(db._schema_objects(conn), objects)
             self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0], version)
-            self.assertEqual(conn.execute('SELECT count(*) FROM store_generation').fetchone()[0], 1)
+            self.assertEqual(conn.execute('SELECT count(*) FROM store_generation').fetchone()[0], 0)
 
     def test_other_dml_is_not_hidden(self):
         _, writes = self.observed('CREATE TABLE canary (value); /* seed canary */ INSERT INTO canary VALUES (1);')

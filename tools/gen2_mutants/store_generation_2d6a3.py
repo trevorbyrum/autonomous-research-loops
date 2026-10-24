@@ -33,17 +33,20 @@ for name, old, new in (
     add(name, TEST + 'constraints', scope='store_generation', old=old, new=new)
 add('missing-row-write', TEST + 'missing_singleton_write_refuses', scope='capture_generation_queue_entries_insert',
     old='changes() <> 1', new='0')
-for name, killer, old, new in (
-    ('renewal', 'reopen_and_restore_renew_epoch',
-     'conn.execute("UPDATE store_generation SET epoch = lower(hex(randomblob(16))) WHERE singleton = \'store\'")', 'conn.execute("SELECT 1")'),
-    ('admission-row', 'missing_singleton_no_lazy_initialization', '    generation_state(conn)\n', '    pass\n'),
-    ('schema-cookie', 'ddl_and_vacuum_change_cookie',
-     'return (*rows[0][1:], conn.execute("PRAGMA schema_version").fetchone()[0])', 'return (*rows[0][1:], 0)')):
-    add(name, LIFE + killer, control=LIFE + 'control', target='gen2/store/db.py', old=old, new=new)
+add('bootstrap', TEST + 'writer_initialization', scope='capture_generation_queue_entries_insert',
+    old="INSERT INTO store_generation SELECT 'store', NULL, 0\n    WHERE NOT EXISTS (SELECT 1 FROM store_generation);", new='SELECT 1;')
+for name, killer, target, old, new in (
+    ('maintenance-renewal', 'reopen_preserves_proof_and_restore_renews_epoch', 'gen2/store/api.py',
+     'store._conn.execute("UPDATE store_generation SET epoch = lower(hex(randomblob(16))) WHERE singleton = \'store\'")', 'store._conn.execute("SELECT 1")'),
+    ('maintenance-bootstrap', 'initial_state_has_no_read_side_initialization', 'gen2/store/api.py',
+     'store._conn.execute("INSERT INTO store_generation SELECT \'store\', NULL, 0 WHERE NOT EXISTS (SELECT 1 FROM store_generation)")', 'store._conn.execute("SELECT 1")'),
+    ('maintenance-on-error', 'failed_maintenance_still_invalidates_admissible_result', 'gen2/store/api.py',
+     '        try:\n            operation(path)\n        finally:', '        operation(path)\n        if True:'),
+    ('admission-row', 'invalid_singleton_no_read_repair', 'gen2/store/db.py', '    generation_state(conn)\n', '    pass\n'),
+    ('schema-cookie', 'ddl_and_vacuum_change_cookie', 'gen2/store/db.py',
+     'return epoch, generation, conn.execute("PRAGMA schema_version").fetchone()[0]', 'return epoch, generation, 0')):
+    add(name, LIFE + killer, control=LIFE + 'maintenance_control', target=target, old=old, new=new)
 
-add('reference-seed', 'test_reference_schema.ReferenceSchemaTest.test_reference_has_all_objects_without_seed_dml',
-    control='test_reference_schema.ReferenceSchemaTest.test_other_dml_is_not_hidden', target='gen2/store/db.py',
-    old='        text = text.replace("INSERT INTO store_generation VALUES (\'store\', lower(hex(randomblob(16))), 0);", \'\', 1)',
-    new='        pass')
-CONTROLS['2D6A3-reference-seed']['why'] = (
-    'Separate reference-schema construction reaches the initialization filter and executes/observes unrelated canary DML; it does not require omission of the singleton seed.')
+add('schema-only-install', 'test_reference_schema.ReferenceSchemaTest.test_reference_has_all_objects_without_seed_dml',
+    old='CREATE TRIGGER store_generation_no_insert BEFORE INSERT ON store_generation',
+    new="INSERT INTO store_generation VALUES ('store',NULL,0);\nCREATE TRIGGER store_generation_no_insert BEFORE INSERT ON store_generation")

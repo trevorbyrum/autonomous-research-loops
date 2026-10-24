@@ -7517,3 +7517,45 @@ renewal alone would not clear its no-DML oracle. No authority resolution or
 complete part-3 acceptance is claimed. Targeted execution, source provenance,
 local commits and the final held-failure inventory are retained in the repair
 evidence; no full suite or push is performed by this repair.
+
+### D part-3 lifecycle correction: operator ruling, 2026-10-24
+
+Trevor reaffirms the 2026-10-21 guarded-start/read-only-viewer ruling:
+opening, startup admission and history viewing write nothing, and an already
+WAL store opens beside an active writer. This supersedes the writable-open
+epoch choice above, without amending that earlier operator contract.
+
+Ordered installation is schema-only. An absent generation singleton denotes
+the initial state `(epoch=None, generation=0)`. A covered row trigger creates
+that exact initial row, then increments it, inside the genuine writer's
+transaction. Reads never initialize it. Initial insertion is permitted only
+while absent, with NULL epoch and zero counter; replacement, deletion, reset,
+skipped increments and exhaustion remain refused. Rollback removes bootstrap
+and increments; zero-row statements do neither.
+
+`Store.maintain(path, operation)` is the explicit privileged offline operation:
+all runtime handles must be closed before entering it. The supplied trusted
+operation performs restore or schema maintenance at that path and must leave
+the current canonical schema. On exit, checked admission precedes a short
+writer transaction that initializes metadata if needed and rotates a random
+128-bit maintenance epoch without resetting the counter. Finalization also
+runs after an operation exception: an admissible resulting store is invalidated;
+an incompatible result refuses admission. Ordinary reopen preserves all pins.
+There is no new CLI or automatic restore path in this slice.
+
+The future proof still includes epoch, counter, schema cookie and admitted
+device/inode, with a fresh stat under the commit fence. Row triggers cannot
+observe DDL or restoration of their own history. The explicit marker handles
+supported maintenance even when restore puts back the old counter and cookie;
+cookie and file identity additionally refuse detectable changes. Copying or
+replacing files over a live store, or restoring/replacing outside this explicit
+operation, is unsupported. Epoch identity is probabilistic, as before. Binding
+these pins and enforcing freshness remain part 4.
+
+Before coding, estimate this correction at 390 non-mechanical changed lines:
+Store/admission 55, lifecycle/bootstrap/replay tests 200, mutants and existing
+contract restoration 65, documentation/headroom 70. The 111 identical trigger
+bootstrap insertions are a mechanical batch (about 222 added lines). Preserve
+the prior legitimate exact audit/counter oracles; restore old no-write-open
+assertions. Target the full semantic-impact closure, Store baseline, affected
+mutants, trigger reversal and static gates; no coder full-suite run.

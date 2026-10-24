@@ -20360,31 +20360,31 @@
  },
  "DBO-wal-switch-bypasses-the-wait": {
   "controls": [
-   "test_sqlite_gate.FirstOpenContentionTest.test_wal_pragmas_beside_a_writer_need_no_journal_retry"
+   "test_sqlite_gate.FirstOpenContentionTest.test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting"
   ],
   "why": "gen2/store/db.py: executes line 112; or executes line 111"
  },
  "DBO-wal-switch-no-budget": {
   "controls": [
-   "test_sqlite_gate.FirstOpenContentionTest.test_wal_pragmas_beside_a_writer_need_no_journal_retry"
+   "test_sqlite_gate.FirstOpenContentionTest.test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting"
   ],
   "why": "gen2/store/db.py: executes line 96"
  },
  "DBO-wal-switch-not-retried": {
   "controls": [
-   "test_sqlite_gate.FirstOpenContentionTest.test_wal_pragmas_beside_a_writer_need_no_journal_retry"
+   "test_sqlite_gate.FirstOpenContentionTest.test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting"
   ],
   "why": "gen2/store/db.py: leaves line 101 for a line outside 101-102 (or returns); or leaves line 99 for a line outside 98-106 (or returns)"
  },
  "DBO-wal-switch-retries-any-error": {
   "controls": [
-   "test_sqlite_gate.FirstOpenContentionTest.test_wal_pragmas_beside_a_writer_need_no_journal_retry"
+   "test_sqlite_gate.FirstOpenContentionTest.test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting"
   ],
   "why": "gen2/store/db.py: leaves line 101 for a line outside 101-102 (or returns); or leaves line 99 for a line outside 98-106 (or returns)"
  },
  "DBO-wal-switch-wait-unbounded": {
   "controls": [
-   "test_sqlite_gate.FirstOpenContentionTest.test_wal_pragmas_beside_a_writer_need_no_journal_retry"
+   "test_sqlite_gate.FirstOpenContentionTest.test_a_store_that_is_already_wal_opens_beside_a_writer_without_waiting"
   ],
   "why": "gen2/store/db.py: leaves line 103 for a line outside 103-104 (or returns); or leaves line 99 for a line outside 98-106 (or returns)"
  },
@@ -25010,7 +25010,7 @@
  "2D6A3-admission-row": {
   "by_hand": true,
   "controls": [
-   "test_generation_lifecycle.LifecycleTest.test_control"
+   "test_generation_lifecycle.LifecycleTest.test_maintenance_control"
   ],
   "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
  },
@@ -25595,20 +25595,6 @@
   ],
   "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
  },
- "2D6A3-reference-seed": {
-  "by_hand": true,
-  "controls": [
-   "test_reference_schema.ReferenceSchemaTest.test_other_dml_is_not_hidden"
-  ],
-  "why": "Separate reference-schema construction reaches the initialization filter and executes/observes unrelated canary DML; it does not require omission of the singleton seed."
- },
- "2D6A3-renewal": {
-  "by_hand": true,
-  "controls": [
-   "test_generation_lifecycle.LifecycleTest.test_control"
-  ],
-  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
- },
  "2D6A3-retrieval_events-delete": {
   "by_hand": true,
   "controls": [
@@ -25633,7 +25619,7 @@
  "2D6A3-schema-cookie": {
   "by_hand": true,
   "controls": [
-   "test_generation_lifecycle.LifecycleTest.test_control"
+   "test_generation_lifecycle.LifecycleTest.test_maintenance_control"
   ],
   "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
  },
@@ -25855,6 +25841,41 @@
   "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
  },
  "2D6A3-works-update": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-bootstrap": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_event_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-maintenance-renewal": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_maintenance_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-maintenance-bootstrap": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_maintenance_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-maintenance-on-error": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_maintenance_control"
+  ],
+  "why": "Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property."
+ },
+ "2D6A3-schema-only-install": {
   "by_hand": true,
   "controls": [
    "test_store_generation.GenerationTest.test_event_control"

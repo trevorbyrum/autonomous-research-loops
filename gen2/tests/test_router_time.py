@@ -219,7 +219,8 @@ class LockWaitTest(unittest.TestCase):
         before, audits = self.world.state(), self.world.value("SELECT count(*) FROM audit_events")
         out = self.waiting("commit_outcome", env)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "lease_not_current"), out)
-        self.assertEqual((self.world.state(), self.world.value("SELECT count(*) FROM audit_events")), (before, audits + 1))
+        self.world.assert_audited_state(before, 1)
+        self.assertEqual(self.world.value("SELECT count(*) FROM audit_events"), audits + 1)
         self.assertEqual(self.waiting("commit_outcome", env, cross=False)["status"], "committed")
 
 

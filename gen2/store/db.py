@@ -61,16 +61,11 @@ def _schema_objects(conn: sqlite3.Connection) -> dict[tuple[str, str], str]:
 
 
 def reference_schema(ddl_text: str | None = None) -> tuple[dict[tuple[str, str], str], int]:
-    """Schema objects/version without executing the ordered singleton seed.
-
-    Only that exact initialization statement is omitted; other supplied SQL
-    still executes, including DML observed by admission's no-write controls.
-    """
+    """Build the canonical reference from the schema-only ordered DDL."""
     conn = sqlite3.connect(":memory:")
     try:
         compat.apply_connection_contract(conn)
         text = schema_text() if ddl_text is None else ddl_text
-        text = text.replace("INSERT INTO store_generation VALUES ('store', lower(hex(randomblob(16))), 0);", '', 1)
         conn.executescript(text)
         return _schema_objects(conn), conn.execute("PRAGMA user_version").fetchone()[0]
     finally:
@@ -91,16 +86,17 @@ def check_schema_identity(conn: sqlite3.Connection, ddl_text: str | None = None)
     generation_state(conn)
 
 
-def generation_state(conn: sqlite3.Connection) -> tuple[str, int, int]:
+def generation_state(conn: sqlite3.Connection) -> tuple[str | None, int, int]:
     """Epoch/counter/schema cookie; caller owns the snapshot or writer fence.
 
     File identity is a separate admitted pin. This read never repairs state.
     Binding into capture and commit consumption belong to D part 4.
     """
     rows = conn.execute("SELECT singleton, epoch, generation FROM store_generation").fetchall()
-    if len(rows) != 1 or rows[0][0] != 'store':
-        raise StoreOpenError("missing store generation singleton")
-    return (*rows[0][1:], conn.execute("PRAGMA schema_version").fetchone()[0])
+    if rows and (len(rows) != 1 or rows[0][0] != 'store'):
+        raise StoreOpenError("invalid store generation singleton")
+    epoch, generation = rows[0][1:] if rows else (None, 0)
+    return epoch, generation, conn.execute("PRAGMA schema_version").fetchone()[0]
 
 
 def _wal(conn: sqlite3.Connection) -> tuple:
@@ -163,10 +159,7 @@ def connect(path: str | Path, *, create: bool = False) -> tuple[sqlite3.Connecti
                 if conn.in_transaction:
                     conn.execute("ROLLBACK")
                 raise
-        conn.execute("BEGIN IMMEDIATE")
         check_schema_identity(conn)
-        conn.execute("UPDATE store_generation SET epoch = lower(hex(randomblob(16))) WHERE singleton = 'store'")
-        conn.execute("COMMIT")
     except BaseException:
         conn.close()
         raise

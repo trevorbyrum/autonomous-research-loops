@@ -18,13 +18,13 @@ class GenerationTest(unittest.TestCase):
     def setUp(self):
         self.db = fx.connect()
         self.addCleanup(self.db.close)
+        self.db.execute("INSERT INTO store_generation SELECT 'store',NULL,0 WHERE NOT EXISTS (SELECT 1 FROM store_generation)")
 
     def probe(self):
         conn = sqlite3.connect(':memory:', isolation_level=None)
         self.addCleanup(conn.close)
         conn.executescript(fx.CONNECTION_TEXT)
         conn.execute(self.db.execute("SELECT sql FROM sqlite_schema WHERE name='store_generation'").fetchone()[0])
-        conn.execute('INSERT INTO store_generation SELECT ?,?,?', self.db.execute('SELECT * FROM store_generation').fetchone())
         for table in TABLES:
             conn.execute(f'CREATE TABLE {table} (value INTEGER) STRICT')
         for (sql,) in self.db.execute("SELECT sql FROM sqlite_schema WHERE type='trigger' AND (name LIKE 'capture_generation_%' OR tbl_name='store_generation') ORDER BY rowid"):
@@ -33,7 +33,8 @@ class GenerationTest(unittest.TestCase):
 
     @staticmethod
     def counter(conn):
-        return conn.execute('SELECT generation FROM store_generation').fetchone()[0]
+        row = conn.execute('SELECT generation FROM store_generation').fetchone()
+        return row[0] if row else 0
 
     def test_inventory(self):
         actual = set()
@@ -60,6 +61,7 @@ class GenerationTest(unittest.TestCase):
         # Separate accepted control enters every event body, with no counter
         # oracle, including when its particular bump trigger is removed.
         conn = self.probe()
+        conn.execute("INSERT INTO store_generation VALUES ('store',NULL,0)")
         for table in TABLES:
             conn.execute(f'INSERT INTO {table} VALUES (1)')
             self.assertEqual(conn.execute(f'SELECT value FROM {table}').fetchall(), [(1,)])
@@ -70,11 +72,17 @@ class GenerationTest(unittest.TestCase):
 
     def test_rollback_savepoint_zero_and_restore(self):
         conn = self.probe()
+        self.assertEqual(conn.execute('SELECT * FROM store_generation').fetchall(), [])
+        for sql in ('UPDATE works SET value=2 WHERE 0', 'DELETE FROM works WHERE 0',
+                    'INSERT INTO works SELECT 2 WHERE 0'):
+            conn.execute(sql)
+        self.assertEqual(conn.execute('SELECT * FROM store_generation').fetchall(), [])
         before = self.counter(conn)
         conn.execute('BEGIN')
         conn.execute('INSERT INTO works VALUES (1)')
         conn.execute('ROLLBACK')
         self.assertEqual(self.counter(conn), before)
+        self.assertEqual(conn.execute('SELECT * FROM store_generation').fetchall(), [])
         conn.execute('BEGIN')
         conn.execute('INSERT INTO works VALUES (1)')
         conn.execute('SAVEPOINT s')
@@ -92,6 +100,18 @@ class GenerationTest(unittest.TestCase):
         conn.execute('UPDATE works SET value=1')
         conn.execute('COMMIT')
         self.assertEqual(self.counter(conn), before + 3)
+
+    def test_writer_initialization(self):
+        conn = self.probe()
+        conn.execute('SAVEPOINT first_write')
+        try:
+            conn.execute('INSERT INTO queue_entries VALUES (1)')
+        except sqlite3.IntegrityError as exc:
+            self.fail(f'first covered write must establish generation: {exc}')
+        self.assertEqual(conn.execute('SELECT * FROM store_generation').fetchall(), [('store', None, 1)])
+        conn.execute('ROLLBACK TO first_write')
+        conn.execute('RELEASE first_write')
+        self.assertEqual(conn.execute('SELECT * FROM store_generation').fetchall(), [])
 
     def test_insert_protection(self):
         self.db.execute('DROP TRIGGER IF EXISTS store_generation_no_delete')
@@ -113,6 +133,9 @@ class GenerationTest(unittest.TestCase):
                 finally:
                     self.db.execute('ROLLBACK TO s')
                     self.db.execute('RELEASE s')
+        self.db.execute("UPDATE store_generation SET epoch=?", ('a' * 32,))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute('UPDATE store_generation SET epoch=NULL')
 
     def test_constraints(self):
         self.db.execute('DROP TRIGGER IF EXISTS store_generation_step')
@@ -125,8 +148,7 @@ class GenerationTest(unittest.TestCase):
 
     def test_missing_singleton_write_refuses(self):
         conn = self.probe()
-        conn.execute('DROP TRIGGER store_generation_no_delete')
-        conn.execute('DELETE FROM store_generation')
+        conn.execute("CREATE TRIGGER suppress_bootstrap BEFORE INSERT ON store_generation BEGIN SELECT RAISE(IGNORE); END")
         with self.assertRaises(sqlite3.IntegrityError):
             conn.execute('INSERT INTO queue_entries VALUES (1)')
         self.assertEqual(conn.execute('SELECT * FROM queue_entries').fetchall(), [])
@@ -135,6 +157,7 @@ class GenerationTest(unittest.TestCase):
         conn = self.probe()
         guard = conn.execute("SELECT sql FROM sqlite_schema WHERE name='store_generation_step'").fetchone()[0]
         conn.execute('DROP TRIGGER store_generation_step')
+        conn.execute("INSERT INTO store_generation VALUES ('store',NULL,0)")
         conn.execute('UPDATE store_generation SET generation=9007199254740990')
         conn.execute(guard)
         conn.execute('INSERT INTO works VALUES (1)')
@@ -169,6 +192,7 @@ class GenerationTest(unittest.TestCase):
         conn = self.probe()
         step = conn.execute("SELECT sql FROM sqlite_schema WHERE name='store_generation_step'").fetchone()[0]
         conn.execute('DROP TRIGGER store_generation_step')
+        conn.execute("INSERT INTO store_generation VALUES ('store',NULL,0)")
         conn.execute('UPDATE store_generation SET generation=9007199254740991')
         conn.execute(step)
         for policy in ('', 'OR IGNORE', 'OR REPLACE', 'OR FAIL'):

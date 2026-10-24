@@ -57,7 +57,7 @@ import re
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Mapping
+from typing import Callable, Iterator, Mapping
 
 from gen2.core import canonical
 from gen2.core.canonical import CanonicalizationError
@@ -128,6 +128,25 @@ class Store:
             self._json[table] = _json_columns(sql)
 
     # -- lifecycle ---------------------------------------------------------
+    @staticmethod
+    def maintain(path: str | Path, operation: Callable[[Path], None]) -> None:
+        """Explicit offline restore/schema maintenance, with all runtime handles
+        closed. The trusted operation receives the existing store's path and
+        must leave the current canonical schema. Even after an operation error,
+        an admissible result gets a new marker before being used again.
+        File changes outside this operation are unsupported; open never writes.
+        """
+        path = Path(path).resolve()
+        if not path.is_file():
+            raise db.StoreOpenError(f"{path}: maintenance requires an existing store")
+        try:
+            operation(path)
+        finally:
+            with open_store(path) as store:
+                with store.transaction():
+                    store._conn.execute("INSERT INTO store_generation SELECT 'store', NULL, 0 WHERE NOT EXISTS (SELECT 1 FROM store_generation)")
+                    store._conn.execute("UPDATE store_generation SET epoch = lower(hex(randomblob(16))) WHERE singleton = 'store'")
+
     def close(self) -> None:
         self._conn.close()
 

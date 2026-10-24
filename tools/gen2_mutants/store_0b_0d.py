@@ -88,7 +88,7 @@ MUTATIONS: list[Mutation] = [
            "        observed = compat.check_connection(conn)  # the durable connection: contract applied and read back here",
            "        observed = compat.check_library(conn)"),
           ("no-schema-identity", "an existing store is admitted whatever its schema",
-           ("OpenStoreTest.test_a_store_with_another_schema_is_not_admitted",), "        check_schema_identity(conn)\n        conn.execute(\"UPDATE store_generation", "        pass\n        conn.execute(\"UPDATE store_generation"),
+           ("OpenStoreTest.test_a_store_with_another_schema_is_not_admitted",), "        check_schema_identity(conn)\n    except BaseException:", "        pass\n    except BaseException:"),
           ("schema-names-only", "schema identity compares object names, not their SQL (a weakened guard passes)",
            ("OpenStoreTest.test_a_store_with_another_schema_is_not_admitted",),
            "    changed = sorted(f\"{k} {n}\" for (k, n) in expected.keys() & actual.keys() if expected[(k, n)] != actual[(k, n)])", "    changed = []"),
