@@ -25146,5 +25146,17 @@
    "test_sqlite_native_gate.SQLiteNativeGateTest.test_store_counter_and_maintenance_dml_are_allowed"
   ],
   "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-dml-keywords": {
+  "controls": [
+   "test_sqlite_native_gate.SQLiteNativeGateTest.test_store_primitive_sites_are_allowed"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-dml-comments": {
+  "controls": [
+   "test_sqlite_native_gate.SQLiteNativeGateTest.test_store_primitive_sites_are_allowed"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
  }
 }

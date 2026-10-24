@@ -49,3 +49,11 @@ add('schema-only-install', 'test_reference_schema.ReferenceSchemaTest.test_refer
 add('dml-lint', 'test_sqlite_native_gate.SQLiteNativeGateTest.test_store_dml_requires_the_generation_path',
     control='test_sqlite_native_gate.SQLiteNativeGateTest.test_store_counter_and_maintenance_dml_are_allowed',
     target='tools/check_gen2_sqlite_native.py', old='    yield from store_dml_violations(text, filename)', new='    pass')
+
+add('dml-keywords', 'test_sqlite_native_gate.SQLiteNativeGateTest.test_store_write_keyword_variants',
+    control='test_sqlite_native_gate.SQLiteNativeGateTest.test_store_primitive_sites_are_allowed',
+    target='tools/check_gen2_sqlite_native.py', old=r"r'\b(?:INSERT|UPDATE|DELETE|REPLACE|UPSERT)\b'",
+    new=r"r'\b(?:INSERT\s+INTO|DELETE\s+FROM|UPDATE\s+\S+\s+SET)\b'")
+add('dml-comments', 'test_sqlite_native_gate.SQLiteNativeGateTest.test_store_comments_and_word_boundaries',
+    control='test_sqlite_native_gate.SQLiteNativeGateTest.test_store_primitive_sites_are_allowed',
+    target='tools/check_gen2_sqlite_native.py', old="    return re.sub(tokens, lambda m:", new="    return value\n    return re.sub(tokens, lambda m:")

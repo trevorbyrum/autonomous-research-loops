@@ -7589,3 +7589,26 @@ Target semantic consumer closure, Store baseline, mutants, reversal and static
 gates. The schema reference already has no seed filter. Retain the replay epoch
 seam for explicit maintenance; its regression runs actual `Store.maintain` in
 parent and child processes. Ordinary installation/opening draw no epochs.
+
+### D part-3 round-3 closure (2026-10-24)
+
+The operator's repair contract closes Astra R3/R4 at `45d9da1`: reject every
+literal whole-word INSERT/UPDATE/DELETE/REPLACE/UPSERT in Store Python after
+SQL comments are removed, with narrowly named primitive/metadata exceptions.
+Use the static check rather than a connection authorizer: the latter would
+alter raw fixture execution and require a bypass. Dynamic assembly remains
+outside this lint. Exceptions name the two primitive SQL templates, existing
+API documentation/diagnostics, and qualified metadata helpers; other prose
+and docstrings are checked too. Counter, lifecycle and Router ownership stay fixed.
+Scope the two existing cursor-bound mutants to `search_observations`; retain
+their identities, tests, controls, generation bound and uniqueness checks.
+Remove the empty-mirror deletion and unused replay epoch wrapper/self-tests;
+retain exact fixture copying/guards, lifecycle tests and metadata comparisons.
+
+Before coding: estimate 280 handwritten changed lines including tests and
+removals, plus generated control metadata. Controls cover conflict syntax,
+comments, REPLACE/UPSERT, word boundaries and every permitted literal site.
+Run the semantic consumer closure, Store baseline, reversal and static gates.
+Additionally use fixed-string grep for every mutant's old text in changed
+Python/SQL files (including the cumulative part-3 diff), and run every match
+with `--only`; list the resulting IDs in completion evidence. No full coder run.

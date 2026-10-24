@@ -4,7 +4,7 @@
 Scan tracked Python in the INVARIANTS B-3 surface, excluding test trees.
 Attribute names are forbidden on every receiver, including access without a
 call and literal getattr lookups. Unrelated local names and strings are legal.
-Store DML literals require the generation/maintenance path or canonical primitive template (Gate S, 6a part 3).
+Store literals with write keywords require an explicitly permitted site (6a part 3).
 Dynamic code generation is outside this gate's scope; gen2-source already
 forbids eval/exec in engine and gateway production (SOURCE-CONTRACT.md).
 """
@@ -20,6 +20,13 @@ BANNED = {"blobopen", "backup", "deserialize", "enable_load_extension", "load_ex
 TEST_TREES = ("gen2/tests/", "gateway/tests/")
 
 
+def without_sql_comments(value):
+    # Preserve quoted content, including comment markers inside SQL strings or
+    # identifiers. An unterminated comment extends to EOF, as in SQLite.
+    tokens = r''''(?:''|[^'])*(?:'|\Z)|"(?:""|[^"])*(?:"|\Z)|`(?:``|[^`])*(?:`|\Z)|\[[^]]*\]|--[^\r\n]*|/\*.*?(?:\*/|\Z)'''
+    return re.sub(tokens, lambda m: ' ' if m[0].startswith(('--', '/*')) else m[0], value, flags=re.S)
+
+
 def store_dml_violations(text, filename):
     """Literal DML outside the counter/maintenance or canonical primitives.
     Like forbidden_sql, this does not resolve SQL assembled dynamically.
@@ -27,25 +34,35 @@ def store_dml_violations(text, filename):
     if not filename.startswith('gen2/store/'):
         return
     tree, allowed = ast.parse(text, filename=filename), set()
-    shapes = {'insert': ['INSERT INTO ', ' (', ') VALUES (', ')'],
-              'update': ['UPDATE ', ' SET ', ' WHERE ']}
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef)) and node.body:
-            if isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant):
-                allowed.add(id(node.body[0].value))  # docstring
+    shapes = {'insert': [('INSERT INTO ', ' (', ') VALUES (', ')')],
+              'update': [('UPDATE ', ' SET ', ' WHERE '),
+                         ('update of ', ' matched ', ' rows for ', ' with ', '; expected exactly one')]}
+    messages = {'insert': {'an insert names at least one column'},
+                'update': {'an update names its key and at least one change'}}
+    # Only these existing API documentation/diagnostic sites are exempt;
+    # other docstrings or prose containing a write keyword are checked too.
+    docs = [tree] if filename == 'gen2/store/api.py' else []
+    for node in tree.body:
         if filename == 'gen2/store/api.py' and isinstance(node, ast.ClassDef) and node.name == 'Store':
             for method in (n for n in node.body if isinstance(n, ast.FunctionDef)):
+                if method.name in ('update', 'advance'):
+                    docs.append(method)
                 if method.name in ('_bump_once', 'maintain'):
                     allowed.update(id(n) for n in ast.walk(method))
                 elif method.name in shapes:
+                    allowed.update(id(n) for n in ast.walk(method) if isinstance(n, ast.Constant)
+                                   and isinstance(n.value, str) and n.value in messages[method.name])
                     for literal in (n for n in ast.walk(method) if isinstance(n, ast.JoinedStr)):
-                        if [v.value for v in literal.values if isinstance(v, ast.Constant)] == shapes[method.name]:
+                        if tuple(v.value for v in literal.values if isinstance(v, ast.Constant)) in shapes[method.name]:
                             allowed.update(id(n) for n in ast.walk(literal))
+    for node in docs:
+        if node.body and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant):
+            allowed.add(id(node.body[0].value))
     for node in ast.walk(tree):
         value = node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else (
             ''.join(v.value if isinstance(v, ast.Constant) else '{value}' for v in node.values)
             if isinstance(node, ast.JoinedStr) else '')
-        if id(node) not in allowed and re.search(r'\b(?:INSERT\s+INTO|DELETE\s+FROM|UPDATE\s+\S+\s+SET)\b', value, re.I):
+        if id(node) not in allowed and re.search(r'\b(?:INSERT|UPDATE|DELETE|REPLACE|UPSERT)\b', without_sql_comments(value), re.I):
             yield f'{filename}:{node.lineno}: forbidden Store DML outside generation maintenance/primitives'
 
 

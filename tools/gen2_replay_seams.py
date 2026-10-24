@@ -27,7 +27,6 @@ import importlib.abc
 import importlib.util
 import os
 import secrets
-import sqlite3
 import sys
 import tempfile
 import time
@@ -144,24 +143,6 @@ def child_tokens(token_hex):
     return fixed
 
 
-def sqlite_epochs(connect):
-    """Count SQL epoch draws across recorder/children, without editing rows.
-
-    Epochs use randomblob(16). Other sizes, and calls outside an active seam,
-    retain random bytes; ordinary production connections are never wrapped.
-    """
-    def opened(*args, **kwargs):
-        conn = connect(*args, **kwargs)
-        def blob(size):
-            size = max(1, int(size or 0))
-            if size == 16 and os.environ.get(ENV):
-                return tick('sql-epochs').to_bytes(16, 'big')
-            return os.urandom(size)
-        conn.create_function('randomblob', 1, blob)
-        return conn
-    return opened
-
-
 class Wrap(importlib.abc.MetaPathFinder):
     """Wraps `fingerprint` of gen2.supervisor.jobs when that module is first imported."""
 
@@ -183,7 +164,6 @@ def install(*, child: bool) -> None:
     """In the recorder (child=False): the identity. In a child (child=True): the identity, and the clock and the ids; a child of a test that runs real installs nothing."""
     if child and not os.environ.get(ENV):
         return
-    sqlite3.connect = sqlite_epochs(sqlite3.connect)
     sys.addaudithook(launching)
     module = sys.modules.get(JOBS)
     if module is not None:
