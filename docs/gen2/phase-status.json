@@ -20,6 +20,7 @@
     "2d": {"phase": "2", "state": "open"},
     "2e1": {"phase": "2", "state": "pending"},
     "2e2": {"phase": "2", "state": "pending"},
-    "2f": {"phase": "2", "state": "pending"}
+    "2f": {"phase": "2", "state": "pending"},
+    "2g": {"phase": "2", "state": "pending"}
   }
 }

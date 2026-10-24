@@ -94,7 +94,8 @@ Adopted after asking what research suggests for speeding up the build. The resea
 - **Refactor evidence standard** (operator authorisation 2026-10-08: "Okay, then do that"; research `docs/gen2/research/refactor-verification-20261008.md`; trial `docs/gen2/research/refactor-verification-trial-20261008.md`). Behaviour-preserving refactors use established tools, not per-slice custom proof tools:
   - **perform** the mechanical refactor with `rope` where it applies, and treat its output as untrusted, because the trial found a rope extract-method fault;
   - **describe** the change with RefactoringMiner (`tools/gen2_refactoring_detect.py`, pinned container, run offline), with expected refactoring counts;
-  - **gate behaviour** with the existing test suite and mutation harness, Hypothesis `old == new` properties for pure functions, and the accepted exact replay as a landing check (it is not hardened further).
+  - **gate behaviour** with the existing test suite, diff-scoped automatic mutation, and Hypothesis `old == new` properties for pure functions.
+  - **Amended 2026-10-24 (operator, Gate S #1 plan D2):** the exact replay oracle, the differential tool and the move/inline equivalence tools are retired. The Router refactors they certified are done, and their seams needed a repair for each new source of nondeterminism.
 
   The reviewer judges against this standard. Building or repairing a custom equivalence checker for a slice is no longer required. Existing accepted tools stay in place. Process identity and child-process determinism, which these libraries don't cover, still need a reviewed seam.
 - **Research before re-briefing** (the user, 2026-10-05: "if issues crop up >1 time in reviews or we've circled through the cap of reviews, those things must be researched instead of assuming the coding agent is addressing them correctly"). The trigger is either of:

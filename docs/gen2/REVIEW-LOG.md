@@ -3185,3 +3185,72 @@ The post-2q Gate D is renumbered #5.
   - shared oracle fixes, deterministic replay epochs, reference-schema seed omission and conflict-policy regressions, as local commits up to `20f0b03`;
   - then the no-write-open redesign.
 - **Process lesson (semantic-impact selection):** changes to `db.connect`, schema bootstrap or shared state fixtures require targeted checks over every durable-opener consumer, startup/history/no-DML, complete-state or allowed-effects, crash/restart, lock-wait, replay/recorder and supervisor test, including child processes.
+
+## 2026-10-24: Gate S #1, whole-system simplification (first run)
+- **Prompted by** the operator's concern that the build grows by stacking per-finding fixes. Measured at the time: about 20k lines of engine code (Python plus SQL) against about 56k lines of tests and 24k lines of tooling, 29 days in. Slice 6 had grown from 490 to about 3,200 lines.
+- **Two independent reviews:**
+  - Fable (`c7606dcc`, owner; `private/reviews/gen2-simplification-review-fable-20261024.md`);
+  - fresh Astra (`00882e5f`; `private/reviews/gen2-simplification-review-astra-20261024.md`).
+- **Where they agree:**
+  - one enforcement layer per rule (semantic rules are currently duplicated in Router code and DDL, with twin tests and mutants);
+  - the checking machinery is the largest deletion opportunity (metrics and source-contract ratchet, hand-written mutant inventory with traced controls, reload bookkeeping, replay and differential tools);
+  - re-plan the rest of Phase 2 around 2f;
+  - collapse the records.
+- **Where they disagree** (sent to a Fable reconciliation, `06e72bb1`, before ruling):
+  - A: which layer owns semantic rules (Fable says the Router, Astra says SQL);
+  - B: whether 6a part 3's 111 DDL triggers should become a Router-maintained counter. That depends on a trace confirming the Router is the only production writer.
+- **Operator rulings (Trevor, 2026-10-24):**
+  - **Charter Gate S** adopted (PR #16): Fable, fresh session each run, with triggers and always-on simplicity rules.
+  - **Cut the checking machinery back:**
+    - tiered checks (quick per PR; the full gen2-check once at acceptance; trigger-order only on DDL changes);
+    - standard automatic mutation on changed code instead of the hand-written inventory and traced controls;
+    - retire the custom metrics and source-contract ratchet in favour of standard complexity tools.
+    - The boundary graph, the 1,500-line file rule and the debt gate stay. Fable designs the replacement as one batch.
+  - **Reorder Phase 2 around 2f:** finish 6a, then 6b1 (persist the rich dossier), slice 7 (completion approval binding), 2e1, a minimum 2e2, then 2f.
+    - Slices 8–11 (approved-revision `/2` bundle assembly, JSONL connector, feed facts, freshness envelope) move after 2f.
+    - Slice 12 is dropped, since 2f is the integration.
+    - Until feeds exist, currency is reported as unknown.
+  - **Collapse the records:**
+    - INVARIANTS back to normative rules plus "enforced at" pointers, with the locator narrative moved to a generated table;
+    - DOSSIER to the slice map, the decisions and the current contract, with history moved to private evidence;
+    - BUILD-STATE to the current state.
+    - No rule changes.
+- **Held pending A/B:** the 6a part 3 merge (PR #14; its round 2 verifier and review are running) and part 4.
+
+## 2026-10-24: Gate S reconciliation and operator rulings A/B
+- **Fable reconciliation** (`06e72bb1`; `private/reviews/gen2-simplification-reconcile-fable-20261024.md`):
+  - **A:** the Router should own every support/consumption rule; every production consumer of eligibility is already Python. Three insertion checks (SQL 15/16/19/20) need Router versions first.
+  - **B:** a full writer trace found **101 production Store writes, all in `gen2/router/`**. The only other writers are `Store.maintain` (offline) and `connect(create=True)` (schema creation). `store_writers` is statically enforced.
+- **Operator rulings (Trevor, 2026-10-24):**
+  - **A: the Router owns semantic rules,** and the DDL keeps integrity only.
+  - **B: 6a part 3 becomes a Store-level counter,** bumped once per committed transaction that writes a covered table. This amends R1:D's mechanism from "every covered row event" to "every committed covered write transaction, once". The no-writes-on-open and maintenance rulings stand.
+- The part 3 round 2 review (`401825cd`) and verifier (`9dbd8910`) of the trigger design `25f4ab9` were **stopped**. Before stopping, its gen2-test had passed 4,475 tests.
+- The counter redo was dispatched to Sol on PR #14. A Gate S plan for the remaining simplification batches was dispatched to Fable (`932fcdc2`).
+
+## 2026-10-24: Gate S #1 plan approved (operator)
+- **Fable plan** (`932fcdc2`; `private/reviews/gen2-simplification-plan-fable-20261024.md`): eight batches, one coder at a time.
+  - R1: records collapse I.
+  - S1: tiered checks and retirement of the replay, differential and move tools.
+  - S2: automatic mutation in place of the hand-written inventory and controls.
+  - S3: retirement of the metrics ratchet, ledger and source contract, in favour of radon ceilings.
+  - 6a part 4 (about 250 lines).
+  - S4: Router versions of the SQL 15/16/19/20 insertion rules.
+  - S5: deletion of the semantic DDL and its raw matrices.
+  - R2: INVARIANTS normative plus a generated traceability table.
+  - S6: deletion of the JSON member-domain DDL guards.
+  - Then 6b1 (about 350), 6b2 with 6b3 merged (about 450) and slice 7 (about 200).
+- **Expected size:** engine side about 180k lines down to about 102k (tooling about 51k down to about 4k; tests about 65k down to about 47k; production flat). To 2f: about 4,750 lines planned, about 9,500 when adjusted for observed growth, with a risk band of about 14,000.
+- **Operator approved all twelve decisions D1–D12 (Trevor, 2026-10-24):**
+  - D1: deletion batches are counted by file.
+  - D2: the replay, differential and move/inline tools are retired (charter refactor standard amended).
+  - D3: the span cap and link locator go to S5.
+  - D4: the JSON member-domain DDL guards go in S6, with `Store._prepare` as the single enforcement point.
+  - D5: blocking radon ceilings.
+  - D6: checks before 6a part 4.
+  - D7: new task **2g** after 2f owns slices 8–11 (DEBT-040–043); the export legs of DEBT-033 and DEBT-035 move to DEBT-040.
+  - D8: the `/2` rich member is deferred to slice 8.
+  - D9: Gate S #1 stands as the 15,000-line growth review.
+  - D10: the importer moves under `tools/` in S3.
+  - D11: 6b2 and 6b3 merge.
+  - D12: the CI-DESIGN amendment is drafted in R2.
+- 2f reports scientific completion at revision and hash; export delivery as `not_attempted`; currency as `unknown` (`never_ran`). It is not claimed current.
