@@ -47,3 +47,4 @@
 40-mandatory-detailed-receipts.sql
 41-support-check-summary-domain.sql
 42-detailed-support-consumers.sql
+43-store-generation.sql

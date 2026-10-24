@@ -19,7 +19,7 @@ class SpanRouterTest(unittest.TestCase):
                         out = case.send(doc)
                         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
                         self.assertIn("/cited_spans", out["detail"])
-                        self.assertEqual(case.state(), before)
+                        case.assert_audited_state(before, 1)
                         doc["cited_spans"] = [PAGE]
                         attach_checks(case, doc)
                         self.assertEqual(case.send(doc)["status"], "committed")
@@ -46,5 +46,5 @@ class SpanRouterTest(unittest.TestCase):
                     out = case.router.commit_outcome(env)
                     self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
                     self.assertIn("duplicate object key", out["detail"])
-                    self.assertEqual(case.state(), before)
+                    case.assert_audited_state(before, 1)
                     self.assertEqual(case.send(document(case, method, "bibliographic", spans=(PAGE,)))["status"], "committed")

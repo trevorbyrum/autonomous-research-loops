@@ -176,8 +176,15 @@ class CaptureDDLTest(DDLTest):
             self.assertEqual(after[table][:len(before[table])], before[table], table)
             self.assertEqual(len(after[table]), len(before[table]) + count, table)
             after[table] = before[table]
-        self.assertEqual(after["claims"], [tuple(status if i == 7 and row[1] == revision else v for i, v in enumerate(row)) for row in before["claims"]])
+        expected_claims = [tuple(status if i == 7 and row[1] == revision else v for i, v in enumerate(row)) for row in before["claims"]]
+        self.assertEqual(after["claims"], expected_claims)
+        changed_claims = sum(a != b for a, b in zip(expected_claims, before['claims']))
         after["claims"] = before["claims"]
+        # Accepted evidence/audit writes advance metadata too; retain every
+        # original business-row assertion and the singleton/epoch identity.
+        self.assertEqual([r[:2] for r in after["store_generation"]], [r[:2] for r in before["store_generation"]])
+        self.assertEqual(after["store_generation"][0][2], before["store_generation"][0][2] + checks + receipts + 1 + changed_claims)
+        after["store_generation"] = before["store_generation"]
         self.assertEqual(after, before)
 
     def late_valid(self, multiple=False, accepted=True):

@@ -67,7 +67,7 @@ class SemanticTest(Workflow):
         before = self.state()
         out = self.send(records, **kwargs)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_control_records_labels_and_shared_origin(self):
         out = self.send([self.record(), self.record(1)])

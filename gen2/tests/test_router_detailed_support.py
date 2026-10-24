@@ -40,7 +40,7 @@ class RouterDetailedSupportTest(unittest.TestCase):
         if not accepted:
             self.assertEqual(out['reason'], 'payload_invalid', out)
             self.assertIn('performed detailed checks', out['detail'])
-            self.assertEqual(case.state(), before)
+            case.assert_audited_state(before, 1)
         self.assertEqual(case.rows('PRAGMA foreign_key_check'), [])
         return out
 

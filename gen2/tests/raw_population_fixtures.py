@@ -40,6 +40,7 @@ def prepare(case, claim=('clm_00000001', 1), *, spans=SPANS, verifier='inv_vvvvv
         mirror.x('PRAGMA foreign_keys=OFF')
         mirror.x('PRAGMA ignore_check_constraints=ON')
         for table, rows in before.items():
+            mirror.x(f'DELETE FROM {table}')  # ordered DDL may seed singleton rows
             for row in rows:
                 columns = [r[1] for r in mirror.rows(f'PRAGMA table_info({table})')]
                 mirror.x(f"INSERT INTO {table} (rowid,{','.join(columns)}) VALUES ({','.join('?' for _ in row)})", *row)

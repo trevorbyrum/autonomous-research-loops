@@ -205,10 +205,26 @@ class RouterTestCase(unittest.TestCase):
         found = self.rows(sql, *params)
         return found[0][0] if found else None
 
-    def state(self, exclude=("audit_events",)) -> dict[str, list[tuple]]:
-        """Every table's rows (audit excluded unless asked), for 'nothing changed' assertions."""
+    def state(self, exclude=()) -> dict[str, list[tuple]]:
+        """All tables except the explicitly excluded ones; generation is visible."""
         names = [r[0] for r in self.rows("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
         return {n: self.rows(f"SELECT * FROM {n} ORDER BY rowid") for n in names if n not in exclude}
+
+    def assert_generation_delta(self, before, after, increments):
+        """Normalize only after exact singleton, epoch and counter assertions."""
+        self.assertEqual(len(before['store_generation']), 1)
+        singleton, epoch, counter = before['store_generation'][0]
+        self.assertEqual(after['store_generation'], [(singleton, epoch, counter + increments)])
+        after['store_generation'] = before['store_generation']
+
+    def assert_audited_state(self, before, increments, *, audits=1, exclude=(), msg=None):
+        after = self.state(exclude=exclude)
+        self.assert_generation_delta(before, after, increments)
+        if 'audit_events' in before:
+            self.assertEqual(after['audit_events'][:len(before['audit_events'])], before['audit_events'])
+            self.assertEqual(len(after['audit_events']), len(before['audit_events']) + audits)
+            after['audit_events'] = before['audit_events']
+        self.assertEqual(after, before, msg)
 
     def state_revision(self, tid: str = TOPIC) -> int:
         return self.value("SELECT state_revision FROM queue_entries WHERE topic_id = ?", tid)

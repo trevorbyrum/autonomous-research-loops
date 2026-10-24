@@ -7408,3 +7408,154 @@ checkpoint effects are reported separately. Revalidation is unimplemented, not
 a measured zero. Refactor evidence includes inspected rope output, pinned offline
 RefactoringMiner, old/new Hypothesis properties and exact accepted replay.
 Independent verification and review remain required. Stop after part 2.
+
+### D part-3 preflight and acceptance contract (2026-10-24)
+
+The orchestrator pre-confirmed part 3: ordered DDL installs one durable
+store-wide generation and unconditional INSERT/UPDATE/DELETE row triggers on
+all 27 direct and ten shared capture relations. No topic filter, column list
+or value comparison is allowed. The generation relation never bumps itself.
+Singleton guards forbid insertion, deletion, reset and skipped increments;
+the interoperable integer ceiling is 9,007,199,254,740,991 and exhaustion
+refuses the complete statement. Missing singleton/guards or incompatible DDL
+refuse admission; capture never initializes state. Fresh stores and explicit
+offline application of the new ordered part to retained stores are covered.
+
+**Lifecycle choice:** a durable random 128-bit epoch, renewed by every checked
+writable durable open, accompanies the counter. Its renewal preserves the
+counter, including exhaustion. Part 4's proof must include epoch, counter,
+SQLite schema cookie and the admitted device/inode identity; those values
+must be captured in the same checked snapshot and compared under the writer
+fence, re-statting the admitted path rather than comparing only a cached file
+identity. DDL (including create/drop restoring identical SQL and VACUUM) changes
+the schema cookie even without covered row events. File replacement is
+refused by the admitted file identity. Restore and schema installation are
+offline lifecycle operations: close all runtime connections, perform the
+maintenance, then reopen through checked admission, which renews the durable
+epoch even when an old counter/cookie/file image was restored. Restoring
+bytes underneath live SQLite connections is outside the Store connection
+contract; it is not a supported restore route. New checked opens can cause
+conservative invalidation of captures on other connections. Row triggers
+alone cannot observe DDL, replacement or restoration of their own history.
+The in-memory fixture epoch is initialized by DDL; no read-side renewal occurs.
+
+Controls compare installed table/event inventory with capture's fixed selector
+inventory, independently exercise all event bodies in isolated relations, and
+exercise representative real relation families with their business guards.
+They distinguish transaction/savepoint rollback, zero-row DML, same-value and
+restored updates; test singleton protection, exhaustion, missing/incompatible
+guards, retained admission and lifecycle changes; and check trigger reversal
+on disposable stores. Mutants have separate accepted controls reaching each
+changed event body or guard. Writer maintenance timings compare representative
+paths with the current baseline and are informational, not a new budget.
+
+**Re-estimate before code:** about 470 non-mechanical handwritten repository
+lines (DDL guards 45; lifecycle/admission 40; tests 250; mutants/integration 85;
+headroom 50), plus one mechanical batch of 111 uniform trigger declarations,
+about 777 lines. The existing ordered mechanism accepts literal SQL, so use
+uniform SQL rather than introducing a generator into production. Documentation,
+generated control JSON and private benchmark evidence are reported separately.
+Stop and report a split if the non-mechanical remainder exceeds about 500.
+
+This part grants no freshness authority: no token binding into capture, commit
+revalidation, retry or metrics. Those remain part 4; persistence remains 6b1.
+DEBT-035/036 remain open. BUILD-STATE, REVIEW-LOG and DEBT-REGISTER are untouched.
+
+### D part-3 round-1 repair, independent of the pending epoch ruling
+
+Read Astra's complete 2026-10-24 review of `6333f0b` and the completed verifier
+tracebacks. The orchestrator authorizes counter-oracle closure, replay epoch
+determinism, reference-schema construction without initialization, and ordinary
+REPLACE/UPSERT/conflict controls. Writable-open renewal and the retained/startup,
+restart/crash, lock-wait, operator-auth restart and open-beside-writer assertions
+are frozen pending Trevor's ruling. No lifecycle exception is newly authorized
+by this repair; the existing implementation remains pending that decision.
+
+Restore generation visibility in the shared default snapshot. Audited refusals
+and other explicitly allowed writes get explicit exact counter increments with
+stable singleton/epoch before comparison; retain all business and audit checks.
+Complete rollback and same-handle replay remain exact complete-state checks.
+The supervisor's allowed-table inventory includes generation maintenance, with
+an independent exact-event control; complete restart snapshots are unchanged.
+Replay-only SQL randomness is controlled at connection creation in the existing
+parent/child seams, with distinct counted epochs and ordinary randomness when
+seams are disabled. Recordings and exact comparisons retain every epoch/counter.
+Reference schema construction omits only the known ordered singleton seed;
+arbitrary DML remains observable by the existing canaries. No read-side repair.
+
+Estimate before coding: about 450 non-mechanical changed handwritten lines for
+helpers/controls (170), replay source seam/controls (100), reference admission
+and conflict regressions (100), and documentation/headroom (80). Uniform caller
+migrations of audited-refusal comparisons are a separate mechanical batch,
+estimated at 200–350 changed lines; every migrated call retains its original
+assertion and explicitly states the permitted increment. Re-estimate if needed.
+Logical local commits run debt/locator gates and stage explicit paths. No push
+until the orchestrator confirms. Targeted selection follows durable-open and
+snapshot/allowed-effect semantic impact, including supervisor/replay children;
+the independent verifier owns the full suite. Evidence stays under private
+`evidence/2d-6a-p3/repair-r1/`. Part 4 remains untouched.
+
+**Authorized subset implemented, pending the epoch ruling.** Shared `state()`
+now includes every table, including audits and generation. Allowed-effect
+comparisons assert exact generation increments, stable singleton/epoch, and
+retained audit rows/counts before normalization; raw refusal, rollback and
+same-handle replay use complete equality. Mixed raw/Router fixture entry paths
+and repeated rejection attempts have explicit distinct expectations. Supervisor
+changed-table accounting allows counter maintenance only with stable identity;
+an epoch change stays visible. A checkpoint claim/replay control checks the
+exact three covered events, no replay effects, and epoch-change visibility.
+Conflict regressions retain REPLACE's DELETE+INSERT, UPSERT UPDATE/DO NOTHING,
+singleton protection and exhaustion under the statement conflict policies.
+
+Schema reference construction omits the exact ordered seed and observes other
+DML; replay controls SQL epoch draws across recorder/children at the connection
+seam without altering stored recordings or ordinary production randomness.
+The writable opener and held assertion bodies remain unchanged. In-memory
+exact-instant audited-refusal checks are separate from the unchanged lock-wait
+tests. Fresh creation still executes the required ordered seed; removing epoch
+renewal alone would not clear its no-DML oracle. No authority resolution or
+complete part-3 acceptance is claimed. Targeted execution, source provenance,
+local commits and the final held-failure inventory are retained in the repair
+evidence; no full suite or push is performed by this repair.
+
+### D part-3 lifecycle correction: operator ruling, 2026-10-24
+
+Trevor reaffirms the 2026-10-21 guarded-start/read-only-viewer ruling:
+opening, startup admission and history viewing write nothing, and an already
+WAL store opens beside an active writer. This supersedes the writable-open
+epoch choice above, without amending that earlier operator contract.
+
+Ordered installation is schema-only. An absent generation singleton denotes
+the initial state `(epoch=None, generation=0)`. A covered row trigger creates
+that exact initial row, then increments it, inside the genuine writer's
+transaction. Reads never initialize it. Initial insertion is permitted only
+while absent, with NULL epoch and zero counter; replacement, deletion, reset,
+skipped increments and exhaustion remain refused. Rollback removes bootstrap
+and increments; zero-row statements do neither.
+
+`Store.maintain(path, operation)` is the explicit privileged offline operation:
+all runtime handles must be closed before entering it. The supplied trusted
+operation performs restore or schema maintenance at that path and must leave
+the current canonical schema. On exit, checked admission precedes a short
+writer transaction that initializes metadata if needed and rotates a random
+128-bit maintenance epoch without resetting the counter. Finalization also
+runs after an operation exception: an admissible resulting store is invalidated;
+an incompatible result refuses admission. Ordinary reopen preserves all pins.
+There is no new CLI or automatic restore path in this slice.
+
+The future proof still includes epoch, counter, schema cookie and admitted
+device/inode, with a fresh stat under the commit fence. Row triggers cannot
+observe DDL or restoration of their own history. The explicit marker handles
+supported maintenance even when restore puts back the old counter and cookie;
+cookie and file identity additionally refuse detectable changes. Copying or
+replacing files over a live store, or restoring/replacing outside this explicit
+operation, is unsupported. Epoch identity is probabilistic, as before. Binding
+these pins and enforcing freshness remain part 4.
+
+Before coding, estimate this correction at 390 non-mechanical changed lines:
+Store/admission 55, lifecycle/bootstrap/replay tests 200, mutants and existing
+contract restoration 65, documentation/headroom 70. The 111 identical trigger
+bootstrap insertions are a mechanical batch (about 222 added lines). Preserve
+the prior legitimate exact audit/counter oracles; restore old no-write-open
+assertions. Target the full semantic-impact closure, Store baseline, affected
+mutants, trigger reversal and static gates; no coder full-suite run.

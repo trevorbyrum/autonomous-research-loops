@@ -201,7 +201,7 @@ class RouterV2Test(V2Case):
         self.basis()
         before = self.state()
         self.assertEqual(self.send(self.extractor, "op_wrongkind1", extraction_validations=[self.validation()])["status"], "rejected")
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_rollback(self):
         self.basis()

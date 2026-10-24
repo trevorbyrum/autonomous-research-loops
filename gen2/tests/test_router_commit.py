@@ -52,7 +52,8 @@ class CommitCase(RouterTestCase):
         if detail is not None:
             self.assertIn(detail, response.get("detail", ""))
         self.assertNotIn("receipt", response)
-        self.assertEqual(self.state(), before)  # nothing changed ...
+        rejected = audits_before + 1 - len(before['audit_events'])
+        self.assert_audited_state(before, rejected, audits=rejected)  # nothing changed ...
         self.assertEqual(self.value("SELECT count(*) FROM audit_events"), audits_before + 1)  # ... but the refusal is logged
         self.assertEqual(self.value("SELECT kind FROM audit_events ORDER BY rowid DESC LIMIT 1"), "commit_rejected")
 
@@ -75,12 +76,12 @@ class ReplayAndIdentityTest(CommitCase):
         first = self.router.commit_outcome(env)
         self.assertResponse(first)
         self.assertEqual(first["status"], "committed")
-        after_commit = self.state()
+        after_commit = self.state(exclude=())
         replay = self.router.commit_outcome(copy.deepcopy(env))
         self.assertResponse(replay)
         self.assertEqual(replay["status"], "replayed")
         self.assertEqual(jcs(replay["receipt"]), jcs(first["receipt"]))
-        self.assertEqual(self.state(), after_commit)  # the state revision and every row unchanged
+        self.assertEqual(self.state(exclude=()), after_commit)  # the state revision and every row unchanged
         # submitted_at is outside the fingerprint (C-13): a resubmission later is the same request
         later = self.router.commit_outcome({**env, "submitted_at": "2026-09-27T11:59:59.5Z"})
         self.assertEqual(later["status"], "replayed")
@@ -685,7 +686,7 @@ class AtomicityTest(CommitCase):
                 self.faults[point] = RuntimeError(f"injected at {point}")
                 with self.assertRaises(RuntimeError):
                     self.router.commit_outcome(env)
-                self.assertEqual(self.state(), before)
+                self.assertEqual(self.state(exclude=()), before)
                 self.assertEqual(self.value("SELECT count(*) FROM audit_events"), audits)  # a crash is not a rejection: nothing logged
         self.faults["after_commit"] = RuntimeError("after commit")
         with self.assertRaises(RuntimeError):

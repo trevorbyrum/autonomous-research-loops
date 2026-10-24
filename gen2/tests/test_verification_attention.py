@@ -120,6 +120,7 @@ class AttentionTest(AttentionCase):
     def rolled_back(self, before):
         after = self.state(exclude=())
         audit, old_audit = after.pop("audit_events"), before.pop("audit_events")
+        self.assert_generation_delta(before, after, 1)
         self.assertEqual(after, before)
         self.assertEqual(audit[:-1], old_audit)
         self.assertEqual(len(audit), len(old_audit) + 1)

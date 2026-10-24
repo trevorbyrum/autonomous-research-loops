@@ -12,6 +12,8 @@ from gen2.tests.test_detailed_checks import CheckCase, KINDS, RecordMatrix
 
 
 class DDLCheckTest(RecordMatrix, CheckCase):
+    RAW = True
+
     def setUp(self):
         # Preserve mutated/reversed target objects while setup uses an admitted schema.
         with sqlite3.connect(':memory:') as reference:

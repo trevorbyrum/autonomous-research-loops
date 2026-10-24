@@ -529,6 +529,8 @@
     "source_proposals.proposed_by_invocation_id",
     "source_proposals.supersedes_proposal_id",
     "source_proposals.topic_id",
+    "store_generation.epoch",
+    "store_generation.singleton",
     "verification_receipts.access_tier",
     "verification_receipts.claim_id",
     "verification_receipts.extraction_invocation_id",
@@ -552,6 +554,6 @@
     "works.study_group_id",
     "works.work_id"
   ],
-  "schema_sha256": "f764193acb36821306f9bd58174ae07ee9b8cac5df5ac6f1fd01e48393f8b0ec",
-  "ddl_sha256": "46c204a19d9af546762628f384a0217516e95ad262cc852420427762d20a4452"
+  "schema_sha256": "56bfcea2694b94b35f0170f1dd8946d244cee69a03a8fa595e30fff03ab5731b",
+  "ddl_sha256": "c46d887b9c7cccdb3c2bbe8d9ce042261a900dd871062abc49daf500585ab3dc"
 }

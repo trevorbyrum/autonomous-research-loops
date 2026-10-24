@@ -63,6 +63,7 @@ class CaptureCase(CanonicalQuotesCase):
         after = self.state(exclude=())
         audit = after.pop("audit_events")
         old_audit = before.pop("audit_events")
+        self.assert_generation_delta(before, after, 1)  # committed rejection audit only
         self.assertEqual(after, before)
         self.assertEqual(audit[:-1], old_audit)
         self.assertEqual(len(audit), len(old_audit) + 1)
@@ -240,6 +241,7 @@ class CaptureTest(CaptureCase):
             self.assertEqual(len(after[table]), len(before[table]) + count, table)
             after[table] = before[table]
         expected_claims = [tuple(status if i == 7 and row[1] == 2 else v for i, v in enumerate(row)) for row in before["claims"]]
+        changed_claims = sum(a != b for a, b in zip(expected_claims, before['claims']))
         self.assertEqual(after["claims"], expected_claims)
         after["claims"] = before["claims"]
         at = self.value("SELECT committed_at FROM operation_receipts WHERE operation_id = ?", self.env["operation_id"])
@@ -247,6 +249,9 @@ class CaptureTest(CaptureCase):
             for i, v in enumerate(row)) for row in before["queue_entries"]]
         self.assertEqual(after["queue_entries"], expected_topics)
         after["queue_entries"] = before["queue_entries"]
+        # Each appended capture/receipt/hold/artifact/link/operation/audit row,
+        # any quarantine, and the topic revision are covered row events.
+        self.assert_generation_delta(before, after, checks + receipts + holds + 5 + changed_claims)
         self.assertEqual(after, before)
 
     def late_valid(self, multiple=False, accepted=True):

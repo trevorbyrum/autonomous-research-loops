@@ -64,7 +64,7 @@ class PendingRouterTest(unittest.TestCase):
         self.assertEqual(out["status"], expected, out)
         if expected == "rejected":
             self.assertIn("unbound extraction", out["detail"])
-            self.assertEqual(case.state(), before)
+            case.assert_audited_state(before, 1)
 
     def test_pending_methods(self):
         for method in METHODS:

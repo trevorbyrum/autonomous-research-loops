@@ -23,7 +23,7 @@ class ExtractionContentRouterTest(unittest.TestCase):
         out = send(case, document(case, method, tier, verdict))
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
         self.assertIn("extraction receipt tier exceeds recorded content", out["detail"])
-        self.assertEqual(case.state(), before)
+        case.assert_audited_state(before, 1)
         self.assertEqual(send(case, document(case, method, control))["status"], "committed")
 
     def test_controls(self):
@@ -107,4 +107,4 @@ class ExtractionContentRouterTest(unittest.TestCase):
                 before = case.state()
                 out = send(case, document(case, method, "bibliographic"))
                 self.assertEqual((out["status"], out.get("reason")), ("rejected", "operation_id_conflict"), out)
-                self.assertEqual(case.state(), before)
+                case.assert_audited_state(before, 1)

@@ -36,7 +36,7 @@ class RegistryTest(Workflow):
         before = self.state()
         out = self.send(records, **kwargs)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_control_histories(self):
         for index, label in enumerate(("unresolved", "resolved", "contested", "promote", "park", "drop")):

@@ -59,7 +59,7 @@ class ContentRouterTest(unittest.TestCase):
         out = case.send(document(case, tier, verdict))
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
         self.assertIn("tier exceeds recorded content", out["detail"])
-        self.assertEqual(case.state(), before)
+        case.assert_audited_state(before, 1)
         self.assertEqual(case.send(document(case, control))["status"], "committed")
 
     def test_inflation_all_verdicts(self):
@@ -104,7 +104,7 @@ class ContentRouterTest(unittest.TestCase):
             before = case.state()
             out = case.send(document(case, "reproduced"))
             self.assertEqual((out["status"], out.get("reason")), ("rejected", "operation_id_conflict"))
-            self.assertEqual(case.state(), before)
+            case.assert_audited_state(before, 1)
 
     def test_unicode_blank(self):
         # Literal Unicode separators/ignorables, selected independently of SQL.

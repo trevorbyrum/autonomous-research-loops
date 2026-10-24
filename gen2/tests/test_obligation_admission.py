@@ -47,7 +47,7 @@ class AdmissionTest(Workflow):
         self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
         if detail is not None:
             self.assertIn(detail, out["detail"])
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_control(self):
         out = self.send([self.record()])

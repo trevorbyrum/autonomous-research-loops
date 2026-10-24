@@ -108,7 +108,7 @@ class RouterCurrentRegistryTest(CurrentCases, records.RecordCase):
         with patch.object(self.router._extractions, "authenticate", authenticate):
             out = self.send(self.verifier, "op_race000001", extraction_validations=[self.validation()])
         self.assertEqual(out["status"], "rejected", out)
-        self.assertEqual(self.state(), states[0])
+        self.assert_audited_state(states[0], 1)
         self.assertEqual(self.store.select("extraction_validations_v2"), [])
         self.assertEqual(self.store.select("operation_receipts", {"operation_id": "op_race000001"}), [])
         self.assertEqual(max(r["registry_version"] for r in self.store.select("extractor_registry_revisions")), 7)
