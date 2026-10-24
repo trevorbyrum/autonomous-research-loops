@@ -3162,3 +3162,11 @@ The post-2q Gate D is renumbered #5.
   - Re-verification is gen2-check only; the gateway is carried forward from `fe03b1b`, since no gateway input changed.
   - **Round 2** dispatched (Astra `a61b039c`).
 - **Non-blocking items:** full-route read p95 is about 2.7 s and reader lifetime about 0.9 s (allowed by R3; keep measuring); freshness and authority remain with parts 3–4 and 6b1.
+
+## 2026-10-24: 2d slice 6a part 2 repair (768364a, PR #11): ACCEPTED, round 2
+- **Astra** (`a61b039c`; `private/reviews/gen2-2d-6a-p2-r2-astra-review-20261024.md`): **A, B and C PASS, ROOT-CAUSE.**
+  - C1 is closed at the family level. Astra's independent 45-entry reload audit passed 14 of 14 ordering checks.
+  - Round 1's reload probe now passes.
+  - Five in-memory counterfactuals each fail the strengthened guard by assertion, and no assertion was weakened.
+- **Verifier** (Sonnet `f9743b5f`): gen2-check exit 0 (7,777 s; 4,441 tests; trigger-order and mutants passed). The gateway carry-forward from `fe03b1b` is valid, since no gateway input changed.
+- Auto-merge enabled after both passed; merged. Part 3 dispatched.
