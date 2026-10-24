@@ -85,6 +85,17 @@ class CounterfactualTest(unittest.TestCase):
         del after["scenario"]
         self.assertEqual(verdict([run(), run()], after)[0], "DIFFERENT")
 
+    def test_epoch_and_generation_changes_remain_different(self):
+        before = run()
+        row = {'singleton': 'store', 'epoch': 'a' * 32, 'generation': 7}
+        before['scenario']['end'][0]['store']['store_generation'] = [row]
+        self.assertEqual(verdict([before, copy.deepcopy(before)], copy.deepcopy(before))[0], 'EQUIVALENT')
+        for change in ({'epoch': 'b' * 32}, {'generation': 8}, {'generation': 7.0}):
+            after = copy.deepcopy(before)
+            after['scenario']['end'][0]['store']['store_generation'][0].update(change)
+            with self.subTest(change=change):
+                self.assertEqual(verdict([before, copy.deepcopy(before)], after)[0], 'DIFFERENT')
+
     def test_a_test_skipped_in_one_run_is_different(self) -> None:
         after = run()
         after["other"] = {"outcome": "skip"}  # a skipped test records no calls
