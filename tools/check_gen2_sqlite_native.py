@@ -4,8 +4,7 @@
 Scan tracked Python in the INVARIANTS B-3 surface, excluding test trees.
 Attribute names are forbidden on every receiver, including access without a
 call and literal getattr lookups. Unrelated local names and strings are legal.
-Store DML literals additionally require the generation/maintenance path or
-the canonical primitive template (Gate S, 6a part 3).
+Store DML literals require the generation/maintenance path or canonical primitive template (Gate S, 6a part 3).
 Dynamic code generation is outside this gate's scope; gen2-source already
 forbids eval/exec in engine and gateway production (SOURCE-CONTRACT.md).
 """

@@ -1,4 +1,5 @@
 """Literal contract fixtures run the native-write gate as a program."""
+import os
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,7 @@ class SQLiteNativeGateTest(unittest.TestCase):
             subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True, timeout=60)
             subprocess.run(["git", "-C", str(root), "add", "--", *files], check=True, capture_output=True, timeout=60)
             return subprocess.run([sys.executable, str(TOOL), "--root", str(root)],
+                                  env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "tools")},
                                   capture_output=True, text=True, timeout=60)
 
     def test_each_api_is_forbidden_as_call_and_attribute(self):
