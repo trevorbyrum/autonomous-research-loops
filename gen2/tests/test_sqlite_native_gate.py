@@ -90,6 +90,12 @@ class SQLiteNativeGateTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 1, result.stderr)
                 self.assertIn('forbidden Store DML', result.stderr)
 
+        nested = '''class Store:
+ def insert(self):
+  conn.execute(f"INSERT INTO {conn.execute('DELETE FROM works')} ({columns}) VALUES ({values})")
+'''
+        self.assertEqual(self.gate({'gen2/store/api.py': nested}).returncode, 1)
+
     def test_store_comments_and_word_boundaries(self):
         for literal in ('SELECT 1 /* INSERT UPDATE DELETE REPLACE UPSERT */ -- UPDATE\n',
                         'SELECT 1 /* DELETE to EOF', 'inserted updated deleted replacements upserts'):

@@ -54,7 +54,8 @@ def store_dml_violations(text, filename):
                                    and isinstance(n.value, str) and n.value in messages[method.name])
                     for literal in (n for n in ast.walk(method) if isinstance(n, ast.JoinedStr)):
                         if tuple(v.value for v in literal.values if isinstance(v, ast.Constant)) in shapes[method.name]:
-                            allowed.update(id(n) for n in ast.walk(literal))
+                            allowed.add(id(literal))
+                            allowed.update(id(v) for v in literal.values if isinstance(v, ast.Constant))
     for node in docs:
         if node.body and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant):
             allowed.add(id(node.body[0].value))
