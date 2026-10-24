@@ -3185,3 +3185,34 @@ The post-2q Gate D is renumbered #5.
   - shared oracle fixes, deterministic replay epochs, reference-schema seed omission and conflict-policy regressions, as local commits up to `20f0b03`;
   - then the no-write-open redesign.
 - **Process lesson (semantic-impact selection):** changes to `db.connect`, schema bootstrap or shared state fixtures require targeted checks over every durable-opener consumer, startup/history/no-DML, complete-state or allowed-effects, crash/restart, lock-wait, replay/recorder and supervisor test, including child processes.
+
+## 2026-10-24: Gate S #1, whole-system simplification (first run)
+- **Prompted by** the operator's concern that the build grows by stacking per-finding fixes. Measured at the time: about 20k lines of engine code (Python plus SQL) against about 56k lines of tests and 24k lines of tooling, 29 days in. Slice 6 had grown from 490 to about 3,200 lines.
+- **Two independent reviews:**
+  - Fable (`c7606dcc`, owner; `private/reviews/gen2-simplification-review-fable-20261024.md`);
+  - fresh Astra (`00882e5f`; `private/reviews/gen2-simplification-review-astra-20261024.md`).
+- **Where they agree:**
+  - one enforcement layer per rule (semantic rules are currently duplicated in Router code and DDL, with twin tests and mutants);
+  - the checking machinery is the largest deletion opportunity (metrics and source-contract ratchet, hand-written mutant inventory with traced controls, reload bookkeeping, replay and differential tools);
+  - re-plan the rest of Phase 2 around 2f;
+  - collapse the records.
+- **Where they disagree** (sent to a Fable reconciliation, `06e72bb1`, before ruling):
+  - A: which layer owns semantic rules (Fable says the Router, Astra says SQL);
+  - B: whether 6a part 3's 111 DDL triggers should become a Router-maintained counter. That depends on a trace confirming the Router is the only production writer.
+- **Operator rulings (Trevor, 2026-10-24):**
+  - **Charter Gate S** adopted (PR #16): Fable, fresh session each run, with triggers and always-on simplicity rules.
+  - **Cut the checking machinery back:**
+    - tiered checks (quick per PR; the full gen2-check once at acceptance; trigger-order only on DDL changes);
+    - standard automatic mutation on changed code instead of the hand-written inventory and traced controls;
+    - retire the custom metrics and source-contract ratchet in favour of standard complexity tools.
+    - The boundary graph, the 1,500-line file rule and the debt gate stay. Fable designs the replacement as one batch.
+  - **Reorder Phase 2 around 2f:** finish 6a, then 6b1 (persist the rich dossier), slice 7 (completion approval binding), 2e1, a minimum 2e2, then 2f.
+    - Slices 8–11 (approved-revision `/2` bundle assembly, JSONL connector, feed facts, freshness envelope) move after 2f.
+    - Slice 12 is dropped, since 2f is the integration.
+    - Until feeds exist, currency is reported as unknown.
+  - **Collapse the records:**
+    - INVARIANTS back to normative rules plus "enforced at" pointers, with the locator narrative moved to a generated table;
+    - DOSSIER to the slice map, the decisions and the current contract, with history moved to private evidence;
+    - BUILD-STATE to the current state.
+    - No rule changes.
+- **Held pending A/B:** the 6a part 3 merge (PR #14; its round 2 verifier and review are running) and part 4.
