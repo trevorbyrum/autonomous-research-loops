@@ -3254,3 +3254,17 @@ The post-2q Gate D is renumbered #5.
   - D11: 6b2 and 6b3 merge.
   - D12: the CI-DESIGN amendment is drafted in R2.
 - 2f reports scientific completion at revision and hash; export delivery as `not_attempted`; currency as `unknown` (`never_ran`). It is not claimed current.
+
+## 2026-10-24: 2d slice 6a part 3, Store-level counter (45d9da1, PR #14): BLOCK, round 2 of 3
+- **Astra** (`db31d8b4`; `private/reviews/gen2-2d-6a-p3-r2b-astra-review-20261024.md`):
+  - **A BLOCK, B PASS, C BLOCK.** Gate S proportionality PASS: one Store counter is proportionate.
+  - The counter design and the R1/R2 oracle and replay repair are ROOT-CAUSE.
+- **R3:** the literal-DML lint recognized only three spellings. `INSERT OR ABORT`, `UPDATE OR ABORT` and commented `DELETE` passed it, and a reviewer-injected write committed without a bump. This is not a production bypass.
+- **R4:** two mutants (`2B13-ddl-cursor-*`) went INVALID, because SQL 43 added a second occurrence of their anchor text.
+- **Verifier** (Sonnet `aba0892d`): gen2-check exit 2 (unit suite 4,476 OK; trigger reversal OK; mutants 3,782/3,784 with 2 INVALID); gen2-gateway exit 0.
+- **Cleanup observations:** a vacuous delete-all in `raw_population_fixtures`, and the now-unneeded replay `randomblob` wrapper.
+- **Routed as one round 3 repair:**
+  - a broad keyword-based literal-DML gate (complete for literals);
+  - scoped cursor mutants;
+  - both cleanups;
+  - a selection-rule addition: run `--only` on every mutant whose anchor text occurs in a changed file.
