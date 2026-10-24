@@ -7118,3 +7118,293 @@ memory ≤128 MiB pass without changing the workload or tuning selectors. This
 does not qualify revalidation, generation, retry, conversion or persistence.
 Targeted checks, final line counts and the commit identity are recorded in
 private `evidence/2d-6/COMPLETION.md`; stop after D part 1.
+
+### D part-2 preflight: consumer closure and size stop (2026-10-23)
+
+The orchestrator reports D part 1 **ACCEPTED** at `73a676f`, with Astra A/B/C
+PASS / ROOT-CAUSE and independent `gen2-check` and `gen2-gateway` exits 0.
+PR #8 is merged. This dispatch starts from fetched `origin/gen2` on
+`task/2d-6a-p2`. [Astra's complete part-1 review](/home/trevor/work/research-loops-public/private/reviews/gen2-2d-6a-p1-astra-review-20261023.md)
+was read, including NB1–NB3. The ledger now clarifies NB1 without changing
+ML-0172–0181's historical reasons or admitting any new dependency/budget.
+
+**Re-estimate before code: about 620 handwritten changed repository lines**,
+replacing 420. As in part 1, count additions plus removals for production,
+tests and tooling; report documentation, generated controls and private evidence
+separately. This exceeds the orchestrator's about-500 stop condition. **No
+runtime, test, mutant or refactor implementation has started.** The pre-confirmed
+whole-part acceptance contract was conditional on size; it does not authorize
+silently splitting the work or dropping consumer closure/controls.
+
+| Required work | Revised estimate | Concrete closure obligation |
+|---|---:|---|
+| Pure conversion and branch provenance | 150 | Replace Store reads throughout `router/accounting.py`'s inventory, context, historical window pins and branch receipt lookup with fixed captured operands and outside-transaction JSON conversion. Retain exact historical filters and order; no generic in-memory query facade. |
+| Collaborator and internal dossier-input value/route | 85 | Narrow core/Store protocol, captured-topic/approved-contract admission, internally bound content hash and retained raw histories, alongside existing read delegates. No freshness authority. |
+| Router wiring and composition closure | 55 | Replace three in-core reader bodies with thin delegation, compose the collaborator and keep public signatures/return types, history validation, unknown-topic and pre-contract behavior. |
+| Existing consumer/fixture adaptations | 85 | Migrate direct adapter callers and the branch provenance seams to captured values; restore fixture DDL before checked capture while preserving invalid-history assertions. |
+| New acceptance controls | 165 | Pure-work boundary and immutability/isolation controls, approved-contract admission, adverse-then-support/attention retention, native/legacy history and DEBT-035's three adapter/evaluator cases. |
+| Paired mutants and their consumer registration | 80 | Retarget existing snapshot/provenance guards, add dossier/boundary/history controls, and close mutation-loading/control consumers. Generated control JSON is separate. |
+| **Total** | **620** | Full part-2 scope retained; no code or memory result claimed. |
+
+The size increase is supported by the existing entry paths, not a new policy:
+
+- [The adapter](../../gen2/router/accounting.py) has Store reads throughout
+  `read_inventory`, `read_context`, `read_window_pins` and
+  `read_coverage_snapshot`. The latter also reads operation receipts for branch
+  attribution. Moving only arithmetic or the top-level inventory call would
+  leave branch provenance dependent on live Store access.
+- [Router readers](../../gen2/router/service.py) currently do topic admission,
+  Store reads and conversion inside `_snapshot`. `service.py` must receive
+  wiring only, so collaborator/protocol/composition changes belong to the
+  same closure rather than three independent partial migrations.
+- Direct `read_inventory(self.store, ...)` consumers exist in
+  [attempted requests](../../gen2/tests/test_attempted_request_bytes.py),
+  [failed retention](../../gen2/tests/test_failed_attempt_retention.py) and
+  [opaque attempts](../../gen2/tests/test_opaque_attempts.py). Their byte,
+  unknown-denominator and replay assertions must keep their current meaning.
+- [Branch tests](../../gen2/tests/test_branch_windows.py) currently mock
+  `Store.select` to supply unverified contract pins and deliberately drop
+  branch DDL guards to prepare invalid histories. Those seams will no longer
+  reach pure captured conversion, and schema-altered fixtures cannot pass
+  part 1's checked reader. Restore the existing schema before capture and
+  supply unverified captured operands where required; do not weaken admission
+  or remove the original near-miss assertions. The existing disposable-history
+  helper is the established restoration pattern.
+- [Branch mutants](../../tools/gen2_mutants/branch_windows_2d2.py) target the
+  old Store-select predicates and Router snapshot bodies. Retarget those
+  guards and their controls with the consumer move rather than leaving dead
+  mutation text or changing what a killer asserts.
+
+Proposed sequential sub-split, **requiring orchestrator confirmation before
+implementation**; the complete part-2 acceptance scope remains unchanged:
+
+| Proposed part | Definition of done | Estimate |
+|---|---|---:|
+| **2a — conversion and existing reader closure** | Pure conversion of the part-1 raw value; all three existing Router reads and branch provenance on that path through a collaborator, with signatures/results/pre-contract/unknown/history semantics preserved. Close existing fixtures, composition and paired mutants together. Use rope where applicable, pinned offline RefactoringMiner with explicit expected counts, Hypothesis old/new pure properties and accepted replay at landing. Measure live raw plus converted operands through hashing against 128 MiB at both reference-workload legs; report closed-reader and checkpoint effects. Stop if size or memory fails. No new dossier-input route yet. | **470** |
+| **2b — internal dossier-input and rich adapter cases** | Add the internal collaborator-wired dossier-input read; unknown topic and missing approved contract refuse. Retain all raw adverse/supporting receipt and attention history without clearing holds. Exercise DEBT-035's satisfied lower bound with retained indeterminate window, conservative unknown with both bounds, and stale G-1 context unavailable for current credit with original records retained, through the adapter and existing pure evaluators. Add paired controls and measure the actual route's live operands/hash and reader/checkpoint effects. | **150** |
+
+These are provisional estimates for new briefs, not authorization to implement
+either subpart in this size-stop dispatch. Re-estimate each before coding;
+retain the about-500 guide. The split uses no mechanical-batch exception and
+does not add generation, revalidation, retry, persistence, gate policy or export.
+
+NB2 is an outstanding implementation acceptance requirement: the accepted
+109.107 MiB capture/hash peak does not qualify conversion or an input value
+retaining both raw and typed operands. No conversion-memory measurement is
+available in this preflight, and no assumption of passing is made. Release
+readers before pure work and report checkpoint effects; a new failed budget
+must stop rather than trigger tuning. NB3 remains owned by parts 3–4 and 6b1:
+file identity checks alone supply no lifecycle/freshness proof.
+
+This dispatch records the size stop and ledger clarification only. Run debt
+and locator gates, commit explicit documentation paths with the Sol trailer,
+open a PR to `gen2` without auto-merge and record private
+`evidence/2d-6a-p2/COMPLETION.md`. Stop for the proposed split; no part-2 or
+part-3 implementation, refactor evidence or memory pass is claimed.
+
+### Part-2 combined round ruling and memory stop (2026-10-23)
+
+The orchestrator confirmed **one review round with two implementation commits**
+on `task/2d-6a-p2` / PR #11. The complete pre-confirmed part-2 contract stays
+unchanged: 2a (about 470 lines) is behavior-preserving relocation under the
+charter's mechanical-batch allowance; 2b (about 150) is new behavior. This
+supersedes the preceding proposal for separate reviews. Existing signatures,
+results and assertion meaning must survive 2a. Stop if the combined handwritten
+total exceeds about 700, 2b exceeds about 500, or live-operand memory exceeds
+128 MiB. No part-3 work is authorized here.
+
+**Implementation stopped at the first memory trial.** The 2a prototype's
+zero-unrelated-records workload reached **149.524398 MiB**, above **128 MiB**.
+Even the conversion stage, before hashing, peaked at **138.849843 MiB**. No
+tuning, repeat or 100,000-unrelated leg followed. 2b did not start.
+
+The prototype used rope's `ExtractMethod` on the four existing conversion
+blocks, retained their entry signatures, adapted inventory/window/branch
+conversion to the fixed detached records, and wired the existing Router reads
+through a collaborator. A direct record iterator decoded JSON outside Store
+transactions; it did not implement a query facade. A legacy context helper was
+retained for its existing Mapping behavior. Existing raw selectors, raw-value
+shape, workload and content-hash algorithm were unchanged. Full fixture,
+composition and mutant closure had not yet been completed when memory failed;
+the prototype is not an accepted mechanical refactor.
+
+The [raw evidence](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a-memory.json)
+pins all five measured production files and the
+[driver](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a_memory.py).
+It measures one raw capture, its typed coverage/inventory and its content hash
+with both values live; no old/new captures overlap. It reuses the accepted
+synthetic seed with exactly 32 MiB JSON and 32 MiB BLOBs, 10,000 observations /
+retrievals / links / works, 1,000 invocations / claims / receipts and proportional
+histories. The resulting content hash remains
+`sha256:45c45b5076114c8c9941d38e2da66cebee69dd78260fe6a88c4c2d8f8a476658`.
+
+| Traced Python allocation, zero unrelated | MiB |
+|---|---:|
+| Raw capture peak | 96.972481 |
+| Live raw plus converted operands | 137.331550 |
+| Peak through conversion | 138.849843 |
+| Peak through conversion plus hash | **149.524398 — FAIL** |
+
+These are allocation peaks for the implemented operands, not RSS or a claim
+about every possible redesign. The stage measurements do not identify the
+allocation share of each field/object type. They establish that this prototype
+exceeds the budget before hashing; removing only hash temporaries would not
+make this trial pass.
+
+Reader/checkpoint controls passed in the same trial: the reader was closed
+before conversion; PASSIVE during capture reported `(0, 1, 0)`; TRUNCATE before
+conversion and after conversion/hash both reported `(0, 0, 0)`. Thus the memory
+failure is not presented as retained-reader evidence. The existing read-only
+capture mechanism remains accepted; this trial does not qualify part 2.
+
+Before the measurement, SOURCE-CONTRACT/2 passed and 61 focused capture,
+attempted-request, failed-retention and opaque-attempt tests passed. The rope
+script/output, measured source copies and exact
+[prototype patch](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a-prototype.patch)
+are retained privately. Measured bytes were matched before freezing the patch.
+The prototype comprised **121 handwritten changed lines** (82 added / 39
+removed), not the complete 470-line 2a estimate. RefactoringMiner, Hypothesis
+old/new properties, accepted replay, remaining targeted tests and paired-mutant
+closure were not completed before the mandatory memory stop; none is claimed.
+
+After preserving that evidence, the two partial runtime files were restored
+exactly to the committed preflight base. This is cleanup, not a tuned candidate
+or a new memory result. PR #11 therefore retains accepted runtime behavior and
+documentation only. No 2a or 2b implementation commit is claimed. Commit this
+stop record after debt/locator gates and update private
+`evidence/2d-6a-p2/COMPLETION.md`, then stop for redesign direction. The complete
+part-2 contract, memory budget and DEBT-035/036 obligations remain unchanged.
+
+### Part-2 memory redesign proposal (2026-10-23; not adopted, later option)
+
+Documentation only; no code or new measurements. Sources: the existing
+[raw trial](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a-memory.json),
+[driver](/home/trevor/work/research-loops-public/private/evidence/2d-6a-p2/2a_memory.py)
+and its pinned measured-source copies. The failed prototype remains private;
+current runtime is restored. Parts 2a/2b remain incomplete.
+
+**Where the peak comes from.** One complete raw capture stayed live while
+conversion built the typed coverage/inventory, then while hashing built its
+manifest. Selected JSON and BLOBs were each 32 MiB. Raw capture peaked at
+96.972481 MiB; live allocation rose from 96.905708 MiB after capture to
+137.331550 MiB after conversion: **40.425841 MiB additional live allocation**.
+Conversion peaked at 138.849843 MiB; hashing raised the overall peak to
+149.524398 MiB. These are traced allocations, not RSS or the standalone size
+of the typed result: some immutable scalar objects are shared.
+
+Source inspection explains possible contributors: decoded JSON strings and
+containers, retained search identities/query text, typed dataclasses and tuples,
+join sets/maps, and the hash's ordered row-digest lists. The original JSON text
+and retained BLOBs still belonged to the raw capture. There is **no per-field,
+per-group or allocation-type profile** apportioning the 40.426 MiB to JSON
+expansion versus typed objects; subtracting peaks does not isolate hash memory.
+Moving hashing earlier alone cannot remove the already failing conversion peak.
+The reader was closed before conversion, and subsequent TRUNCATE checkpoints
+succeeded, so retained database readers do not explain this measured overlap.
+
+**Structural options and contract effects:**
+
+| Option | Changed flow and feasibility limits | Clauses kept / operator-owned amendments |
+|---|---|---|
+| **A — exclusive consuming handoff** | After reader closure, transfer the capture to one internal owner. Produce digests/typed operands and release consumed raw references. Large groups need row-level draining; whole-group conversion may still peak too high. All aliases to original snapshot/table/row containers must disappear: a generator over a retained `TopicCapture` frees nothing. | Keeps the existing part-1 exact immutable return and coherent snapshot; records are not mutated. **Approve a consuming part-2 lifetime/result contract:** no complete original raw snapshot remains alongside typed output. If post-conversion raw availability is required, amend that clause. Digests are not lossless history. Changing the capture return shape would separately reopen part 1. |
+| **B — hash before conversion, after closure** | Finish the content hash and release hash temporaries before A's conversion. Alternatively digest each raw row/group before release, assembling the manifest in original order. Hash-first alone leaves the failing conversion peak. | Keeps outside-transaction hashing, exact inputs and `dossier-input/1`, including order/empties/history/BLOB tags. Hashing **during capture** instead needs an amendment to part 1's no-hashing/read-lifetime boundary and risks longer checkpoint delay; not recommended. |
+| **C — digest references plus lazy BLOBs** | After closure, retain exact row identity, metadata, length/digest and provenance; release bytes and reload only for an actual byte consumer. SQL 14's immutable/retained rows help, but reloaded bytes must authenticate against the original digest; missing/mismatched operands refuse. Measure realization with all other live operands: it may recreate the peak. | A digest-only capture return conflicts with part 1's **exact raw BLOB records**; post-return replacement needs part-2 representation approval. Lazy I/O must be separate from pure conversion and establish same-record immutability/identity/lifecycle guarantees. A later snapshot cannot silently substitute mutable operands; parts 3–4's unimplemented guards cannot be assumed. |
+
+**Feasibility and recommendation.** A combined with B's outside-reader digest
+ordering is **plausible, not demonstrated**, at ≤128 MiB. The 64 MiB selected
+payload is not itself an impossibility proof: full raw capture already fits;
+the proposal removes overlapping representations rather than shrinking inputs.
+The final required typed/history representation has not been measured alone.
+No passing peak is promised; C is not an assumed 32 MiB deduction.
+
+Recommend A+B with part 1's existing entry unchanged and explicit internal
+ownership transfer after return. Keep retained BLOB bytes exact in this first
+proposal; do not introduce lazy reads. Preserve all mandatory
+raw uncertainty, contexts/pins, adverse/supporting receipts, attention and
+provenance required by part 2 and DEBT-035. Digest references cannot replace
+those fields. If an operand cannot be released without losing required evidence,
+retain it and report the resulting budget outcome. Public signatures/results
+and scientific gates remain unchanged; changing them is not mechanical work.
+
+Prefer the existing full `input_hash` immediately after closure, then ownership
+transfer/consumption, avoiding a new hash algorithm. An incremental alternative
+must reproduce the existing manifest exactly. Capture closes before decoding or
+hashing. Required controls: digest equality, alias/lifetime/failure cleanup,
+lossless histories, both workload legs with every live operand, reader/checkpoint
+effects and disposal before retry. No cache, second store, spool or query
+framework; any new failed budget stops again.
+
+**Re-estimate, pending new briefs:** about **970 remaining handwritten lines**
+(planning range 850–1,150), replacing 620: a new ownership/lifetime foundation
+about 300; existing-reader relocation/closure about 470; dossier route, retained
+evidence and adapter controls about 200. The foundation is new behavior, not a
+mechanical-batch exception. This exceeds the currently authorized 700-line
+combined cap; the operator must approve a revised scope/split before code.
+Part 3's global-generation DDL remains about 480: all 37 dependency tables stay
+covered even when their in-memory bodies are released. Part 4 rises from about
+440 to about 500 for binding only a completed, history-preserving result and
+testing disposal of partially consumed/previous-attempt inputs; re-estimate and
+split if it exceeds the new-behavior guide. Proof and content-hash versions stay
+separate. The consuming-owner change needs its own controls; existing conversion
+still needs the agreed rope/RefactoringMiner/Hypothesis/replay evidence.
+
+**Operator decisions:** (M1) approve A+B's exclusive consumption and completed
+input representation, subject to the lossless-history obligations, or require
+complete raw-plus-typed retention and request another representation design;
+recommend the former. (M2) approve re-estimation/new briefs around 300/470/200,
+or keep the existing scope cap and leave implementation stopped; recommend
+the revised briefs. Neither decision relaxes 128 MiB or the D1 workload.
+Retain the frozen prototype as a conversion/reference-test source, not an
+implementation to tune or an accepted ownership design. Keep its failed trial
+and source identities intact. Stop after committing this proposal for rulings.
+
+### Part-2 memory ruling and resumed scope (Trevor, 2026-10-23)
+
+The operator restates D1's memory bound as **peak detached-input memory ≤3×
+selected data: ≤192 MiB at the ratified 32 MiB JSON plus 32 MiB BLOB workload**.
+This supersedes the earlier 128 MiB bound above; earlier failed trials retain
+their original verdicts and source identities. Measurement still includes all
+live operands through capture, conversion and hashing, with tracemalloc separate
+from latency sampling and both zero and 100,000 unrelated-record legs.
+Writer-lock occupation budgets remain **p95 ≤250 ms each** for capture and
+revalidation. A new bound failure stops again, without tuning.
+
+**A+B is not adopted now**; the proposal above remains a documented later
+option. Complete raw-snapshot retention during conversion is permitted. Resume
+the preserved prototype under the unchanged part-2 acceptance contract, except
+for the explicit memory amendment: one review round, two implementation commits
+on `task/2d-6a-p2` (PR #11), **2a about 470** for the behavior-preserving
+conversion/reader/provenance relocation with complete refactor evidence and
+consumer closure, then **2b about 150** for the internal dossier-input route,
+retained histories and DEBT-035 adapter controls. The combined stop remains
+about **700 handwritten changed lines**, and 2b alone about 500. Parts 3 and 4
+remain outside this dispatch. No generation, freshness, retry or export claim.
+
+### D part-2 implementation candidate (2026-10-23)
+
+The read-leg cause of DEBT-036 was conversion and accounting beneath the
+Router's writer snapshot. Commit 2a relocates all three existing readers and
+historical branch provenance behind the accounting collaborator, using one
+Store-owned capture and pure conversion after closure. Compatibility entry
+signatures and the generic context helper remain; the new path uses fixed
+captured groups, not an in-memory Store/query facade. Existing pre-contract
+reads retain their results. Commit 2b adds only the internal dossier-input route:
+captured attributed approval is required, and the immutable result retains the
+complete raw preimage, typed coverage and history-bound content hash.
+
+The adapter cases retain a satisfied lower bound with an indeterminate window,
+an unknown result with both bounds, stale G-1 records without current completion
+credit, historical branch pins, both adverse verdict histories followed by
+support, and unchanged attention. The pure evaluators and gate policy are
+unchanged. DEBT-035's durable/export legs and DEBT-036's generation/revalidation
+and commit consumption remain later work; this is not a completed dossier or
+freshness claim.
+
+Coder evidence is in private `evidence/2d-6a-p2/COMPLETION.md`. Both 32+32 MiB
+workload legs pass the amended **192 MiB** live-operand bound (about 149.51 MiB
+peak) with no ownership redesign, cache or selection reduction. Capture requests
+no writer reservation; full read/route elapsed time, writer progress and reader
+checkpoint effects are reported separately. Revalidation is unimplemented, not
+a measured zero. Refactor evidence includes inspected rope output, pinned offline
+RefactoringMiner, old/new Hypothesis properties and exact accepted replay.
+Independent verification and review remain required. Stop after part 2.

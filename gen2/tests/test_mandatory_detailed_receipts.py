@@ -181,6 +181,8 @@ class MandatoryLoaderTest(unittest.TestCase):
             if how[0] == 'module' and 'gen2.router.boundary' in how[1:]:
                 with self.subTest(target=target):
                     self.assertFalse(importers - set(how[how.index('gen2.router.boundary') + 1:]))
+                    for collaborator in importers - {'gen2.router.service'}:
+                        self.assertLess(how.index(collaborator), how.index('gen2.router.service'))
 
     def test_warm_boundary_reload_keeps_typed_refusals(self):
         import importlib
@@ -188,14 +190,16 @@ class MandatoryLoaderTest(unittest.TestCase):
         from gen2.tests.test_mutation_verdict import harness
         runner = harness()
         importlib.import_module('gen2.router.detailed_checks')  # Warm its Refusal alias.
+        importlib.import_module('gen2.router.accounting')
         for target in ('gen2/router/boundary.py', 'gen2/core/canonical.py', 'gen2/core/pagination.py'):
             with self.subTest(target=target):
                 marker = (runner.ROOT / target).read_text().splitlines()[0]
                 probe = runner.Mutation('warm-boundary', '2d-4c part 4a', 'identity reload',
-                    ('test_mandatory_detailed_receipts.MandatoryRouterTest.test_missing',), target=target,
+                    ('test_mandatory_detailed_receipts.MandatoryRouterTest.test_missing',
+                     'test_dossier_inputs.RefusalTest.test_requires_approved_contract'), target=target,
                     old=marker, new=marker)
                 with patch.object(sys, 'path', [str(runner.TESTS), *sys.path]), patch.object(runner, '_CONTROLS', {}):
                     result = runner._run_file_mutation(probe)
                 self.assertFalse(result.errored, result.errored_detail)
                 self.assertFalse(result.failed)
-                self.assertEqual(result.testsRun, 1)
+                self.assertEqual(result.testsRun, 2)

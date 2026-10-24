@@ -1,12 +1,16 @@
 """2d-2: literal coverage oracles and isolated provenance guards; fixtures only."""
 import json
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from gen2.accounting import views as v
 from gen2.core.canonical import logical_hash
 from gen2.router.boundary import Refusal
 from gen2.router.schemas import SchemaSet
+from gen2.store import capture
+from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 from gen2.tests.router_fixtures import TOPIC, OTHER, empty_outcome, find_request
 from gen2.tests.test_registry_dispositions import example_disposition
 from gen2.tests.test_router_workflow import Workflow, contract
@@ -125,12 +129,12 @@ class AdmissionTest(World):
     def test_unknown_and_snapshot(self):
         before = self.state(exclude=())
         self.router._clock = lambda: self.fail("snapshot read a clock")
-        select = self.store.select
-        def capture(table, where=None):
+        read = capture.read
+        def inside(conn, columns, topic):
             self.assertTrue(self.db.in_transaction)
-            return select(table, where)
-        self.store.select = capture
-        snap = self.snapshot()
+            return read(conn, columns, topic)
+        with patch.object(capture, "read", inside):
+            snap = self.snapshot()
         self.assertFalse(self.db.in_transaction)
         branch = v.coverage_view(snap.inventory, snap.window_pins, snap.branch_links).branches[0]
         self.assertEqual((branch.links, branch.windows, branch.unknown_reason), ((), (), "branch search links not recorded"))
@@ -143,14 +147,18 @@ class AdmissionTest(World):
             self.snapshot("topic_unknown01")
 
     def test_unverified_branch(self):
+        catalog = self.rows(TRIGGERS)
         self.x("DROP TRIGGER branch_windows_branch")
         self.raw(registry_id="B-2")
+        restore_triggers(self, "", catalog=catalog)
         self.assertEqual(self.snapshot().branch_links, ())
 
     def test_unverified_commit(self):
         self.other()
+        catalog = self.rows(TRIGGERS)
         self.x("DROP TRIGGER branch_windows_commit")
         self.raw(recorded_by_operation_id="op_otherbranch")
+        restore_triggers(self, "", catalog=catalog)
         self.assertEqual(self.snapshot().branch_links, ())
 
     def test_unverified_contract(self):
@@ -160,7 +168,13 @@ class AdmissionTest(World):
             records = select(table, where)
             return [{**r, "approved_by_decision_id": None} for r in records] if table == "contract_revisions" else records
         self.store.select = unverified
-        self.assertEqual((self.snapshot().window_pins, self.snapshot().branch_links), ((), ()))
+        original = self.store.capture_topic
+        def unverified_capture(topic):
+            raw = original(topic)
+            return replace(raw, tables=tuple(replace(t, rows=tuple(tuple(None if c == "approved_by_decision_id" else v
+                for c, v in zip(t.columns, row)) for row in t.rows)) if t.name == "contract_revisions" else t for t in raw.tables))
+        with patch.object(self.store, "capture_topic", unverified_capture):
+            self.assertEqual((self.snapshot().window_pins, self.snapshot().branch_links), ((), ()))
         self.reject(self.record(association_id="bw-unverified"))
 
     def test_pin_kind(self):

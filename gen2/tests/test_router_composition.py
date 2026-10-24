@@ -9,10 +9,11 @@ import unittest
 from pathlib import Path
 
 from gen2.router import acquisitions, amendments, assessments, capabilities, evidence_writer, lifecycle, observations, registries, scheduling, service, status, verification
-from gen2.router import extractor_registry, extractions
+from gen2.router import accounting, extractor_registry, extractions
 from gen2.tests.router_fixtures import RouterTestCase
 
-COLLABORATORS = ((status, status.Status, status.StatusCore, "_status"), (capabilities, capabilities.Capabilities, capabilities.CapabilityCore, "_capabilities"),
+COLLABORATORS = ((accounting, accounting.Accounting, accounting.AccountingCore, "_accounting"),
+                 (status, status.Status, status.StatusCore, "_status"), (capabilities, capabilities.Capabilities, capabilities.CapabilityCore, "_capabilities"),
                  (registries, registries.Registries, registries.RegistriesCore, "_registries"), (lifecycle, lifecycle.Lifecycle, lifecycle.LifecycleCore, "_lifecycle"),
                  (scheduling, scheduling.Scheduling, scheduling.SchedulingCore, "_scheduling"), (amendments, amendments.Amendments, amendments.AmendmentsCore, "_amendments"),
                  (evidence_writer, evidence_writer.EvidenceWriter, evidence_writer.EvidenceCore, "_evidence_writer"),

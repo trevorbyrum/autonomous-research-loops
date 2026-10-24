@@ -140,12 +140,14 @@ class SnapshotTest(ContractWorld):
         self.research()
         before = self.state(exclude=())
         self.router._clock = lambda: self.fail("view read a clock")
-        select = self.store.select
-        def snapshot(table, where=None):
+        from unittest.mock import patch
+        from gen2.store import capture
+        read = capture.read
+        def snapshot(conn, columns, topic):
             self.assertTrue(self.db.in_transaction)
-            return select(table, where)
-        self.store.select = snapshot
-        inv = self.router.evidence_inventory(OTHER, history="native")
+            return read(conn, columns, topic)
+        with patch.object(capture, "read", snapshot):
+            inv = self.router.evidence_inventory(OTHER, history="native")
         coverage, depth = v.coverage_view(inv, ()), v.depth_view(inv, LATER)
         self.assertEqual(coverage.units.retrieved_records, a.Count(frozenset()))
         self.assertEqual(depth, v.DepthView(LATER, (), (), (), (), (), ()))

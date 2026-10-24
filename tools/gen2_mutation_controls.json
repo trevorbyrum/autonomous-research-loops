@@ -24943,5 +24943,68 @@
    "test_capture_reader.FileReaderTest.test_control"
   ],
   "why": "Accepted checked capture reaches the changed reader guard or cleanup; its literal topic/hash control stays valid without the removed property."
+ },
+ "2D6A2-units-transaction": {
+  "by_hand": true,
+  "controls": [
+   "test_accounting.DurableAccountingTest.test_reads_committed_inventories_without_writes_or_clock"
+  ],
+  "why": "The existing result oracle exercises the relocated reader with valid inputs; a read-only writer transaction changes no result, while the separate boundary killer requires conversion after closure."
+ },
+ "2D6A2-inventory-transaction": {
+  "by_hand": true,
+  "controls": [
+   "test_accrual.SnapshotTest.test_control_context"
+  ],
+  "why": "The existing result oracle exercises the relocated reader with valid inputs; a read-only writer transaction changes no result, while the separate boundary killer requires conversion after closure."
+ },
+ "2D6A2-coverage-transaction": {
+  "by_hand": true,
+  "controls": [
+   "test_branch_windows.AdmissionTest.test_control"
+  ],
+  "why": "The existing result oracle exercises the relocated reader with valid inputs; a read-only writer transaction changes no result, while the separate boundary killer requires conversion after closure."
+ },
+ "2D6A2-approved": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A2-attributed": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A2-hash-history": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A2-receipts": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A2-attention": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A2-route-hash-codec": {
+  "by_hand": true,
+  "controls": [
+   "test_dossier_inputs.AdapterTest.test_control_route"
+  ],
+  "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
  }
 }
