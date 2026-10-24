@@ -3216,3 +3216,13 @@ The post-2q Gate D is renumbered #5.
     - BUILD-STATE to the current state.
     - No rule changes.
 - **Held pending A/B:** the 6a part 3 merge (PR #14; its round 2 verifier and review are running) and part 4.
+
+## 2026-10-24: Gate S reconciliation and operator rulings A/B
+- **Fable reconciliation** (`06e72bb1`; `private/reviews/gen2-simplification-reconcile-fable-20261024.md`):
+  - **A:** the Router should own every support/consumption rule; every production consumer of eligibility is already Python. Three insertion checks (SQL 15/16/19/20) need Router versions first.
+  - **B:** a full writer trace found **101 production Store writes, all in `gen2/router/`**. The only other writers are `Store.maintain` (offline) and `connect(create=True)` (schema creation). `store_writers` is statically enforced.
+- **Operator rulings (Trevor, 2026-10-24):**
+  - **A: the Router owns semantic rules,** and the DDL keeps integrity only.
+  - **B: 6a part 3 becomes a Store-level counter,** bumped once per committed transaction that writes a covered table. This amends R1:D's mechanism from "every covered row event" to "every committed covered write transaction, once". The no-writes-on-open and maintenance rulings stand.
+- The part 3 round 2 review (`401825cd`) and verifier (`9dbd8910`) of the trigger design `25f4ab9` were **stopped**. Before stopping, its gen2-test had passed 4,475 tests.
+- The counter redo was dispatched to Sol on PR #14. A Gate S plan for the remaining simplification batches was dispatched to Fable (`932fcdc2`).
