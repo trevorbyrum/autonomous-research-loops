@@ -144,19 +144,54 @@ class GenerationTest(unittest.TestCase):
         self.assertEqual(conn.execute('SELECT * FROM works').fetchall(), [(1,)])
         self.assertEqual(self.counter(conn), 9007199254740991)
 
+    def test_replace_upsert_and_conflict_policies(self):
+        conn = self.probe()
+        conn.execute('CREATE UNIQUE INDEX works_value ON works(value)')
+        for sql, bumps, rows in (
+                ('INSERT INTO works VALUES (1)', 1, [(1,)]),
+                ('INSERT OR REPLACE INTO works VALUES (1)', 2, [(1,)]),
+                ('INSERT INTO works VALUES (1) ON CONFLICT(value) DO UPDATE SET value=excluded.value', 1, [(1,)]),
+                ('INSERT INTO works VALUES (1) ON CONFLICT(value) DO NOTHING', 0, [(1,)]),
+                ('INSERT INTO works VALUES (2)', 1, [(1,), (2,)]),
+                ('UPDATE OR REPLACE works SET value=1 WHERE value=2', 2, [(1,)])):
+            with self.subTest(sql=sql):
+                before = self.counter(conn)
+                conn.execute(sql)
+                self.assertEqual(self.counter(conn), before + bumps)
+                self.assertEqual(conn.execute('SELECT value FROM works ORDER BY value').fetchall(), rows)
+        before = conn.execute('SELECT * FROM store_generation').fetchall()
+        for suffix in ('', ' ON CONFLICT(singleton) DO UPDATE SET generation=0'):
+            with self.subTest(suffix=suffix), self.assertRaises(sqlite3.IntegrityError):
+                conn.execute("INSERT OR REPLACE INTO store_generation VALUES ('store',?,0)" + suffix, ('b' * 32,))
+            self.assertEqual(conn.execute('SELECT * FROM store_generation').fetchall(), before)
+
+    def test_exhaustion_conflict_policies(self):
+        conn = self.probe()
+        step = conn.execute("SELECT sql FROM sqlite_schema WHERE name='store_generation_step'").fetchone()[0]
+        conn.execute('DROP TRIGGER store_generation_step')
+        conn.execute('UPDATE store_generation SET generation=9007199254740991')
+        conn.execute(step)
+        for policy in ('', 'OR IGNORE', 'OR REPLACE', 'OR FAIL'):
+            with self.subTest(policy=policy), self.assertRaises(sqlite3.IntegrityError):
+                conn.execute('INSERT ' + policy + ' INTO works VALUES (1)')
+            self.assertEqual(conn.execute('SELECT * FROM works').fetchall(), [])
+            self.assertEqual(self.counter(conn), 9007199254740991)
+
 
 class RealFamiliesTest(fx.StoreTestCase):
     def test_audit_snapshot_scope(self):
         from gen2.tests.router_fixtures import RouterTestCase
-        business = RouterTestCase.state(self)
+        business = RouterTestCase.state(self, exclude=('audit_events',))
         complete = RouterTestCase.state(self, exclude=())
         before = GenerationTest.counter(self.db)
         self.x("INSERT INTO audit_events (audit_event_id,at,kind,detail) VALUES ('aud_scope001',?,'scope_control','{}')", fx.T)
         self.assertEqual(GenerationTest.counter(self.db), before + 1)
-        self.assertEqual(RouterTestCase.state(self), business)
+        after = RouterTestCase.state(self, exclude=('audit_events',))
+        RouterTestCase.assert_generation_delta(self, business, after, 1)
+        self.assertEqual(after, business)
         self.assertNotEqual(RouterTestCase.state(self, exclude=()), complete)
         self.x('UPDATE queue_entries SET priority=2')
-        self.assertNotEqual(RouterTestCase.state(self), business)
+        self.assertNotEqual(RouterTestCase.state(self, exclude=('audit_events',)), business)
 
     def test_representative_writes(self):
         # Intact admission: queue, contracts, normalized facets/obligations,

@@ -6,6 +6,8 @@ from gen2.tests.test_reaccess_admission import AcquisitionCase, RAW, STAMP, raw_
 
 
 class RecordCase(AcquisitionCase):
+    RAW = False
+
     def setUp(self):
         super().setUp()
         self.assertEqual(self.router.register_extractor_registry({"registry_version": 1, "operator_id": "fixture-operator",
@@ -53,7 +55,10 @@ class RecordCase(AcquisitionCase):
         grant = self.verifier if "extraction_validations" in sections else self.extractor
         out = self.send(grant, "op_refused001", **sections)
         self.assertEqual(out["status"], "rejected", out)
-        self.assertEqual(self.state(), before)
+        if self.RAW:
+            self.assertEqual(self.state(exclude=()), before)
+        else:
+            self.assert_audited_state(before, 1)
 
 
 class RecordTest(RecordCase):

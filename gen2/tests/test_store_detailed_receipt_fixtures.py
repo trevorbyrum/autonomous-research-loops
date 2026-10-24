@@ -84,11 +84,14 @@ class ConvertedFixtureTest(unittest.TestCase):
                         if version.endswith('/1'): historical_receipt(fixture.doc)
                         else:
                             for entry in fixture.doc['detailed_checks'].values(): del entry['record_id']
-                        before = fixture.case.state()
+                        before = fixture.case.state(exclude=())
                         out = own.OwnCases.submit(fixture)
                         self.assertEqual(out['status'], 'rejected', out)
                         self.assertIn('requires detailed check records', out['detail'])
-                        self.assertEqual(fixture.case.state(), before)
+                        if fixture.RAW:
+                            self.assertEqual(fixture.case.state(exclude=()), before)
+                        else:
+                            fixture.case.assert_audited_state(before, 1)
                         self.assertEqual(fixture.case.rows('SELECT * FROM verification_receipts'), [])
 
     def test_performed_failure_and_exemption_retain_evidence(self):

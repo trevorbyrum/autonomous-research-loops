@@ -66,9 +66,9 @@ class ConfigBundleTest(RouterTestCase):
                          [("Q-screen", 1, QUESTION["content_hash"], CONFIG), ("Q-method", 1, q2["content_hash"], second_hash)])
 
     def test_the_active_bundle_again_is_a_replay(self) -> None:
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.activate(copy.deepcopy(BUNDLE)), {"status": "replayed", "bundle_hash": CONFIG, "version": 1})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_a_version_not_above_every_recorded_one_is_refused(self) -> None:
         self.refused(bundle(1, policy={"router": {"hold_window_s": 60}}), "bundle_invalid", "is not above the newest recorded bundle's 1")
@@ -115,9 +115,9 @@ class ConfigBundleTest(RouterTestCase):
         facts = self.rows("SELECT fact_id, state, superseded_by_fact_id FROM capability_facts WHERE capability = 'config-bundle' ORDER BY rowid")
         self.assertEqual([(state, superseded is None) for _, state, superseded in facts], [("failing", False), ("healthy", True)])
         self.assertEqual(facts[0][2], facts[1][0])  # the failure is superseded by the recovery, not rewritten
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.activate(copy.deepcopy(BUNDLE))["status"], "replayed")
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_restoring_the_active_bundle_after_a_refusal_is_a_recovery(self) -> None:
         """H-2, RG-9 on a start with nothing mounted (Astra 1d-repair review
@@ -265,11 +265,11 @@ class QualificationRecordTest(ScreeningBase):
                 "evaluation_ref": "fake-evaluation-1", "operator_id": "user", **changes}
 
     def test_a_record_replays_and_conflicts_by_its_id(self) -> None:
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.record_qualification(self.grant_request(self.spec_hash)), {"status": "replayed", "qualification_id": qual_ref(self.spec_hash)})
         out = self.router.record_qualification(self.grant_request(self.spec_hash, evaluation_ref="fake-evaluation-2"))
         self.assertEqual((out["status"], out.get("reason")), ("refused", "qualification_conflict"))
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_a_record_qualifies_only_its_specs_provider_and_class(self) -> None:
         other = self.spec("dspec_screen0005")
@@ -313,7 +313,7 @@ class QualificationRecordTest(ScreeningBase):
         response = self.router.commit_outcome(self.envelope(self.grant, "op_screen00001", self.provider(), refs=[self.raw]))
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "payload_invalid"), response)
         self.assertIn("revoked meanwhile", response.get("detail"))
-        self.assertEqual(self.state(exclude=("audit_events", "qualifications")), before)
+        self.assert_audited_state(before, 2, exclude=("audit_events", "qualifications"))
         self.assertEqual(self.rows("SELECT revoke_reason FROM qualifications"), [("revoked mid-commit",)])
 
     def test_the_same_revocation_again_replays(self) -> None:
@@ -321,21 +321,21 @@ class QualificationRecordTest(ScreeningBase):
         identical revocation of a revoked record replays and changes nothing."""
         revocation = {"qualification_id": qual_ref(self.spec_hash), "operator_id": "user", "reason": "drift"}
         self.assertEqual(self.router.revoke_qualification(revocation)["status"], "revoked")
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.revoke_qualification(revocation), {"status": "replayed", "qualification_id": qual_ref(self.spec_hash)})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_revocation_replays_conflicts_and_needs_a_record(self) -> None:
         revocation = {"qualification_id": qual_ref(self.spec_hash), "operator_id": "user", "reason": "drift"}
         self.assertEqual(self.router.revoke_qualification(revocation)["status"], "revoked")
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.revoke_qualification(revocation)["status"], "replayed")
         for name, request, reason in (("another reason", {**revocation, "reason": "other"}, "qualification_conflict"),
                                       ("no such record", {**revocation, "qualification_id": "qual_nosuchrecord"}, "unknown_qualification")):
             with self.subTest(name):
                 out = self.router.revoke_qualification(request)
                 self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
 
 class RegistryRestartTest(RouterTestCase):

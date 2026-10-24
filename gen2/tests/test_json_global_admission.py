@@ -53,7 +53,10 @@ class GlobalAdmissionTest(workflow.Workflow):
                         expected = 'bundle_invalid' if route == 'activate_config_bundle' else 'envelope_invalid' if route == 'commit_outcome' else 'request_invalid'
                         self.assertEqual(result['reason'], expected, result)
                         self.assertIn(detail, result['detail'])
-                        self.assertEqual(self.state(exclude=excluded), before)
+                        if route == 'commit_outcome':
+                            self.assert_audited_state(before, 1, exclude=excluded)
+                        else:
+                            self.assertEqual(self.state(exclude=excluded), before)
 
     def test_staged_payload(self):
         self.to_scoping()
@@ -67,7 +70,7 @@ class GlobalAdmissionTest(workflow.Workflow):
                 result = self.router.commit_outcome(env)
                 self.assertEqual((result['status'], result['reason']), ('rejected', 'payload_invalid'), result)
                 self.assertTrue('NUL in object member name' in result['detail'] or 'duplicate object key' in result['detail'], result)
-                self.assertEqual(self.state(), before)
+                self.assert_audited_state(before, 1)
 
     def test_store_names(self):
         # Includes all pending raw-DDL columns. Admission must not depend on
@@ -139,7 +142,7 @@ class GlobalAdmissionTest(workflow.Workflow):
         result = self.router.commit_outcome(env)
         self.assertEqual((result['status'], result['reason']), ('rejected', 'payload_invalid'), result)
         self.assertIn('NUL in object member name', result['detail'])
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_source_coverage_control(self):
         self.to_scoping()

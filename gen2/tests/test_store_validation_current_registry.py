@@ -4,4 +4,5 @@ from gen2.tests import test_extraction_records as records, test_store_extraction
 
 
 class DDLCurrentRegistryTest(current.CurrentCases, records.RecordCase):
+    RAW = True
     setUp, send = raw.DDLV2Test.setUp, raw.DDLV2Test.send

@@ -46,12 +46,15 @@ class OwnCases:
     def refuse(self):
         # Historical /1 operands isolate the existing extraction predicate.
         historical_receipt(self.doc)
-        before = self.case.state()
+        before = self.case.state(exclude=())
         with historical_admission(self.case):
             out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)
         self.assertIn('receipt needs its verifier durable extraction', out['detail'])
-        self.assertEqual(self.case.state(), before)
+        if self.RAW:
+            self.assertEqual(self.case.state(exclude=()), before)
+        else:
+            self.case.assert_audited_state(before, 1)
         self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])
 
     def clone(self, table, changes, where=''):

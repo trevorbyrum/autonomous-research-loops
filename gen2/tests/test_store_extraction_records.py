@@ -10,6 +10,7 @@ from gen2.tests import store_fixtures, test_extraction_records as records
 
 
 class DDLTest(records.RecordTest):
+    RAW = True
     test_authentication = test_authentication_control = None
 
     def setUp(self):
@@ -58,5 +59,6 @@ class DDLTest(records.RecordTest):
 
 
 class FullTextDDLTest(records.FullTextTest):
+    RAW = True
     send = DDLTest.send
     setUp = DDLTest.setUp

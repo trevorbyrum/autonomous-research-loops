@@ -87,7 +87,7 @@ class RemainingRouterFixtureTest(unittest.TestCase):
                 out = case.router.commit_outcome(case.envelope(verifier, 'op_foreignspan', payload))
                 self.assertEqual((out['status'], out.get('reason')), ('rejected', 'payload_invalid'), out)
                 self.assertIn('detailed check binding', out['detail'])
-                self.assertEqual(case.state(), before)
+                case.assert_audited_state(before, 1)
                 bad['cited_spans'] = copy.deepcopy(doc['cited_spans'])
                 env = case.envelope(verifier, 'op_matchingspan', payload)
                 records = case.rows('SELECT * FROM detailed_check_records')

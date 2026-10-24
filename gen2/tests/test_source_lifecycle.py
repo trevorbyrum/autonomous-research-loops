@@ -35,7 +35,7 @@ class LifecycleTest(Workflow):
         before = self.state()
         out = self.send(records, **kwargs)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_control_supersede_then_reversal(self):
         self.assertEqual(self.send([self.record()])["status"], "committed")

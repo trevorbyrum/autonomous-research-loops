@@ -7494,3 +7494,26 @@ until the orchestrator confirms. Targeted selection follows durable-open and
 snapshot/allowed-effect semantic impact, including supervisor/replay children;
 the independent verifier owns the full suite. Evidence stays under private
 `evidence/2d-6a-p3/repair-r1/`. Part 4 remains untouched.
+
+**Authorized subset implemented, pending the epoch ruling.** Shared `state()`
+now includes every table, including audits and generation. Allowed-effect
+comparisons assert exact generation increments, stable singleton/epoch, and
+retained audit rows/counts before normalization; raw refusal, rollback and
+same-handle replay use complete equality. Mixed raw/Router fixture entry paths
+and repeated rejection attempts have explicit distinct expectations. Supervisor
+changed-table accounting allows counter maintenance only with stable identity;
+an epoch change stays visible. A checkpoint claim/replay control checks the
+exact three covered events, no replay effects, and epoch-change visibility.
+Conflict regressions retain REPLACE's DELETE+INSERT, UPSERT UPDATE/DO NOTHING,
+singleton protection and exhaustion under the statement conflict policies.
+
+Schema reference construction omits the exact ordered seed and observes other
+DML; replay controls SQL epoch draws across recorder/children at the connection
+seam without altering stored recordings or ordinary production randomness.
+The writable opener and held assertion bodies remain unchanged. In-memory
+exact-instant audited-refusal checks are separate from the unchanged lock-wait
+tests. Fresh creation still executes the required ordered seed; removing epoch
+renewal alone would not clear its no-DML oracle. No authority resolution or
+complete part-3 acceptance is claimed. Targeted execution, source provenance,
+local commits and the final held-failure inventory are retained in the repair
+evidence; no full suite or push is performed by this repair.

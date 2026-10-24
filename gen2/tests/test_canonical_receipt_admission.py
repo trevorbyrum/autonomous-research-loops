@@ -42,7 +42,7 @@ class ReceiptCase(AcquisitionCase):
         out = self.send(doc)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
         self.assertIn("must consume its admitted acquisition", out["detail"])
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def admit(self):
         self.assertEqual(self.router.admit_reaccess(self.request())["status"], "admitted")
@@ -122,7 +122,7 @@ class ReceiptTest(AttributedReceiptCase):
         doc["acquisition"]["route"] = "gateway:core"
         out = self.send(doc)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "operation_id_conflict"), out)
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_rollback(self):
         self.admit()

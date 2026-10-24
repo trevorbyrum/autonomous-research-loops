@@ -82,12 +82,12 @@ class ExactInstantTest(rf.RouterTestCase):
         grant = self.started("inv_checkpt01", "checkpoint", lease_expires_at=E)
         env = self.envelope(grant, "op_interim0001", rf.empty_outcome("inv_checkpt01", "interim_transition"))
         before, audits = self.state(), self.value("SELECT count(*) FROM audit_events")
-        for instant in (E_PLUS, E):
+        for rejection_count, instant in enumerate((E_PLUS, E), 1):
             with self.subTest(instant):
                 self.at(instant)
                 out = self.router.commit_outcome(env)
                 self.assertEqual((out["status"], out.get("reason")), ("rejected", "lease_not_current"), out)
-                self.assertEqual(self.state(), before)
+                self.assert_audited_state(before, rejection_count, audits=rejection_count)
                 audits += 1
                 self.assertEqual(self.value("SELECT count(*) FROM audit_events"), audits)
         self.at(E_MINUS)

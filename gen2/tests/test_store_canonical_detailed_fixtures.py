@@ -82,7 +82,7 @@ class CanonicalFixtureTest(unittest.TestCase):
                     out = case.send(doc)
                     self.assertEqual(out['status'], 'rejected', out)
                     self.assertIn('requires detailed check records', out['detail'])
-                    self.assertEqual(case.state(), before)
+                    case.assert_audited_state(before, 1)
                     self.assertEqual(case.rows('SELECT * FROM verification_receipts'), [])
 
     def test_authority_positive_has_all_admitted_references(self):

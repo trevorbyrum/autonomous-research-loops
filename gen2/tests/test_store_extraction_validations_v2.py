@@ -12,6 +12,7 @@ from gen2.tests.test_store_extraction_records import DDLTest
 
 
 class DDLV2Test(V2Case):
+    RAW = True
     def setUp(self):
         self.query = "SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND (tbl_name='extraction_validations_v2' OR name='extraction_validation_results_v2') ORDER BY rowid"
         with sqlite3.connect(":memory:") as reference:

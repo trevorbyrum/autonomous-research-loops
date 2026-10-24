@@ -87,7 +87,7 @@ class PromotionCases:
 
     def promote(self, expected='committed'):
         c = self.case
-        before = c.state()
+        before = c.state(exclude=())
         with prior_consumption(c) if getattr(self, 'legacy_consumption', False) else nullcontext():
             if self.RAW:
                 try:
@@ -101,7 +101,10 @@ class PromotionCases:
                 out = c.router.commit_outcome(self.promotion_env)
         self.assertEqual(out['status'], expected, out)
         if expected == 'rejected':
-            self.assertEqual(c.state(), before)
+            if self.RAW:
+                self.assertEqual(c.state(exclude=()), before)
+            else:
+                c.assert_audited_state(before, 1)
         else:
             self.assertEqual(c.rows("SELECT status FROM claims WHERE claim_id='clm_loadbear1'"), [('accepted_support',)])
         self.assertEqual(c.rows('PRAGMA foreign_key_check'), [])

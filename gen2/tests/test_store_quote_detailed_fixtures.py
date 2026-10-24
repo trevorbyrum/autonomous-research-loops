@@ -76,7 +76,7 @@ class QuoteFixtureTest(unittest.TestCase):
         out = case.send([record], verification_receipts=[bad])
         self.assertEqual((out['status'], out.get('reason')), ('rejected', 'payload_invalid'), out)
         self.assertIn('receipt detailed check binding', out['detail'])
-        self.assertEqual(case.state(), before)
+        case.assert_audited_state(before, 1)
         case.accepted(record, verification_receipts=[doc]); case.promote()
         self.retained(case)
 

@@ -54,7 +54,7 @@ class TableRouterTest(unittest.TestCase):
         out = case.send(doc)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
         self.assertIn("table citation requires recorded full-text availability", out["detail"])
-        self.assertEqual(case.state(), before)
+        case.assert_audited_state(before, 1)
         control = {**doc, "cited_spans": [PAGE]}
         attach_checks(case, control)
         self.assertEqual(case.send(control)["status"], "committed")
@@ -153,7 +153,7 @@ class TableRouterTest(unittest.TestCase):
                 before = case.state()
                 out = case.send({**doc, "cited_spans": [PAGE]})
                 self.assertEqual((out["status"], out.get("reason")), ("rejected", "operation_id_conflict"), out)
-                self.assertEqual(case.state(), before)
+                case.assert_audited_state(before, 1)
 
     def test_tier_diagnostic(self):
         for method in METHODS:
@@ -162,4 +162,4 @@ class TableRouterTest(unittest.TestCase):
                 out = case.send(document(case, method, "full_text"))
                 self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
                 self.assertIn("tier exceeds recorded content", out["detail"])
-                self.assertEqual(case.state(), before)
+                case.assert_audited_state(before, 1)

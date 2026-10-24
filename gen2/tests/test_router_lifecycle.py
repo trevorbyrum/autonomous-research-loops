@@ -140,7 +140,7 @@ class FailureTest(LifecycleTestCase):
         response = self.router.commit_outcome(env)
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "invocation_state_invalid"), response)
         self.assertIn("inv_deleg001", response.get("detail", ""))
-        self.assertEqual(self.state(), before)  # the rejection is audited, nothing else changes
+        self.assert_audited_state(before, 1)  # the rejection is audited, nothing else changes
         self.assertEqual(self.lease_row(), (0, None))
         self.assertEqual(self.transition("failed", delegate, failure_class="exit_nonzero", end_evidence_ref=self.evidence(delegate))["status"], "recorded")
         self.assertEqual(self.router.commit_outcome(env)["status"], "committed")
@@ -216,7 +216,7 @@ class CancellationTest(LifecycleTestCase):
         response = self.router.commit_outcome(env)
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "invocation_state_invalid"))
         self.assertIn("cancellation", response.get("detail", ""))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
         digest, _ = self.stage(empty_outcome("inv_research01"))
         before = self.state(exclude=())
         self.refused(self.transition("result_ready", result_payload_digest=digest), "cancel_requested", before)
@@ -542,7 +542,7 @@ class StatusAndSpoolTest(LifecycleTestCase):
         response = self.router.commit_outcome(env)
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "payload_invalid"))
         self.assertIn("staged as text/plain", response.get("detail", ""))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
         env = self.envelope(self.grant, "op_interim0002", empty_outcome("inv_research01", "interim_transition"), refs=[{**ref, "media_type": "text/plain"}])
         self.assertEqual(self.router.commit_outcome(env)["status"], "committed")
         self.assertEqual(set(self.spool.read_topics), {TOPIC})

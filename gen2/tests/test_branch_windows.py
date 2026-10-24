@@ -46,7 +46,7 @@ class World(Workflow):
         before = self.state()
         out = self.send([record], grant)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def raw(self, **changes):
         row = {**self.record(), "topic_id": TOPIC, "actor_kind": "primary", "invocation_id": "inv_window0001",
@@ -116,7 +116,7 @@ class AdmissionTest(World):
         self.reject(self.record())
         before = self.state()
         self.assertEqual(self.send([self.record(association_id="bw-second"), self.record()])["status"], "rejected")
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_historical_pins(self):
         self.assertEqual(self.send([self.record()])["status"], "committed")
