@@ -6,6 +6,8 @@ from gen2.tests import router_fixtures as rf, supervisor_fixtures as sf
 
 class GenerationOracleTest(rf.RouterTestCase):
     def test_bad_generation_or_business_effect_is_refused(self):
+        with self.store.transaction():
+            self.store.update('queue_entries', {'topic_id': rf.TOPIC}, {'priority': 1})
         before = self.state(exclude=())
         for row in (('other', 'a' * 32, 1), ('store', 'b' * 32, 1),
                     (*before['store_generation'][0][:2], before['store_generation'][0][2] + 2)):
@@ -20,7 +22,7 @@ class GenerationOracleTest(rf.RouterTestCase):
         self.assertEqual(after, before)
         self.x('UPDATE queue_entries SET priority=priority+1')
         with self.assertRaises(AssertionError):
-            self.assert_audited_state(before, 2, audits=0)
+            self.assert_audited_state(before, 0, audits=0)
 
 
 class SupervisorGenerationTest(sf.SupervisedTestCase):
@@ -28,8 +30,8 @@ class SupervisorGenerationTest(sf.SupervisedTestCase):
         before = self.state(exclude=())
         grant = self.claim(sf.MAIN, 'checkpoint')
         after = self.state(exclude=())
-        # One lease, invocation and audit; transition history is not captured.
-        self.assert_generation_delta(before, after, 3)
+        # One transaction records the lease, invocation and audit.
+        self.assert_generation_delta(before, after, 1)
         self.assertEqual(self.ended()['other_tables'], [])
         request = dict(invocation_id=grant['invocation_id'], kind='checkpoint', topic_id=rf.TOPIC,
             station_id='station-1', config_bundle_hash=rf.CONFIG, deadline_at=rf.DEADLINE,

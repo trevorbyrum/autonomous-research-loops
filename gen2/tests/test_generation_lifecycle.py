@@ -34,7 +34,8 @@ class LifecycleTest(unittest.TestCase):
         shutil.copyfile(self.path, image)
         self.store = api.open_store(self.path)
         self.assertEqual(db.generation_state(self.store._conn), original)
-        self.store._conn.execute('UPDATE queue_entries SET priority=priority')
+        with self.store.transaction():
+            self.store.update('queue_entries', {'topic_id': 'fleet-a:t1'}, {'priority': 1})
         restored = self.maintain(lambda path: shutil.copyfile(image, path))
         self.assertIsNotNone(restored[0])
         self.assertNotEqual(restored[0], original[0])
@@ -71,16 +72,16 @@ class LifecycleTest(unittest.TestCase):
 
     def test_missing_or_incompatible_guards(self):
         conn = self.store._conn
-        sql = conn.execute("SELECT sql FROM sqlite_schema WHERE name='capture_generation_works_insert'").fetchone()[0]
-        for replacement in ('', sql.replace('generation + 1', 'generation + 2')):
-            conn.execute('DROP TRIGGER capture_generation_works_insert')
+        sql = conn.execute("SELECT sql FROM sqlite_schema WHERE name='store_generation_step'").fetchone()[0]
+        for replacement in ('', sql.replace('OLD.generation + 1', 'OLD.generation + 2')):
+            conn.execute('DROP TRIGGER store_generation_step')
             if replacement:
                 conn.execute(replacement)
             with self.assertRaises(db.StoreOpenError):
                 api.open_store(self.path)
             with self.assertRaises(db.StoreOpenError):
                 self.store.capture_topic('fleet-a:t1')
-            conn.execute('DROP TRIGGER IF EXISTS capture_generation_works_insert')
+            conn.execute('DROP TRIGGER IF EXISTS store_generation_step')
             conn.execute(sql)
 
     def test_initial_state_has_no_read_side_initialization(self):
@@ -129,7 +130,7 @@ class LifecycleTest(unittest.TestCase):
         self.store.close()
         def broken(path):
             with sqlite3.connect(path) as conn:
-                conn.execute('DROP TRIGGER capture_generation_works_insert')
+                conn.execute('DROP TRIGGER store_generation_step')
         with self.assertRaises(db.StoreOpenError):
             api.Store.maintain(self.path, broken)
         with self.assertRaises(db.StoreOpenError):
@@ -165,5 +166,6 @@ class LifecycleTest(unittest.TestCase):
         with api.open_store(path) as retained:
             self.assertEqual(db.generation_state(retained._conn)[:2], (None, 0))
             self.assertEqual(retained._conn.execute('SELECT priority FROM queue_entries').fetchall(), [(7,)])
-            retained._conn.execute('UPDATE queue_entries SET priority=priority')
+            with retained.transaction():
+                retained.update('queue_entries', {'topic_id': 'fleet-a:t1'}, {'priority': 7})
             self.assertEqual(db.generation_state(retained._conn)[:2], (None, 1))

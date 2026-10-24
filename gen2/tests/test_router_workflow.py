@@ -1166,7 +1166,7 @@ class SourceProposalTest(Workflow):
             out = self.decide(f"opd_sourcet10{n}", "source_approval", {"kind": "source_proposal", "ref": "srcp_00000001", "revision": None, "hash": truth},
                               disposition=disposition)
             self.assertEqual((out["status"], out["effects"]), ("applied", {} if disposition == "approved" else {}), out)
-        self.assert_audited_state(before, 6, exclude=("audit_events", "operator_decisions"))  # three decisions and three audits; no authority effects
+        self.assert_audited_state(before, 3, exclude=("audit_events", "operator_decisions"))  # three committed decision transactions; no authority effects
         self.assertEqual(self.rows("SELECT disposition FROM operator_decisions WHERE kind = 'source_approval' ORDER BY rowid"), [("deferred",), ("rejected",), ("approved",)])
 
     def test_a_re_proposal_supersedes_a_recorded_one(self) -> None:

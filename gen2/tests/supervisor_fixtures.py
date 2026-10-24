@@ -240,10 +240,9 @@ class SupervisedTestCase(rf.RouterTestCase):
         """The invocation's end as the store holds it (raw SQL)."""
         state = self.state(exclude=())
         allowed = LIFECYCLE_TABLES
-        # Counter maintenance is expected; a changed singleton/epoch remains
-        # visible while writable-open identity policy awaits the operator.
-        if ([r[:2] for r in state['store_generation']] ==
-                [r[:2] for r in self._baseline['store_generation']]):
+        # Counter maintenance is expected; changed singleton/epoch stays visible.
+        if (([r[:2] for r in state['store_generation']] or [('store', None)]) ==
+                ([r[:2] for r in self._baseline['store_generation']] or [('store', None)])):
             allowed = allowed | {'store_generation'}
         row = self.rows("SELECT state, failure_class, end_evidence_ref, descendants_confirmed_at IS NOT NULL, unknown_episode, lease_id, kind "
                         "FROM invocations WHERE invocation_id = ?", inv)[0]

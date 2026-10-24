@@ -1,29 +1,19 @@
-"""Every generation event and integrity guard, with separate accepted controls."""
+"""Store counter entry points and retained generation/lifecycle guards."""
 from .base import Mutation
 
 TEST = 'test_store_generation.GenerationTest.test_'
+COUNT = 'test_store_generation.CounterTest.test_'
 LIFE = 'test_generation_lifecycle.LifecycleTest.test_'
-TABLES = '''queue_entries contract_revisions facets obligations invocations
-leases search_observations retrieval_events screening_assessments claims
-semantic_assessments source_lifecycle registry_dispositions branch_windows
-obligation_assessments amendment_impacts claim_source_links verification_receipts
-source_artifacts source_acquisitions source_extractions detailed_check_records
-holds operator_decisions artifact_topics dossiers operation_receipts
-record_work_links works source_lineage quote_checks extraction_validations
-extraction_validations_v2 artifacts extractor_registry_revisions extractor_tools audit_events'''.split()
 MUTATIONS, CONTROLS = [], {}
 
 
-def add(name, killer, *, control=TEST + 'event_control', **kwargs):
+def add(name, killer, *, control=TEST + 'guard_control', **kwargs):
     mid = '2D6A3-' + name
     MUTATIONS.append(Mutation(mid, '2d-6a3', name, (killer,), **kwargs))
     CONTROLS[mid] = {'controls': [control], 'why':
-        'Separate accepted control executes the installed event body/guard (all table/event probes), or the checked durable open/read path for lifecycle edits; it asserts row identity without the removed property.'}
+        'A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property.'}
 
 
-for table in TABLES:
-    for event in ('insert', 'update', 'delete'):
-        add(table + '-' + event, TEST + 'event_bumps', drop_trigger=f'capture_generation_{table}_{event}')
 for suffix, killer in (('no_insert', 'insert_protection'), ('no_delete', 'delete_protection'), ('step', 'step_protection')):
     add(suffix, TEST + killer, drop_trigger='store_generation_' + suffix)
 for name, old, new in (
@@ -31,10 +21,15 @@ for name, old, new in (
     ('counter-domain', 'generation BETWEEN 0 AND 9007199254740991', '1'),
     ('epoch-domain', "length(epoch) = 32 AND epoch NOT GLOB '*[^0-9a-f]*'", '1')):
     add(name, TEST + 'constraints', scope='store_generation', old=old, new=new)
-add('missing-row-write', TEST + 'missing_singleton_write_refuses', scope='capture_generation_queue_entries_insert',
-    old='changes() <> 1', new='0')
-add('bootstrap', TEST + 'writer_initialization', scope='capture_generation_queue_entries_insert',
-    old="INSERT INTO store_generation SELECT 'store', NULL, 0\n    WHERE NOT EXISTS (SELECT 1 FROM store_generation);", new='SELECT 1;')
+for name, killer, old, new in (
+    ('insert-call', 'first_write', '        self._bump_once(table)\n        self._conn.execute(f"INSERT', '        self._conn.execute(f"INSERT'),
+    ('update-call', 'once_and_reset', '        self._bump_once(table)\n        cursor =', '        cursor ='),
+    ('bootstrap', 'first_write', '        self._conn.execute("INSERT INTO store_generation SELECT \'store\', NULL, 0 WHERE NOT EXISTS (SELECT 1 FROM store_generation)")', '        self._conn.execute("SELECT 1")'),
+    ('once', 'once_and_reset', 'if self._bumped or table not in', 'if False or table not in'),
+    ('reset', 'once_and_reset', '        self._bumped = False\n        try:', '        try:'),
+    ('covered', 'uncovered_and_reads', 'if self._bumped or table not in (*capture.TOPIC_TABLES, *capture.SHARED):', 'if self._bumped:'),
+    ('missing-row-write', 'missing_singleton_write_refuses', 'if self._conn.execute("SELECT changes()").fetchone()[0] != 1:', 'if False:')):
+    add(name, COUNT + killer, control=COUNT + ('update_control' if name == 'update-call' else 'control'), target='gen2/store/api.py', old=old, new=new)
 for name, killer, target, old, new in (
     ('maintenance-renewal', 'reopen_preserves_proof_and_restore_renews_epoch', 'gen2/store/api.py',
      'store._conn.execute("UPDATE store_generation SET epoch = lower(hex(randomblob(16))) WHERE singleton = \'store\'")', 'store._conn.execute("SELECT 1")'),
@@ -50,3 +45,7 @@ for name, killer, target, old, new in (
 add('schema-only-install', 'test_reference_schema.ReferenceSchemaTest.test_reference_has_all_objects_without_seed_dml',
     old='CREATE TRIGGER store_generation_no_insert BEFORE INSERT ON store_generation',
     new="INSERT INTO store_generation VALUES ('store',NULL,0);\nCREATE TRIGGER store_generation_no_insert BEFORE INSERT ON store_generation")
+
+add('dml-lint', 'test_sqlite_native_gate.SQLiteNativeGateTest.test_store_dml_requires_the_generation_path',
+    control='test_sqlite_native_gate.SQLiteNativeGateTest.test_store_counter_and_maintenance_dml_are_allowed',
+    target='tools/check_gen2_sqlite_native.py', old='    yield from store_dml_violations(text, filename)', new='    pass')

@@ -64,6 +64,22 @@ class SQLiteNativeGateTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("cannot check source", result.stderr)
 
+    def test_store_dml_requires_the_generation_path(self):
+        for sql in ('INSERT INTO works VALUES (1)', 'update works set value=1', 'DELETE FROM works'):
+            for source in (f'conn.execute({sql!r})', f'class Store:\n def update(self):\n  conn.execute({sql!r})'):
+                with self.subTest(sql=sql, source=source):
+                    result = self.gate({'gen2/store/api.py': source})
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn('forbidden Store DML', result.stderr)
+
+    def test_store_counter_and_maintenance_dml_are_allowed(self):
+        source = "class Store:\n def _bump_once(self):\n  conn.execute('UPDATE store_generation SET generation=generation+1')\n def maintain(self):\n  conn.execute('INSERT INTO store_generation VALUES (1)')\n"
+        self.assertEqual(self.gate({'gen2/store/api.py': source}).returncode, 0)
+
+    def test_other_modules_cannot_claim_the_helper_exception(self):
+        source = "class Store:\n def _bump_once(self):\n  conn.execute('DELETE FROM works')\n"
+        self.assertEqual(self.gate({'gen2/store/other.py': source}).returncode, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

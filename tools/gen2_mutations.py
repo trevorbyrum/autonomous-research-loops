@@ -137,6 +137,7 @@ def mutation_record(name: str, value: object) -> None:
 # ("disk",): a file only children run (a script started by path); the
 # mutant exists only in the child tree.
 FILE_TARGETS = {
+    "tools/check_gen2_sqlite_native.py": ("attr", "test_sqlite_native_gate", "TOOL"),
     "gen2/store/capture.py": ("module", "gen2.store.capture", "gen2.store.api", "gen2.router.accounting", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/schema/verification-receipt.schema.json": ("attr", "test_span_cap", "RECEIPT_SCHEMA"),
     "gen2/router/history.py": ("module", "gen2.router.history", "gen2.router.service", "gen2.app.station", "gen2.tests.router_fixtures"),

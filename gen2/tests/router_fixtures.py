@@ -212,9 +212,11 @@ class RouterTestCase(unittest.TestCase):
 
     def assert_generation_delta(self, before, after, increments):
         """Normalize only after exact singleton, epoch and counter assertions."""
-        self.assertEqual(len(before['store_generation']), 1)
-        singleton, epoch, counter = before['store_generation'][0]
-        self.assertEqual(after['store_generation'], [(singleton, epoch, counter + increments)])
+        rows = before['store_generation']
+        self.assertLessEqual(len(rows), 1)
+        singleton, epoch, counter = rows[0] if rows else ('store', None, 0)
+        expected = [(singleton, epoch, counter + increments)] if rows or increments else []
+        self.assertEqual(after['store_generation'], expected)
         after['store_generation'] = before['store_generation']
 
     def assert_audited_state(self, before, increments, *, audits=1, exclude=(), msg=None):

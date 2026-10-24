@@ -118,6 +118,7 @@ class Store:
                                     "a connection and a compatibility dict supplied by the caller are not evidence (A4)")
         self._conn = conn
         self.compatibility = compatibility
+        self._bumped = False
         self._in_transaction = False  # inside this Store's own transaction() context
         self._unusable: str | None = None  # why the connection was closed after a failed rollback
         self._capture_file = db.capture_file(conn)
@@ -166,6 +167,7 @@ class Store:
             raise StoreWriteError("transactions do not nest")
         self._conn.execute("BEGIN IMMEDIATE")
         self._in_transaction = True
+        self._bumped = False
         try:
             yield self
             self._conn.execute("COMMIT")
@@ -252,6 +254,16 @@ class Store:
             raise StoreWriteError("writes run inside Store.transaction()")
 
     # -- writes ------------------------------------------------------------
+    def _bump_once(self, table: str) -> None:
+        """One invalidation per covered writer transaction, before its effects."""
+        if self._bumped or table not in (*capture.TOPIC_TABLES, *capture.SHARED):
+            return
+        self._conn.execute("INSERT INTO store_generation SELECT 'store', NULL, 0 WHERE NOT EXISTS (SELECT 1 FROM store_generation)")
+        self._conn.execute("UPDATE store_generation SET generation = generation + 1 WHERE singleton = 'store'")
+        if self._conn.execute("SELECT changes()").fetchone()[0] != 1:
+            raise StoreWriteError("missing store generation singleton")
+        self._bumped = True
+
     def insert(self, table: str, row: Mapping[str, object]) -> None:
         self._require_transaction()
         self._check_names(table, row)
@@ -266,6 +278,7 @@ class Store:
                 raise StoreWriteError(str(exc)) from exc
             if digest != prepared.get('request_bytes_hash'):
                 raise StoreWriteError('attempted-request byte hash mismatch')
+        self._bump_once(table)
         self._conn.execute(f"INSERT INTO {table} ({', '.join(prepared)}) VALUES ({', '.join('?' for _ in prepared)})", list(prepared.values()))
 
     def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object], *, expect: Mapping[str, object] | None = None) -> None:
@@ -280,6 +293,7 @@ class Store:
         sets = [self._prepare(table, column, value) for column, value in changes.items()]
         conds = [self._prepare(table, column, value) for column, value in {**key, **expect}.items()]
         where = " AND ".join(f"{column} = ?" for column in {**key, **expect})
+        self._bump_once(table)
         cursor = self._conn.execute(f"UPDATE {table} SET {', '.join(f'{c} = ?' for c in changes)} WHERE {where}", [*sets, *conds])
         if cursor.rowcount != 1:
             raise StoreWriteError(f"update of {table} matched {cursor.rowcount} rows for {dict(key)} with {dict(expect)}; expected exactly one")

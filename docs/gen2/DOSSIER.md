@@ -7559,3 +7559,33 @@ bootstrap insertions are a mechanical batch (about 222 added lines). Preserve
 the prior legitimate exact audit/counter oracles; restore old no-write-open
 assertions. Target the full semantic-impact closure, Store baseline, affected
 mutants, trigger reversal and static gates; no coder full-suite run.
+
+### D part-3 Store counter: operator ruling after Gate S (2026-10-24)
+
+Trevor adopts Fable's reconciliation §B.2–B.4, superseding the event mechanism:
+each committed Store transaction writing a covered table bumps once. Migration
+of semantic rules to Router ownership is a separate later batch.
+
+Store consumes `capture.TOPIC_TABLES ∪ capture.SHARED` directly. Its transaction
+resets a flag; `insert` and `update` (therefore `advance`) bootstrap `(store,
+NULL, 0)`, increment, require `changes() = 1`, then mark bumped before the first
+covered statement, including rejection audits and registry transactions.
+SQL 43 keeps only the table and three singleton/step/exhaustion guards.
+No writes on open/startup, `_snapshot`, history or capture; absent metadata is
+still `(None, 0)`. Explicit maintenance, epoch rotation, schema cookie and file
+identity stand unchanged. Raw SQL fixtures no longer maintain this proof;
+Store exposes no raw/savepoint bypass. Binding, retry and metrics remain part 4.
+
+Controls cover bootstrap, multi-write transactions, flag reset, reads, uncovered
+writes, full rollback/zero-row refusal, Store exhaustion and maintenance. Exact
+deltas count transactions; retain every business/audit-retention/audit-count
+check and complete-state rollback/replay equality. Retire event-only probes.
+The literal DML gate allows only canonical primitive templates and
+`_bump_once`/`maintain`; it is a static lint, not a dynamic-code sandbox.
+
+Pre-code estimate: about 430 non-mechanical changed handwritten lines, plus
+mechanical retirement of 111 uniform triggers and generated pairing deletions.
+Target semantic consumer closure, Store baseline, mutants, reversal and static
+gates. The schema reference already has no seed filter. Retain the replay epoch
+seam for explicit maintenance; its regression runs actual `Store.maintain` in
+parent and child processes. Ordinary installation/opening draw no epochs.
