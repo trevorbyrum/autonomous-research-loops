@@ -35,7 +35,7 @@ class ExactSpanRouterTest(unittest.TestCase):
                     out = self.stage(case, method, numeral, transform)
                     self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
                     self.assertIn(detail, out["detail"])
-                    self.assertEqual(case.state(), before)
+                    case.assert_audited_state(before, 1)
                     self.assertEqual(self.stage(case, method, raw.numeric("start", "5.0"))["status"], "committed")
                     retained = case.value("SELECT cited_spans FROM verification_receipts")
                     self.assertEqual(retained, '[{"end":9,"locator":{"kind":"page","value":"2"},"start":5}]')

@@ -61,11 +61,12 @@ def _schema_objects(conn: sqlite3.Connection) -> dict[tuple[str, str], str]:
 
 
 def reference_schema(ddl_text: str | None = None) -> tuple[dict[tuple[str, str], str], int]:
-    """The objects and user_version the DDL produces on a fresh connection."""
+    """Build the canonical reference from the schema-only ordered DDL."""
     conn = sqlite3.connect(":memory:")
     try:
         compat.apply_connection_contract(conn)
-        conn.executescript(schema_text() if ddl_text is None else ddl_text)
+        text = schema_text() if ddl_text is None else ddl_text
+        conn.executescript(text)
         return _schema_objects(conn), conn.execute("PRAGMA user_version").fetchone()[0]
     finally:
         conn.close()
@@ -82,6 +83,20 @@ def check_schema_identity(conn: sqlite3.Connection, ddl_text: str | None = None)
         raise StoreOpenError(
             f"store schema is not the DDL in gen2/store/schema/ (user_version {stored_version}, expected {version}; "
             f"missing {missing[:5]}{'...' if len(missing) > 5 else ''}, unexpected {extra[:5]}, changed {changed[:5]})")
+    generation_state(conn)
+
+
+def generation_state(conn: sqlite3.Connection) -> tuple[str | None, int, int]:
+    """Epoch/counter/schema cookie; caller owns the snapshot or writer fence.
+
+    File identity is a separate admitted pin. This read never repairs state.
+    Binding into capture and commit consumption belong to D part 4.
+    """
+    rows = conn.execute("SELECT singleton, epoch, generation FROM store_generation").fetchall()
+    if rows and (len(rows) != 1 or rows[0][0] != 'store'):
+        raise StoreOpenError("invalid store generation singleton")
+    epoch, generation = rows[0][1:] if rows else (None, 0)
+    return epoch, generation, conn.execute("PRAGMA schema_version").fetchone()[0]
 
 
 def _wal(conn: sqlite3.Connection) -> tuple:

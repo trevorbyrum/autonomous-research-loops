@@ -185,14 +185,14 @@ class RequeueTest(PolicyCase):
         self.started("inv_discov02", "discovery", retry_of="inv_discov01")
         ended_delegate = self.claim("inv_deleg002", "delegate", parent=parent)
         self.assertEqual(self.router.request_cancel({"invocation_id": "inv_deleg002", "requested_by": "operator", "reason": "stop"}).get("status"), "cancelled")
-        before = self.state()
+        before = self.state(exclude=())
         for name, inv in (("a running delegate", delegate["invocation_id"]), ("an ended delegate", ended_delegate["invocation_id"]),
                           ("committed work", committed["invocation_id"]), ("running work", "inv_research01")):
             with self.subTest(name):
                 self.refused(self.requeue(inv, "operator", "x"), "not_requeueable", before)
         self.refused(self.requeue("inv_discov01", "operator", "another reason"), "requeue_conflict", before)  # re-queued once, already claimed
         self.assertEqual(self.requeue("inv_discov01", "operator", "again")["status"], "replayed")
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
         self.assertEqual(cancelled["status"], "granted")
 
     def test_ended_work_its_lane_moved_past_is_not_requeued(self) -> None:
@@ -214,9 +214,9 @@ class RequeueTest(PolicyCase):
         self.claim("inv_discov01", "discovery")
         self.router.request_cancel({"invocation_id": "inv_discov01", "requested_by": "operator", "reason": "stop"})
         self.assertEqual(self.requeue("inv_discov01", "operator", "again")["status"], "requeued")
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.requeue("inv_discov01", "operator", "again"), {"status": "replayed", "invocation_id": "inv_discov01", "attempt": 2})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_a_retry_names_only_the_lanes_waiting_work(self) -> None:
         first = self.claim("inv_discov01", "discovery")
@@ -288,9 +288,9 @@ class ReservationTest(ContractWorld):
     def test_the_same_reservation_again_replays(self) -> None:
         """The accepted path of the reservation-conflict guard, on its own."""
         self.open("rsv_explore001", "protected_exploration")
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.open("rsv_explore001", "protected_exploration"), {"status": "replayed", "reservation_id": "rsv_explore001", "units": 2})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_an_exhausted_reservation_is_closed_when_the_next_opens(self) -> None:
         """The accepted path of the guard refusing a second open reservation:
@@ -405,9 +405,9 @@ class SignalQueueTest(PolicyCase):
         """The accepted path of the review-conflict guard, on its own."""
         self.signal()
         self.assertEqual(self.review(1)["status"], "opened")
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.review(1), {"status": "replayed", "episode_id": "rev_episode0001"})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_a_review_needs_a_pending_signal_a_configured_queue_and_its_own_key(self) -> None:
         before = self.state()

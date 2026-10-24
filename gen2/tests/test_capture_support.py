@@ -63,6 +63,7 @@ class CaptureCase(CanonicalQuotesCase):
         after = self.state(exclude=())
         audit = after.pop("audit_events")
         old_audit = before.pop("audit_events")
+        self.assert_generation_delta(before, after, 1)  # committed rejection audit only
         self.assertEqual(after, before)
         self.assertEqual(audit[:-1], old_audit)
         self.assertEqual(len(audit), len(old_audit) + 1)
@@ -247,6 +248,8 @@ class CaptureTest(CaptureCase):
             for i, v in enumerate(row)) for row in before["queue_entries"]]
         self.assertEqual(after["queue_entries"], expected_topics)
         after["queue_entries"] = before["queue_entries"]
+        # All covered effects commit in one Store transaction.
+        self.assert_generation_delta(before, after, 1)
         self.assertEqual(after, before)
 
     def late_valid(self, multiple=False, accepted=True):

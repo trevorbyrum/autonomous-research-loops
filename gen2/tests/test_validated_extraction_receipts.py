@@ -40,12 +40,15 @@ class ValidatedCases:
     def refuse(self):
         # Historical /1 operands isolate the existing validation predicate.
         historical_receipt(self.doc)
-        before = self.case.state()
+        before = self.case.state(exclude=())
         with historical_admission(self.case):
             out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)
         self.assertIn('receipt needs its successful durable /2 validation', out['detail'])
-        self.assertEqual(self.case.state(), before)
+        if self.RAW:
+            self.assertEqual(self.case.state(exclude=()), before)
+        else:
+            self.case.assert_audited_state(before, 1)
         self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])
 
     def test_control(self):
@@ -76,10 +79,13 @@ class ValidatedCases:
     def test_missing(self):
         historical_receipt(self.doc)
         self.doc['extraction']['validation_ref'] = None
-        before = self.case.state()
+        before = self.case.state(exclude=())
         with historical_admission(self.case):
             self.assertEqual(self.submit()['status'], 'rejected')
-        self.assertEqual(self.case.state(), before)
+        if self.RAW:
+            self.assertEqual(self.case.state(exclude=()), before)
+        else:
+            self.case.assert_audited_state(before, 1)
 
     def test_legacy(self):
         cur = self.case.db.execute('SELECT * FROM extraction_validations_v2')

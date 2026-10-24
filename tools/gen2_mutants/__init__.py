@@ -14,6 +14,7 @@ from . import ddl_0a, store_0b_0d, router_1b, supervisor_1c, registries_1d, oper
 from .base import Mutation
 from . import topic_capture_2d6a1
 from . import accounting_capture_2d6a2
+from . import store_generation_2d6a3
 from . import detailed_support
 from . import tier0_disabled_2d5
 from . import span_cap
@@ -60,6 +61,7 @@ from .second_layer import SECOND_LAYER, SECOND_LAYER_TRIGGERS
 MUTATIONS: list[Mutation] = [
     *topic_capture_2d6a1.MUTATIONS,
     *accounting_capture_2d6a2.MUTATIONS,
+    *store_generation_2d6a3.MUTATIONS,
     *tier0_disabled_2d5.MUTATIONS,
     *detailed_support.MUTATIONS,
     *span_cap.MUTATIONS,

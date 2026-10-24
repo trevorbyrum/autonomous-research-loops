@@ -48,7 +48,7 @@ class SpanCapTest(unittest.TestCase):
                         self.assertEqual(case.store.select('claim_source_links')[0]['spans'], json.loads(raw_spans))
                     else:
                         self.assertEqual(out['reason'], 'payload_invalid')
-                        self.assertEqual(case.state(), before)
+                        case.assert_audited_state(before, 1)
         finally:
             case.tearDown()
 
@@ -107,7 +107,7 @@ class SpanCapTest(unittest.TestCase):
                                 self.assertEqual(case.store.select('verification_receipts', {'verification_receipt_id': doc['verification_receipt_id']})[0]['cited_spans'], canonical.parse_json_strict(literal(key, n)))
                             else:
                                 self.assertEqual(out['reason'], 'payload_invalid')
-                                self.assertEqual(case.state(), before)
+                                case.assert_audited_state(before, 1)
 
     def test_record_router_matrix(self):
         case = checks.CheckCase()
@@ -130,5 +130,5 @@ class SpanCapTest(unittest.TestCase):
                                 self.assertEqual(case.store.select('detailed_check_records', {'check_id': record['check_id']})[0]['assessment'][field], canonical.parse_json_strict(literal(key, n)))
                             else:
                                 self.assertEqual(out['reason'], 'payload_invalid')
-                                self.assertEqual(case.state(), before)
+                                case.assert_audited_state(before, 1)
         finally: case.tearDown()

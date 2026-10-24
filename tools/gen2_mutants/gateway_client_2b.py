@@ -209,7 +209,8 @@ MUTATIONS: list[Mutation] = [
              old='            behind = current is not None and instant(current["since"]) == instant(fact["since"]) and current["revision"] > fact["revision"]',
              new="            behind = False"),
     # 2b-repair-13b, Gate D #3: how pagination ended or continued, carried from the client to the store
-    *(Mutation(f"2B13-{key}", "2b-13b", desc, tuple(killers), target=target, old=old, new=new)
+    *(Mutation(f"2B13-{key}", "2b-13b", desc, tuple(killers), target=target, old=old, new=new,
+               scope='search_observations' if key in ('ddl-cursor-below-zero', 'ddl-cursor-beyond-the-bound') else None)
       for key, desc, killers, target, old, new in (
           ("end-inferred-from-no-cursor", "a complete page without a continuation is the end of the population, though its lane reported none",
            (PO + "test_each_page_says_why_pagination_ended_or_continued", PO + "test_a_continuation_that_cannot_be_used_is_not_an_end_and_not_a_cursor"), OBS,

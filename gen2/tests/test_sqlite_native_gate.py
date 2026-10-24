@@ -1,4 +1,5 @@
 """Literal contract fixtures run the native-write gate as a program."""
+import os
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,7 @@ class SQLiteNativeGateTest(unittest.TestCase):
             subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True, timeout=60)
             subprocess.run(["git", "-C", str(root), "add", "--", *files], check=True, capture_output=True, timeout=60)
             return subprocess.run([sys.executable, str(TOOL), "--root", str(root)],
+                                  env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2] / "tools")},
                                   capture_output=True, text=True, timeout=60)
 
     def test_each_api_is_forbidden_as_call_and_attribute(self):
@@ -63,6 +65,70 @@ class SQLiteNativeGateTest(unittest.TestCase):
         result = self.gate({"gen2/broken.py": "def broken(\n"})
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("cannot check source", result.stderr)
+
+    def test_store_dml_requires_the_generation_path(self):
+        for sql in ('INSERT INTO works VALUES (1)', 'update works set value=1', 'DELETE FROM works'):
+            for source in (f'conn.execute({sql!r})', f'class Store:\n def update(self):\n  conn.execute({sql!r})'):
+                with self.subTest(sql=sql, source=source):
+                    result = self.gate({'gen2/store/api.py': source})
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn('forbidden Store DML', result.stderr)
+
+    def test_store_counter_and_maintenance_dml_are_allowed(self):
+        source = "class Store:\n def _bump_once(self):\n  conn.execute('UPDATE store_generation SET generation=generation+1')\n def maintain(self):\n  conn.execute('INSERT INTO store_generation VALUES (1)')\n"
+        self.assertEqual(self.gate({'gen2/store/api.py': source}).returncode, 0)
+
+    def test_store_write_keyword_variants(self):
+        for sql in ('INSERT OR ABORT INTO works VALUES (1)',
+                    "UPDATE OR ABORT works SET identity_value='x'",
+                    'DELETE /* c */ FROM works', 'REPLACE INTO works VALUES (1)',
+                    'uPsErT works', "SELECT 'UPDATE'", 'SELECT 1; -- harmless\nDELETE FROM works',
+                    "SELECT '--', '/*'; UPDATE works SET value=1",
+                    'SELECT "--", `/*`, [--]; INSERT INTO works VALUES (1)'):
+            with self.subTest(sql=sql):
+                result = self.gate({'gen2/store/extra.py': f'conn.execute({sql!r})'})
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn('forbidden Store DML', result.stderr)
+
+        nested = '''class Store:
+ def insert(self):
+  conn.execute(f"INSERT INTO {conn.execute('DELETE FROM works')} ({columns}) VALUES ({values})")
+'''
+        self.assertEqual(self.gate({'gen2/store/api.py': nested}).returncode, 1)
+
+    def test_store_comments_and_word_boundaries(self):
+        for literal in ('SELECT 1 /* INSERT UPDATE DELETE REPLACE UPSERT */ -- UPDATE\n',
+                        'SELECT 1 /* DELETE to EOF', 'inserted updated deleted replacements upserts'):
+            with self.subTest(literal=literal):
+                result = self.gate({'gen2/store/extra.py': f'label = {literal!r}'})
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_store_primitive_sites_are_allowed(self):
+        source = '''"""Store API: INSERT, UPDATE, REPLACE documentation."""
+class Store:
+ def insert(self):
+  conn.execute(f"INSERT INTO {table} ({columns}) VALUES ({values})")
+  raise ValueError('an insert names at least one column')
+ def update(self):
+  """UPDATE exactly one row."""
+  conn.execute(f"UPDATE {table} SET {changes} WHERE {where}")
+  raise ValueError('an update names its key and at least one change')
+  raise ValueError(f"update of {table} matched {count} rows for {key} with {expect}; expected exactly one")
+ def advance(self):
+  """Delegates to update()."""
+'''
+        result = self.gate({'gen2/store/api.py': source})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Neither the primitive nor documentation exception follows the bytes
+        # to a different file, or admits an extra fixed SQL statement.
+        self.assertEqual(self.gate({'gen2/store/extra.py': source}).returncode, 1)
+        self.assertEqual(self.gate({'gen2/store/api.py': source + "\nconn.execute('DELETE FROM works')"}).returncode, 1)
+
+    def test_other_modules_cannot_claim_the_helper_exception(self):
+        source = "class Store:\n def _bump_once(self):\n  conn.execute('DELETE FROM works')\n"
+        self.assertEqual(self.gate({'gen2/store/other.py': source}).returncode, 1)
+        nested = "def unrelated():\n class Store:\n  def _bump_once(self):\n   conn.execute('DELETE FROM works')\n"
+        self.assertEqual(self.gate({'gen2/store/api.py': nested}).returncode, 1)
 
 
 if __name__ == "__main__":

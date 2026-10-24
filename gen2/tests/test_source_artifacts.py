@@ -35,7 +35,7 @@ class AdmissionTest(Workflow):
         before = self.state()
         out = self.send([record], **kwargs)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_control(self):
         out = self.send([self.record()])
@@ -99,7 +99,7 @@ class AdmissionTest(Workflow):
         before = self.state()
         out = self.send([self.record(), self.record(artifact_ref=changed)], refs=[self.ref, changed])
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_schema_attribution(self):
         schemas = self.schema()

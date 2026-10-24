@@ -196,7 +196,7 @@ class ExtractionAttentionTest(unittest.TestCase):
                     self.assertEqual(self.case.state(exclude=()), before)
                     self.doc['verification_receipt_id'] = 'ver_conflict1'
                     self.assertEqual(self.case.send(self.doc)['reason'], 'operation_id_conflict')
-                    self.assertEqual(self.case.state(), {k: v for k, v in before.items() if k != 'audit_events'})
+                    self.case.assert_audited_state(before, 1)
 
     def test_invalid_new_basis_rolls_back(self):
         for method in METHODS:
@@ -206,5 +206,5 @@ class ExtractionAttentionTest(unittest.TestCase):
                 before = self.case.state()
                 out = self.case.send(self.doc)
                 self.assertEqual(out['status'], 'rejected', out)
-                self.assertEqual(self.case.state(), before)
+                self.case.assert_audited_state(before, 1)
                 self.assertEqual(self.case.rows('SELECT * FROM holds'), [])

@@ -56,7 +56,7 @@ class QuotesCase(Workflow):
         self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
         if detail is not None:
             self.assertIn(detail, out.get("detail", ""))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def result(self):
         raw = self.value("SELECT match_result FROM quote_checks WHERE check_id = 'qck_quote00001'")

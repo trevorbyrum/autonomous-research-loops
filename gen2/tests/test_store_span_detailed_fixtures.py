@@ -58,7 +58,7 @@ class SpanFixtureTest(unittest.TestCase):
                 out = case.send(bad)
                 self.assertEqual((out['status'], out.get('reason')), ('rejected', 'payload_invalid'), out)
                 self.assertIn('receipt detailed check binding', out['detail'])
-                self.assertEqual(case.state(), before)
+                case.assert_audited_state(before, 1)
                 self.assertEqual(case.send(table)['status'], 'committed')
                 self.check_receipt(case, table, case.source)
 

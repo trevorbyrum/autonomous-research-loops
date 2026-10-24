@@ -66,7 +66,7 @@ class Rollback(wf.Workflow):
                 break
             self.assertEqual((out["status"], out["reason"]), ("rejected", "payload_invalid"), out)
             self.assertIn("the store refused the write", out["detail"])
-            self.assertEqual(self.state(), before, f"write {position} refused")
+            self.assert_audited_state(before, rejected + 1, audits=rejected + 1, msg=f"write {position} refused")
             rejected += 1
             self.assertEqual(self.value("SELECT count(*) FROM audit_events WHERE kind = 'commit_rejected'"), rejected)
         else:
@@ -114,12 +114,12 @@ class ReportLineageTest(Rollback):
         rejected = self.decide("opd_scopereject", "scope_approval", {"kind": "scoping_report", "ref": "scope-1", "revision": 1, "hash": self.report(1)["content_hash"]}, disposition="rejected")
         self.assertEqual(rejected["status"], "applied", rejected)  # the topic is scoping again, to write the next version
         before = self.state()
-        for label, version in (("a version skipped", 3), ("the recorded version again", 1)):
+        for rejected, (label, version) in enumerate((("a version skipped", 3), ("the recorded version again", 1)), 1):
             with self.subTest(label):
                 out = self.commit(f"op_bad{version}report", version)
                 self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
                 self.assertIn("scope-1: the next version is 2, with parent 1", out["detail"])
-                self.assertEqual(self.state(), before)
+                self.assert_audited_state(before, rejected, audits=rejected)
         self.assertEqual(self.commit("op_report00002", 2)["status"], "committed")
         self.assertEqual(self.rows("SELECT version, parent_version FROM scoping_reports ORDER BY version"), [(1, None), (2, 1)])
 

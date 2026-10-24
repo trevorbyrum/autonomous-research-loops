@@ -25006,5 +25006,157 @@
    "test_dossier_inputs.AdapterTest.test_control_route"
   ],
   "why": "The approved native empty-history route retains its exact hash and typed contract; the independent killer requires the missing admission, complete history or history-bound hash."
+ },
+ "2D6A3-admission-row": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_maintenance_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-counter-domain": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_guard_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-epoch-domain": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_guard_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-missing-row-write": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.CounterTest.test_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-no_delete": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_guard_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-no_insert": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_guard_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-schema-cookie": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_maintenance_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-singleton-domain": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_guard_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-step": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_guard_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-bootstrap": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.CounterTest.test_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-maintenance-renewal": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_maintenance_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-maintenance-bootstrap": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_maintenance_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-maintenance-on-error": {
+  "by_hand": true,
+  "controls": [
+   "test_generation_lifecycle.LifecycleTest.test_maintenance_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-schema-only-install": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.GenerationTest.test_guard_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-insert-call": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.CounterTest.test_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-update-call": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.CounterTest.test_update_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-once": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.CounterTest.test_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-reset": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.CounterTest.test_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-covered": {
+  "by_hand": true,
+  "controls": [
+   "test_store_generation.CounterTest.test_control"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-dml-lint": {
+  "by_hand": true,
+  "controls": [
+   "test_sqlite_native_gate.SQLiteNativeGateTest.test_store_counter_and_maintenance_dml_are_allowed"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-dml-keywords": {
+  "controls": [
+   "test_sqlite_native_gate.SQLiteNativeGateTest.test_store_primitive_sites_are_allowed"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
+ },
+ "2D6A3-dml-comments": {
+  "controls": [
+   "test_sqlite_native_gate.SQLiteNativeGateTest.test_store_primitive_sites_are_allowed"
+  ],
+  "why": "A separate accepted write reaches the changed counter/guard line, checked maintenance, or literal gate; only the killer asserts the removed property."
  }
 }

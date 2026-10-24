@@ -282,7 +282,7 @@ class RouterReadsThisSpoolTest(RouterTestCase):
         before = self.state()
         out = self.commit(self.grant, "op_ours0000001", claiming(self.grant, "clm_ours0001"))
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_missing"), out)
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
         self.spool.stage(TOPIC, b"their claim text", "text/plain")  # the same bytes, staged for this topic by its own work
         self.assertEqual(self.commit(self.grant, "op_ours0000002", claiming(self.grant, "clm_ours0002"), refs=[text])["status"], "committed")
 

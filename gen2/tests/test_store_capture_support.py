@@ -176,8 +176,10 @@ class CaptureDDLTest(DDLTest):
             self.assertEqual(after[table][:len(before[table])], before[table], table)
             self.assertEqual(len(after[table]), len(before[table]) + count, table)
             after[table] = before[table]
-        self.assertEqual(after["claims"], [tuple(status if i == 7 and row[1] == revision else v for i, v in enumerate(row)) for row in before["claims"]])
+        expected_claims = [tuple(status if i == 7 and row[1] == revision else v for i, v in enumerate(row)) for row in before["claims"]]
+        self.assertEqual(after["claims"], expected_claims)
         after["claims"] = before["claims"]
+        # Raw DDL leaves generation untouched in the complete-state comparison.
         self.assertEqual(after, before)
 
     def late_valid(self, multiple=False, accepted=True):

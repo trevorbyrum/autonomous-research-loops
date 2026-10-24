@@ -44,10 +44,13 @@ class SummaryCases:
         return case
 
     def refused(self, case):
-        before = case.state()
+        before = case.state(exclude=())
         out = ReferenceCases.submit(case)
         self.assertEqual(out['status'], 'rejected', out)
-        self.assertEqual(case.state(), before)
+        if self.RAW:
+            self.assertEqual(case.state(exclude=()), before)
+        else:
+            case.assert_audited_state(before, 1)
         self.assertEqual(case.store.select('verification_receipts'), [])
         if not self.RAW:
             self.assertEqual(out['reason'], 'payload_invalid', out)

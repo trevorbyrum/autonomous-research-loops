@@ -183,7 +183,7 @@ class Workflow(RouterTestCase):
         out = self.capture(grant, op, claim=None, **sections)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
         self.assertIn(detail, out.get("detail", ""))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -195,9 +195,9 @@ class TopicTest(Workflow):
         self.assertEqual(self.rows("SELECT fleet_id, priority, status, state_revision, active_contract_revision, status_decision_id, paused_at, "
                                    "created_at = updated_at FROM queue_entries WHERE topic_id = ?", NEW),
                          [("fleet-b", 3, "awaiting_brief_confirmation", 0, None, None, None, 1)])
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.create_topic({"topic_id": NEW, "priority": 3}), {"status": "replayed", "topic_id": NEW})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_each_topic_takes_its_own_ids_fleet(self) -> None:
         """A second topic of the seeded fleet: its fleet is its own prefix, not another topic's."""
@@ -214,9 +214,9 @@ class TopicTest(Workflow):
 
     def test_a_replay_is_answered_whatever_the_topic_has_done_since(self) -> None:
         self.to_scoping()  # the seeded TOPIC (priority 1) has moved on
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.create_topic({"topic_id": TOPIC, "priority": 1})["status"], "replayed")
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_a_malformed_request_creates_nothing(self) -> None:
         for label, request in (("no fleet prefix", {"topic_id": "t9", "priority": 1}), ("an upper-case fleet", {"topic_id": "Fleet:t9", "priority": 1}),
@@ -241,9 +241,9 @@ class BriefIntakeTest(Workflow):
                                    "confirmed_by_decision_id, closed_at FROM intake_briefs WHERE topic_id = ?", TOPIC),
                          [(1, None, doc["content_hash"], "user", "awaiting_confirmation", "2026-09-27T09:00:00Z", REVIEW_BY, None, None, None)])
         self.assertEqual(json.loads(self.value("SELECT document FROM intake_briefs WHERE topic_id = ?", TOPIC)), doc)
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.open_brief()["status"], "replayed")
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_it_is_versioned_and_confirmed_through_the_existing_paths(self) -> None:
         self.open_brief()
@@ -309,9 +309,9 @@ class ContractDraftTest(Workflow):
                           (2, "F-cost", "important", None, "opd_rate0001"), (2, "F-effect", "critical", 8, "opd_rate0001")])
         self.assertEqual(self.rows("SELECT contract_revision, obligation_id, operator_importance_band FROM obligations WHERE topic_id = ? ORDER BY 1, 2", TOPIC),
                          [(1, "O-1", None), (1, "O-2", None), (2, "O-1", "critical"), (2, "O-2", "important")])
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.draft(r2)["status"], "replayed")
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_the_rated_draft_is_approved_and_the_topic_queued(self) -> None:
         r2 = self.rated_drafts()
@@ -658,9 +658,9 @@ class WorkRegistrationTest(Workflow):
         self.assertEqual(self.rows("SELECT work_id, identity_scheme, identity_value, study_group_id FROM works"), [(wid, "doi", "10.1/x", None)])
         self.assertEqual(self.rows("SELECT event_id, work_id, dedup_method_version FROM record_work_links ORDER BY event_id"),
                          [(self.events[0], wid, "dedup-1"), (self.events[1], wid, "dedup-1")])
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.register(self.grant, [("doi", "10.1/x", self.events)]), {**out, "status": "replayed"})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_a_work_two_topics_retrieve_is_one_row(self) -> None:
         self.to_queued(OTHER)
@@ -732,9 +732,9 @@ class WorkRegistrationTest(Workflow):
     def test_a_lost_reply_is_answered_after_the_work_ended(self) -> None:
         first = self.register(self.grant, [("doi", "10.1/x", self.events)])
         self.assertEqual(self.finish(self.grant, "op_final000001")["status"], "committed")
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.register(self.grant, [("doi", "10.1/x", self.events)]), {**first, "status": "replayed"})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
 
 # ---------------------------------------------------------------------------
@@ -838,9 +838,9 @@ class SignalTest(Workflow):
 
     def test_the_same_signal_reported_again_collides(self) -> None:
         first = self.router.raise_signal(signal())
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.raise_signal(signal(observed="2026-09-27T09:55:00Z")), {**first, "status": "replayed"})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
         self.assertEqual(self.router.raise_signal(signal(revision=2))["status"], "recorded")  # another source revision is another signal
         self.assertEqual(self.value("SELECT count(*) FROM review_triggers"), 2)
 
@@ -1008,7 +1008,7 @@ class ScopingReportTest(Workflow):
                 out = self.commit(f"op_badreport{n:03d}", report)
                 self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
                 self.assertIn(detail, out.get("detail", ""))
-                self.assertEqual(self.state(), before)
+                self.assert_audited_state(before, 1)
         self.assertEqual(self.commit("op_report00001", self.report())["status"], "committed")  # the accepted report beside them
 
     def test_a_topic_no_longer_scoping_takes_no_report(self) -> None:
@@ -1017,7 +1017,7 @@ class ScopingReportTest(Workflow):
         out = self.commit("op_report00002", self.report(version=2))
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
         self.assertIn("while its topic is scoping, not awaiting_scope_approval", out.get("detail", ""))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_only_pre_contract_research_commits_a_report(self) -> None:
         discovery = self.started("inv_scopedisc1", "discovery")
@@ -1166,7 +1166,7 @@ class SourceProposalTest(Workflow):
             out = self.decide(f"opd_sourcet10{n}", "source_approval", {"kind": "source_proposal", "ref": "srcp_00000001", "revision": None, "hash": truth},
                               disposition=disposition)
             self.assertEqual((out["status"], out["effects"]), ("applied", {} if disposition == "approved" else {}), out)
-        self.assertEqual(self.state(exclude=("audit_events", "operator_decisions")), before)  # nothing enabled, registered or moved: a record
+        self.assert_audited_state(before, 3, exclude=("audit_events", "operator_decisions"))  # three committed decision transactions; no authority effects
         self.assertEqual(self.rows("SELECT disposition FROM operator_decisions WHERE kind = 'source_approval' ORDER BY rowid"), [("deferred",), ("rejected",), ("approved",)])
 
     def test_a_re_proposal_supersedes_a_recorded_one(self) -> None:

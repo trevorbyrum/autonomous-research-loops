@@ -238,6 +238,12 @@ class SupervisedTestCase(rf.RouterTestCase):
     # -- read-back ---------------------------------------------------------------
     def ended(self, inv: str = MAIN) -> dict:
         """The invocation's end as the store holds it (raw SQL)."""
+        state = self.state(exclude=())
+        allowed = LIFECYCLE_TABLES
+        # Counter maintenance is expected; changed singleton/epoch stays visible.
+        if (([r[:2] for r in state['store_generation']] or [('store', None)]) ==
+                ([r[:2] for r in self._baseline['store_generation']] or [('store', None)])):
+            allowed = allowed | {'store_generation'}
         row = self.rows("SELECT state, failure_class, end_evidence_ref, descendants_confirmed_at IS NOT NULL, unknown_episode, lease_id, kind "
                         "FROM invocations WHERE invocation_id = ?", inv)[0]
         lease_id = row[5] or self.value("SELECT lease_id FROM invocations WHERE invocation_id = ?", PARENT)
@@ -248,7 +254,7 @@ class SupervisedTestCase(rf.RouterTestCase):
                 "open_holds": self.value("SELECT count(*) FROM holds WHERE subject_ref LIKE ? AND cleared_at IS NULL", f"invocation:{inv}#%"),
                 "cleared_holds": self.value("SELECT count(*) FROM holds WHERE subject_ref LIKE ? AND cleared_at IS NOT NULL", f"invocation:{inv}#%"),
                 "reconciliations": [r[0] for r in self.rows("SELECT resolution FROM invocation_reconciliations WHERE invocation_id = ? ORDER BY unknown_episode", inv)],
-                "other_tables": sorted(name for name, rows in self.state(exclude=()).items() if name not in LIFECYCLE_TABLES and rows != self._baseline.get(name))}
+                "other_tables": sorted(name for name, rows in state.items() if name not in allowed and rows != self._baseline.get(name))}
 
     def evidence_record(self, inv: str = MAIN) -> dict:
         digest = self.value("SELECT end_evidence_ref FROM invocations WHERE invocation_id = ?", inv)

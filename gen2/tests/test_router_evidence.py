@@ -49,7 +49,7 @@ class EvidenceCase(RouterTestCase):
         self.assertEqual((response["status"], response.get("reason")), ("rejected", reason), response)
         if detail is not None:
             self.assertIn(detail, response.get("detail", ""))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def claim_entry(self, cid: str, revision: int, text: dict, load_bearing: bool = False) -> dict:
         return {"claim_id": cid, "revision": revision, "text_ref": text, "load_bearing": load_bearing,

@@ -58,11 +58,14 @@ class ReferenceCases:
             return {'status': 'rejected', 'detail': str(exc)}
 
     def rejected_reference(self):
-        before = self.state()
+        before = self.state(exclude=())
         result = self.submit()
         self.assertEqual(result['status'], 'rejected', result)
         self.assertIn('receipt detailed check binding', result['detail'])
-        self.assertEqual(self.state(), before)
+        if self.RAW:
+            self.assertEqual(self.state(exclude=()), before)
+        else:
+            self.assert_audited_state(before, 1)
 
     def corrupt(self, field, value):
         self.x('DROP TRIGGER IF EXISTS detailed_check_records_immutable_u')
@@ -228,9 +231,12 @@ class ReferenceCases:
             if change == 'projection': self.doc['detailed_checks']['negation']['outcome'] = 'not_applicable'
             if change == 'version': self.doc['receipt_version'] = 'verification-receipt/99'
             if change == 'v1': self.doc['receipt_version'] = 'verification-receipt/1'
-            before = self.state()
+            before = self.state(exclude=())
             self.assertEqual(self.submit()['status'], 'rejected', change)
-            self.assertEqual(self.state(), before)
+            if self.RAW:
+                self.assertEqual(self.state(exclude=()), before)
+            else:
+                self.assert_audited_state(before, 1)
             self.doc = original
 
     def test_outcomes_optional_legacy(self):

@@ -9,6 +9,8 @@ OUTCOMES = ('succeeded', 'failed', 'not_applicable', 'not_checked', 'unavailable
 
 
 class CheckCase(AcquisitionCase):
+    RAW = False
+
     def setUp(self):
         super().setUp()
         self.assertEqual(self.capture(self.producer, 'op_claimcheck1')['status'], 'committed')
@@ -34,10 +36,13 @@ class CheckCase(AcquisitionCase):
         return self.router.commit_outcome(self.env(record, grant, op))
 
     def refuse(self, record):
-        before = self.state()
+        before = self.state(exclude=())
         out = self.send(record)
         self.assertEqual(out['status'], 'rejected', out)
-        self.assertEqual(self.state(), before)
+        if self.RAW:
+            self.assertEqual(self.state(exclude=()), before)
+        else:
+            self.assert_audited_state(before, 1)
 
 
 class RecordMatrix:
@@ -144,7 +149,7 @@ class RouterCheckTest(RecordMatrix, CheckCase):
     def test_kind(self):
         before = self.state()
         self.assertEqual(self.send(self.record(), self.producer)['status'], 'rejected')
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_replay_rollback(self):
         record = self.record()
@@ -189,7 +194,7 @@ class AuthenticationRegressionTest(CheckCase):
         result = self.router.commit_outcome(env)
         self.assertEqual(result['status'], 'rejected', result)
         self.assertIn('hash', result['detail'])
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_recorded_examined_corrupt(self): self.corruption('examined')
     def test_recorded_evidence_omitted_corrupt(self): self.corruption('evidence')
@@ -200,5 +205,5 @@ class AuthenticationRegressionTest(CheckCase):
         result = self.send(self.record(outcome='failed'), op='op_newcollision')
         self.assertEqual(result['status'], 'rejected', result)
         self.assertIn('UNIQUE', result['detail'])
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
         self.assertEqual(self.store.select('detailed_check_records')[0]['assessment'], record['assessment'])

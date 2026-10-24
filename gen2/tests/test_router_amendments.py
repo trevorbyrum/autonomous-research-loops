@@ -220,7 +220,7 @@ class ContractWorld(RouterTestCase):
         response = self.router.commit_outcome(self.envelope(grant, op, outcome))
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
         self.assertIn("contract-admitted work adopts it as a new revision", response.get("detail"))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
         return response
 
     def adopt(self, grant: dict) -> None:
@@ -276,17 +276,17 @@ class AmendmentProposalTest(ContractWorld):
                 self.refused_command("propose_amendment", {"document": doc}, reason, detail)
         self.assertEqual(self.router.propose_amendment({"document": good})["status"], "recorded")
         self.refused_command("propose_amendment", {"document": {**contract_doc(3, 2, edit=reframed)}}, "amendment_conflict")  # the key is the revision
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.propose_amendment({"document": good})["status"], "replayed")
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_the_same_amendment_again_replays(self) -> None:
         """The accepted path of the amendment-conflict guard, on its own."""
         doc = contract_doc(3, 2, edit=compatible)
         self.assertEqual(self.router.propose_amendment({"document": doc})["status"], "recorded")
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.propose_amendment({"document": copy.deepcopy(doc)}), {"status": "replayed", "topic_id": TOPIC, "revision": 3})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_no_approved_contract_takes_no_amendment(self) -> None:
         self.to_scoping(OTHER)
@@ -410,7 +410,7 @@ class ImpactTest(ContractWorld):
         response = self.router.commit_outcome(env)
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
         self.assertIn("contract revision 2 was superseded (protocol_changed)", response.get("detail"))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
         self.assertEqual(self.rows("SELECT state, result_payload_digest FROM invocations WHERE invocation_id = 'inv_disco001'"), [("result_ready", staged)])
 
     def test_a_stale_claim_is_not_promoted_and_an_adopted_revision_is(self) -> None:
@@ -430,7 +430,7 @@ class ImpactTest(ContractWorld):
         response = self.router.commit_outcome(env)
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
         self.assertIn("contract-admitted work adopts it as a new revision", response.get("detail"))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
         text = self.artifact(b"a load-bearing claim")
         adopt = {**empty_outcome("inv_research02", "interim_transition"),
                  "claims": [{"claim_id": "clm_00000001", "revision": 2, "text_ref": text, "load_bearing": False, "required_access_tier": None}],
@@ -464,9 +464,9 @@ class ImpactTest(ContractWorld):
         r3 = self.propose(3, compatible)
         self.approve(r3)
         self.assertEqual(self.rows("SELECT decision_id, kind, classification FROM amendment_impacts"), [("opd_amend0003", "contract", "compatible")])
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.approve(r3)["status"], "replayed")
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
 
 class VersionBindingTest(ContractWorld):
@@ -558,7 +558,7 @@ class StandingTest(ContractWorld):
         response = self.router.commit_outcome(self.envelope(grant, "op_final000001", empty_outcome("inv_research01")))
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
         self.assertIn("contract revision 2 was superseded (protocol_changed)", response.get("detail"))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
         ended = self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": "inv_research01", "to_state": "cancelled",
                                                "end_evidence_ref": self.evidence(grant, ())})
         self.assertEqual(ended["status"], "recorded", ended)
@@ -586,7 +586,7 @@ class StandingTest(ContractWorld):
         response = self.router.commit_outcome(self.envelope(grant, "op_final000001", empty_outcome("inv_research01")))
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
         self.assertIn("(unrecorded)", response.get("detail"))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
 
 class InventoryImpactTest(ContractWorld):
@@ -641,7 +641,7 @@ class InventoryImpactTest(ContractWorld):
         response = self.router.commit_outcome(self.envelope(grant, "op_final000001", empty_outcome("inv_research01")))
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
         self.assertIn("contract revision 2 was superseded (protocol_changed)", response.get("detail"))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def adopted_only(self, grant: dict) -> None:
         """The fenced pass ends and is re-queued; its retry, under the current
@@ -736,7 +736,7 @@ class InventoryImpactTest(ContractWorld):
         response = self.router.commit_outcome(self.envelope(grant, "op_final000001", empty_outcome("inv_research01")))
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
         self.assertIn("contract revision 2 was superseded (protocol_changed)", response.get("detail"))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
         self.adopted_only(grant)
 
 
@@ -807,9 +807,9 @@ class BriefVersionTest(RouterTestCase):
         self.refused_command(self.version(2, deadline="2026-10-05T00:00:00Z"), "request_invalid", "reviewed after now")
         self.clock.set("2026-09-27T10:00:00Z")
         self.assertEqual(self.router.version_brief(good)["status"], "recorded")
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.version_brief(good)["status"], "replayed")
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
         self.refused_command({**good, "owner_operator_id": "user-3"}, "brief_version_conflict")
 
     def test_the_same_version_again_replays(self) -> None:
@@ -817,9 +817,9 @@ class BriefVersionTest(RouterTestCase):
         self.brief()
         request = self.version(2, owner="user-2")
         self.assertEqual(self.router.version_brief(request)["status"], "recorded")
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.version_brief(copy.deepcopy(request)), {"status": "replayed", "topic_id": TOPIC, "brief_id": "brief-1", "version": 2})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
 
     def test_a_closed_or_unknown_brief_takes_no_version(self) -> None:
         self.refused_command(self.version(2), "unknown_brief")
@@ -836,15 +836,15 @@ class OverdueTest(RouterTestCase):
         self.brief()
         key = {"topic_id": TOPIC, "brief_id": "brief-1", "version": 1}
         self.clock.set("2026-09-30T23:59:59.998Z")  # the next reading is one millisecond before the deadline
-        before = self.state()
+        before = self.state(exclude=())
         out = self.router.mark_brief_overdue(key)
         self.assertEqual((out["status"], out.get("reason")), ("refused", "not_overdue"), out)
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
         self.clock.set("2026-09-30T23:59:59.999Z")  # the next reading is the deadline itself
         self.assertEqual(self.router.mark_brief_overdue(key), {"status": "marked", "overdue_since": "2026-10-01T00:00:00.000Z"})
-        before = self.state()
+        before = self.state(exclude=())
         self.assertEqual(self.router.mark_brief_overdue(key), {"status": "replayed", "overdue_since": "2026-10-01T00:00:00.000Z"})
-        self.assertEqual(self.state(), before)
+        self.assertEqual(self.state(exclude=()), before)
         self.assertEqual(self.rows("SELECT status FROM intake_briefs"), [("awaiting_confirmation",)])  # expiry never advances it
         v1 = self.brief_document(TOPIC, 1)["content_hash"]
         self.assertEqual(self.decide("opd_brief0001", "brief_confirmation", {"kind": "intake_brief", "ref": "brief-1", "revision": 1, "hash": v1})["status"], "applied")
@@ -890,7 +890,7 @@ class BriefImpactTest(RouterTestCase):
         before = self.state()
         response = self.router.commit_outcome(env)
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
 
     def test_a_brief_restored_revives_no_scoping_work(self) -> None:
@@ -910,7 +910,7 @@ class BriefImpactTest(RouterTestCase):
         response = self.router.commit_outcome(self.envelope(grant, "op_scope00001", empty_outcome("inv_scoping01")))
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
         self.assertIn("brief brief-1 v1 was superseded (content_changed)", response.get("detail"))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
 
 class BriefLineageTest(RouterTestCase):
@@ -948,7 +948,7 @@ class BriefLineageTest(RouterTestCase):
         response = self.router.commit_outcome(self.envelope(grant, "op_scope00001", empty_outcome("inv_scoping01")))
         self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
         self.assertIn("brief brief-1 v1 was superseded (superseded)", response.get("detail"))
-        self.assertEqual(self.state(), before)
+        self.assert_audited_state(before, 1)
 
     def test_another_briefs_impacts_do_not_judge_a_pin(self) -> None:
         self.to_scoping()

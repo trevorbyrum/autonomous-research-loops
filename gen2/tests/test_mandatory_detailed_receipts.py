@@ -31,11 +31,14 @@ class MandatoryCases:
         return case
 
     def refused(self, case, detail=None):
-        before = case.state()
+        before = case.state(exclude=())
         out = case.submit()
         self.assertEqual(out['status'], 'rejected', out)
         if detail: self.assertIn(detail, out['detail'])
-        self.assertEqual(case.state(), before)
+        if self.RAW:
+            self.assertEqual(case.state(exclude=()), before)
+        else:
+            case.assert_audited_state(before, 1)
 
     def test_control(self):
         case = self.opened()

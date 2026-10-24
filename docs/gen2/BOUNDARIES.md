@@ -242,8 +242,20 @@ records retain JSON text, BLOBs, column metadata and empty groups; a separate
 pure `dossier-input/1` hash binds that raw preimage and explicit history after
 capture. It grants no write, completion, approval or commit-freshness authority.
 Public accounting signatures/results and pre-contract inventory behavior are
-preserved. D parts 3–4 own the operator-ratified store-wide generation and
-commit consumption/bounded recapture.
+preserved. D part 3's Store primitives maintain a durable singleton generation
+once per committed transaction writing any of the 37 capture relations,
+including unrelated topics and same-value updates; rollback removes its bump.
+Ordered SQL 43 keeps the table and three integrity guards; Store consumes the
+fixed capture-selector union directly, with no event-trigger inventory. It protects the singleton
+and refuses exhaustion or missing/incompatible schema guards. Installation is
+schema-only: absent metadata means generation zero and no maintenance epoch;
+only a genuine writer initializes it. Opening, startup and history reads write
+nothing. Explicit `Store.maintain` performs offline restore/schema maintenance
+with all runtime handles closed, then rotates the epoch after admission. Plain
+reopen preserves it. Replacing/restoring files over a live store or outside
+that operation is unsupported. Epoch, schema cookie and admitted file identity
+supply lifecycle invalidation that row triggers cannot. D part 4
+owns their binding into capture, commit consumption and bounded recapture.
 The internal `Router._dossier_inputs` read delegates to that collaborator,
 requires a captured attributed approved contract, and returns immutable complete
 raw history, typed coverage and a history-bound content hash after closure. It
