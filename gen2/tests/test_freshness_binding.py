@@ -1,14 +1,20 @@
 """Freshness fences on disposable WAL stores; explicit interleaving barriers."""
 import shutil
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from gen2.router.boundary import Refusal
+from gen2.router.service import Router
 from gen2.store import api, capture, db
 from gen2.tests import router_crash_child as crash, router_fixtures as rf
+
+DEADLINE = '2026-09-27T11:00:00Z'
+LIVE = '2026-09-27T10:59:59.999999999Z'
 
 
 class FreshnessTest(unittest.TestCase):
@@ -27,6 +33,7 @@ class FreshnessTest(unittest.TestCase):
         except Exception as exc:
             self.fail(f'contract admission must succeed: {exc!r}')
         self.store, self.router = self.world.store, self.world.router
+        self.invocation_id = self.world.started('inv_freshness001', deadline_at=DEADLINE)['invocation_id']
         self.other = api.open_store(self.world.directory / 'store.sqlite3')
         self.addCleanup(self.other.close)
 
@@ -135,7 +142,8 @@ class FreshnessTest(unittest.TestCase):
 
     def run_operation(self, prepare, commit):
         try:
-            return self.router._commit_dossier_inputs(topic_id=rf.TOPIC, history='native', prepare=prepare, commit=commit)
+            return self.router._commit_dossier_inputs(topic_id=rf.TOPIC, invocation_id=self.invocation_id,
+                history='native', prepare=prepare, commit=commit)
         except Refusal:
             raise
         except Exception as exc:
@@ -167,6 +175,7 @@ class FreshnessTest(unittest.TestCase):
         barriers, before = [], []
         def prepare(inputs):
             barriers.append(inputs)
+            self.assertLessEqual(len(barriers), 3, 'contention must never start a fourth attempt')
             with self.other.transaction():
                 self.update(self.other, rf.OTHER)
             before[:] = [self.world.state()]
@@ -176,6 +185,90 @@ class FreshnessTest(unittest.TestCase):
         self.assertEqual((error.exception.reason, len(barriers), commit.call_count), ('stale_inputs', 3, 0))
         self.world.assert_audited_state(before[0], 1)
         self.assertEqual(self.store.select('audit_events')[-1]['detail'], {'recaptures': 2})
+
+    def test_expiry_prevents_capture_preparation_and_recapture(self):
+        read = self.store.capture_topic
+        for stage in ('before_capture', 'after_capture', 'mismatch', 'prepare'):
+            with self.subTest(stage=stage):
+                clock = {'now': DEADLINE if stage == 'before_capture' else LIVE}
+                self.router._clock = lambda: clock['now']
+                before = [self.world.state()]
+                def capture_at_deadline(topic):
+                    raw = read(topic)
+                    if stage == 'after_capture':
+                        clock['now'] = DEADLINE
+                    return raw
+                def prepare_at_deadline(inputs):
+                    if stage == 'mismatch':
+                        with self.other.transaction():
+                            self.update(self.other, rf.OTHER)
+                        before[:] = [self.world.state()]
+                    clock['now'] = DEADLINE
+                prepared = Mock(side_effect=prepare_at_deadline)
+                committed = Mock(side_effect=AssertionError('expired operation committed'))
+                with patch.object(self.store, 'capture_topic', side_effect=capture_at_deadline) as captured:
+                    with self.assertRaises(Refusal) as error:
+                        self.run_operation(prepared, committed)
+                self.assertEqual(error.exception.reason, 'deadline_passed')
+                expected = {'before_capture': (0, 0, 0), 'after_capture': (1, 0, 0)}.get(stage, (1, 1, 0))
+                self.assertEqual((captured.call_count, prepared.call_count, committed.call_count), expected)
+                self.world.assert_audited_state(before[0], 1)
+                self.assertEqual(self.store.select('audit_events')[-1]['detail'], {'recaptures': 0})
+
+    def test_deadline_crossing_while_waiting_for_writer_fence(self):
+        for expires in (False, True):
+            with self.subTest(expires=expires), ThreadPoolExecutor(1) as pool:
+                clock, issued = {'now': LIVE}, threading.Event()
+                def admitted():
+                    router = Router.open(self.world.directory / 'store.sqlite3', self.world.spool, clock=lambda: clock['now'])
+                    router._store._conn.set_trace_callback(lambda sql: issued.set() if sql == 'BEGIN IMMEDIATE' else None)
+                    return router
+                router = pool.submit(admitted).result(timeout=10)
+                prepared = Mock(return_value='prepared')
+                def commit(value, now):
+                    self.assertEqual((value, now), ('prepared', LIVE))
+                    self.update(router._store)
+                    return 'written'
+                committed = Mock(side_effect=commit)
+                before = self.world.state()
+                try:
+                    self.other._conn.execute('BEGIN IMMEDIATE')
+                    pending = pool.submit(router._commit_dossier_inputs, rf.TOPIC, invocation_id=self.invocation_id,
+                        history='native', prepare=prepared, commit=committed)
+                    self.assertTrue(issued.wait(10), 'operation never requested its writer fence')
+                    clock['now'] = DEADLINE if expires else LIVE
+                    self.other._conn.execute('ROLLBACK')
+                    try:
+                        result = pending.result(timeout=10)
+                    except Exception as exc:
+                        self.assertIsInstance(exc, Refusal)
+                        self.assertTrue(expires)
+                        self.assertEqual(exc.reason, 'deadline_passed')
+                    else:
+                        self.assertFalse(expires)
+                        self.assertEqual(result, 'written')
+                        self.assertEqual(self.store.select('queue_entries', {'topic_id': rf.TOPIC})[0]['priority'], 7)
+                    self.assertEqual((prepared.call_count, committed.call_count), (1, int(not expires)))
+                    if expires:
+                        self.world.assert_audited_state(before, 1)
+                    self.assertEqual(self.store.select('audit_events')[-1]['detail'], {'recaptures': 0})
+                finally:
+                    if self.other._conn.in_transaction:
+                        self.other._conn.execute('ROLLBACK')
+                    pool.submit(router.close).result(timeout=10)
+
+    def test_deadline_authority_requires_own_admitted_invocation(self):
+        before = self.world.state()
+        for topic, invocation in ((rf.TOPIC, 'inv_missing001'), (rf.OTHER, self.invocation_id)):
+            error = None
+            try:
+                self.router._commit_dossier_inputs(topic, invocation_id=invocation, history='native',
+                    prepare=Mock(side_effect=AssertionError('invalid caller prepared')), commit=Mock())
+            except Exception as exc:
+                error = exc
+            self.assertIsInstance(error, Refusal)
+            self.assertEqual(error.reason, 'unknown_invocation')
+        self.assertEqual(self.world.state(), before)
 
     def test_schema_and_semantic_refusals_are_not_retried(self):
         def schema(inputs):

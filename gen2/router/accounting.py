@@ -48,21 +48,26 @@ class Accounting:
             raise Refusal("no_approved_contract", topic_id)
         return DossierInput(raw, convert_coverage_snapshot(raw, topic_id, history), input_hash(raw, history))
 
-    def commit_dossier_inputs(self, topic_id: str, *, history: a.History, prepare: Callable, commit: Callable) -> object:
-        """Compute outside the fence; caller's existing supervised job deadline applies.
+    def commit_dossier_inputs(self, topic_id: str, *, history: a.History, prepare: Callable, commit: Callable, require_live: Callable) -> object:
+        """Compute outside the fence, bounded by the caller's admitted deadline.
 
         Only an effect-free generation mismatch permits up to two recaptures.
         The next slice supplies dossier preparation and its normal commit body.
         """
-        for recaptures in range(3):
+        recaptures = 0
+        for attempt in range(3):
             def audit(now):
                 return self._core._audit("dossier_input_recaptures", now, {"recaptures": recaptures}, topic_id=topic_id)
             def fenced(now):
+                require_live(now)
                 result = commit(prepared, now)
                 audit(now)
                 return result
             try:
+                require_live()
+                recaptures = attempt
                 inputs = self.dossier_inputs(topic_id, history=history)
+                require_live()
                 prepared = prepare(inputs)
                 return self._core._guarded(reason="payload_invalid", body=fenced, freshness=inputs.raw.freshness)
             except api.GenerationMismatch:

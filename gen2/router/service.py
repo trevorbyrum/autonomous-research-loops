@@ -279,8 +279,16 @@ class Router:
     def _dossier_inputs(self, topic_id: str, *, history: accounting.History) -> DossierInput:
         return self._accounting.dossier_inputs(topic_id, history=history)
 
-    def _commit_dossier_inputs(self, topic_id: str, *, history: accounting.History, prepare: Callable, commit: Callable) -> object:
-        return self._accounting.commit_dossier_inputs(topic_id=topic_id, history=history, prepare=prepare, commit=commit)
+    def _commit_dossier_inputs(self, topic_id: str, *, invocation_id: str, history: accounting.History, prepare: Callable, commit: Callable) -> object:
+        inv = self._one("invocations", {"invocation_id": invocation_id})
+        if inv is None or inv["topic_id"] != topic_id:
+            raise Refusal("unknown_invocation", "dossier caller must be an admitted invocation of this topic")
+        def require_live(now=None):
+            refusal = self._launch_refusal(inv, self._now() if now is None else now)
+            if refusal is not None:
+                raise refusal
+        return self._accounting.commit_dossier_inputs(topic_id=topic_id, history=history, prepare=prepare, commit=commit,
+                                                       require_live=require_live)
 
     def record_gateway_facts(self, request: Mapping) -> dict:
         return self._capabilities.record_gateway_facts(request)
