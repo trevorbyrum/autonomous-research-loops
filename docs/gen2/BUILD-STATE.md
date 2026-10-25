@@ -5,12 +5,12 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 ## Current
 *(This section is current state only; history is in REVIEW-LOG.md. Contract and rulings: DOSSIER.md.)*
 - **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
-- **Open task:** 2d, slice 6. 6a parts 1–3 are complete. **Checks cut-back in progress:**
-  - S1 (tiered checks) ACCEPTED and merged as `b7747e1`;
-  - S3 (retire the metrics ratchet; radon ceilings 48/10) ACCEPTED, with auto-merge set on PR #22;
-  - S2 (automatic mutation) is waiting on its tool spike. Early finding: mutmut 3.8 skips decorated functions such as `Store.transaction()`, which favours Cosmic Ray.
-- **Last verifier result:** S3 `10679ec`, gen2-accept exit 0 in **5,356 s** (3,971 tests; mutants 3,372/3,372; trigger-order skipped). Landing time: about 7,900 s before S1, then 6,091 s, then 5,356 s. gen2-gateway was carried forward from `45d9da1`.
-- **Engine size after S3** (Astra's independent run): production 12,995, tests 52,537, tooling 42,114. Gateway production and tests are unchanged at 12,256 and 22,883.
+- **Open task:** 2d, slice 6. 6a parts 1–3 complete. **The checks cut-back S1–S3 is complete:**
+  - S1 merged `b7747e1`;
+  - S3 PR #22 accepted;
+  - S2 PR #25 accepted (Cosmic Ray changed-line gate), with auto-merge set.
+  - **6a part 4 (freshness binding) is dispatched** (contract plan §6.1, about 250 lines).
+- **Last verifier result:** S2 `14c31e1`, gen2-accept exit 0 in **3,263 s** and gen2-gateway exit 0 in 1,012 s. Landing time went from about 7,900 s to 6,091, then 5,356, then 3,263 s.
 - **Blockers:** none. **Open operator decisions:** none.
 - **Gate S:** last run #1 at `65fb30e`. Since then, the batches have been net-negative (S1 −2,447; S3 −22,845).
 - **What's next:** S2 (after the spike), then 6a part 4, S4–S5, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
