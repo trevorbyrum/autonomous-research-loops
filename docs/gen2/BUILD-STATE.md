@@ -9,7 +9,7 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
   - S1 merged `b7747e1`;
   - S3 PR #22 accepted;
   - S2 PR #25 accepted (Cosmic Ray changed-line gate), with auto-merge set.
-  - **6a part 4 (freshness binding) is dispatched** (contract plan §6.1, about 250 lines).
+  - **6a part 4** (`5eb31d0`, PR #28): gen2-check passed. The mutation gate is pending: full-suite-per-mutant would take about 6 h. The run was stopped, and **S2b (two-stage test selection) is dispatched**. Astra's static review is in progress.
 - **Last verifier result:** S2 `14c31e1`, gen2-accept exit 0 in **3,263 s** and gen2-gateway exit 0 in 1,012 s. Landing time went from about 7,900 s to 6,091, then 5,356, then 3,263 s.
 - **Blockers:** none. **Open operator decisions:** none.
 - **Gate S:** last run #1 at `65fb30e`. Since then, the batches have been net-negative (S1 −2,447; S3 −22,845).

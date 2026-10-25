@@ -3503,3 +3503,26 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - Retired: the replay, differential and move tools; the metrics ratchet, ledger and source contract; the hand-written mutant inventory and controls.
   - Adopted: tiered trigger-order, radon ceilings, and Cosmic Ray changed-line mutation (gate) plus full-file campaigns (report-only).
 - **Next:** 6a part 4 (freshness binding), contract plan §6.1, dispatched to Sol (branching after PR #25 merges).
+
+## 2026-10-25: S2 cost defect found on first real use; S2b dispatched
+- 6a part 4 (`5eb31d0`, PR #28): the verifier's gen2-check passed (3,922 tests).
+- The changed-line Cosmic Ray step had **79 executable mutants**, and **each ran the entire suite** (about 52 min serially, fail-fast).
+  - After about 71 min, only the baseline and **2 mutants** (both killed) were done. The projection was about 6 more hours.
+  - The orchestrator stopped the run; the partial session is saved in the part 4 evidence.
+- **Root cause:** S2 had no per-mutant test selection.
+- **S2b** (Sol `01b7dbdf`): two-stage selection.
+  - Stage 1 runs the tests covering the mutated line (coverage.py contexts preferred).
+  - Stage 2 runs the full suite for stage-1 survivors only.
+  - There is no loss of rigor: a survivor is always judged against the full suite. The target is under about 20 min for a part-4-sized slice.
+- Astra's part 4 review continues statically. The mutation gate stays pending until a re-run with S2b.
+
+## 2026-10-25: 2d slice 6a part 4, freshness binding (5eb31d0, PR #28): BLOCK, round 1
+- **Astra** (`100fb0d6`; `private/reviews/gen2-2d-6a-p4-astra-review-20261025.md`):
+  - A BLOCK, B PASS, C BLOCK, Gate S proportionality PASS.
+  - The freshness fence is ROOT-CAUSE and sound: coherent capture, pre-effect writer fence, typed differences, a correct three-attempt bound, and the audit is respected.
+  - Size: production +63 net, tests +241, matching the estimate.
+- **R1:** recapture is not bound to the caller's finite deadline, as the 2026-10-23 ruling requires. It must reuse the existing deadline authority, with no new framework. Tests needed: expiry after a mismatch, expiry while awaiting the fence, and a live-deadline success case.
+- **C1:** the exhaustion test needs an in-callback attempt-ceiling assertion, so that removing the bound fails by assertion.
+- **N1** (non-blocking): consider tool-level skipping of annotation-only mutations instead of per-line pragmas. All six pragmas were accepted.
+- **Mutation gate:** pending S2b.
+- **Repair queued** behind S2b (one coder at a time on the shared tree).
