@@ -1,30 +1,8 @@
-"""How a test starts a fresh Python child (not collected as tests).
+"""Fresh Python children import the same gen-2 code tree as their parent.
 
-Every gen-2 test that runs gen-2 code in a child interpreter goes through
-here, so that the child imports the code tree the mutation runner points it
-at (task 1c: Astra's 1b-repair-2 finding that tools/gen2_mutations.py swapped
-modules only in its own interpreter, while fresh children imported the
-unmutated files from disk, so no kill resting on a child was real).
-
-The tree is the repository by default. The mutation runner copies gen2/ into
-a temporary directory, writes the mutant there, and names that directory in
-GEN2_CHILD_ROOT; a child started through these helpers has that tree alone on
-its import path, with PYTHONSAFEPATH set so that neither its working
-directory nor a script's own directory is put in front of it (task 1c-repair
-C1: a working directory holding another gen2/ used to win). So `-m gen2...`,
-`-c "import gen2..."` and a script under gen2/ all load the mutant, whatever
-working directory a caller passes; an environment that names another import
-path is refused. test_children.ChildLaunchRuleTest is a narrow lint of the
-literal launch it recognises; the mutation runner, not the lint, attests
-which bytes a killing child executed (tools/gen2_mutations.py, "Children").
-
-Scripts a test runs by path — the launcher and the fake executor, also
-through a shell as the slow-start test does — are taken from path(), the
-same tree, and inherit the test's environment. Tools run as children with an
-explicit file path (tools/check_boundaries.py and the like) are not gen-2
-code trees: the runner already hands their tests a mutated copy by path.
-They may still import gen2 (the DDL checker imports gen2.store.compat), so
-env() gives them the same import path.
+GEN2_CHILD_ROOT can select a disposable tree. Helpers fix the import path,
+refuse conflicting caller paths, and support bounded readiness and cleanup.
+Cosmic Ray writes each mutant to disk, so children also import that mutant.
 """
 from __future__ import annotations
 

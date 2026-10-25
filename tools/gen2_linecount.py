@@ -34,8 +34,7 @@ reported as `other`, never dropped.
 
 What the allowlist check shows: that the named tool exists and names the
 file. It does not show the committed bytes are that tool's output (for the
-catalog pair, gen2-catalog-check does; the controls file is rewritten by
-its tool's trace and choose steps, outside the build).
+catalog pair, gen2-catalog-check does).
 
 Trace: task 0a deliverable 5; task 2r; charter "Size rules"; design review
 §10; docs/gen2/INVARIANTS.md B-3.
@@ -58,10 +57,6 @@ SURFACE_FILES = ("Makefile",)
 # Generated files, exempt from the per-file limit by this list alone:
 # repo-relative path -> (the tracked tool that writes it, why it is exempt).
 GENERATED = {
-    "tools/gen2_mutation_controls.json": (
-        "tools/gen2_mutation_controls.py",
-        "each mutant's paired controls, chosen by the tool from a traced run of the whole suite; one entry per mutant, so it grows with the "
-        "inventory, and it is rewritten by the tool, never edited by hand"),
     "deploy/gen2.env.example": (
         "tools/gen_source_catalog.py",
         "every secret name the gen-2 stack reads, rendered from the gateway source registry; gen2-catalog-check fails on a hand edit"),
@@ -70,7 +65,7 @@ CODE_SUFFIXES = {".py", ".sh"}
 # Gen-2 build tooling: these files, plus every tracked `tools/gen2_*` and
 # `tools/check_gen2_*` file of any type — by rule rather than by list, so a new
 # tool cannot silently drop out of the report (Astra re-review: the old fixed
-# list omitted tools/gen2_mutations.py and tools/gen2_jcs_cross_vectors.js).
+# list omitted some Python and JavaScript tools).
 BUILD_TOOLING = {
     "tools/check_boundaries.py",
     "tools/gen_source_catalog.py",

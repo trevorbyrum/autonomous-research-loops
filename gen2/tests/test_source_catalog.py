@@ -9,8 +9,7 @@ registry + artifact pair in a temp directory, generates the pair so it is known
 current, then changes *one* thing (a registry row, a line of the .env example, a
 word of the catalog, a deleted file) and requires `--check` to exit non-zero
 *and to name what disagrees*. A checker that stopped comparing, or that reported
-a missing file by crashing instead of saying so, fails these tests; the mutation
-inventory in `tools/gen2_mutations.py` runs exactly those mutants.
+a missing file by crashing instead of saying so, fails these tests.
 
 **The independent oracle.** For the real repository pair, the expected secret
 variables are enumerated by hand below (`EXPECTED_SECRET_VARIABLES`) from the
@@ -38,7 +37,7 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-TOOL = REPO / "tools" / "gen_source_catalog.py"  # module global: tools/gen2_mutations.py points this at mutated copies
+TOOL = REPO / "tools" / "gen_source_catalog.py"
 REAL_REGISTRY = REPO / "gateway" / "research_gateway" / "registry" / "seed" / "sources.toml"
 REAL_CATALOG = REPO / "docs" / "gen2" / "SOURCE-CATALOG.md"
 REAL_ENV = REPO / "deploy" / "gen2.env.example"

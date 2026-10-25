@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Mutation run for the gateway repairs of task 2b (the gateway's own suite).
 
-tools/gen2_mutations.py drives the gen-2 tree; the gateway is a separate package with
+The gateway is a separate package with
 its own interpreter needs (psycopg), so its guards are checked here, the same way: each
 mutant in tools/gen2_gateway_mutants.py removes or weakens exactly one guard in a
 temporary copy of gateway/ (never the working tree), runs the mutant's declared killers

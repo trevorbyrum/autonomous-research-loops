@@ -20,16 +20,18 @@ the authority for the executed checkout and branch head versus PR merge.
 | `push` (default) | sqlite, boundaries, size, schemas, DDL, catalog consistency, metrics, debt, locators, supported source | One execution |
 | `engine-unit` | Full unittest discovery through the existing verbose runner | Classes assigned by SHA-256 modulo shard count; all class occurrences stay together in discovery-relative order |
 | `engine-trigger-order` | Original and reversed store suites, with the unchanged rebuild and outcome gates | One execution |
-| `engine-mutation` | Full inventory, global integrity checks, all unmutated loading-mode baselines, killers, controls and child attestation | Mutant IDs assigned by SHA-256 modulo shard count |
+| `engine-mutation` | Cosmic Ray changed-line campaign against the merge-base of `GEN2_BASE` (default `origin/gen2`), native git/pragma filters, full-suite fail-fast baseline and fresh tests per mutant | One serial execution |
 | `gateway-no-db` | Existing full gateway discovery without a DSN | One execution; requires psycopg even without PostgreSQL |
 | `gateway-db` | Schema/seed plus full gateway discovery on a disposable Unix-socket PostgreSQL cluster | One DB owner in this invocation |
 | `gateway-mutants` | Schema/seed and every gateway mutant on a disposable cluster | One DB owner in this invocation |
 
-Partitioning is exhaustive, not diff selection. Every index must finish before
-an aggregate acceptance result is possible. Mutation partitions retain global
-coverage checks (unlike legacy `--only`), and repeat the complete baselines.
-`--only` and sharding cannot be combined. Empty shards fail. The inventory
-reports contain the complete expected identities and the assigned identities.
+Unit partitioning is exhaustive: every index must finish before acceptance.
+Mutation is unsharded and records every generated identity, filtered outcome,
+normalized verdict, raw diagnostics and diff in `mutation-report.json` and its
+native session database. Only inline `# pragma: no mutate` comments with a reason
+can exclude changed-line survivors; Astra reviews them. Test errors need review
+and fail; timeouts, crashes and unclassified results fail. Syntax-invalid
+variants are reported separately and never counted as kills.
 Unit discovery is a multiset: existing re-exported TestCase occurrences retain
 their original multiplicities, and all occurrences of a class stay together.
 Comparison requires those counts exactly. Mutation IDs remain unique.
@@ -37,9 +39,10 @@ Filtering can coalesce class/module fixture transitions when intervening classes
 are assigned elsewhere. Class placement does not promise identical fixture
 transitions for arbitrary suites; the unsharded sequence remains unchanged.
 The unit and trigger-order runners also emit test/subtest outcomes and JUnit;
-the mutation runner emits per-mutant test sets, verdicts and baseline outcomes.
+the mutation runner retains typed failures/errors, fresh test PIDs and baseline logs.
 
-`make gen2-accept` runs `gen2-check` and adds trigger-order when
+`make gen2-check` runs static gates and units. `make gen2-accept` adds changed-line
+mutation and trigger-order when
 `git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema` is non-empty or unavailable;
 `GEN2_BASE` defaults to `origin/gen2`. These targets have no shard arguments
 by default. `make gen2-gateway` still runs no-DB, DB and all mutants by default,
@@ -53,8 +56,8 @@ including visible ancestors, and intersects that allocation with process CPU
 affinity. Fractional quotas round down, with a minimum of one runnable process.
 It does not use host-visible `os.cpu_count()`. `GEN2_CPU_BUDGET` can lower the
 allocation, never increase it; malformed quotas or allocations fail visibly.
-Mutation worker overrides are capped too. One allocation slot is reserved for
-killers' child interpreters when more than one slot is available.
+The engine mutation campaign uses Cosmic Ray's serial local distributor, with
+one test worker and fresh child interpreters. It has no worker override.
 
 Each mode owns the aggregate allocation. Engine and gateway execute separately,
 not concurrently within an invocation. Gateway is serial with one DB owner.
@@ -138,13 +141,12 @@ Compare full local evidence to the exhaustive CI shard evidence with:
 ```
 
 The comparison rejects missing or repeated shards, incomplete test or mutant
-identities, failed invocations, actual test failures/errors, inconsistent
-baselines, and mixed source pins. Existing intentional unittest skips and
+identities, failed invocations, actual test failures/errors, different mutation bases, and mixed source pins. Existing intentional unittest skips and
 expected failures remain recorded outcomes: their identities, multiplicities
 and skip reasons must match the independent reference exactly. A new or changed
 skip therefore fails equality; this does not authorise any new test skip.
 It compares test/subtest identity/outcome multisets, exact mutant identities and
-killer/control outcomes, both trigger orders, and unmutated baselines. It does
+normalized verdicts and the mutation base, plus both trigger orders. It does
 not compare durations or machine-specific paths as a substitute for outcomes.
 Any actual identity differences, including unstable subtest names, are reported
 rather than normalised away. CI qualification and the shadow window remain
@@ -180,7 +182,7 @@ unmerged std v1.2 PRs #13–#15 do not establish deployed capability.
 | `push` | `make gen2-ci GEN2_CI_MODE=push` | 50 minutes; expected a few minutes, measure in Jenkins |
 | `engine-unit` | `make gen2-ci-unit` | 50 minutes, split into explicit repository partitions if measured over budget |
 | `engine-trigger-order` | `make gen2-ci-trigger-order` | 50 minutes |
-| `engine-mutation` | `make gen2-ci-mutation` | 50 minutes, full inventory; split only by exhaustive partitions if needed |
+| `engine-mutation` | `make gen2-ci-mutation` | Changed lines only; serial, measured per change (no universal time bound) |
 | `gateway-no-db` | `make gen2-ci-gateway-no-db` | 50 minutes; blocked on gateway interpreter dependency |
 | `gateway-db` | `make gen2-ci-gateway-db` | 50 minutes; disabled pending image :2 and locked interpreter selection |
 | `gateway-mutants` | `make gen2-ci-gateway-mutants` | 50 minutes; disabled pending image :2 and locked interpreter selection |
@@ -191,3 +193,9 @@ mode includes all partitions and all baselines. Per-mode measurements, source
 pins, build URLs and current limitations are recorded in private ci-2 evidence.
 The platform ceiling remains 60 minutes; this consumer requests 50 to retain
 headroom. Do not combine long modes under one shared timeout.
+
+`make gen2-mutation-report` runs all production Python files as report-only
+evidence at phase gates and Gate S. It never participates in acceptance or blocks.
+The gateway retains its existing 413-mutant PostgreSQL step pending separate adoption.
+The wrapper observes the test-runner boundary: an outer assertion following a
+nested child crash can still look like an assertion failure. Astra reviews intent.

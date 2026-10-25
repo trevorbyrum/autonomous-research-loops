@@ -3,7 +3,7 @@
 Read cgroup v2/v1 quotas (including visible ancestors) and affinity. Never use
 the host's cpu_count. An explicit allocation can lower, but cannot raise, the
 detected budget. Engine and gateway modes execute sequentially; each owns the
-whole allocation while running. Mutation workers leave one slot for children.
+whole allocation while running.
 """
 from __future__ import annotations
 
@@ -66,10 +66,3 @@ def cpu_budget(*, proc: Path = Path("/proc"), affinity: int | None = None,
             raise ValueError("GEN2_CPU_BUDGET must be positive")
         limits.append(float(explicit))
     return max(1, int(min(limits)))
-
-
-def mutation_workers(requested: int | None = None) -> int:
-    available = max(1, cpu_budget() - 1)
-    if requested is not None and requested < 1:
-        raise ValueError("--jobs must be positive")
-    return available if requested is None else min(requested, available)

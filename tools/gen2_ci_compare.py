@@ -26,8 +26,6 @@ def inventory(root: Path, filename: str) -> Counter:
     for path in found:
         report = read(path)
         full, selected = Counter(report["expected"]), Counter(report["selected"])
-        if filename == "engine-mutation-inventory.json" and (any(n != 1 for n in full.values()) or any(n != 1 for n in selected.values())):
-            raise ValueError(f"duplicate inventory identities in {path}")
         if expected is not None and full != expected:
             raise ValueError(f"different full inventories at {path}")
         if selected - full or observed.keys() & selected.keys():
@@ -45,7 +43,6 @@ def collect(root: Path, sha: str) -> dict:
                        or read(path).get("source_dirty", True) for path in runs):
         raise ValueError(f"missing, failed or incorrectly pinned invocations in {root}")
     expected_tests = inventory(root, "engine-unit-inventory.json")
-    mutants = inventory(root, "engine-mutation-inventory.json")
     outcomes = [outcome for path in root.rglob("engine-unit-outcomes.json") for outcome in read(path)]
     parents = Counter(item["id"] for item in outcomes if item["id"] in expected_tests)
     # Original unittest semantics include declared skips/expected failures.
@@ -55,23 +52,24 @@ def collect(root: Path, sha: str) -> dict:
     # with a successful invocation and are rejected here.
     if parents != expected_tests or any(item["outcome"] not in {"pass", "skip", "expected_failure"} for item in outcomes):
         raise ValueError(f"unit outcomes missing or failed in {root}")
-    cases = [read(path) for path in root.glob("**/mutants/*.json")]
-    if len(cases) != len(mutants) or {case["id"] for case in cases} != set(mutants):
-        raise ValueError(f"mutant outcomes missing or duplicated in {root}")
-    if any(case["verdict"] != "KILLED" for case in cases):
-        raise ValueError(f"non-killed mutants in {root}")
+    reports = list(root.rglob("mutation-report.json"))
+    if len(reports) != 1:
+        raise ValueError(f"need exactly one changed-line campaign in {root}")
+    mutation = read(reports[0])
+    if mutation["head"] != sha or mutation["failed"] or mutation["scope"] != "changed-lines" or mutation["tests"]:
+        raise ValueError(f"incomplete, targeted or failed mutation campaign in {root}")
+    cases = [{"id": row["id"], "verdict": row["verdict"]} for row in mutation["mutants"]]
+    if len({case["id"] for case in cases}) != len(cases):
+        raise ValueError(f"duplicate mutant identities in {root}")
     orders = list(root.rglob("trigger-order-outcomes.json"))
     if len(orders) != 1:
         raise ValueError(f"need exactly one trigger-order run in {root}")
     trigger = read(orders[0])
     if not trigger["original"] or trigger["original"] != trigger["reversed"] or set(trigger["original"].values()) != {"pass"}:
         raise ValueError(f"invalid trigger-order outcomes in {root}")
-    baselines = [read(path)["baselines"] for path in root.rglob("engine-mutation-inventory.json")]
-    if any(value != baselines[0] for value in baselines):
-        raise ValueError(f"mutation shard baselines disagree in {root}")
     return {"unit": dict(Counter(json.dumps(item, sort_keys=True) for item in outcomes)),
             "mutants": {case["id"]: case for case in cases}, "trigger_order": trigger,
-            "mutation_baselines": baselines[0]}
+            "mutation_base": mutation["base"]}
 
 
 def main() -> int:

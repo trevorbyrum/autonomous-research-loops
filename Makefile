@@ -23,9 +23,9 @@ GEN2_BASE ?= origin/gen2
 GEN2_CC_MAX_FUNCTION = 48
 GEN2_CC_MAX_AVERAGE = 10
 
-.PHONY: gen2-check gen2-accept gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-accept gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
-gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-mutation gen2-size
+gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-size
 	@echo "gen2-check: all checks passed"
 
 # Acceptance skips trigger-order only when the committed DDL diff is known empty.
@@ -41,6 +41,7 @@ gen2-accept: gen2-check
 	fi; \
 	echo "gen2-accept: running trigger-order ($$reason: $(GEN2_BASE)...HEAD)"; \
 	$(MAKE) gen2-trigger-order
+	$(MAKE) gen2-mutation GEN2_BASE="$(GEN2_BASE)"
 	@echo "gen2-accept: all checks passed"
 
 .PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-trigger-order gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db gen2-ci-gateway-mutants
@@ -80,11 +81,12 @@ gen2-ci-gateway-mutants:
 # dependency (an incomplete lock fails at import, loudly).
 gen2-venv: $(GEN2_VENV)/.gen2-installed
 
-$(GEN2_VENV)/.gen2-installed: gen2/requirements.txt gen2/requirements-dev.txt
+$(GEN2_VENV)/.gen2-installed: gen2/requirements.txt gen2/requirements-dev.txt gen2/requirements-build.txt
 	$(PYTHON_BOOTSTRAP) -m venv --clear $(GEN2_VENV)
-	$(GEN2_VENV)/bin/python -m pip install --no-input --disable-pip-version-check --require-hashes --no-deps \
+	$(GEN2_VENV)/bin/python -m pip install --no-input --disable-pip-version-check --require-hashes --no-deps --only-binary=:all: -r gen2/requirements-build.txt
+	$(GEN2_VENV)/bin/python -m pip install --no-build-isolation --no-input --disable-pip-version-check --require-hashes --no-deps \
 		-r gen2/requirements.txt -r gen2/requirements-dev.txt
-	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine, radon"
+	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine, radon, cosmic_ray, pytest"
 	touch $@
 
 # The store's SQLite compatibility gate (gen2/store/compat.py; Astra third
@@ -152,11 +154,13 @@ gen2-test: gen2-venv
 gen2-trigger-order: gen2-venv
 	$(PYTHON) tools/gen2_trigger_order.py
 
-# Every guard in the inventory (tools/gen2_mutants/, run by
-# tools/gen2_mutations.py) is removed in memory and its named tests must fail
-# (task 0a-repair: fixes must be mutation-testable).
+# Acceptance mutates changed production lines against the explicit merge-base.
 gen2-mutation: gen2-venv
-	$(PYTHON) tools/gen2_mutations.py $(GEN2_MUTATION_ARGS)
+	$(PYTHON) tools/gen2_mutation_scope.py --base "$(GEN2_BASE)" $(GEN2_MUTATION_ARGS)
+
+# Full production campaigns are advisory evidence for phase gates and Gate S.
+gen2-mutation-report: gen2-venv
+	$(PYTHON) tools/gen2_mutation_scope.py --full --report-only $(GEN2_MUTATION_ARGS)
 
 # Size rules (charter "Size rules"; task 2r): fails on a hand-written gen-2
 # file over 1,500 lines (generated files are exempt only by the reasoned list

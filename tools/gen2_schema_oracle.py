@@ -15,7 +15,7 @@ oracle the way they reach the other build tools: as a subprocess.
                  [{"oracle": bool, "router": bool}, ...].
 
 --validator PATH loads the router's validator from PATH instead of
-gen2/router/schemas.py (tools/gen2_mutations.py points it at mutated copies).
+gen2/router/schemas.py, for independent validator comparisons.
 The schema directory is always this checkout's gen2/schema/.
 """
 from __future__ import annotations
