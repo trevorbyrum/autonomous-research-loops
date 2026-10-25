@@ -3493,3 +3493,13 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **Selection-rule addition:** a change to a Makefile recipe requires running every test that executes that recipe (`test_acceptance`).
 - **Repair dispatched** as one combined pass. A fresh gen2-accept and gen2-gateway will run at the repaired head.
 - **Noted for the operator, no action taken:** `.github/workflows/gen2-check.yml` has been tracked since task 0a (2026-09-25). PR checks show only Jenkins. It is a deletion candidate under the "no GitHub Actions" rule.
+
+## 2026-10-25: batch S2 (14c31e1, PR #25): ACCEPTED, round 2
+- **Astra** (`8d7e46f0`; `private/reviews/gen2-s2-r2-astra-review-20261025.md`): PASS, ROOT-CAUSE.
+  - S2-C1 and S2-C2 are closed: the order is check → conditional trigger-order → mutation → success, and the `test_acceptance` fixture models the full graph.
+  - NB1 is done.
+- **Verifier** (Sonnet `7be8a57c`): **gen2-accept exit 0 in 3,263 s** (3,910 tests; changed-line mutation had legitimately no applicable files); gen2-gateway exit 0 in 1,012 s (413/413).
+- **The checks cut-back S1–S3 is complete.** Landing time went from about 7,900 s to 6,091, then 5,356, then 3,263 s.
+  - Retired: the replay, differential and move tools; the metrics ratchet, ledger and source contract; the hand-written mutant inventory and controls.
+  - Adopted: tiered trigger-order, radon ceilings, and Cosmic Ray changed-line mutation (gate) plus full-file campaigns (report-only).
+- **Next:** 6a part 4 (freshness binding), contract plan §6.1, dispatched to Sol (branching after PR #25 merges).
