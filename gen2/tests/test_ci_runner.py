@@ -30,7 +30,7 @@ def tool(name):
 EVIDENCE, WORKERS = tool("gen2_ci_evidence"), tool("gen2_workers")
 Outcomes, in_shard, partition, shard_spec, tests = (getattr(EVIDENCE, name) for name in
                                                  ("Outcomes", "in_shard", "partition", "shard_spec", "tests"))
-cpu_budget, mutation_workers = WORKERS.cpu_budget, WORKERS.mutation_workers
+cpu_budget = WORKERS.cpu_budget
 with mock.patch.dict(sys.modules, {"gen2_ci_evidence": EVIDENCE, "gen2_workers": WORKERS}):
     COMPARE, RUNNER = tool("gen2_ci_compare"), tool("gen2_ci")
 
@@ -88,13 +88,6 @@ class CPUQuotaTest(unittest.TestCase):
         (self.child / "cpu.max").write_text("bad 100000\n")
         with self.assertRaises(ValueError):
             cpu_budget(proc=self.root, affinity=8, allocation="8")
-
-    def test_worker_override_cannot_oversubscribe_and_leaves_room_for_children(self):
-        with mock.patch.object(WORKERS, "cpu_budget", return_value=2):
-            self.assertEqual(mutation_workers(99), 1)
-            self.assertEqual(mutation_workers(), 1)
-            with self.assertRaises(ValueError):
-                mutation_workers(0)
 
 
 class ExhaustivePartitionTest(unittest.TestCase):

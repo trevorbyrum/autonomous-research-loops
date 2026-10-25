@@ -10,8 +10,8 @@ out by hand from the fixture's text, never read back from the tool.
 A tool run is judged as a PROGRAM before a test judges what it said (task 2q-a-repair-3, Gate D #4 F4). `Repo.run` raises `ToolDidNotComplete` - never an
 AssertionError - when the child crashed (a traceback), timed out, died of a signal, could not be loaded or started (an import or syntax error, an exit
 status the tool never returns, an exit 2 without the tool's own message) or left no result its caller needed. A test that asserts on such a run therefore
-ERRORS instead of failing, and the mutation harness does not credit an errored killer as a kill: a mutant a tool crashes on is not shown to have behaved
-wrongly, only to have crashed. Every child's return code, stdout and stderr are kept (`Repo.runs`, the exception, and the JSON lines `GEN2_TOOL_RUN_LOG`
+ERRORS instead of failing. Debt/locator fixtures retain completion witnesses and full run logging to detect accidental incomplete execution by trusted code (trust model B).
+Every child's return code, stdout and stderr are kept (`Repo.runs`, the exception, and the JSON lines `GEN2_TOOL_RUN_LOG`
 names), whatever the outcome.
 
 A completed run needs a POSITIVE witness (task 2q-a-repair-4, Astra's 2q-a-repair-3 review F4): an exit status of 0 or 1 and the absence of a recognised traceback

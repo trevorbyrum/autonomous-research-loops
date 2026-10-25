@@ -1,4 +1,4 @@
-"""Acceptance scheduling with the actual Makefile and a recording trigger stub.
+"""Acceptance scheduling with the actual Makefile and recording step stubs.
 
 Disposable Git histories distinguish a known-empty DDL diff from changed or
 unavailable comparisons. gen2-check is marked up to date; no real suite runs.
@@ -25,7 +25,7 @@ class AcceptanceSelectionTest(unittest.TestCase):
         self.commit("gen2/store/schema/base.sql", "-- base\n")
         self.git("update-ref", "refs/remotes/origin/gen2", "HEAD")
         shutil.copyfile(Path(__file__).resolve().parents[2] / "Makefile", self.root / "Makefile")
-        for name in ("requirements.txt", "requirements-dev.txt"):
+        for name in ("requirements.txt", "requirements-dev.txt", "requirements-build.txt"):
             (self.root / "gen2" / name).touch()
         (self.root / ".venv-gen2").mkdir()
         (self.root / ".venv-gen2/.gen2-installed").touch()
@@ -33,7 +33,14 @@ class AcceptanceSelectionTest(unittest.TestCase):
         (self.root / "tools/gen2_trigger_order.py").write_text(
             "import os\nfrom pathlib import Path\n"
             "Path('trigger-invoked').write_text('called')\n"
+            "with Path('step-order').open('a') as log: log.write('trigger\\n')\n"
             "raise SystemExit(int(os.environ['STUB_TRIGGER_EXIT']))\n")
+        (self.root / "tools/gen2_mutation_scope.py").write_text(
+            "import argparse, os\nfrom pathlib import Path\n"
+            "parser = argparse.ArgumentParser()\nparser.add_argument('--base', required=True)\n"
+            "Path('mutation-base').write_text(parser.parse_args().base)\n"
+            "with Path('step-order').open('a') as log: log.write('mutation\\n')\n"
+            "raise SystemExit(int(os.environ['STUB_MUTATION_EXIT']))\n")
 
     def git(self, *args):
         return subprocess.check_output(["git", *args], cwd=self.root, text=True, stderr=subprocess.STDOUT).strip()
@@ -45,16 +52,21 @@ class AcceptanceSelectionTest(unittest.TestCase):
         self.git("add", "--", path)
         self.git("commit", "-qm", path)
 
-    def assert_selection(self, invoked, reason, *, base=None, trigger_exit=0):
-        marker = self.root / "trigger-invoked"
-        marker.unlink(missing_ok=True)
+    def run_acceptance(self, *, base=None, trigger_exit=0, mutation_exit=0):
+        for name in ("trigger-invoked", "mutation-base", "step-order"):
+            (self.root / name).unlink(missing_ok=True)
         command = ["make", "--no-print-directory", "-o", "gen2-check", "gen2-accept", f"PYTHON={sys.executable}"]
         if base is not None:
             command.append(f"GEN2_BASE={base}")
         env = {key: value for key, value in os.environ.items()
                if key not in {"MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GEN2_BASE", "GEN2_VENV"}}
-        result = subprocess.run(command, cwd=self.root, env={**env, "STUB_TRIGGER_EXIT": str(trigger_exit)},
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=15)
+        return subprocess.run(command, cwd=self.root, env={**env, "STUB_TRIGGER_EXIT": str(trigger_exit),
+                              "STUB_MUTATION_EXIT": str(mutation_exit)},
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=15)
+
+    def assert_selection(self, invoked, reason, *, base=None, trigger_exit=0):
+        result = self.run_acceptance(base=base, trigger_exit=trigger_exit)
+        marker = self.root / "trigger-invoked"
         self.assertEqual(marker.read_text() if marker.exists() else None, "called" if invoked else None, result.stdout)
         self.assertIn(reason, result.stdout)
         self.assertEqual(result.returncode == 0, trigger_exit == 0, result.stdout)
@@ -87,3 +99,33 @@ class AcceptanceSelectionTest(unittest.TestCase):
     def test_valid_base_without_merge_base_invokes_trigger_order(self):
         unrelated = self.git("commit-tree", "HEAD^{tree}", "-m", "unrelated history")
         self.assert_selection(True, "running trigger-order (DDL comparison unavailable (git diff exit 128):", base=unrelated)
+
+    def test_trigger_precedes_mutation_and_forwards_the_exact_explicit_base(self):
+        self.commit("gen2/store/schema/added.sql", "-- changed DDL\n")
+        self.assert_selection(True, "running trigger-order (DDL changed:", base="HEAD~1")
+        self.assertEqual((self.root / "step-order").read_text().splitlines(), ["trigger", "mutation"])
+        self.assertEqual((self.root / "mutation-base").read_text(), "HEAD~1")
+
+    def test_unchanged_ddl_still_runs_mutation_with_the_default_base(self):
+        self.assert_selection(False, "skipping trigger-order (no DDL changes:")
+        self.assertEqual((self.root / "step-order").read_text().splitlines(), ["mutation"])
+        self.assertEqual((self.root / "mutation-base").read_text(), "origin/gen2")
+
+    def test_each_step_failure_stops_acceptance_without_a_success_banner(self):
+        self.commit("gen2/store/schema/added.sql", "-- changed DDL\n")
+        for trigger, mutation, steps in ((9, 0, ["trigger"]), (0, 9, ["trigger", "mutation"])):
+            with self.subTest(trigger_exit=trigger, mutation_exit=mutation):
+                result = self.run_acceptance(trigger_exit=trigger, mutation_exit=mutation)
+                self.assertEqual((self.root / "step-order").read_text().splitlines(), steps, result.stdout)
+                self.assertEqual((self.root / "mutation-base").exists(), trigger == 0, result.stdout)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertNotIn("gen2-accept: all checks passed", result.stdout)
+
+    def test_unavailable_base_runs_trigger_before_mutation_failure(self):
+        self.git("update-ref", "-d", "refs/remotes/origin/gen2")
+        result = self.run_acceptance(mutation_exit=1)
+        self.assertIn("running trigger-order (DDL comparison unavailable", result.stdout)
+        self.assertEqual((self.root / "step-order").read_text().splitlines(), ["trigger", "mutation"])
+        self.assertEqual((self.root / "mutation-base").read_text(), "origin/gen2")
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("gen2-accept: all checks passed", result.stdout)
