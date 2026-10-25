@@ -141,7 +141,7 @@ class WitnessTest(ChildCase):
         self.assertIn("no completion record", raised.why)
 
     def test_an_exit_one_child_that_is_a_refusal_wrote_its_record_and_completed(self) -> None:
-        done = self.completes("import sys\nprint('gen2-metrics: refused', file=sys.stderr)\nsys.exit(1)\n")
+        done = self.completes("import sys\nprint('gen2-locators: refused', file=sys.stderr)\nsys.exit(1)\n")
         self.assertEqual(done.returncode, 1)
 
     def test_returning_from_the_script_without_exiting_is_a_normal_completion(self) -> None:
@@ -173,7 +173,7 @@ class WitnessTest(ChildCase):
     def test_a_children_log_line_carries_the_completion_record(self) -> None:
         log = Path(self.dir.name) / "runs.jsonl"
         with mock.patch.dict(os.environ, {"GEN2_TOOL_RUN_LOG": str(log)}):
-            self.completes("import sys\nprint('gen2-metrics: refused', file=sys.stderr)\nsys.exit(1)\n")
+            self.completes("import sys\nprint('gen2-locators: refused', file=sys.stderr)\nsys.exit(1)\n")
             self.did_not_complete("import os\nos._exit(0)\n")
         records = [json.loads(line) for line in log.read_text().splitlines()]
         self.assertEqual([(r["returncode"], r["completion"], bool(r["did_not_complete"])) for r in records], [(1, {"status": 1}, False), (0, None, True)])

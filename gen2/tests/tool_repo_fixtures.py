@@ -1,6 +1,5 @@
-"""Throwaway git repositories for the tests of the documentation and metrics
-tools (tools/gen2_metrics.py, tools/check_gen2_debt.py,
-tools/check_gen2_locators.py; task 2q-a).
+"""Throwaway git repositories for the documentation gates
+(tools/check_gen2_debt.py and tools/check_gen2_locators.py; task 2q-a).
 
 A `Repo` writes literal files into a temporary directory, tracks and commits
 them (the tools read `git ls-files` and, for the history report, `git log`),
@@ -8,7 +7,7 @@ and runs a tool on it as a subprocess, so what a test asserts is the tool's
 exit status and what it prints. The oracles are in the tests: numbers worked
 out by hand from the fixture's text, never read back from the tool.
 
-The three tool paths are module globals read at call time:
+The gate paths are module globals read at call time:
 tools/gen2_mutations.py points them at mutated copies.
 
 A tool run is judged as a PROGRAM before a test judges what it said (task 2q-a-repair-3, Gate D #4 F4). `Repo.run` raises `ToolDidNotComplete` - never an
@@ -37,19 +36,15 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-TOOL = REPO / "tools" / "gen2_metrics.py"
 DEBT_TOOL = REPO / "tools" / "check_gen2_debt.py"
 LOCATORS_TOOL = REPO / "tools" / "check_gen2_locators.py"
-CONTRACT_TOOL = REPO / "tools" / "gen2_source_contract.py"
 
-BASELINE = "docs/gen2/metrics-baseline.json"
-EXEMPTIONS = "docs/gen2/metrics-exemptions.md"
 GIT_ENV = {"GIT_AUTHOR_NAME": "Test Author", "GIT_AUTHOR_EMAIL": "test@example.invalid",
            "GIT_COMMITTER_NAME": "Test Author", "GIT_COMMITTER_EMAIL": "test@example.invalid",
            "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}   # a fixture commit never depends on the host's git configuration (signing, hooks)
 
 
-TOOL_MESSAGES = ("gen2-metrics:", "gen2-locators:", "gen2-debt:")   # the line a tool prints when it refuses or cannot run: a completed exit 2 carries one
+TOOL_MESSAGES = ("gen2-locators:", "gen2-debt:")   # the line a tool prints when it refuses or cannot run: a completed exit 2 carries one
 LOAD_FAILURE = re.compile(r"^(?:SyntaxError|IndentationError|TabError|ModuleNotFoundError|ImportError):", re.M)
 
 
@@ -174,96 +169,15 @@ class Repo:
             self.git("add", "-A")
             self.git("commit", "-q", "--allow-empty", "-m", message, date=date)
 
-    def run(self, *args: str, tool: Path | None = None, root: bool = True, timeout: int = 120) -> subprocess.CompletedProcess:
-        """The metrics tool (or another) on this repository: `args` are the tool's, after --root. Raises ToolDidNotComplete when the child did not complete as a
+    def run(self, *args: str, tool: Path, root: bool = True, timeout: int = 120) -> subprocess.CompletedProcess:
+        """The named tool on this repository: `args` are the tool's, after --root. Raises ToolDidNotComplete when the child did not complete as a
         program (module docstring); what it printed and returned is otherwise the caller's to judge."""
         from gen2.tests import children
-        target = tool or TOOL
+        target = tool
         if target.is_relative_to(REPO):
             target = children.path(str(target.relative_to(REPO)))
         return run_judged([sys.executable, str(target), *(["--root", str(self.root)] if root else []), *args], timeout, self.runs)
 
-    def baseline(self) -> dict:
-        return json.loads((self.root / BASELINE).read_text())
-
 
 def py(*lines: str) -> str:
     return "\n".join(lines) + "\n"
-
-
-def padding(n: int) -> str:
-    """n physical lines of code that import and call nothing."""
-    return "".join(f"x{i} = {i}\n" for i in range(n))
-
-
-def digest_of(body: dict) -> str:
-    """The baseline's digest as the tool's docstring states it: sha256 of the compact, key-sorted JSON of the body without `digest`."""
-    import hashlib
-    body = {k: v for k, v in body.items() if k != "digest"}
-    return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-
-
-def rewrite_baseline(repo: Repo, edit) -> None:
-    """Apply `edit(baseline_dict)` to the committed baseline and write it back with a correct digest (as a tool run would)."""
-    baseline = repo.baseline()
-    edit(baseline)
-    if baseline["version"] == 3:
-        refs = set()
-        for service, data in baseline["services"].items():
-            refs |= {f"{service}|file|{p}" for p in data["fan_out"]}
-            refs |= {f"{service}|function|{p}" for p in data["functions"]}
-            refs |= {f"{service}|self_calls|{p}" for p in data["self_calls"]}
-            for kind, field in (("edge", "graph"), ("reach", "reach")):
-                refs |= {f"{service}|{kind}|{a}->{b}" for a, targets in data[field].items() for b in targets}
-            refs |= {f"{service}|{m}|{service}" for m in ("propagation_file", "propagation_component")}
-            for kind in ("file", "component"):
-                refs |= {f"{service}|cycle_{kind}|{','.join(c)}" for c in data["cycles_" + kind]}
-            refs |= {f"{service}|smell_{kind}|{loc}" for kind, items in data["smells"].items() for loc in items}
-        refs |= {f"repo|cross_service_import|{edge}" for edge in baseline["cross_service_imports"]}
-        baseline["identities"] = {f"MI-{i:06}": ref for i, ref in enumerate(sorted(refs), 1)}
-        baseline["identity_serial"] = len(refs)
-    baseline["digest"] = digest_of(baseline)
-    (repo.root / BASELINE).write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n")
-
-
-def importers(n: int, target: str, prefix: str = "gen2/imp") -> dict[str, str]:
-    """n files, each importing the module `target`."""
-    return {f"{prefix}{i}.py": py(f"import {target}") for i in range(n)}
-
-
-def leaves(n: int, prefix: str = "gen2/leaf") -> dict[str, str]:
-    return {f"{prefix}{i}.py": "v = 1\n" for i in range(n)}
-
-
-def hub_files(fan_in: int, fan_out: int) -> dict[str, str]:
-    """gen2/hub.py with `fan_in` importers and `fan_out` imports of its own."""
-    return {"gen2/hub.py": py(*(f"import gen2.leaf{i}" for i in range(fan_out))), **importers(fan_in, "gen2.hub"), **leaves(fan_out)}
-
-
-def unstable_files(a_in: int, a_out_extra: int, b_in_extra: int, b_out: int) -> dict[str, str]:
-    """A imports B (that edge counts in A's fan-out and B's fan-in), plus `a_out_extra` other leaves, with `a_in` importers of A and
-    `b_in_extra` further importers of B, and B importing `b_out` leaves of its own."""
-    files = {"gen2/a.py": py("import gen2.b", *(f"import gen2.la{i}" for i in range(a_out_extra))),
-             "gen2/b.py": py(*(f"import gen2.lb{i}" for i in range(b_out)))}
-    files |= {f"gen2/la{i}.py": "v = 1\n" for i in range(a_out_extra)} | {f"gen2/lb{i}.py": "v = 1\n" for i in range(b_out)}
-    files |= importers(a_in, "gen2.a", "gen2/ia") | importers(b_in_extra, "gen2.b", "gen2/ib")
-    return files
-
-
-def component_files(lines: int, importing_components: int) -> dict[str, str]:
-    """A component gen2.big of `lines` lines, imported by that many other components."""
-    return {"gen2/big/m.py": padding(lines)} | {f"gen2/user{i}/u.py": py("import gen2.big.m") for i in range(importing_components)}
-
-
-def with_branches(n: int, name: str = "f") -> str:
-    """A function of cyclomatic complexity n + 1 and cognitive complexity n."""
-    return py(f"def {name}(a):", *(f"    if a == {i}:\n        pass" for i in range(n)))
-
-
-def fixture_python(cwd: Path, code: str, timeout: int = 60) -> subprocess.CompletedProcess:
-    """What the INTERPRETER does with a fixture package, as the control of a source fixture: `code` run in a fresh Python child whose working directory is `cwd` (the fixture tree: a
-    `gen2/` or `gateway/research_gateway/` package of its own is the only one it can import, the repository's is not on its path) and an environment of nothing but PATH. Not a
-    gen-2 child of the repository's code tree, so it does not go through tests/children.py; a name for the executable in a variable keeps tests/test_children.py's lint, which is about
-    the repository's tree, from reading it as one."""
-    python = sys.executable
-    return subprocess.run([python, "-c", code], cwd=cwd, env={"PATH": os.environ.get("PATH", ""), "PYTHONDONTWRITEBYTECODE": "1"}, capture_output=True, text=True, timeout=timeout)

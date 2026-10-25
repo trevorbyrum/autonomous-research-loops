@@ -23,8 +23,8 @@ being recognised and so stopped being checked):
               (`gen2/store/schema/`) needs a tracked file under it.
   symbol      `path::name`, and the pair written as a file span, one space, and
               a name span (`adapters/base.py` `_read_body`): the name must be
-              defined in that file. For Python this is the source facts'
-              DECLARATION-IN-FILE query: a def, class or assignment of that name
+              defined in that file. For Python this is a declaration-in-file
+              query: a def, class or assignment of that name
               anywhere in the file, scopes and conditions aside; a dotted name
               (`Class.method`, `Outer.Inner.name`) is the other query below,
               over the file's own module; for SQL a table, view, trigger or
@@ -33,12 +33,11 @@ being recognised and so stopped being checked):
               (`gen2` or `research_gateway`): `gen2.router.service`,
               `gen2.router.service.Router.commit_outcome`. The longest prefix
               that is a tracked module of the gen-2 surface (production, tests
-              or tools) is the module; the rest is the source facts'
-              MODULE/CLASS-ATTRIBUTE query: the module, then class attributes,
+              or tools) is the module; the rest is a module/class-attribute
+              query: the module, then class attributes,
               each name bound once, unconditionally, by a definition, never a
               function local or a flattened short name, and every owner on the
-              way a class whose decorators and keywords the source contract
-              models (a replaced or unsupported owner satisfies nothing); no
+              way a class (a rebound owner satisfies nothing); no
               such module fails. A package (a directory) alone is enough.
   marked      `code: text` for an ordinary code or data expression (a standard
               library name, a database column, a command) and `history: text`
@@ -62,26 +61,23 @@ without backticks is not seen. A code name whose last part is a file suffix
 (an attribute `Response.json`) reads as a file; mark it. A name a package
 `__init__` only re-exports is not defined there: cite the defining file.
 
-Both queries read the same source facts as the metrics (tools/gen2_source_index.py), and the production source is checked against the supported-source contract
-(docs/gen2/SOURCE-CONTRACT.md) first, however this tool is run: a locator into source the contract refuses certifies nothing, so the run is refused with the
-diagnostics (exit 1) before any locator is checked.
+Both queries use a cached stdlib AST index. This checks declarations, not
+runtime effects of decorators, imports or namespace mutation.
 
-Exit 0 all exist, 1 a locator does not or the production source is refused, 2 a document cannot be read.
+Exit 0 all exist, 1 a locator does not, 2 a document cannot be read.
 
 Trace: task 2q-a; Gate D #1 finding 6; Gate D #2 section 5 ("stale H-5 locators"); task 2q-a-repair F4; task 2q-a-repair-3 (Gate D #4 checklist 5).
 """
 from __future__ import annotations
 
 import argparse
+import ast
 import fnmatch
 import re
 import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
-
-import gen2_source_contract as contract
-import gen2_source_index as source
 
 EXIT_OK, EXIT_FAIL, EXIT_TOOL = 0, 1, 2
 DEFAULT_DOCS = ("docs/gen2/INVARIANTS.md", "docs/gen2/DEBT-REGISTER.md")
@@ -154,24 +150,65 @@ def external(core: str) -> str | None:
     return None
 
 
+DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
+def bound_names(node: ast.AST):
+    """Bindings in this scope; a nested function or class owns its body."""
+    if isinstance(node, DEFINITIONS):
+        yield node.name
+        return
+    if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+        yield node.id
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        yield from (alias.asname or alias.name.split('.')[0] for alias in node.names)
+        return
+    for child in ast.iter_child_nodes(node):
+        yield from bound_names(child)
+
+
+def definition_index(tree: ast.Module) -> tuple[set[str], set[str]]:
+    """File-wide declarations and unambiguous module/class-qualified names."""
+    declared = {node.name for node in ast.walk(tree) if isinstance(node, DEFINITIONS)}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            declared.update(name for target in targets for name in bound_names(target))
+    qualified: set[str] = set()
+
+    def scope(body: list[ast.stmt], prefix: str = "") -> None:
+        counts = Counter(name for statement in body for name in bound_names(statement))
+        for statement in body:
+            if not isinstance(statement, (*DEFINITIONS, ast.Assign, ast.AnnAssign)):
+                continue
+            for name in bound_names(statement):
+                if counts[name] != 1:
+                    continue
+                qualified.add(prefix + name)
+                if isinstance(statement, ast.ClassDef):
+                    scope(statement.body, prefix + name + ".")
+
+    scope(tree.body)
+    return declared, qualified
+
+
 class Sources:
-    """The source facts the locators are asked of: the production inventory, indexed once and checked against the contract, and any other Python file of the
-    surface (tests, tools), indexed by the same code on first use. A file that does not parse defines nothing."""
+    """Index Python files once, on demand. An unparseable file defines nothing."""
 
-    def __init__(self, root: Path, facts: source.Facts) -> None:
-        self.root, self.facts, self.cache = root, facts, dict(facts.indexes)
+    def __init__(self, root: Path) -> None:
+        self.root, self.cache = root, {}
 
-    def index(self, path: str) -> source.FileIndex | None:
+    def index(self, path: str) -> tuple[set[str], set[str]] | None:
         if path not in self.cache:
             try:
-                self.cache[path] = source.index_text(path, (self.root / path).read_text(encoding="utf-8", errors="replace"))
+                self.cache[path] = definition_index(ast.parse((self.root / path).read_text(encoding="utf-8", errors="replace")))
             except SyntaxError:
                 self.cache[path] = None
         return self.cache[path]
 
 
 def why_not(sources: Sources, path: str, name: str, *, qualified: bool = False) -> str | None:
-    """Why `path` does not define `name` (None when it does). Python: the source facts' declaration-in-file query for a plain name, and their module/class-attribute
+    """Why `path` does not define `name` (None when it does). Python: the declaration-in-file query for a plain name, and the module/class-attribute
     query for a dotted name or a module path; SQL and other files: the word."""
     name = name.removesuffix("()")
     if path.endswith(".py"):
@@ -179,8 +216,8 @@ def why_not(sources: Sources, path: str, name: str, *, qualified: bool = False) 
         if index is None:
             return "the file does not parse"
         if qualified or "." in name:
-            return source.module_attribute(index, name.split("."), lambda cls: contract.class_owner_ok(sources.facts, index, cls))
-        return None if source.declares(index, name) else "no def, class or assignment of that name anywhere in the file"
+            return None if name in index[1] else "no unambiguous definition at that module/class path"
+        return None if name in index[0] else "no def, class or assignment of that name anywhere in the file"
     text = (sources.root / path).read_text(encoding="utf-8", errors="replace")
     if path.endswith(".sql"):
         found = re.search(rf"\b(?:TABLE|VIEW|TRIGGER|INDEX)\s+(?:IF NOT EXISTS\s+)?(?:\w+\.)?{re.escape(name)}\b", text, re.IGNORECASE) is not None
@@ -282,14 +319,7 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root)
     try:
         files = tracked(root)
-        facts = contract.load(root)
-        if facts.diagnostics:
-            for diagnostic in facts.diagnostics:
-                print(f"SOURCE REFUSED: {diagnostic.render()}", file=sys.stderr)
-            print(f"gen2-locators: the production source is outside the supported-source contract ({contract.CONTRACT_ID}): {len(facts.diagnostics)} refusal(s); "
-                  "no locator was checked", file=sys.stderr)
-            return EXIT_FAIL
-        sources = Sources(root, facts)
+        sources = Sources(root)
         modules = module_files(root, files)
         total: Counter = Counter()
         problems: list[str] = []

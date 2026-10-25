@@ -12,10 +12,9 @@ compatibility targets), G-13 (the importer needs its own audited path), C-13
 included); Astra 0b review A2, A3, A5.
 
 What keeps it read-only, and what each part does not cover:
-  * Imports. gen2/boundaries.toml lets this module import gen2.core only
-    (no store, no sqlite3), so it cannot write a gen-2 store or open gen-1's
-    SQLite. That is an import restriction; the graph does not check file
-    I/O.
+  * Imports. This Phase 4 reconnaissance tool imports gen2.core only
+    (no store, no sqlite3). Its read-only behavior is exercised against
+    fixture trees; it is outside the production boundary graph.
   * Reads (A2). The gen-1 root is opened once, as a directory. Every read
     starts from that descriptor and opens one path component at a time,
     read-only, with O_NOFOLLOW. A symlink anywhere below the root is
@@ -976,3 +975,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"gen2 import dry run: {s['records']} records ({s['maps']} map, {s['partial']} partial, {s['unmapped']} unmapped), "
           f"{s['issues']} issues, {s['blocking']} blocking; nothing written to gen-1 or a gen-2 store", file=sys.stderr)
     return 1 if report["blocking"] else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
