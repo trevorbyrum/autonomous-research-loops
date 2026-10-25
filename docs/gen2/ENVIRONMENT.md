@@ -89,7 +89,7 @@ The same functions run in three places:
 ## Local use
 
 ```
-make gen2-accept                       # builds .venv-gen2 on first use (network: PyPI); trigger-order only for DDL changes
+make gen2-accept                       # builds .venv-gen2 on first use (network: PyPI); trigger-order for changed or unknown DDL
 make gen2-venv                         # (re)build the environment only
 make gen2-accept PYTHON_BOOTSTRAP=python3.12  # choose the base interpreter explicitly
 ```

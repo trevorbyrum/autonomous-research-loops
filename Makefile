@@ -25,16 +25,19 @@ GEN2_BASE ?= origin/gen2
 gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-source gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
-# Acceptance adds trigger-order only for committed DDL changes from the base.
-# A missing base or failed diff must fail acceptance, never imply no DDL change.
+# Acceptance skips trigger-order only when the committed DDL diff is known empty.
+# A missing base or failed comparison runs the conservative trigger-order check.
 gen2-accept: gen2-check
-	@ddl_changes=$$(git diff --name-only "$(GEN2_BASE)...HEAD" -- gen2/store/schema) || exit $$?; \
-	if [ -n "$$ddl_changes" ]; then \
-		echo "gen2-accept: running trigger-order (DDL changed: $(GEN2_BASE)...HEAD)"; \
-		$(MAKE) gen2-trigger-order; \
+	@if ddl_changes=$$(git diff --name-only "$(GEN2_BASE)...HEAD" -- gen2/store/schema); then \
+		if [ -z "$$ddl_changes" ]; then \
+			echo "gen2-accept: skipping trigger-order (no DDL changes: $(GEN2_BASE)...HEAD)"; exit 0; \
+		fi; \
+		reason="DDL changed"; \
 	else \
-		echo "gen2-accept: skipping trigger-order (no DDL changes: $(GEN2_BASE)...HEAD)"; \
-	fi
+		reason="DDL comparison unavailable (git diff exit $$?)"; \
+	fi; \
+	echo "gen2-accept: running trigger-order ($$reason: $(GEN2_BASE)...HEAD)"; \
+	$(MAKE) gen2-trigger-order
 	@echo "gen2-accept: all checks passed"
 
 .PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-trigger-order gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db gen2-ci-gateway-mutants

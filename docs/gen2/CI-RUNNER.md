@@ -40,7 +40,7 @@ The unit and trigger-order runners also emit test/subtest outcomes and JUnit;
 the mutation runner emits per-mutant test sets, verdicts and baseline outcomes.
 
 `make gen2-accept` runs `gen2-check` and adds trigger-order when
-`git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema` is non-empty;
+`git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema` is non-empty or unavailable;
 `GEN2_BASE` defaults to `origin/gen2`. These targets have no shard arguments
 by default. `make gen2-gateway` still runs no-DB, DB and all mutants by default,
 on its existing bootstrap interpreter. Its new `GEN2_GATEWAY_MODE` only selects
