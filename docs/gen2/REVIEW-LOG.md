@@ -3481,3 +3481,15 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - Full-file campaigns are report-only, run at phase gates and Gate S.
   - This narrows plan §4 S2's "changed files".
 - S2 dispatched to Sol, branching after S3 (PR #22) merges.
+
+## 2026-10-25: batch S2, Cosmic Ray changed-line mutation (39d9cfd, PR #25): BLOCK, round 1
+- **Size:** 112 files, +480/−34,700. Retired the hand-written mutant inventory, controls JSON and harness. The gateway keeps its 413-mutant step (an authorized later second step).
+- **Verifier** (Sonnet `88c078d4`): gen2-accept hit 8 failures in S1's `test_acceptance`, so the orchestrator stopped the run after reproducing them.
+- **Astra** (`3abdb762`; `private/reviews/gen2-s2-astra-review-20261025.md`): BLOCK on one family, otherwise passing.
+  - **S2-C1:** a missed consumer. The `test_acceptance` fixture lacks the new build lock and a mutation stub.
+  - **S2-C2:** mutation ran before S1's conservative trigger-order. The required order is check → conditional trigger-order → mutation → success.
+  - **Keep** `gen2-mutation: gen2-venv`. Removing it would be a MITIGATION.
+  - **NB1:** remove the unused `mutation_workers()`.
+- **Selection-rule addition:** a change to a Makefile recipe requires running every test that executes that recipe (`test_acceptance`).
+- **Repair dispatched** as one combined pass. A fresh gen2-accept and gen2-gateway will run at the repaired head.
+- **Noted for the operator, no action taken:** `.github/workflows/gen2-check.yml` has been tracked since task 0a (2026-09-25). PR checks show only Jenkins. It is a deletion candidate under the "no GitHub Actions" rule.
