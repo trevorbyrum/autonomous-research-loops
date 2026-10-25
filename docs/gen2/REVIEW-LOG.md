@@ -3515,3 +3515,14 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - Stage 2 runs the full suite for stage-1 survivors only.
   - There is no loss of rigor: a survivor is always judged against the full suite. The target is under about 20 min for a part-4-sized slice.
 - Astra's part 4 review continues statically. The mutation gate stays pending until a re-run with S2b.
+
+## 2026-10-25: 2d slice 6a part 4, freshness binding (5eb31d0, PR #28): BLOCK, round 1
+- **Astra** (`100fb0d6`; `private/reviews/gen2-2d-6a-p4-astra-review-20261025.md`):
+  - A BLOCK, B PASS, C BLOCK, Gate S proportionality PASS.
+  - The freshness fence is ROOT-CAUSE and sound: coherent capture, pre-effect writer fence, typed differences, a correct three-attempt bound, and the audit is respected.
+  - Size: production +63 net, tests +241, matching the estimate.
+- **R1:** recapture is not bound to the caller's finite deadline, as the 2026-10-23 ruling requires. It must reuse the existing deadline authority, with no new framework. Tests needed: expiry after a mismatch, expiry while awaiting the fence, and a live-deadline success case.
+- **C1:** the exhaustion test needs an in-callback attempt-ceiling assertion, so that removing the bound fails by assertion.
+- **N1** (non-blocking): consider tool-level skipping of annotation-only mutations instead of per-line pragmas. All six pragmas were accepted.
+- **Mutation gate:** pending S2b.
+- **Repair queued** behind S2b (one coder at a time on the shared tree).
