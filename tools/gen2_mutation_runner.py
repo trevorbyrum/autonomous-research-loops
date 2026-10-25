@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 from types import SimpleNamespace
 import unittest
@@ -114,9 +115,12 @@ def run(config):
     stages = []
     while True:
         started = time.monotonic()
-        child = subprocess.Popen([sys.executable, __file__, json.dumps({**config, "inner": True})],
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        output, _ = child.communicate()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json") as request:
+            json.dump({**config, "inner": True}, request)
+            request.flush()
+            child = subprocess.Popen([sys.executable, __file__, request.name],
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            output, _ = child.communicate()
         data = {**marker(output), "exit": child.returncode, "test_pid": child.pid}
         verdict = normalize(SimpleNamespace(worker_outcome="normal", output=MARKER + json.dumps(data),
                                            test_outcome="survived" if child.returncode == 0 else "killed"))
@@ -132,4 +136,5 @@ def run(config):
 
 
 if __name__ == "__main__":
-    sys.exit(run(json.loads(sys.argv[1])))
+    argument = sys.argv[1]
+    sys.exit(run(json.loads(argument if argument.startswith("{") else Path(argument).read_text())))

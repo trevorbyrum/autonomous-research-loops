@@ -79,6 +79,20 @@ class AutomaticMutationTest(unittest.TestCase):
             self.assertEqual(set(report["counts"]), {"FILTERED_GIT", "PRAGMA", "ASSERTION_KILL"})
             self.assertEqual(set(report["stage_verdicts"]), {"1:ASSERTION_KILL"})
             self.assertEqual(source.read_text().splitlines()[1], "def answer(): return 1")
+            original = test.read_text()
+            # A real coverage selection exceeding Linux's per-argument limit
+            # must reach both fresh processes without losing test names.
+            test.write_text("import unittest\nfrom gen2.probe import answer\n"
+                "class Case(unittest.TestCase): pass\n"
+                "def check(self): self.assertEqual(answer(), 1)\n"
+                "for n in range(3000): setattr(Case, 'test_' + 'covering_' * 8 + str(n), check)\n")
+            result, report = campaign()
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            selected = [runner.marker(row["native"]["output"])["stages"][0]["tests"]
+                        for row in report["mutants"] if row["verdict"] == "ASSERTION_KILL"]
+            self.assertTrue(selected)
+            self.assertTrue(all(len(json.dumps(names)) > 131072 and len(names) == 3000 for names in selected))
+            test.write_text(original)
             test.write_text(test.read_text().replace("answer(), 1", "answer(), 2"))
             result, report = campaign()
             self.assertEqual(result.returncode, 1)

@@ -57,8 +57,10 @@ def main():
         names = git("ls-files", "gen2") if args.full else git("diff", "--name-only", "--diff-filter=ACMR", report["base"], "--", "gen2")
         targets = sorted(name for name in names.splitlines() if name.endswith(".py") and not name.startswith("gen2/tests/"))
         report["targets"] = targets
-        def runner(config):
-            return [sys.executable, str(ROOT / "tools/gen2_mutation_runner.py"), json.dumps(config)]
+        def runner(config, name="baseline"):
+            request = out / f"{name}.json"
+            request.write_text(json.dumps(config))
+            return [sys.executable, str(ROOT / "tools/gen2_mutation_runner.py"), str(request)]
         baseline = dict(targets=targets, tests=args.tests, coverage=str(out / "coverage.sqlite"))
         cfg, session = out / "cosmic-ray.toml", out / "session.sqlite"
         cfg.write_text(toml.dumps({"cosmic-ray": {"module-path": targets, "timeout": 7200,
@@ -87,7 +89,7 @@ def main():
                     for index, item in enumerate(selected, 1):
                         tests = selection[item.job_id]
                         config = dict(targets=targets, tests=tests or args.tests, full_tests=args.tests, stage=1 if tests else 2)
-                        result = mutate_and_test(item.mutations, shlex.join(runner(config)), 7200)
+                        result = mutate_and_test(item.mutations, shlex.join(runner(config, item.job_id)), 7200)
                         db.set_result(item.job_id, result)
                         print(f"gen2-mutation: {index}/{len(selected)} {normalize(result)}", flush=True)
             report["status"] = "complete"
