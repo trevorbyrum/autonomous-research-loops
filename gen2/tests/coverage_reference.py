@@ -1,6 +1,6 @@
 """Finite completion oracle independent of standing, chain and bound helpers.
 
-Run in the attested child tree so Hypothesis also exercises accounting mutants.
+Run in a fresh child tree so Hypothesis also exercises accounting behavior.
 Abstract roots prescribe possible completions; fixture construction only encodes
 their observations. The oracle assigns first-owner credit directly from sets.
 """

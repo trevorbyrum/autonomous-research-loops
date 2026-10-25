@@ -7,9 +7,6 @@ and runs a tool on it as a subprocess, so what a test asserts is the tool's
 exit status and what it prints. The oracles are in the tests: numbers worked
 out by hand from the fixture's text, never read back from the tool.
 
-The gate paths are module globals read at call time:
-tools/gen2_mutations.py points them at mutated copies.
-
 A tool run is judged as a PROGRAM before a test judges what it said (task 2q-a-repair-3, Gate D #4 F4). `Repo.run` raises `ToolDidNotComplete` - never an
 AssertionError - when the child crashed (a traceback), timed out, died of a signal, could not be loaded or started (an import or syntax error, an exit
 status the tool never returns, an exit 2 without the tool's own message) or left no result its caller needed. A test that asserts on such a run therefore

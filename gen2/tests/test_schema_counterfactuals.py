@@ -12,32 +12,10 @@ and docs/gen2/BOUNDARIES.md into a temporary root, runs
 and each test asserts that the fixtures it names still behave exactly as
 declared.
 
-Unmutated, these tests restate what `make gen2-schemas` already checks. Their
-purpose is the mutation inventory (tools/gen2_mutations.py, the `0CR-`
-entries): the harness points one of the *_SCHEMA globals below at a copy of
-that schema with a rule removed, and the test named for the rule's negative
-must then fail, because that negative no longer behaves exactly as declared.
-That happens in one of two ways, and they prove different things:
-
-- An isolated negative declares one error, from its rule alone. The kill
-  means the negative now validates: the mutant admits a bad document, and
-  the negative depends on that rule. Every export negative except the
-  combined unreadable-response regression is of this kind (the manifest and
-  freshness-envelope negatives of task 0d included, and the per-member ones
-  0d-repair added beside its whole-object negatives), and so are the three
-  single-member identity negatives.
-- A combined negative declares two or three errors, and the negative is
-  still refused after the removal, only with fewer errors than declared. The
-  kill means the checker noticed that rule's contribution go missing. It
-  does not mean the mutant admits a bad document (another rule may still
-  refuse it), and it does not say which rule produced which error: a second
-  edit that adds an equal error at the same (keyword, path) keeps the count
-  and goes unnoticed (Astra 0c-repair re-review, BLOCK 3). The decision-
-  receipt audit negatives are of this kind, because their guards overlap by
-  design, and so are the bare-identity and unreadable-response regressions.
-  Where the members can be removed one at a time, an isolated negative backs
-  the combined one; the identity members are, and the review's compensated
-  mutant is in the inventory to show it is now refused.
+The fixtures check isolated negatives (a rule alone rejects a document) and
+combined negatives (several rules contribute errors at the same location).
+Combined error counts cannot prove which rule supplied each error. These
+schema checks remain independent of the automatic Python mutation campaign.
 
 Neither kind proves the rule is the right one, and these tests read no
 runtime behaviour.
@@ -60,7 +38,6 @@ SCHEMAS = REPO / "gen2" / "schema"
 # The checker imports gen2.core.instants; a temp root holds only the schemas.
 ENV = {**os.environ, "PYTHONPATH": str(REPO)}
 
-# Module globals: tools/gen2_mutations.py points one at a mutated copy.
 EXPORT_BUNDLE_SCHEMA = SCHEMAS / "export-bundle.schema.json"
 EXPORT_RECEIPT_SCHEMA = SCHEMAS / "export-delivery-receipt.schema.json"
 EXPORT_MANIFEST_SCHEMA = SCHEMAS / "export-manifest.schema.json"

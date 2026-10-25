@@ -1,29 +1,8 @@
-"""Every gen-2 child a test starts goes through gen2/tests/children.py (task
-1c: the mutation runner's child tree reaches only children started there).
+"""Child launch helpers keep fresh interpreters on the same code tree.
 
-Trace: Astra 1b-repair-2 review ("a future subprocess-only killer needs a disk
-mutation or explicit loading mechanism"); tools/gen2_mutations.py module
-docstring, "Children".
-
-The lint (ChildLaunchRuleTest) is narrow: it looks at every literal list,
-in every test module, that starts with sys.executable, and requires its next
-element to be a path (a tool run by file, which the runner already hands a
-mutated copy by path), never "-m" or "-c" (which would import gen2 from the
-working directory). It sees only that literal-list spelling: not a tuple,
-not a list held in a variable, not os.system or a shell string, not a tool
-that itself starts a child (Astra 1c review C1 reproduced a tuple launch it
-misses). It is a lint, not the guarantee: the mutation runner attests, per
-killing test, which bytes its children executed (tools/gen2_mutations.py,
-"Children"), and the helper itself fixes the import root
-(HelperImportRootTest). Oracle: the AST of the test sources, read here; the
-positive control is a synthetic source in each recognised spelling, and the
-tuple spelling it does not recognise is pinned as unrecognised.
-
-KillAttestationTest also pins the runner's verdict rules for a mutant's
-paired controls (task 1c-repair-2 C4): each must pass under the mutant, a
-disk target's through a child, and the inventory's controls must all be
-runnable. Oracle: synthetic results written here, one defect each, beside the
-accepted one.
+ChildLaunchRuleTest checks literal sys.executable launch lists; it cannot see
+indirect launch spellings. HelperImportRootTest checks the import-root behavior.
+Process readiness and cleanup tests retain their production failure coverage.
 """
 from __future__ import annotations
 
@@ -256,98 +235,6 @@ class ReadinessTest(unittest.TestCase):
         self.assertIsNotNone(child.poll(), "the cleanup the helper registered first reaped it")
         self.assertEqual(len(made), 1)
         children.reap(child)   # and reaping again is harmless
-
-
-class KillAttestationTest(unittest.TestCase):
-    """Astra 1c review C1: a kill is credited to a mutant only as far as the
-    executing children attest it (tools/gen2_mutations.py judge_children).
-    Oracle: synthetic attestations written here, one defect each, beside the
-    accepted evidence."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        import importlib.util
-
-        import sys
-
-        spec = importlib.util.spec_from_file_location("gen2_mutations_under_test", children.REPO / "tools" / "gen2_mutations.py")
-        cls.runner = sys.modules[spec.name] = importlib.util.module_from_spec(spec)  # dataclasses look the module up while it loads
-        cls.addClassCleanup(sys.modules.pop, spec.name, None)
-        spec.loader.exec_module(cls.runner)
-        if str(TESTS) not in sys.path:  # the runner resolves killers as it runs them: test modules by their top-level names
-            sys.path.insert(0, str(TESTS))
-            cls.addClassCleanup(sys.path.remove, str(TESTS))
-
-    def test_a_kill_is_credited_only_to_attested_mutant_bytes(self) -> None:
-        runner, tree, sha = self.runner, Path("/tmp/child-tree"), "a" * 64
-        disk = runner.Mutation("X-disk", "t", "a script only children run", ("test_m.T.test_killer",), target="gen2/supervisor/jobshim.py", old="x")
-        module = runner.Mutation("X-module", "t", "an in-process kill", ("test_m.T.test_killer",), target="gen2/supervisor/jobs.py", old="x")
-        via_child = runner.Mutation("X-child", "t", "a kill through a child", ("test_m.T.test_killer",), target="gen2/supervisor/jobs.py", old="x", via_child=True)
-        good = {"test": "test_m.T.test_killer", "pid": 2, "file": str(tree / "gen2/supervisor/jobshim.py"), "sha256": sha}
-        judge = lambda m, attested: runner.judge_children(m, attested, tree, sha, own_pid=1)
-        self.assertIsNone(judge(disk, [good]))
-        self.assertIsNone(judge(module, []))  # killed in this interpreter: no child needed
-        self.assertIn("no child that executed the mutant", judge(disk, []))
-        self.assertIn("no child that executed the mutant", judge(via_child, []))
-        self.assertIn("no child that executed the mutant", judge(disk, [{**good, "test": "test_m.T.test_other"}]))  # bound to its own test
-        self.assertIn("no child that executed the mutant", judge(disk, [{**good, "pid": 1}]))  # this interpreter is not a child
-        self.assertIn("other bytes", judge(disk, [good, {**good, "sha256": "b" * 64}]))  # the unmutated file, or anything else
-        self.assertIn("other bytes", judge(module, [{**good, "file": str(children.REPO / "gen2/supervisor/jobs.py")}]))  # outside the tree
-
-
-    def test_every_killer_names_exactly_one_test(self) -> None:
-        """A mutant runs its declared killers and its paired controls, and
-        nothing else (task 1c-repair runtime; 1c-repair-2 C4): a killer name
-        that is not exactly one test would run nothing, so it stops the run
-        (unresolved_killers). The whole inventory resolves."""
-        runner = self.runner
-        typo = runner.Mutation("X-typo", "t", "a misspelt killer", ("test_children.KillAttestationTest.test_no_such_test",), target="ddl", old="x")
-        whole_class = runner.Mutation("X-class", "t", "a class, not a test", ("test_children.KillAttestationTest",), target="ddl", old="x")
-        real = runner.Mutation("X-real", "t", "a real killer", ("test_children.KillAttestationTest.test_every_killer_names_exactly_one_test",), target="ddl", old="x")
-        self.assertEqual(runner.unresolved_killers([typo, whole_class, real]),
-                         ["test_children.KillAttestationTest", "test_children.KillAttestationTest.test_no_such_test"])
-        self.assertEqual(runner.unresolved_killers(runner.MUTATIONS), [])
-
-    def test_a_kill_needs_its_paired_controls_passing(self) -> None:
-        """Killers must fail and paired controls must pass under the mutant:
-        a control that failed, erred, was skipped or never ran makes the
-        mutation INVALID, however its killers did (task 1c-repair-2 C4)."""
-        runner = self.runner
-        m = runner.Mutation("X-paired", "t", "a guard", ("test_m.T.test_killer",), target="ddl", old="x")
-        controls = ("test_m.T.test_control",)
-
-        def result(failed=(), errored=(), skipped=(), ran=("test_m.T.test_killer", "test_m.T.test_control")):
-            res = runner._Collector()
-            res.failed, res.errored, res.skipped, res.ran = set(failed), {t: "boom" for t in errored}, set(skipped), set(ran)
-            return res
-        killed = runner.verdict(m, result(failed=["test_m.T.test_killer"]), controls)
-        self.assertTrue(killed.startswith("KILLED    X-paired by 1 test(s), 1 paired control(s) passing"), killed)
-        for broken in (result(failed=["test_m.T.test_killer", "test_m.T.test_control"]), result(failed=["test_m.T.test_killer"], errored=["test_m.T.test_control"]),
-                       result(failed=["test_m.T.test_killer"], skipped=["test_m.T.test_control"]), result(failed=["test_m.T.test_killer"], ran=["test_m.T.test_killer"])):
-            self.assertIn("paired control(s) did not pass under the mutant", runner.verdict(m, broken, controls))
-        self.assertTrue(runner.verdict(m, result(), controls).startswith("SURVIVED"))
-        self.assertTrue(runner.verdict(m, result(failed=["test_m.T.test_control"]), controls).startswith("INVALID"))
-
-    def test_a_disk_targets_control_needs_a_child_that_met_the_mutant(self) -> None:
-        runner, tree, sha = self.runner, Path("/tmp/child-tree"), "a" * 64
-        disk = runner.Mutation("X-disk", "t", "a script only children run", ("test_m.T.test_killer",), target="gen2/supervisor/jobshim.py", old="x")
-        killer = {"test": "test_m.T.test_killer", "pid": 2, "file": str(tree / "gen2/supervisor/jobshim.py"), "sha256": sha}
-        judge = lambda attested: runner.judge_children(disk, attested, tree, sha, 1, ("test_m.T.test_control",))
-        self.assertIsNone(judge([killer, {**killer, "test": "test_m.T.test_control"}]))
-        self.assertIn("paired control(s) with no child that executed the mutant", judge([killer]))
-
-    def test_every_mutant_has_runnable_paired_controls(self) -> None:
-        """Every mutant has an entry in the controls file; each control is
-        exactly one test and not one of its killers (control_problems)."""
-        runner = self.runner
-        m = runner.Mutation("X-m", "t", "a guard", ("test_children.KillAttestationTest.test_every_killer_names_exactly_one_test",), target="ddl", old="x")
-        self.assertEqual(runner.control_problems([m], {}), [f"X-m: no entry in {runner.CONTROLS_FILE.name}"])
-        self.assertEqual(runner.control_problems([m], {"X-m": {"controls": list(m.killers)}}),
-                         [f"X-m: {m.killers[0]} is both a killer and a control"])
-        self.assertEqual(runner.control_problems([m], {"X-m": {"controls": ["test_children.KillAttestationTest.test_no_such_test"]}}),
-                         ["control test_children.KillAttestationTest.test_no_such_test is not exactly one test"])
-        self.assertEqual(runner.control_problems([m], {"X-m": {"controls": ["test_children.KillAttestationTest.test_a_kill_needs_its_paired_controls_passing"]}}), [])
-        self.assertEqual(runner.control_problems(runner.MUTATIONS, runner.load_controls()), [])
 
 
 if __name__ == "__main__":

@@ -4,9 +4,7 @@ Every connection applies gen2/store/connection.sql — the integrity-bearing
 per-connection pragmas (foreign_keys, recursive_triggers) — before the DDL,
 exactly as the store module must (INVARIANTS C-11).
 
-DDL_TEXT and CONNECTION_TEXT are module globals so that the mutation harness
-(tools/gen2_mutations.py) can substitute a mutated schema in memory and rerun
-the same tests; nothing else should reassign them.
+DDL_TEXT and CONNECTION_TEXT support in-memory schema substitutions in tests.
 
 Builders construct input rows only. Expected accept/reject outcomes are
 written by hand in each test, never derived from the DDL under test.

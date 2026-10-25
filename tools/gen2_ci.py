@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Run one explicit CI workload. Scheduling and status aggregation belong to Jenkins.
 
-The default is T0 only. Full acceptance requires every engine test and mutation
-shard, trigger-order when DDL changed, and all three gateway modes; no subset
+The default is T0 only. Full acceptance requires every engine test shard and
+the changed-line mutation campaign, trigger-order when DDL changed, and all three gateway modes; no subset
 implies acceptance.
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 from gen2_ci_evidence import junit, shard_spec, write_json
-from gen2_workers import cpu_budget, mutation_workers
+from gen2_workers import cpu_budget
 
 ROOT = Path(__file__).resolve().parent.parent
 MODES = ("push", "engine-unit", "engine-trigger-order", "engine-mutation", "gateway-no-db", "gateway-db", "gateway-mutants")
@@ -81,10 +81,10 @@ def command(mode: str, shard: tuple[int, int]) -> list[str]:
     index, total = shard
     if mode == "engine-unit":
         return ["make", "gen2-test", f"GEN2_TEST_ARGS=--shard {index}/{total}"]
-    if mode == "engine-mutation":
-        return ["make", "gen2-mutation", f"GEN2_MUTATION_ARGS=--shard {index}/{total}"]
     if shard != (1, 1):
         raise ValueError(f"{mode} does not support sharding")
+    if mode == "engine-mutation":
+        return ["make", "gen2-mutation"]
     if mode.startswith("gateway-"):
         return ["make", "gen2-gateway", "GEN2_GATEWAY_MODE=" + mode.removeprefix("gateway-")]
     return ["make", "gen2-push" if mode == "push" else "gen2-trigger-order"]
@@ -120,7 +120,7 @@ def main(argv=None) -> int:
         "checkout_sha": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}"),
         "source_dirty": bool(git("status", "--porcelain", "--untracked-files=no")),
         "python": sys.version, "sqlite": sqlite3.sqlite_version,
-        "budget": {"aggregate_cpus": budget, "engine_mutation_workers": mutation_workers(),
+        "budget": {"aggregate_cpus": budget, "engine_mutation_workers": 1,
                    "gateway_workers": 1, "engine_gateway_concurrent": False},
         "capabilities": {"psycopg_in_engine_interpreter": importlib.util.find_spec("psycopg") is not None,
                          "gateway_psycopg": gateway_dependency()},

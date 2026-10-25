@@ -1,0 +1,89 @@
+"""Outcome safety, unittest subtest fail-fast, and native diff/pragma filters."""
+import io
+import importlib.util
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+from types import SimpleNamespace
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+spec = importlib.util.spec_from_file_location("mutation_runner", ROOT / "tools/gen2_mutation_runner.py")
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+EvidenceResult, MARKER, normalize = runner.EvidenceResult, runner.MARKER, runner.normalize
+
+
+class AutomaticMutationTest(unittest.TestCase):
+    def test_native_killed_is_not_a_verdict(self):
+        def result(data=None, output=None, worker="normal", native="killed"):
+            return SimpleNamespace(worker_outcome=worker, test_outcome=native,
+                output=output if output is not None else MARKER + json.dumps(data))
+        clean = dict(exit=1, tests_run=1, errors=0, failures=1)
+        cases = [(None, "PENDING"), (result(output="timeout"), "TIMEOUT"),
+            (result(output=""), "INVALID"), (result(output=MARKER + "{"), "INVALID"),
+            (result({**clean, "exit": 3}), "INVALID"), (result({**clean, "exit": -9}), "CRASH"),
+            (result({**clean, "errors": 1}), "TEST_ERROR"),
+            (result(dict(kind="SYNTAX_INVALID")), "SYNTAX_INVALID"),
+            (result(clean), "ASSERTION_KILL"),
+            (result({**clean, "exit": 0, "failures": 0}, native="survived"), "SURVIVED"),
+            (result(clean, worker="exception"), "INVALID")]
+        for native, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(normalize(native), expected)
+
+    def test_subtests_stop_on_first_failure_and_preserve_typed_errors(self):
+        visited = []
+        class Case(unittest.TestCase):
+            def test_failure(self):
+                for i in range(5):
+                    with self.subTest(i=i):
+                        visited.append(i)
+                        self.fail("counterexample")
+            def test_error(self):
+                raise ValueError("broken setup")
+        runner = unittest.TextTestRunner(stream=io.StringIO(), failfast=True, resultclass=EvidenceResult)
+        failed = runner.run(Case("test_failure"))
+        errored = runner.run(Case("test_error"))
+        self.assertEqual(visited, [0])
+        self.assertEqual(failed.events[0]["kind"], "failure")
+        self.assertEqual(errored.events[0]["exception_type"], "builtins.ValueError")
+
+    def test_native_filters_and_incomplete_campaign(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel in ("tools", "gen2/tests"):
+                (root / rel).mkdir(parents=True)
+            for name in ("gen2_mutation_scope.py", "gen2_mutation_runner.py"):
+                shutil.copy(ROOT / "tools" / name, root / "tools" / name)
+            source = root / "gen2/probe.py"
+            source.write_text("untouched = 100\ndef answer(): return 0\ndef equivalent(): return 5\n")
+            def git(*args):
+                subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+            git("init", "-q")
+            git("add", "gen2/probe.py")
+            git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "base")
+            source.write_text("untouched = 100\ndef answer(): return 1\ndef equivalent(): return 5 # pragma: no mutate -- equivalent diagnostic\n")
+            test = root / "gen2/tests/test_probe.py"
+            test.write_text("import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n def test_answer(self): self.assertEqual(answer(), 1)\n")
+            def campaign(*args):
+                result = subprocess.run([sys.executable, "tools/gen2_mutation_scope.py", "--base", "HEAD", *args],
+                    cwd=root, capture_output=True, text=True, timeout=60)
+                reports = sorted(root.glob("build/mutation-evidence/*/mutation-report.json"), key=lambda p: p.stat().st_mtime_ns)
+                return result, json.loads(reports[-1].read_text())
+            result, report = campaign()
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(set(report["counts"]), {"FILTERED_GIT", "PRAGMA", "ASSERTION_KILL"})
+            self.assertEqual(source.read_text().splitlines()[1], "def answer(): return 1")
+            test.write_text(test.read_text().replace("answer(), 1", "answer(), 2"))
+            result, report = campaign()
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(report["status"], "incomplete")
+            self.assertGreater(report["counts"]["PENDING"], 0)
+            result, report = campaign("--full", "--report-only")
+            self.assertEqual(result.returncode, 0)
+            self.assertTrue(report["failed"])
+            self.assertEqual(report["scope"], "full")

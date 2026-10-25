@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-CHECKER = REPO / "tools" / "check_boundaries.py"  # module globals: tools/gen2_mutations.py points these at mutated copies
+CHECKER = REPO / "tools" / "check_boundaries.py"
 REAL_BOUNDARIES = REPO / "gen2" / "boundaries.toml"
 
 DOC_HEADINGS = ["Router", "Station supervisor", "Verifier"]

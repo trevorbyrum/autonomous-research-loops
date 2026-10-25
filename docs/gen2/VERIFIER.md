@@ -25,7 +25,7 @@ When CI meets the CI design's §4 qualification, CI replaces this role.
    - `cp -a /home/trevor/work/autonomous-research-loops/.venv-gen2 .`, never a symlink;
    - `touch .venv-gen2/.gen2-installed`;
    - `make gen2-schemas gen2-ddl gen2-catalog-check`. Stop and report if this fails.
-3. **Run each target unpiped**, one after another, inside `systemd-run --user --unit=gen2-verify-<task> --collect -p MemoryMax=20G` (pass the pinned `GEN2_BASE` to `gen2-accept`):
+3. Run `make gen2-accept GEN2_BASE=<merge-base>` for acceptance. Attach its `mutation-report.json` and session directory; survivors are failures. The verifier reports outcomes and never judges exemptions. **Run each target unpiped**, one after another, inside `systemd-run --user --unit=gen2-verify-<task> --collect -p MemoryMax=20G` (pass the pinned `GEN2_BASE` to `gen2-accept`):
    - write each target's full log to `<evidence>/<target>.log`;
    - write `{"target", "exit", "seconds", "sha"}` to `<evidence>/<target>.exit.json`.
 4. **Report** the SHA, the clone path, each target's exit code and duration, and the last 20 lines of each log. Also report any environment problem.

@@ -29,7 +29,7 @@ from gen2.tests.router_fixtures import RouterTestCase, empty_outcome, h
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "tools" / "gen2_schema_oracle.py"
-VALIDATOR = ROOT / "gen2" / "router" / "schemas.py"  # module global: tools/gen2_mutations.py points it at mutated copies
+VALIDATOR = ROOT / "gen2" / "router" / "schemas.py"
 
 
 def run_tool(mode: str, cases: list | None = None) -> tuple[int, object]:

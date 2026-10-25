@@ -199,8 +199,8 @@ class OutcomeReportingTest(unittest.TestCase):
                               "mode": "engine-unit", "shard": [2, 3], "status": "pass"},
                  "engine-unit-inventory.json": {"expected": parents, "selected": parents},
                  "engine-unit-outcomes.json": outcomes,
-                 "engine-mutation-inventory.json": {"expected": ["mutant"], "selected": ["mutant"], "baselines": []},
-                 "mutants/mutant.json": {"id": "mutant", "verdict": "KILLED"},
+                 "mutation-report.json": {"head": "pin", "base": "base", "scope": "changed-lines", "tests": None,
+                     "failed": False, "mutants": [{"id": "mutant", "verdict": "ASSERTION_KILL"}]},
                  "trigger-order-outcomes.json": {"original": {"store": "pass"}, "reversed": {"store": "pass"}}}
         for filename, value in files.items():
             EVIDENCE.write_json(root / filename, value)

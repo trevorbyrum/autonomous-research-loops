@@ -840,7 +840,7 @@ class ScreeningAndDecisionTest(StoreTestCase):
     def test_shadow_decision_provider_cannot_write_authoritative_screening(self) -> None:
         # The A10 binding (the receipt's committed action must be this assessment)
         # now refuses a shadow receipt first; the qualified-authority trigger is
-        # its second layer (tools/gen2_mutations.py SECOND_LAYER).
+        # the independent second layer.
         self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev)  # shadow
         with self.assertRaises(sqlite3.IntegrityError):
             self.x(self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_00000001", T)
