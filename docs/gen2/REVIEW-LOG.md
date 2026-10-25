@@ -3526,3 +3526,15 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **N1** (non-blocking): consider tool-level skipping of annotation-only mutations instead of per-line pragmas. All six pragmas were accepted.
 - **Mutation gate:** pending S2b.
 - **Repair queued** behind S2b (one coder at a time on the shared tree).
+
+## 2026-10-25: S2b (c334e03, PR #30): BLOCK, round 1; 6a part 4 (82befcb, PR #28): ACCEPTED pending the mutation gate, round 2
+- **S2b, Astra** (`55f5459a`; `private/reviews/gen2-s2b-astra-review-20261025.md`): BLOCK on **S2b-C1** (MITIGATION as delivered).
+  - Kills were awarded from selected test executions that had not been qualified on clean source. Astra reproduced a selected subset failing on unmutated code, so a survivor was counted as a kill.
+  - A cached baseline was not bound to the execution configuration.
+  - Everything else PASSED: shared coverage, staged selection, `ERROR_KILL` policy, the +18% overhead, and the 25-min mutation budget as reasonable.
+  - Verifier gen2-accept exit 0 (3,955 s).
+  - **Repair dispatched** (fresh Sol `80558bbb`): qualify each distinct selection on clean source, fall back conservatively, and bind the baseline to the configuration.
+- **6a part 4, Astra round 2** (`f1e99957`): **A, B, C and S PASS, ROOT-CAUSE.**
+  - R1 is closed: recapture is bound to the invocation's existing `deadline_at`, checked before capture, before preparation and inside the writer fence.
+  - C1 is closed: an in-callback ceiling assertion.
+  - **ACCEPTED pending the independent mutation gate**, which runs after S2b merges into the part 4 branch.
