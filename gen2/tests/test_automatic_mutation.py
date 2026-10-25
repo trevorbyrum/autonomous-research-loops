@@ -77,6 +77,7 @@ class AutomaticMutationTest(unittest.TestCase):
             result, report = campaign()
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(set(report["counts"]), {"FILTERED_GIT", "PRAGMA", "ASSERTION_KILL"})
+            self.assertEqual(set(report["stage_verdicts"]), {"1:ASSERTION_KILL"})
             self.assertEqual(source.read_text().splitlines()[1], "def answer(): return 1")
             test.write_text(test.read_text().replace("answer(), 1", "answer(), 2"))
             result, report = campaign()
@@ -87,3 +88,31 @@ class AutomaticMutationTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertTrue(report["failed"])
             self.assertEqual(report["scope"], "full")
+
+            # Child-only coverage is absent from the parent's contexts: the
+            # covering parent test survives; the full-suite child kills it.
+            test.write_text("import subprocess, sys, unittest\nfrom gen2.probe import answer\n"
+                "class Case(unittest.TestCase):\n def test_parent(self): answer()\n"
+                " def test_child(self):\n"
+                "  value = subprocess.check_output([sys.executable, '-c', 'from gen2.probe import answer; print(answer())'], text=True)\n"
+                "  self.assertEqual(value.strip(), '1')\n")
+            result, report = campaign()
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(set(report["stage_verdicts"]), {"1:SURVIVED", "2:ASSERTION_KILL"})
+
+            # A covering test without an assertion survives both stages and
+            # must fail the gate. A new import-only line bypasses stage 1.
+            test.write_text("import unittest\nfrom gen2.probe import answer\n"
+                            "class Case(unittest.TestCase):\n def test_answer(self): answer()\n")
+            result, report = campaign()
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertEqual(set(report["stage_verdicts"]), {"1:SURVIVED", "2:SURVIVED"})
+            source.write_text(source.read_text() + "\nuncovered = 7\n")
+            result, report = campaign()
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            uncovered = [row for row in report["mutants"] if row["mutation"]["start_pos"][0] == 5]
+            self.assertTrue(uncovered)
+            for row in uncovered:
+                stages = runner.marker(row["native"]["output"])["stages"]
+                self.assertEqual([stage["stage"] for stage in stages], [2])
+                self.assertIsNone(stages[0]["tests"])

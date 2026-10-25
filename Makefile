@@ -86,7 +86,7 @@ $(GEN2_VENV)/.gen2-installed: gen2/requirements.txt gen2/requirements-dev.txt ge
 	$(GEN2_VENV)/bin/python -m pip install --no-input --disable-pip-version-check --require-hashes --no-deps --only-binary=:all: -r gen2/requirements-build.txt
 	$(GEN2_VENV)/bin/python -m pip install --no-build-isolation --no-input --disable-pip-version-check --require-hashes --no-deps \
 		-r gen2/requirements.txt -r gen2/requirements-dev.txt
-	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine, radon, cosmic_ray, pytest"
+	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine, radon, cosmic_ray, pytest, coverage"
 	touch $@
 
 # The store's SQLite compatibility gate (gen2/store/compat.py; Astra third

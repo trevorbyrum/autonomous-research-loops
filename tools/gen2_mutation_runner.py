@@ -4,16 +4,31 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
+from types import SimpleNamespace
 import unittest
+
+from coverage import Coverage
 
 MARKER = "GEN2_MUTATION_RESULT "
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class EvidenceResult(unittest.TextTestResult):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, coverage=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.events = []
+        self.coverage = coverage
+
+    def startTest(self, test):
+        if self.coverage:
+            self.coverage.switch_context(test.id())
+        super().startTest(test)
+
+    def stopTest(self, test):
+        super().stopTest(test)
+        if self.coverage:
+            self.coverage.switch_context("")
 
     def event(self, kind, test, err):
         self.events.append(dict(kind=kind, test=test.id(),
@@ -71,11 +86,21 @@ def run(config):
     if config.pop("inner", False):
         sys.path[:0] = [str(ROOT / "gen2/tests"), str(ROOT)]
         os.environ.pop("GEN2_CI_EVIDENCE", None)
+        cov = None
+        if config.get("coverage"):
+            cov = Coverage(data_file=config["coverage"], config_file=False,
+                           include=[str(ROOT / name) for name in config["targets"]])
+            cov.start()
         loader = unittest.defaultTestLoader
         suite = (loader.loadTestsFromNames(config["tests"]) if config["tests"] else
                  loader.discover(str(ROOT / "gen2/tests"), pattern="test_*.py"))
-        result = unittest.TextTestRunner(stream=sys.stdout, verbosity=0, failfast=True,
-                                         resultclass=EvidenceResult).run(suite)
+        stream = open(config["coverage"] + ".log", "w", buffering=1) if cov else sys.stdout
+        result = unittest.TextTestRunner(stream=stream, verbosity=2 if cov else 0, failfast=True,
+            resultclass=lambda *a, **kw: EvidenceResult(*a, coverage=cov, **kw)).run(suite)
+        if cov:
+            cov.stop()
+            cov.save()
+            stream.close()
         data = dict(tests_run=result.testsRun, errors=len(result.errors), failures=len(result.failures),
                     skipped=len(result.skipped), unexpected_successes=len(result.unexpectedSuccesses), events=result.events)
         print(MARKER + json.dumps(data), flush=True)
@@ -86,12 +111,23 @@ def run(config):
     except SyntaxError as exc:
         print(MARKER + json.dumps(dict(kind="SYNTAX_INVALID", detail=str(exc))), flush=True)
         return 86
-    child = subprocess.Popen([sys.executable, __file__, json.dumps({**config, "inner": True})],
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    output, _ = child.communicate()
-    # Keep all diagnostics, with exactly one wrapper-owned result marker.
-    print("\n".join(line for line in output.splitlines() if not line.startswith(MARKER)))
-    print(MARKER + json.dumps({**marker(output), "exit": child.returncode, "test_pid": child.pid}), flush=True)
+    stages = []
+    while True:
+        started = time.monotonic()
+        child = subprocess.Popen([sys.executable, __file__, json.dumps({**config, "inner": True})],
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        output, _ = child.communicate()
+        data = {**marker(output), "exit": child.returncode, "test_pid": child.pid}
+        verdict = normalize(SimpleNamespace(worker_outcome="normal", output=MARKER + json.dumps(data),
+                                           test_outcome="survived" if child.returncode == 0 else "killed"))
+        # Keep diagnostics and per-stage evidence, with one final result marker.
+        print("\n".join(line for line in output.splitlines() if not line.startswith(MARKER)))
+        stages.append(dict(stage=config.get("stage", "baseline"), tests=config["tests"],
+                           seconds=time.monotonic() - started, verdict=verdict, **data))
+        if config.get("stage") != 1 or verdict != "SURVIVED":
+            break
+        config.update(tests=config["full_tests"], stage=2)
+    print(MARKER + json.dumps({**data, "stages": stages}), flush=True)
     return child.returncode if child.returncode in (0, 1) else 86
 
 
