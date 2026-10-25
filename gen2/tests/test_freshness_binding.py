@@ -259,7 +259,8 @@ class FreshnessTest(unittest.TestCase):
 
     def test_deadline_authority_requires_own_admitted_invocation(self):
         before = self.world.state()
-        for topic, invocation in ((rf.TOPIC, 'inv_missing001'), (rf.OTHER, self.invocation_id)):
+        for topic, invocation in ((rf.TOPIC, 'inv_missing001'), (rf.OTHER, self.invocation_id),
+                                  ('fleet-a:t0', self.invocation_id)):
             error = None
             try:
                 self.router._commit_dossier_inputs(topic, invocation_id=invocation, history='native',
