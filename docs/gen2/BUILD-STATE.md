@@ -3,31 +3,25 @@
 Maintained by the orchestrator loop. One entry per wake with material change; quiet wakes don't append.
 
 ## Current
-*(Rewritten by records batch R1, 2026-10-24. The earlier "Current" narrative and the old "Phase 2 plan" are preserved verbatim in REVIEW-LOG.md, "2026-10-24: BUILD-STATE history moved". Contract and rulings: DOSSIER.md.)*
-- **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. Decision layer disabled/unqualified throughout.
-- **Open task and slice:** task 2d (OPEN since 2026-10-10), slice 6 (coherent snapshot and rich dossier). **No slice is in flight:** 6a parts 1–3 are complete; 6a part 4 (freshness binding) is next and its contract is not yet written (scope in DOSSIER "Current contract").
-- **Open PRs on gen2:** none besides the R1 records PR. Recent merges, latest first:
-  - PR #14, 6a part 3 (Store-level generation counter): merged as `dbbdced` (code head `4cd6f6c`, Astra round 3 ACCEPTED).
-  - PR #18 records `67431e2`; PR #17 Gate S #1 records; PR #16 charter Gate S; PR #15 records.
-  - Part 1 `73a676f` (PR #8) and part 2 (PR #11) merged earlier.
-- **Last verifier result:** gen2-check exit 0 at `4cd6f6c` (7,902 s; mutants 3,786/3,786, zero INVALID; Sonnet `5c103e24`). gen2-gateway carried forward from `45d9da1` (exit 0; no gateway input changed).
-- **Blockers:** none.
-- **Open operator decisions:** none. The Gate S plan was approved by the operator on 2026-10-24, all of D1–D12 (DOSSIER "Operator decisions").
-- **Gate S:** last run #1, SHA `65fb30e` (plan `private/reviews/gen2-simplification-plan-fable-20261024.md`). Growth since, to `dbbdced`: 20 commits, +1,057 / −150 lines outside docs (net ≈ +900; tests, SQL, production and tooling together), under the ~2,000-line trigger. Gate S #1 stands as the 15,000-line growth review that 2e2 will trigger (plan D9).
-- **What's next** (plan order):
-  1. R1 records collapse (this PR).
-  2. S1 tiered checks is being coded now, then S2 (automatic mutation), S3 (retire the metrics ratchet).
-  3. 6a part 4, then S4–S5, R2, S6 if confirmed.
-  4. 6b1, 6b2 (6b2 + 6b3 merged), slice 7; then 2e1, 2e2-minimum and 2f.
-  5. Task 2g (after 2f) owns DEBT-040–043.
-- **Operator-side items outstanding:** CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) and the charter edits in plan §4.6 are the operator's and the ci-cd session's. gen2 is PR-only; code PRs open without auto-merge and the orchestrator enables it after verifier green plus Astra accept; records PRs may auto-merge.
-- **Debt:** `DEBT-REGISTER.md` is authoritative (DEBT-040–043 owned by task 2g; DEBT-029 and DEBT-031 remain open); status in `phase-status.json`.
+*(This section is current state only; history is in REVIEW-LOG.md. Contract and rulings: DOSSIER.md.)*
+- **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
+- **Open task:** 2d, slice 6. 6a parts 1–3 are complete. **Checks cut-back in progress:**
+  - S1 (tiered checks) ACCEPTED and merged as `b7747e1`;
+  - S3 (retire the metrics ratchet; radon ceilings 48/10) ACCEPTED, with auto-merge set on PR #22;
+  - S2 (automatic mutation) is waiting on its tool spike. Early finding: mutmut 3.8 skips decorated functions such as `Store.transaction()`, which favours Cosmic Ray.
+- **Last verifier result:** S3 `10679ec`, gen2-accept exit 0 in **5,356 s** (3,971 tests; mutants 3,372/3,372; trigger-order skipped). Landing time: about 7,900 s before S1, then 6,091 s, then 5,356 s. gen2-gateway was carried forward from `45d9da1`.
+- **Engine size after S3** (Astra's independent run): production 12,995, tests 52,537, tooling 42,114. Gateway production and tests are unchanged at 12,256 and 22,883.
+- **Blockers:** none. **Open operator decisions:** none.
+- **Gate S:** last run #1 at `65fb30e`. Since then, the batches have been net-negative (S1 −2,447; S3 −22,845).
+- **What's next:** S2 (after the spike), then 6a part 4, S4–S5, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
+- **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
+- **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 
 ## Phase 2 plan (approved order, Gate S plan 2026-10-24; supersedes the 2026-09-29 plan, which is preserved in REVIEW-LOG)
 **Size rules (the user, 2026-09-29):** no hand-written file over 1,500 lines (enforced by `make gen2-check`); 15,000 total production lines is a growth-review trigger.
 - **Done:** 2a (bootstrap chain), 2r (size rules), 2b (gateway input contract), 2q (architecture refactors), 2c (accounting views and confidence), and in 2d: slices 1–5 and 6a parts 1–3.
 - **Remaining, in order** (S = Gate S simplification batch, R = records batch):
-  1. R1 records collapse, S1 tiered checks, S2 automatic mutation, S3 retire the metrics ratchet.
+  1. ~~R1 records collapse~~ (done), ~~S1 tiered checks~~ (done), S2 automatic mutation, ~~S3 retire the metrics ratchet~~ (done).
   2. **2d slice 6a part 4** (freshness binding, ≈ 250).
   3. S4 Router owns the three insertion-time rules, S5 delete the semantic DDL, R2 INVARIANTS and traceability table, S6 JSON member-domain DDL guards (only if confirmed).
   4. **2d 6b1** persist the rich dossier (≈ 350), **6b2** completion gates (6b2 + 6b3 merged, ≈ 450), **slice 7** completion approval binding (≈ 200).
