@@ -48,8 +48,14 @@ Items 1–3 are cited by document identity (file name and dates). They belong to
 - **Honest size.** Estimates given to the operator are adjusted for the growth actually observed, not the plan figure. Every task-boundary size report includes tests and tooling next to production.
 - **Added code is a cost.** Prefer deletion and reuse. A slice that grows the total needs to justify it against the end goal.
 
-## Architecture metrics (the user, 2026-09-30)
-Enforced by `make gen2-check`, implemented in-repo with the standard library only (like the boundary checker). Measured from the actual code, not the declared graph: dependency-structure metrics (propagation cost, per-module fan-in/fan-out and instability), architecture-smell detection (cyclic, hub-like and unstable dependencies; god components), and function-level cyclomatic and cognitive complexity. A git-history report of change coupling and hotspots is produced for Gate D but does not fail the build. Metrics are **ratcheted**: a baseline is recorded, and any regression fails the check unless a reviewed, reasoned exemption entry covers it.
+## Architecture metrics (the user, 2026-09-30; amended by operator ruling 3, 2026-10-24, Gate S #1)
+Enforced by `make gen2-check`:
+- the **boundary graph** (`gen2-boundaries`);
+- the **1,500-line file rule** and the **15,000-line production growth trigger** (`gen2-size`);
+- the **debt gate** (`gen2-debt`);
+- **`gen2-complexity`**: radon cyclomatic complexity, with a blocking per-function ceiling and a blocking mean ceiling. These are set in the Makefile at the current worst observed grade (2026-10-25: 48 and 10). Changing either is a reviewed Makefile edit, with no ledger or exemption file.
+
+Radon raw and maintainability output is advisory evidence for Gate D and Gate S. The custom propagation-cost, instability, smell and identity-ledger ratchet was retired in batch S3.
 
 ## Build scaffolding: code graph and dependency map (the user, 2026-09-30)
 "Think of the code graph as scaffolding. It's not meant to ship with the product but helps with building it." Two tools, installed outside the repo in `~/.local/share/gen2-scaffold/` (their own virtualenv; never in gen-2's requirements, Makefile or `make gen2-check`):

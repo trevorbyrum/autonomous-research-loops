@@ -3450,3 +3450,22 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **S1-R1:** `gen2-accept` aborts, rather than running trigger-order, when the DDL comparison is unavailable (missing `origin/gen2` or an invalid base). The contract requires running trigger-order when unsure.
 - **Verifier** (Sonnet `404aba25`): **gen2-accept exit 0 in 6,091 s.** Trigger-order was correctly skipped (no DDL diff against `dbbdced`). That is about 30 min faster than the recent roughly 7,900 s gen2-check runs.
 - **Repair** (a Makefile recipe change plus controls) dispatched on the same branch. The full gen2-accept at `a68ad7e` is carried forward, since the repair changes only the fallback branch of the `gen2-accept` recipe. Round 2 re-runs Astra's five fallback probes on the repaired Makefile.
+
+## 2026-10-25: batch S1 (66f34d9, PR #20): ACCEPTED, round 2
+- **Astra** (`188d3fda`; `private/reviews/gen2-s1-r2-astra-review-20261025.md`): PASS, ROOT-CAUSE.
+  - S1-R1 is closed: empty comparisons skip trigger-order, while non-empty and unavailable comparisons run it, with the reason printed and failure propagated. 11 of 11 fallback probes passed.
+  - The full gen2-accept carried forward from `a68ad7e` (exit 0, 6,091 s) was judged valid.
+- Merged as `b7747e1`. Retired: the exact replay oracle, the differential tool and the move/inline equivalence tools (D2). Trigger-order now runs only on a DDL change.
+
+## 2026-10-25: batch S3 (10679ec, PR #22): ACCEPTED, first review
+- **Astra** (`864fe4ea`; `private/reviews/gen2-s3-astra-review-20261025.md`): every gate PASS, ROOT-CAUSE, no blocking items.
+  - The custom metrics ratchet, identity ledger and supported-source contract were retired (net −22,845 lines).
+  - The boundary graph, 1,500-line rule, 15,000-line trigger and debt gate were confirmed byte-unchanged and still enforced.
+  - The locator gate uses a stdlib AST index.
+  - **`gen2-complexity`**: radon, per-function ceiling 48 and mean ceiling 10 (D5; current worst `gateway/research_gateway/clients/mcp_stdio.py:225::record_activity`). 48 catches regressions but is permissive as a quality bar.
+  - The importer moved to `tools/` (D10), bringing engine production to 12,995.
+- **Orchestrator ruling during S3:** four `test_locators` cases asserting the retired source contract's refusals (SRC-DEF-DUPLICATE/REBOUND, SRC-CLASS-CONDITIONAL, SRC-DECORATOR-UNKNOWN) were retired with that contract (ruling 3). Astra confirmed the ruling was applied narrowly.
+- **Verifier** (Sonnet `92f902ad`): gen2-accept exit 0, **5,356 s** (3,971 tests; mutants 3,372/3,372). Trigger-order was skipped (no DDL change).
+  - **Landing time trend:** about 7,900 s before S1, then 6,091 s after S1, then 5,356 s after S3.
+- **Non-blocking items:** narrow the wording at `test_importer.py:611` and `check_gen2_sqlite_native.py:8`.
+  - Records edits needed: the charter "Architecture metrics" text (done in this PR), CI-DESIGN §3.3/§3.4 and lines 192/196 (with R2, operator D12), and DEBT-017 reconciliation.
