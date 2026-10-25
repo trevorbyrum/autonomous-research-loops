@@ -11,8 +11,9 @@ When CI meets the CI design's §4 qualification, CI replaces this role.
 
 ## Inputs (the orchestrator puts them in the per-round request)
 - The candidate commit SHA.
+- The acceptance comparison base, `GEN2_BASE` (default `origin/gen2`), and its SHA.
 - The evidence directory: `~/work/research-loops-public/private/evidence/<task>/verifier/`.
-- The targets: `gen2-check`, and `gen2-gateway` unless the request names a carried-forward gateway pin.
+- The targets: `gen2-accept`, and `gen2-gateway` unless the request names a carried-forward gateway pin.
 - A unique unit name, `gen2-verify-<task>`.
 
 ## Procedure
@@ -20,13 +21,15 @@ When CI meets the CI design's §4 qualification, CI replaces this role.
 2. **Make a clean clone and set up the venv:**
    - `git clone --no-hardlinks /home/trevor/work/autonomous-research-loops /tmp/verify-<task>`;
    - `git checkout --detach <SHA>`;
+   - `git fetch /home/trevor/work/autonomous-research-loops refs/remotes/origin/gen2:refs/remotes/origin/gen2` (the clone's origin is the shared tree, so copy its upstream tracking ref); verify the base SHA against the request;
    - `cp -a /home/trevor/work/autonomous-research-loops/.venv-gen2 .`, never a symlink;
    - `touch .venv-gen2/.gen2-installed`;
    - `make gen2-schemas gen2-ddl gen2-catalog-check`. Stop and report if this fails.
-3. **Run each target unpiped**, one after another, inside `systemd-run --user --unit=gen2-verify-<task> --collect -p MemoryMax=20G`:
+3. **Run each target unpiped**, one after another, inside `systemd-run --user --unit=gen2-verify-<task> --collect -p MemoryMax=20G` (pass the pinned `GEN2_BASE` to `gen2-accept`):
    - write each target's full log to `<evidence>/<target>.log`;
    - write `{"target", "exit", "seconds", "sha"}` to `<evidence>/<target>.exit.json`.
 4. **Report** the SHA, the clone path, each target's exit code and duration, and the last 20 lines of each log. Also report any environment problem.
+   - Record the base SHA and `git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema`; report whether trigger-order actually ran and why (non-empty DDL diff, unavailable comparison, or successfully empty diff). If acceptance stopped before that decision, report it as not reached.
    - Report only what you observed. Don't interpret failures or propose fixes.
 5. **Remove the clone** after reporting, unless a target failed. A failed clone is kept for the reviewer.
 

@@ -305,7 +305,7 @@ class OutcomeReportingTest(unittest.TestCase):
 
 class PartialScopeTest(unittest.TestCase):
     def test_default_reports_scope_and_actual_execution_on_success_and_failure(self):
-        for codes in ([0, 0, 0], [0, 7]):
+        for codes, statuses in (([0, 0], ["pass", "pass"]), ([7], ["fail", "not_run"]), ([0, 7], ["pass", "fail"])):
             with self.subTest(codes=codes), tempfile.TemporaryDirectory() as directory:
                 out = Path(directory)
                 with mock.patch.object(RUNNER, "git", return_value="pin"), \
@@ -315,12 +315,13 @@ class PartialScopeTest(unittest.TestCase):
                 report = json.loads((out / "default-1-of-1/scope.json").read_text())
                 self.assertEqual(report["acceptance"], "partial")
                 self.assertFalse(report["full_acceptance"])
-                self.assertEqual(report["ran"], ["T0", "complete trigger-order", "units 1/8"])
-                self.assertEqual(report["omitted"], ["unit partitions 2–8/8", "all mutation work", "all gateway modes"])
-                self.assertEqual([x["status"] for x in report["executions"]],
-                                 ["pass", "pass", "pass"] if len(codes) == 3 else ["pass", "fail", "not_run"])
+                self.assertEqual(report["ran"], ["T0", "units 1/8"])
+                self.assertEqual(report["omitted"], ["complete trigger-order", "unit partitions 2–8/8", "all mutation work", "all gateway modes"])
+                self.assertEqual([x["status"] for x in report["executions"]], statuses)
                 self.assertEqual(execute.call_count, len(codes))
-                for call, (mode, shard) in zip(execute.call_args_list, RUNNER.DEFAULT_WORK):
+                self.assertEqual([(x["mode"], x["shard"]) for x in report["executions"]],
+                                 [("push", [1, 1]), ("engine-unit", [1, 8])])
+                for call, (mode, shard) in zip(execute.call_args_list, (("push", (1, 1)), ("engine-unit", (1, 8)))):
                     self.assertIn(mode, call.args[0])
                     self.assertIn(f"{shard[0]}/{shard[1]}", call.args[0])
                 self.assertEqual(console.getvalue().count(RUNNER.PARTIAL_BANNER + "\n"), 2)

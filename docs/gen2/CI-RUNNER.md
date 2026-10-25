@@ -1,9 +1,9 @@
 # ci-2 execution modes
 
 The October 18 amendment permits image `ci-py312-noble:1` until the operator
-builds and confirms `:2` on cir. The default Jenkinsfile uses `:1`, synchronous
-workspace cleanup, recorded library/source/image identities, T0 and the complete
-trigger-order suite plus fixed engine-unit partition 1/8. This is not a full
+builds and confirms `:2` on cir. The default Jenkinsfile uses synchronous
+workspace cleanup, recorded library/source/image identities, T0 and fixed
+engine-unit partition 1/8. This is not a full
 engine or full-acceptance verdict; the other seven unit partitions remain required.
 
 ## Commands and coverage
@@ -39,7 +39,9 @@ transitions for arbitrary suites; the unsharded sequence remains unchanged.
 The unit and trigger-order runners also emit test/subtest outcomes and JUnit;
 the mutation runner emits per-mutant test sets, verdicts and baseline outcomes.
 
-The original `make gen2-check` remains full and serial, with no shard arguments
+`make gen2-accept` runs `gen2-check` and adds trigger-order when
+`git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema` is non-empty or unavailable;
+`GEN2_BASE` defaults to `origin/gen2`. These targets have no shard arguments
 by default. `make gen2-gateway` still runs no-DB, DB and all mutants by default,
 on its existing bootstrap interpreter. Its new `GEN2_GATEWAY_MODE` only selects
 an explicit invocation; the full default is unchanged.
@@ -71,8 +73,8 @@ with several sequential commands would still share that timeout.
 
 | Trigger | Current result | Required full-acceptance path |
 | --- | --- | --- |
-| Branch push, including `gen2` and task branches | T0 + trigger-order + unit partition 1/8 at the branch checkout | Separate engine shards at that same pin |
-| Ready PR creation/update | T0 + trigger-order + unit partition 1/8 at the platform's PR merge checkout | Separate engine shards at the executed merge pin, invalidated by target updates |
+| Branch push, including `gen2` and task branches | T0 + unit partition 1/8 at the branch checkout | Separate engine shards at that same pin; trigger-order on DDL change |
+| Ready PR creation/update | T0 + unit partition 1/8 at the platform's PR merge checkout | Separate engine shards at the executed merge pin, invalidated by target updates; trigger-order on DDL change |
 | Draft PR | Platform does not build it | No acceptance claim |
 | Integration/nightly/manual mode selection | Not exposed to consumers | Platform-owned opt-in trigger and aggregation |
 
@@ -90,7 +92,7 @@ integration behavior from the approved v1.2 plan. A later push must not abort an
 in-progress integration backstop. Generic platform sharding is deferred; no
 library shard API or implementation is requested here. Repository partition
 arguments can be explicit per-mode scalar commands if needed after measurement.
-Until v1.2 is deployed, the default branch/PR result is T0 + trigger-order + unit partition 1/8; the
+Until v1.2 is deployed, the default branch/PR result is T0 + unit partition 1/8; the
 remaining engine modes cannot be measured separately in Jenkins. The planned
 v1.1 source also explicitly excludes modes/schedules from its API.
 No commit-footer, build-number, branch-name or temporary-Jenkinsfile scheme is
@@ -121,8 +123,9 @@ existing local gateway command. Image `:2` and DB modes stay off the Jenkins pat
 
 ## Equivalence evidence
 
-At a pinned commit, run the original full `make gen2-check` in a disposable
-`git archive` snapshot with `.venv-gen2` copied using `cp -a`. Start only when
+At a pinned commit, run `make gen2-check gen2-trigger-order` for the exhaustive
+CI qualification comparison in a disposable `git archive` snapshot with
+`.venv-gen2` copied using `cp -a`. Start only when
 no `gen2-landing-*` unit is active, under `systemd-run --user --collect
 -p MemoryMax=20G`. Give it `GEN2_CI_EVIDENCE` and `GEN2_TEST_LOG` paths on durable
 private storage; retain a `run.json` with the verified source SHA and final status.
@@ -151,7 +154,7 @@ separate later work.
 
 `make gen2-ci-default` prints **PARTIAL ACCEPTANCE — NOT FULL ACCEPTANCE**
 before execution and again at completion, including failure. Its fixed scope is
-T0, complete trigger-order and units 1/8. Unit partitions 2–8/8, all mutation
+T0 and units 1/8. Complete trigger-order, unit partitions 2–8/8, all mutation
 work and all gateway modes are omitted. A green result covers only that scope.
 `default-1-of-1/scope.json` records the planned scope, actual per-mode execution
 statuses and source SHA/tree; `GEN2_CI_SCOPE` retains it in the console.
