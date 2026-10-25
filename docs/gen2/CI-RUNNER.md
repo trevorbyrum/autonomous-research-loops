@@ -211,7 +211,8 @@ are source-bound), full discovery arguments, environment fingerprint and the
 coverage file's SHA-256. Environment values are hashed; output routing, make
 recursion and bytecode destinations are excluded. Mutation reuses only a
 matching receipt; missing, stale, corrupt or incomplete maps require a fresh
-full baseline. Plain `gen2-check` need not collect coverage. Set
+full baseline. Nondefault interpreter options require recollection because the
+mutation runner uses fixed fresh invocations. Plain `gen2-check` need not collect coverage. Set
 `GEN2_TEST_COVERAGE=<path>` to collect it in a standalone unsharded `gen2-test`.
 
 Stage 1 runs tests covering the mutated source span. If none exist, stage 1b

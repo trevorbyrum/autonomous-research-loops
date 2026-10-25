@@ -28,9 +28,15 @@ def source_state(arguments=None):
     operational = {"GEN2_TEST_COVERAGE", "GEN2_TEST_LOG", "GEN2_CI_EVIDENCE", "MAKEFLAGS", "MFLAGS",
                    "MAKELEVEL", "MAKEOVERRIDES", "PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX"}
     environment = {k: v for k, v in os.environ.items() if k not in operational}
+    options = []
+    for argument in sys.orig_argv[1:]:
+        if not argument.startswith("-") or argument in ("-m", "-c"):
+            break
+        options.append(argument)
     return dict(head=git("rev-parse", "HEAD").decode().strip(), source=digest.hexdigest(), root=str(ROOT),
                 python=sys.version, interpreter=sys.executable, coverage=__version__,
                 flags={name: getattr(sys.flags, name) for name in ("optimize", "debug", "isolated", "no_site", "ignore_environment")},
+                options=options,
                 dependencies=sorted([d.metadata["Name"], d.version] for d in distributions()),
                 environment=hashlib.sha256(json.dumps(environment, sort_keys=True).encode()).hexdigest(),
                 arguments=arguments if arguments is not None else dict(tests=None, pattern="test_*.py", shard=[1, 1]))
@@ -47,7 +53,8 @@ class Baseline:
     def valid(self):
         try:
             data = json.loads(self.receipt.read_text())
-            return data["state"] == source_state(self.arguments) and data["tests_run"] > 0 and data["sha256"] == hashlib.sha256(self.path.read_bytes()).hexdigest()
+            return (data["state"] == source_state(self.arguments) and not data["state"]["options"]
+                    and data["tests_run"] > 0 and data["sha256"] == hashlib.sha256(self.path.read_bytes()).hexdigest())
         except (OSError, ValueError, KeyError, TypeError):
             return False
 

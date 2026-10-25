@@ -103,8 +103,8 @@ class AutomaticMutationTest(unittest.TestCase):
             source.write_text("untouched = 100\ndef answer(): return 1\ndef equivalent(): return 5 # pragma: no mutate -- equivalent diagnostic\n")
             test = root / "gen2/tests/test_probe.py"
             test.write_text("import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n def test_answer(self): self.assertEqual(answer(), 1)\n")
-            def campaign(*args, env=None):
-                result = subprocess.run([sys.executable, "tools/gen2_mutation_scope.py", "--base", "HEAD", *args],
+            def campaign(*args, env=None, flags=()):
+                result = subprocess.run([sys.executable, *flags, "tools/gen2_mutation_scope.py", "--base", "HEAD", *args],
                     cwd=root, env=env, capture_output=True, text=True, timeout=60)
                 reports = sorted(root.glob("build/mutation-evidence/*/mutation-report.json"), key=lambda p: p.stat().st_mtime_ns)
                 return result, json.loads(reports[-1].read_text())
@@ -200,6 +200,15 @@ class AutomaticMutationTest(unittest.TestCase):
                     self.assertFalse(report.get("baseline_reused"))
                     self.assertEqual(report["status"], "incomplete")
                     self.assertGreater(report["counts"]["PENDING"], 0)
+
+            test.write_text("import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n"
+                            " def test_answer(self): answer(); self.assertFalse(__debug__)\n")
+            unit = subprocess.run([sys.executable, "-O", "tools/gen2_test.py"], cwd=root, env=env, capture_output=True)
+            self.assertEqual(unit.returncode, 0, unit.stdout + unit.stderr)
+            result, report = campaign(flags=("-O",))
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertFalse(report.get("baseline_reused"))
+            self.assertGreater(report["counts"]["PENDING"], 0)
 
             # Child-only coverage is absent from the parent's contexts: the
             # covering parent test survives; the full-suite child kills it.
