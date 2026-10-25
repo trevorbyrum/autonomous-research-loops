@@ -3442,3 +3442,11 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - **2f**: the supervised live single-topic run. **Operator inputs needed:** a test question and intended deliverable (plus the in-workflow approvals); the spend ceiling and its scope, with time/attempt/concurrency limits; the provider/runner configuration and credentials via the secrets surface, including a safe one for the rejection demonstration; allowed research lanes; one JSONL export destination plus publication approval; the decision/hold owner, review deadlines and surveillance expectations.
   - **Carried to Phase 3 — usage estimator (operator request 2026-09-29):** given a topic profile and a cadence, estimate API cost and subscription-plan share (for example, the percent of a weekly window). Calibrated from the Phase 2+ usage records by fitting tokens per percent-of-window from quiet-account windows, and reported as ranges with the calibration's uncertainty. Deferred because it needs data from many runs, and one Phase 2 run can't calibrate it.
   - **Phase 2→3 operator gate** once all of these are accepted.
+
+## 2026-10-25: batch S1, tiered checks and retired replay tools (a68ad7e, PR #20): BLOCK, round 1
+- **Astra** (`d491861a`; `private/reviews/gen2-s1-astra-review-20261025.md`):
+  - A BLOCK on **S1-R1** only. B, C, deletion closure and S proportionality PASS.
+  - The S1 simplification is ROOT-CAUSE.
+- **S1-R1:** `gen2-accept` aborts, rather than running trigger-order, when the DDL comparison is unavailable (missing `origin/gen2` or an invalid base). The contract requires running trigger-order when unsure.
+- **Verifier** (Sonnet `404aba25`): **gen2-accept exit 0 in 6,091 s.** Trigger-order was correctly skipped (no DDL diff against `dbbdced`). That is about 30 min faster than the recent roughly 7,900 s gen2-check runs.
+- **Repair** (a Makefile recipe change plus controls) dispatched on the same branch. The full gen2-accept at `a68ad7e` is carried forward, since the repair changes only the fallback branch of the `gen2-accept` recipe. Round 2 re-runs Astra's five fallback probes on the repaired Makefile.
