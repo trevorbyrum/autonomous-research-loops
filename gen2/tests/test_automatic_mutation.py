@@ -21,6 +21,22 @@ EvidenceResult, MARKER, normalize = runner.EvidenceResult, runner.MARKER, runner
 
 
 class AutomaticMutationTest(unittest.TestCase):
+    def test_cached_execution_configuration(self):
+        coverage_tool = sys.modules["gen2_coverage"]
+        with tempfile.TemporaryDirectory() as tmp:
+            baseline = coverage_tool.Baseline(Path(tmp) / "map.sqlite")
+            baseline.start()
+            result = unittest.TestResult()
+            result.testsRun = 1
+            baseline.finish(result)
+            self.assertTrue(baseline.valid())
+            for name, value in (("executable", sys.executable + ".other"), ("version", sys.version + " changed")):
+                with self.subTest(name=name), mock.patch.object(sys, name, value):
+                    self.assertFalse(baseline.valid())
+            with mock.patch.object(coverage_tool, "distributions", return_value=[]):
+                self.assertFalse(baseline.valid())
+            self.assertFalse(coverage_tool.Baseline(baseline.path, arguments={"tests": ["different"]}).valid())
+
     def test_native_killed_is_not_a_verdict(self):
         def result(data=None, output=None, worker="normal", native="killed"):
             return SimpleNamespace(worker_outcome=worker, test_outcome=native,
@@ -87,9 +103,9 @@ class AutomaticMutationTest(unittest.TestCase):
             source.write_text("untouched = 100\ndef answer(): return 1\ndef equivalent(): return 5 # pragma: no mutate -- equivalent diagnostic\n")
             test = root / "gen2/tests/test_probe.py"
             test.write_text("import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n def test_answer(self): self.assertEqual(answer(), 1)\n")
-            def campaign(*args):
+            def campaign(*args, env=None):
                 result = subprocess.run([sys.executable, "tools/gen2_mutation_scope.py", "--base", "HEAD", *args],
-                    cwd=root, capture_output=True, text=True, timeout=60)
+                    cwd=root, env=env, capture_output=True, text=True, timeout=60)
                 reports = sorted(root.glob("build/mutation-evidence/*/mutation-report.json"), key=lambda p: p.stat().st_mtime_ns)
                 return result, json.loads(reports[-1].read_text())
             result, report = campaign()
@@ -145,6 +161,45 @@ class AutomaticMutationTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertTrue(report["failed"])
             self.assertEqual(report["scope"], "full")
+
+            saved_source = source.read_text()
+            for stage in (1, "1b"):
+                for kind, check in (("ASSERTION_KILL", "self.assertTrue(state.get('ready'))"),
+                                    ("ERROR_KILL", "state['ready']")):
+                    with self.subTest(stage=stage, clean_failure=kind):
+                        source.write_text("untouched = 100\ndef answer(): return " + ("1" if stage == 1 else "0") +
+                            "\ndef equivalent(): return 5\n" + ("uncovered = 7\n" if stage == "1b" else ""))
+                        test.write_text("import unittest\nfrom gen2.probe import answer\nstate = {}\n"
+                            "class Case(unittest.TestCase):\n def test_a_setup(self): state['ready'] = True\n"
+                            " def test_z_consumer(self): answer(); " + check + "\n")
+                        result, report = campaign()
+                        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                        self.assertEqual(report["counts"].get("SURVIVED"), 2)
+                        self.assertEqual(set(report["stage_verdicts"]), {"2:SURVIVED"})
+                        self.assertEqual([q["verdict"] for q in report["qualifications"]], [kind])
+                        if stage == 1:
+                            test.write_text(test.read_text().replace("import answer", "import answer, equivalent").replace(
+                                "state['ready'] = True", "equivalent(); state['ready'] = True"))
+                            result, report = campaign()
+                            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                            self.assertEqual(report["counts"].get("SURVIVED"), 2)
+                            self.assertEqual(set(report["stage_verdicts"]), {"1b:SURVIVED", "2:SURVIVED"})
+                            self.assertEqual([q["verdict"] for q in report["qualifications"]], [kind, "SURVIVED"])
+
+            source.write_text(saved_source)
+            for kind, check in (("ASSERTION_KILL", "self.assertEqual(os.environ['TEST_RESOURCE'], 'available')"),
+                                ("ERROR_KILL", "{'available': True}[os.environ['TEST_RESOURCE']]")):
+                with self.subTest(environment_failure=kind):
+                    test.write_text("import os, unittest\nfrom gen2.probe import answer\n"
+                        "class Case(unittest.TestCase):\n def test_answer(self): answer(); " + check + "\n")
+                    available = {**os.environ, "TEST_RESOURCE": "available"}
+                    result, report = campaign(env=available)
+                    self.assertEqual(result.returncode, 1)  # Both mutants survive.
+                    result, report = campaign(env={**available, "TEST_RESOURCE": "unavailable"})
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertFalse(report.get("baseline_reused"))
+                    self.assertEqual(report["status"], "incomplete")
+                    self.assertGreater(report["counts"]["PENDING"], 0)
 
             # Child-only coverage is absent from the parent's contexts: the
             # covering parent test survives; the full-suite child kills it.

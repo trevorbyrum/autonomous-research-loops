@@ -13,10 +13,12 @@ import re
 import io
 import tokenize
 import time
+from types import SimpleNamespace
 
 from attrs import asdict
 from cosmic_ray.work_db import use_db
 from cosmic_ray.mutating import mutate_and_test
+from cosmic_ray.testing import run_tests
 from coverage import CoverageData
 import toml
 
@@ -48,7 +50,7 @@ def main():
     out = Path(tempfile.mkdtemp(prefix="campaign-", dir=args.out)).resolve()
     started = time.monotonic()
     report = dict(status="incomplete", scope="full" if args.full else "changed-lines", tests=args.tests,
-                  blocking=not args.report_only, mutants=[])
+                  blocking=not args.report_only, mutants=[], qualifications=[])
     def git(*argv):
         return subprocess.check_output(["git", *argv], text=True).strip()
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPYCACHEPREFIX": str(out / "empty-pycache")}
@@ -66,6 +68,19 @@ def main():
             request = out / f"{name}.json"
             request.write_text(json.dumps(config))
             return [sys.executable, str(ROOT / "tools/gen2_mutation_runner.py"), str(request)]
+        qualified = {}
+        def qualify(tests):
+            key = tuple(tests)
+            if key not in qualified:
+                began = time.monotonic()
+                name = f"qualification-{len(qualified)}"
+                outcome, output = run_tests(shlex.join(runner(dict(targets=targets, tests=tests), name)), 7200)
+                (out / f"{name}.log").write_text(output)
+                verdict = normalize(SimpleNamespace(worker_outcome="normal", output=output, test_outcome=outcome))
+                qualified[key] = verdict == "SURVIVED"
+                report["qualifications"].append(dict(tests=tests, verdict=verdict, valid=qualified[key],
+                    seconds=time.monotonic() - began))
+            return qualified[key]
         cached = Baseline(args.coverage)
         baseline = dict(targets=targets, tests=args.tests, coverage=str(cached.path if not args.tests else out / "coverage.sqlite"))
         cfg, session = out / "cosmic-ray.toml", out / "session.sqlite"
@@ -94,16 +109,18 @@ def main():
                 data = CoverageData(basename=str(out / "coverage.sqlite"))
                 data.read()
                 selection = {item.job_id: covering_tests(data, item.mutations) for item in selected}
-                modules = {item.job_id: covering_tests(data, item.mutations, module=True)
-                           for item in selected if not selection[item.job_id]}
+                modules = {item.job_id: covering_tests(data, item.mutations, module=True) for item in selected}
                 (out / "test-selection.json").write_text(json.dumps(selection, indent=2) + "\n")
                 (out / "module-selection.json").write_text(json.dumps(modules, indent=2) + "\n")
                 # Same native executor used by Cosmic Ray's local distributor;
                 # only the per-job test command differs. It owns disk restoration.
                 with use_db(session) as db:
                     for index, item in enumerate(selected, 1):
-                        tests = selection[item.job_id] or modules.get(item.job_id)
-                        stage = 1 if selection[item.job_id] else "1b" if tests else 2
+                        tests, stage = args.tests, 2
+                        for candidate, level in ((selection[item.job_id], 1), (modules[item.job_id], "1b")):
+                            if candidate and qualify(candidate):
+                                tests, stage = candidate, level
+                                break
                         config = dict(targets=targets, tests=tests or args.tests, full_tests=args.tests, stage=stage)
                         result = mutate_and_test(item.mutations, shlex.join(runner(config, item.job_id)), 7200)
                         db.set_result(item.job_id, result)
@@ -140,6 +157,7 @@ def main():
         report["stage_verdicts"] = dict(Counter(f"{stage['stage']}:{stage['verdict']}" for row in report["mutants"]
             if row["native"] for stage in marker(row["native"]["output"] or "").get("stages", [])))
         report["seconds"] = time.monotonic() - started
+        report["qualification_seconds"] = sum(row["seconds"] for row in report["qualifications"])
         if report["counts"].get("PENDING"):
             report["status"] = "incomplete"
         report["failed"] = report["status"] not in ("complete", "no-applicable-files") or any(
