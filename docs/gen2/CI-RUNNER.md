@@ -206,28 +206,26 @@ The acceptance unit run records coverage.py per-test dynamic contexts through
 `switch_context(test.id())`, including test setup/cleanup. `GEN2_COVERAGE` defaults
 to `build/gen2-coverage.sqlite`. A successful unsharded full run publishes a
 receipt bound to HEAD, tracked source bytes/differences, untracked source inputs,
-Python/coverage versions, interpreter path, installed dependency versions (locks
-are source-bound), full discovery arguments, environment fingerprint and the
-coverage file's SHA-256. Environment values are hashed; output routing, make
-recursion and bytecode destinations are excluded. Mutation reuses only a
+Python/coverage versions and the coverage file's SHA-256. Mutation reuses only a
 matching receipt; missing, stale, corrupt or incomplete maps require a fresh
-full baseline. Nondefault interpreter options require recollection because the
-mutation runner uses fixed fresh invocations. Plain `gen2-check` need not collect coverage. Set
+full baseline. Plain `gen2-check` need not collect coverage. Set
 `GEN2_TEST_COVERAGE=<path>` to collect it in a standalone unsharded `gen2-test`.
 
 Stage 1 runs tests covering the mutated source span. If none exist, stage 1b
-runs tests covering any line of that module. Every distinct selected test-ID
-sequence must first pass on clean source with the mutation runner and environment;
-the campaign caches both valid and invalid qualifications. An invalid line
-selection falls back to module selection, then to the qualified full baseline.
-A survivor of either valid selection
+runs tests covering any line of that module. A survivor of either selection
 runs the full suite in a fresh process (stage 2); an entirely uncovered module
 goes directly to stage 2. Assertion and test-error kills retain fail-fast
 semantics. Typed errors during test or fixture execution become `ERROR_KILL`;
 failed discovery/imports represented by unittest's loader remain invalid.
 No survivor passes on a partial suite.
 `coverage.sqlite`, its receipt, `test-selection.json`, `module-selection.json`,
-`qualification-*.log`, report `qualifications` and each result's `stages` preserve
-selection, clean controls, verdict and timing evidence. `qualification_seconds`
-reports the clean-selection overhead within mutation time.
+and each result's `stages` preserve selection, verdict and timing evidence.
 Timing reports separate the shared coverage-collecting unit run from mutation.
+
+Selected test-ID sequences must pass on clean source through the same native runner;
+results are cached per sequence. Invalid line selections try module selection,
+then full discovery. Stage-2 kills also need a passing matching clean full execution.
+Receipts additionally bind interpreter path/options, installed and locked dependencies,
+discovery arguments and hashed environment (excluding output routing, make recursion
+and bytecode destinations). Nondefault interpreter options force recollection.
+Clean requests/logs and report `qualifications`/`qualification_seconds` retain controls and cost.

@@ -70,7 +70,7 @@ def main():
             return [sys.executable, str(ROOT / "tools/gen2_mutation_runner.py"), str(request)]
         qualified = {}
         def qualify(tests):
-            key = tuple(tests)
+            key = tuple(tests) if tests is not None else None
             if key not in qualified:
                 began = time.monotonic()
                 name = f"qualification-{len(qualified)}"
@@ -124,7 +124,10 @@ def main():
                         config = dict(targets=targets, tests=tests or args.tests, full_tests=args.tests, stage=stage)
                         result = mutate_and_test(item.mutations, shlex.join(runner(config, item.job_id)), 7200)
                         db.set_result(item.job_id, result)
-                        print(f"gen2-mutation: {index}/{len(selected)} {normalize(result)}", flush=True)
+                        print(f"gen2-mutation: {index}/{len(selected)} result recorded", flush=True)
+                    if any(stage["stage"] == 2 for _, result in db.results
+                           for stage in marker(result.output or "").get("stages", [])) and not qualify(args.tests):
+                        raise ValueError("clean full-suite execution failed")
             report["status"] = "complete"
         else:
             report["status"] = "no-applicable-files"
@@ -138,6 +141,10 @@ def main():
                     result = results.get(item.job_id)
                     verdict = ("FILTERED_GIT" if item.job_id in locals().get("git_skipped", set()) else
                                "PRAGMA" if result and result.worker_outcome == "skipped" else normalize(result))
+                    if verdict in {"ASSERTION_KILL", "ERROR_KILL"} and any(
+                            stage["stage"] == 2 for stage in marker(result.output or "").get("stages", [])):
+                        if not qualified.get(tuple(args.tests) if args.tests else None, False):
+                            verdict = "INVALID"
                     mutation = item.mutations[0]
                     pragma = None
                     if verdict == "PRAGMA":

@@ -176,7 +176,7 @@ class AutomaticMutationTest(unittest.TestCase):
                         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                         self.assertEqual(report["counts"].get("SURVIVED"), 2)
                         self.assertEqual(set(report["stage_verdicts"]), {"2:SURVIVED"})
-                        self.assertEqual([q["verdict"] for q in report["qualifications"]], [kind])
+                        self.assertEqual([q["verdict"] for q in report["qualifications"] if q["tests"] is not None], [kind])
                         if stage == 1:
                             test.write_text(test.read_text().replace("import answer", "import answer, equivalent").replace(
                                 "state['ready'] = True", "equivalent(); state['ready'] = True"))
@@ -184,7 +184,7 @@ class AutomaticMutationTest(unittest.TestCase):
                             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                             self.assertEqual(report["counts"].get("SURVIVED"), 2)
                             self.assertEqual(set(report["stage_verdicts"]), {"1b:SURVIVED", "2:SURVIVED"})
-                            self.assertEqual([q["verdict"] for q in report["qualifications"]], [kind, "SURVIVED"])
+                            self.assertEqual([q["verdict"] for q in report["qualifications"] if q["tests"] is not None], [kind, "SURVIVED"])
 
             source.write_text(saved_source)
             for kind, check in (("ASSERTION_KILL", "self.assertEqual(os.environ['TEST_RESOURCE'], 'available')"),
@@ -201,14 +201,18 @@ class AutomaticMutationTest(unittest.TestCase):
                     self.assertEqual(report["status"], "incomplete")
                     self.assertGreater(report["counts"]["PENDING"], 0)
 
-            test.write_text("import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n"
-                            " def test_answer(self): answer(); self.assertFalse(__debug__)\n")
-            unit = subprocess.run([sys.executable, "-O", "tools/gen2_test.py"], cwd=root, env=env, capture_output=True)
-            self.assertEqual(unit.returncode, 0, unit.stdout + unit.stderr)
-            result, report = campaign(flags=("-O",))
-            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-            self.assertFalse(report.get("baseline_reused"))
-            self.assertGreater(report["counts"]["PENDING"], 0)
+            for flags, check, verdict in ((("-O",), "self.assertFalse(__debug__)", "PENDING"),
+                    ((), "self.assertFalse(self._outcome.result.failfast)", "INVALID"),
+                    ((), "self._outcome.result.failfast and {}['fixture']", "INVALID")):
+                with self.subTest(flags=flags, check=check):
+                    test.write_text("import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n"
+                                    " def test_answer(self): answer(); " + check + "\n")
+                    unit = subprocess.run([sys.executable, *flags, "tools/gen2_test.py"], cwd=root, env=env, capture_output=True)
+                    self.assertEqual(unit.returncode, 0, unit.stdout + unit.stderr)
+                    result, report = campaign(flags=flags)
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertEqual(report.get("baseline_reused", False), not flags)
+                    self.assertGreater(report["counts"][verdict], 0)
 
             # Child-only coverage is absent from the parent's contexts: the
             # covering parent test survives; the full-suite child kills it.
