@@ -56,6 +56,7 @@ from __future__ import annotations
 import re
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable, Iterator, Mapping
 
@@ -98,6 +99,14 @@ ConstraintViolation = sqlite3.IntegrityError
 
 class IdentityBoundError(StoreWriteError):
     """An identity/revision/generation value outside [0, 2**53-1]."""
+
+
+class StaleInput(StoreWriteError):
+    """Detached inputs no longer match the store; refused before effects."""
+
+
+class GenerationMismatch(StaleInput):
+    """Effect-free counter/epoch mismatch: the only recapturable refusal."""
 
 
 def _json_columns(create_sql: str) -> frozenset[str]:
@@ -158,7 +167,7 @@ class Store:
         self.close()
 
     @contextmanager
-    def transaction(self) -> Iterator["Store"]:
+    def transaction(self, *, freshness: capture.Freshness | None = None) -> Iterator["Store"]:  # pragma: no mutate - postponed annotation/keyword marker; admitted callers pass freshness by keyword
         """BEGIN IMMEDIATE ... COMMIT. An exception in the body or from COMMIT
         itself ends the transaction with nothing written (_end_failed), and
         that exception is what propagates."""
@@ -169,6 +178,16 @@ class Store:
         self._in_transaction = True
         self._bumped = False
         try:
+            if freshness is not None:
+                current = db.generation_state(self._conn)
+                try:
+                    file = db.capture_file(self._conn)
+                except FileNotFoundError:
+                    raise StaleInput("captured store file is missing") from None
+                if file != freshness.file or current[2] != freshness.generation[2]:
+                    raise StaleInput("store file or schema changed after capture")
+                if current[:2] != freshness.generation[:2]:
+                    raise GenerationMismatch("store generation changed after capture")
             yield self
             self._conn.execute("COMMIT")
         except BaseException as exc:
@@ -331,7 +350,8 @@ class Store:
         if self._in_transaction or self._conn.in_transaction:
             raise StoreWriteError("capture requires no active writer transaction")
         with db.capture_reader(self._conn, self._capture_file) as reader:
-            return capture.read(reader, self._json, topic_id)
+            freshness = capture.Freshness(db.generation_state(reader), self._capture_file)
+            return replace(capture.read(reader, self._json, topic_id), freshness=freshness)
 
     def bound_extraction_receipt(self, receipt_id: str) -> bool:
         """SQL 34's durable basis predicate, including both output ceilings."""

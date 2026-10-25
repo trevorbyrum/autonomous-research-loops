@@ -1,12 +1,13 @@
 """Checked capture entries and pure conversion of fixed detached operands."""
 from dataclasses import dataclass
-from typing import Mapping, Protocol
+from typing import Callable, Mapping, Protocol
 
 from gen2 import accounting as a
 from gen2.accounting import views as v
 from gen2.core import canonical, pagination
 from gen2.router.boundary import Refusal
-from gen2.store.capture import TopicCapture, input_hash
+from gen2.store import api
+from gen2.store.capture import Freshness, TopicCapture, input_hash
 
 
 class Rows(Protocol):
@@ -16,6 +17,8 @@ class Rows(Protocol):
 
 class AccountingCore(Protocol):
     _store: Rows
+    def _guarded(self, reason: str, body: Callable, *, freshness: Freshness | None = None) -> object: ...  # pragma: no mutate - Protocol declaration has no execution behavior
+    def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None) -> str: ...  # pragma: no mutate - Protocol declaration has no execution behavior
 
 
 class Accounting:
@@ -45,6 +48,34 @@ class Accounting:
             raise Refusal("no_approved_contract", topic_id)
         return DossierInput(raw, convert_coverage_snapshot(raw, topic_id, history), input_hash(raw, history))
 
+    def commit_dossier_inputs(self, topic_id: str, *, history: a.History, prepare: Callable, commit: Callable) -> object:
+        """Compute outside the fence; caller's existing supervised job deadline applies.
+
+        Only an effect-free generation mismatch permits up to two recaptures.
+        The next slice supplies dossier preparation and its normal commit body.
+        """
+        for recaptures in range(3):
+            def audit(now):
+                return self._core._audit("dossier_input_recaptures", now, {"recaptures": recaptures}, topic_id=topic_id)
+            def fenced(now):
+                result = commit(prepared, now)
+                audit(now)
+                return result
+            try:
+                inputs = self.dossier_inputs(topic_id, history=history)
+                prepared = prepare(inputs)
+                return self._core._guarded(reason="payload_invalid", body=fenced, freshness=inputs.raw.freshness)
+            except api.GenerationMismatch:
+                del inputs, prepared
+                continue
+            except api.StaleInput as exc:
+                raise Refusal("stale_inputs", str(exc)) from None
+            except Refusal:
+                self._core._guarded("payload_invalid", audit)
+                raise
+        self._core._guarded("payload_invalid", audit)
+        raise Refusal("stale_inputs", "store generation changed after two recaptures")
+
 
 def records(snapshot: TopicCapture, name: str):
     """Decode one fixed captured group lazily, without a Store/query interface."""
@@ -66,7 +97,7 @@ class CoverageSnapshot:
 
 @dataclass(frozen=True)
 class DossierInput:
-    """Detached inputs and content binding, without commit-freshness authority."""
+    """Detached inputs, content binding and Store-issued commit freshness."""
     raw: TopicCapture
     coverage: CoverageSnapshot
     input_hash: str

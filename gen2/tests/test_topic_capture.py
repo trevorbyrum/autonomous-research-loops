@@ -149,7 +149,7 @@ class CaptureTest(RecordCase):
             try:
                 for _ in range(2):
                     actual = retained._store.capture_topic(TOPIC)
-                    self.assertEqual(actual, expected)
+                    self.assertEqual((actual.topic_id, actual.tables), (expected.topic_id, expected.tables))
                     self.assertEqual(capture.input_hash(actual, 'native'), capture.input_hash(expected, 'native'))
             finally:
                 retained.close()
