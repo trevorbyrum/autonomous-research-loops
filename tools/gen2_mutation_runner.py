@@ -9,7 +9,7 @@ import time
 from types import SimpleNamespace
 import unittest
 
-from coverage import Coverage
+from gen2_coverage import Baseline
 
 MARKER = "GEN2_MUTATION_RESULT "
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +33,8 @@ class EvidenceResult(unittest.TextTestResult):
 
     def event(self, kind, test, err):
         self.events.append(dict(kind=kind, test=test.id(),
-            exception_type=f"{err[0].__module__}.{err[0].__qualname__}", message=str(err[1])))
+            exception_type=f"{err[0].__module__}.{err[0].__qualname__}", message=str(err[1]),
+            executed=not isinstance(test, unittest.loader._FailedTest)))
 
     def addError(self, test, err):
         self.event("error", test, err)
@@ -72,10 +73,14 @@ def normalize(result):
     rc = data.get("exit")
     if isinstance(rc, int) and rc < 0:
         return "CRASH"
-    if rc not in (0, 1) or not data.get("tests_run") or data.get("unexpected_successes"):
+    if rc not in (0, 1) or not isinstance(data.get("tests_run"), int) or data.get("unexpected_successes"):
         return "INVALID"
     if data.get("errors"):
-        return "TEST_ERROR"
+        errors = [event for event in data.get("events", []) if event.get("kind") == "error"]
+        return "ERROR_KILL" if (rc == 1 and result.test_outcome == "killed" and
+            len(errors) == data["errors"] and all(event.get("executed") for event in errors)) else "INVALID"
+    if not data["tests_run"]:
+        return "INVALID"
     if rc == 1 and data.get("failures", 0) > 0 and result.test_outcome == "killed":
         return "ASSERTION_KILL"
     if rc == 0 and data.get("failures") == 0 and result.test_outcome == "survived":
@@ -87,20 +92,21 @@ def run(config):
     if config.pop("inner", False):
         sys.path[:0] = [str(ROOT / "gen2/tests"), str(ROOT)]
         os.environ.pop("GEN2_CI_EVIDENCE", None)
-        cov = None
-        if config.get("coverage"):
-            cov = Coverage(data_file=config["coverage"], config_file=False,
-                           include=[str(ROOT / name) for name in config["targets"]])
-            cov.start()
+        baseline = Baseline(config["coverage"]) if config.get("coverage") else None
+        if baseline:
+            baseline.start()
         loader = unittest.defaultTestLoader
         suite = (loader.loadTestsFromNames(config["tests"]) if config["tests"] else
                  loader.discover(str(ROOT / "gen2/tests"), pattern="test_*.py"))
-        stream = open(config["coverage"] + ".log", "w", buffering=1) if cov else sys.stdout
-        result = unittest.TextTestRunner(stream=stream, verbosity=2 if cov else 0, failfast=True,
-            resultclass=lambda *a, **kw: EvidenceResult(*a, coverage=cov, **kw)).run(suite)
-        if cov:
-            cov.stop()
-            cov.save()
+        stream = open(config["coverage"] + ".log", "w", buffering=1) if baseline else sys.stdout
+        result = unittest.TextTestRunner(stream=stream, verbosity=2 if baseline else 0, failfast=True,
+            resultclass=lambda *a, **kw: EvidenceResult(*a, coverage=baseline.coverage if baseline else None, **kw)).run(suite)
+        if baseline:
+            if not config["tests"]:
+                baseline.finish(result)
+            else:
+                baseline.coverage.stop()
+                baseline.coverage.save()
             stream.close()
         data = dict(tests_run=result.testsRun, errors=len(result.errors), failures=len(result.failures),
                     skipped=len(result.skipped), unexpected_successes=len(result.unexpectedSuccesses), events=result.events)
@@ -128,7 +134,7 @@ def run(config):
         print("\n".join(line for line in output.splitlines() if not line.startswith(MARKER)))
         stages.append(dict(stage=config.get("stage", "baseline"), tests=config["tests"],
                            seconds=time.monotonic() - started, verdict=verdict, **data))
-        if config.get("stage") != 1 or verdict != "SURVIVED":
+        if config.get("stage") not in (1, "1b") or verdict != "SURVIVED":
             break
         config.update(tests=config["full_tests"], stage=2)
     print(MARKER + json.dumps({**data, "stages": stages}), flush=True)

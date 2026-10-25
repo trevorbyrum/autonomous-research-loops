@@ -2,6 +2,7 @@
 import io
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -9,11 +10,13 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("mutation_runner", ROOT / "tools/gen2_mutation_runner.py")
 runner = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(runner)
+with mock.patch.object(sys, "path", [str(ROOT / "tools"), *sys.path]):
+    spec.loader.exec_module(runner)
 EvidenceResult, MARKER, normalize = runner.EvidenceResult, runner.MARKER, runner.normalize
 
 
@@ -26,7 +29,9 @@ class AutomaticMutationTest(unittest.TestCase):
         cases = [(None, "PENDING"), (result(output="timeout"), "TIMEOUT"),
             (result(output=""), "INVALID"), (result(output=MARKER + "{"), "INVALID"),
             (result({**clean, "exit": 3}), "INVALID"), (result({**clean, "exit": -9}), "CRASH"),
-            (result({**clean, "errors": 1}), "TEST_ERROR"),
+            (result({**clean, "errors": 1}), "INVALID"),
+            (result({**clean, "errors": 1, "events": [{"kind": "error", "executed": True}]}), "ERROR_KILL"),
+            (result({**clean, "errors": 1, "events": [{"kind": "error", "executed": False}]}), "INVALID"),
             (result(dict(kind="SYNTAX_INVALID")), "SYNTAX_INVALID"),
             (result(clean), "ASSERTION_KILL"),
             (result({**clean, "exit": 0, "failures": 0}, native="survived"), "SURVIVED"),
@@ -51,13 +56,26 @@ class AutomaticMutationTest(unittest.TestCase):
         self.assertEqual(visited, [0])
         self.assertEqual(failed.events[0]["kind"], "failure")
         self.assertEqual(errored.events[0]["exception_type"], "builtins.ValueError")
+        loader_error = runner.run(unittest.defaultTestLoader.loadTestsFromName("no_such_mutation_test_module"))
+        self.assertFalse(loader_error.events[0]["executed"])
+        native = SimpleNamespace(worker_outcome="normal", test_outcome="killed", output=MARKER + json.dumps(dict(
+            exit=1, tests_run=loader_error.testsRun, errors=1, failures=0, events=loader_error.events)))
+        self.assertEqual(normalize(native), "INVALID")
+        class FixtureError(unittest.TestCase):
+            @classmethod
+            def setUpClass(cls): raise ValueError("fixture execution")
+            def test_unused(self): pass
+        fixture = runner.run(unittest.defaultTestLoader.loadTestsFromTestCase(FixtureError))
+        native.output = MARKER + json.dumps(dict(exit=1, tests_run=0, errors=1, failures=0, events=fixture.events))
+        self.assertEqual(normalize(native), "ERROR_KILL")
 
     def test_native_filters_and_incomplete_campaign(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            shutil.copy(ROOT / ".gitignore", root / ".gitignore")
             for rel in ("tools", "gen2/tests"):
                 (root / rel).mkdir(parents=True)
-            for name in ("gen2_mutation_scope.py", "gen2_mutation_runner.py"):
+            for name in ("gen2_mutation_scope.py", "gen2_mutation_runner.py", "gen2_coverage.py", "gen2_test.py", "gen2_ci_evidence.py"):
                 shutil.copy(ROOT / "tools" / name, root / "tools" / name)
             source = root / "gen2/probe.py"
             source.write_text("untouched = 100\ndef answer(): return 0\ndef equivalent(): return 5\n")
@@ -79,6 +97,25 @@ class AutomaticMutationTest(unittest.TestCase):
             self.assertEqual(set(report["counts"]), {"FILTERED_GIT", "PRAGMA", "ASSERTION_KILL"})
             self.assertEqual(set(report["stage_verdicts"]), {"1:ASSERTION_KILL"})
             self.assertEqual(source.read_text().splitlines()[1], "def answer(): return 1")
+            self.assertFalse(report["baseline_reused"])
+            cache = root / "build/gen2-coverage.sqlite"
+            env = {**os.environ, "GEN2_TEST_COVERAGE": str(cache), "GEN2_TEST_LOG": str(root / "build/unit.log")}
+            unit = subprocess.run([sys.executable, "tools/gen2_test.py"], cwd=root, env=env, capture_output=True, text=True)
+            self.assertEqual(unit.returncode, 0, unit.stdout + unit.stderr)
+            partial = subprocess.run([sys.executable, "tools/gen2_test.py", "--shard", "1/2"], cwd=root, env=env, capture_output=True)
+            self.assertNotEqual(partial.returncode, 0)
+            result, report = campaign()
+            self.assertTrue(report["baseline_reused"])
+            cache.write_bytes(b"corrupt coverage")
+            result, report = campaign()
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertFalse(report["baseline_reused"])
+            git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "-qm", "new head")
+            result, report = campaign()
+            self.assertFalse(report["baseline_reused"])
+            source.write_text(source.read_text().replace("equivalent diagnostic", "changed reason"))
+            result, report = campaign()
+            self.assertFalse(report["baseline_reused"])
             original = test.read_text()
             # A real coverage selection exceeding Linux's per-argument limit
             # must reach both fresh processes without losing test names.
@@ -92,6 +129,12 @@ class AutomaticMutationTest(unittest.TestCase):
                         for row in report["mutants"] if row["verdict"] == "ASSERTION_KILL"]
             self.assertTrue(selected)
             self.assertTrue(all(len(json.dumps(names)) > 131072 and len(names) == 3000 for names in selected))
+            test.write_text(original)
+            test.write_text(original.replace("self.assertEqual(answer(), 1)", "\n  if answer() != 1: raise ValueError('mutant error')"))
+            result, report = campaign()
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("ERROR_KILL", report["counts"])
+            self.assertFalse(report["baseline_reused"])
             test.write_text(original)
             test.write_text(test.read_text().replace("answer(), 1", "answer(), 2"))
             result, report = campaign()
@@ -115,7 +158,7 @@ class AutomaticMutationTest(unittest.TestCase):
             self.assertEqual(set(report["stage_verdicts"]), {"1:SURVIVED", "2:ASSERTION_KILL"})
 
             # A covering test without an assertion survives both stages and
-            # must fail the gate. A new import-only line bypasses stage 1.
+            # must fail the gate. A new import-only line uses module coverage.
             test.write_text("import unittest\nfrom gen2.probe import answer\n"
                             "class Case(unittest.TestCase):\n def test_answer(self): answer()\n")
             result, report = campaign()
@@ -128,5 +171,20 @@ class AutomaticMutationTest(unittest.TestCase):
             self.assertTrue(uncovered)
             for row in uncovered:
                 stages = runner.marker(row["native"]["output"])["stages"]
-                self.assertEqual([stage["stage"] for stage in stages], [2])
-                self.assertIsNone(stages[0]["tests"])
+                self.assertEqual([stage["stage"] for stage in stages], ["1b", 2])
+                self.assertEqual(stages[0]["tests"], ["test_probe.Case.test_answer"])
+            source.write_text(source.read_text() + "class Box:\n @classmethod\n def value(cls): return 1\n")
+            test.write_text("import unittest\nfrom gen2.probe import Box\nclass Case(unittest.TestCase):\n"
+                            " def test_box(self): self.assertEqual(Box.value(), 1)\n")
+            (root / "gen2/lonely.py").write_text("number = 1\n")
+            git("add", "gen2/lonely.py")
+            result, report = campaign()
+            decorators = [row for row in report["mutants"] if row["mutation"]["operator_name"] == "core/RemoveDecorator"]
+            self.assertTrue(decorators)
+            for row in decorators:
+                self.assertEqual(row["verdict"], "ERROR_KILL")
+                self.assertEqual(runner.marker(row["native"]["output"])["stages"][0]["stage"], "1b")
+            lonely = [row for row in report["mutants"] if row["mutation"]["module_path"] == "gen2/lonely.py"]
+            self.assertTrue(lonely)
+            for row in lonely:
+                self.assertEqual([s["stage"] for s in runner.marker(row["native"]["output"])["stages"]], [2])

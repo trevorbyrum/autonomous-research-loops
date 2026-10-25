@@ -37,8 +37,9 @@ class AcceptanceSelectionTest(unittest.TestCase):
             "raise SystemExit(int(os.environ['STUB_TRIGGER_EXIT']))\n")
         (self.root / "tools/gen2_mutation_scope.py").write_text(
             "import argparse, os\nfrom pathlib import Path\n"
-            "parser = argparse.ArgumentParser()\nparser.add_argument('--base', required=True)\n"
-            "Path('mutation-base').write_text(parser.parse_args().base)\n"
+            "parser = argparse.ArgumentParser()\nparser.add_argument('--base', required=True)\nparser.add_argument('--coverage')\n"
+            "args = parser.parse_args()\nPath('mutation-base').write_text(args.base)\n"
+            "Path('shared-coverage').write_text(os.path.abspath(args.coverage))\n"
             "with Path('step-order').open('a') as log: log.write('mutation\\n')\n"
             "raise SystemExit(int(os.environ['STUB_MUTATION_EXIT']))\n")
 
@@ -52,10 +53,13 @@ class AcceptanceSelectionTest(unittest.TestCase):
         self.git("add", "--", path)
         self.git("commit", "-qm", path)
 
-    def run_acceptance(self, *, base=None, trigger_exit=0, mutation_exit=0):
+    def run_acceptance(self, *, base=None, trigger_exit=0, mutation_exit=0, run_units=False):
         for name in ("trigger-invoked", "mutation-base", "step-order"):
             (self.root / name).unlink(missing_ok=True)
-        command = ["make", "--no-print-directory", "-o", "gen2-check", "gen2-accept", f"PYTHON={sys.executable}"]
+        skipped = ["gen2-sqlite", "gen2-sqlite-native", "gen2-boundaries", "gen2-complexity", "gen2-debt",
+                   "gen2-locators", "gen2-schemas", "gen2-ddl", "gen2-catalog-check", "gen2-size"] if run_units else ["gen2-check"]
+        command = ["make", "--no-print-directory", *[arg for name in skipped for arg in ("-o", name)],
+                   "gen2-accept", f"PYTHON={sys.executable}"]
         if base is not None:
             command.append(f"GEN2_BASE={base}")
         env = {key: value for key, value in os.environ.items()
@@ -76,6 +80,16 @@ class AcceptanceSelectionTest(unittest.TestCase):
         self.assert_selection(False, "skipping trigger-order (no DDL changes:")
         self.commit("code.py", "# no DDL change\n")
         self.assert_selection(False, "skipping trigger-order (no DDL changes:")
+
+    def test_units_and_mutation_share_the_acceptance_coverage_path(self):
+        (self.root / "tools/gen2_test.py").write_text(
+            "import os\nfrom pathlib import Path\n"
+            "Path('unit-coverage').write_text(os.environ['GEN2_TEST_COVERAGE'])\n"
+            "with Path('step-order').open('a') as log: log.write('unit\\n')\n")
+        result = self.run_acceptance(run_units=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual((self.root / "step-order").read_text().splitlines(), ["unit", "mutation"])
+        self.assertEqual((self.root / "unit-coverage").read_text(), (self.root / "shared-coverage").read_text())
 
     def test_ddl_change_runs_trigger_order_and_propagates_failure(self):
         self.commit("gen2/store/schema/added.sql", "-- changed DDL\n")

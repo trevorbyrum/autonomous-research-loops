@@ -20,6 +20,8 @@ import unittest
 from pathlib import Path
 
 from gen2_ci_evidence import Outcomes, junit, partition, record, shard_spec, tests
+from gen2_coverage import Baseline
+from gen2_mutation_runner import EvidenceResult
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -47,6 +49,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--shard", type=shard_spec, default=(1, 1))
     args = parser.parse_args()
+    capture = os.environ.pop("GEN2_TEST_COVERAGE", None)
+    if capture and args.shard != (1, 1):
+        raise ValueError("a coverage baseline requires the complete unsharded suite")
+    baseline = Baseline(capture) if capture else None
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     log = Path(os.environ.get("GEN2_TEST_LOG") or Path(tempfile.gettempdir()) / "gen2-test-logs" / f"gen2-test-{stamp}.log")
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -56,6 +62,8 @@ def main() -> int:
         sys.stdout = sys.stderr = tee  # what the tests print is kept with their outcomes
         try:
             print(f"gen2-test: the whole verbose output is kept in {log}")
+            if baseline:
+                baseline.start()
             suite = unittest.defaultTestLoader.discover(str(ROOT / "gen2" / "tests"), pattern="test_*.py")
             expected = [test.id() for test in tests(suite)]
             # Existing discovery includes re-exported TestCase classes. Keep
@@ -72,10 +80,14 @@ def main() -> int:
             # child runs must not publish into this invocation's evidence.
             directory = os.environ.pop("GEN2_CI_EVIDENCE", None)
             try:
-                result = unittest.TextTestRunner(stream=tee, verbosity=2, resultclass=Outcomes).run(suite)
+                resultclass = (lambda *a: type("CoveredOutcomes", (EvidenceResult, Outcomes), {})(
+                    *a, coverage=baseline.coverage)) if baseline else Outcomes
+                result = unittest.TextTestRunner(stream=tee, verbosity=2, resultclass=resultclass).run(suite)
             finally:
                 if directory is not None:
                     os.environ["GEN2_CI_EVIDENCE"] = directory
+            if baseline:
+                baseline.finish(result)
             record("engine-unit-outcomes.json", result.outcomes)
             junit("engine-unit", result.outcomes)
             print(f"gen2-test: {'passed' if result.wasSuccessful() else 'FAILED'}; the whole verbose output is kept in {log}")
