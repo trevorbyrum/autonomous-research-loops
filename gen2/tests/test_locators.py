@@ -316,47 +316,9 @@ class QualifiedScopeTest(unittest.TestCase):
                 self.assertIn("C.f is not defined in gen2/tests/p/a.py", self.check(repo, 1).stderr)
                 repo.write({DOC: "`gen2.tests.p.a.C.f`\n"})
 
-    def test_an_owner_a_decorator_may_have_replaced_satisfies_nothing(self) -> None:
-        """Gate D #4: a class decorator that returns another object leaves the declaration and removes the method. The decorator is not one the contract records,
-        so the owner is unsupported and the qualified locator fails; a recorded decorator (a dataclass) leaves the owner supported."""
-        from gen2.tests import children
-        decorated = "def decorate(cls): return object\n@decorate\nclass Base:\n    def f(self): return 1\n"
-        repo = self.repo({"gen2/tests/__init__.py": "", "gen2/tests/p/__init__.py": "", "gen2/tests/p/a.py": decorated, DOC: "`gen2.tests.p.a.Base.f`\n"})
-        runtime = children.python(["-B", "-c", "import sys; sys.path.insert(0, '.'); import gen2.tests.p.a as a; print(hasattr(a.Base, 'f'))"], cwd=repo.root, capture_output=True, text=True)
-        self.assertEqual((runtime.returncode, runtime.stdout.strip()), (0, "False"))
-        self.assertIn("class Base is not a supported owner", self.check(repo, 1).stderr)
-        repo.write({"gen2/tests/p/a.py": "from dataclasses import dataclass\n@dataclass\nclass Base:\n    x: int = 0\n    def f(self): return 1\n"})
-        self.check(repo, 0)
-        repo.write({"gen2/tests/p/a.py": "class Meta(type): pass\nclass Base(metaclass=Meta):\n    def f(self): return 1\n"})
-        self.assertIn("not a supported owner", self.check(repo, 1).stderr)
 
-    def test_an_owner_is_judged_by_the_identity_of_its_decorator_and_not_by_its_spelling(self) -> None:
-        """The locator asks the one resolver (docs/gen2/SOURCE-CONTRACT.md, "Binding identity"): a recorded decorator imported under another name, through a module alias or
-        re-exported by a production module is still that decorator, and an unrecorded one re-exported the same way is still unrecorded."""
-        shim = "from dataclasses import dataclass as record\nfrom functools import cache as memo\n"
-        repo = self.repo({"gen2/p/__init__.py": "", "gen2/p/shim.py": shim, "gen2/tests/__init__.py": "", "gen2/tests/p/__init__.py": "", DOC: "`gen2.tests.p.a.Base.f`\n"})
-        for decorator, imports, supported in (("record", "from gen2.p.shim import record", True), ("shim.record", "import gen2.p.shim as shim", True), ("dc.dataclass", "import dataclasses as dc", True),
-                                              ("memo", "from gen2.p.shim import memo", False), ("Helper.wrap", "class Helper:\n    wrap = staticmethod(lambda cls: cls)", False)):
-            with self.subTest(decorator=decorator):
-                repo.write({"gen2/tests/p/a.py": f"{imports}\n@{decorator}\nclass Base:\n    def f(self): return 1\n"})
-                result = self.check(repo, 0 if supported else 1)
-                self.assertEqual("not a supported owner" in result.stderr, not supported)
 
-    def test_a_star_import_in_the_module_leaves_every_name_uncertain(self) -> None:
-        repo = self.repo({"gen2/tests/__init__.py": "", "gen2/tests/p/__init__.py": "", "gen2/tests/p/b.py": "x = 1\n", "gen2/tests/p/a.py": "from gen2.tests.p.b import *\ndef f(): return 1\n", DOC: "`gen2.tests.p.a.f`\n"})
-        self.assertIn("star import", self.check(repo, 1).stderr)
 
-    def test_in_a_production_module_every_one_of_those_forms_is_refused_by_the_contract_first(self) -> None:
-        """The same replacements in production source: the contract refuses them, so the locator command certifies nothing."""
-        source = "class C:\n    def f(self): return 1\n"
-        for replacement, category in (("class C: pass\n", "SRC-DEF-DUPLICATE"), ("C = object\n", "SRC-DEF-REBOUND"), ("if True:\n    class C: pass\n", "SRC-CLASS-CONDITIONAL")):
-            with self.subTest(replacement=replacement):
-                repo = self.repo({"gen2/p/a.py": source + replacement, DOC: "`gen2.p.a.C.f`\n"})
-                done = self.check(repo, 1)
-                self.assertIn(category, done.stderr)
-                self.assertIn("no locator was checked", done.stderr)
-        repo = self.repo({"gen2/p/a.py": "def decorate(cls): return object\n@decorate\nclass Base:\n    def f(self): return 1\n", DOC: "`gen2.p.a.Base.f`\n"})
-        self.assertIn("SRC-DECORATOR-UNKNOWN", self.check(repo, 1).stderr)
 
     def test_unsupported_locator_shapes_fail_instead_of_being_ignored(self) -> None:
         for citation in ("gen2/p/a.py::f(1)", "gen2/p/a.py::f::g", "gen2.p.a.f[0]", "gen2/p/a.py:abc"):

@@ -276,11 +276,11 @@ MUTATIONS: list[Mutation] = [
              new=""),
     # --- 0b: the dry-run importer skeleton (reads gen-1 only; surfaces, never resolves) ----
     Mutation("IMP-report-overwrites-open", "0b-importer", "the report may overwrite an existing file (the existence check and the exclusive open removed together)",
-             ("test_importer.CommandTest.test_report_is_refused_inside_the_gen1_root_or_over_a_file",), target="gen2/importer/dry_run.py",
+             ("test_importer.CommandTest.test_report_is_refused_inside_the_gen1_root_or_over_a_file",), target="tools/gen2_import_dry_run.py",
              old="        os.stat(target.name, dir_fd=dir_fd, follow_symlinks=False)\n    except FileNotFoundError:\n",
              new="        raise FileNotFoundError\n    except FileNotFoundError:\n",
              also=(("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW", "os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW"),)),
-    *(Mutation(f"IMP-{key}", "0b-importer", desc, tuple("test_importer." + k for k in killers), target="gen2/importer/dry_run.py", old=old, new=new)
+    *(Mutation(f"IMP-{key}", "0b-importer", desc, tuple("test_importer." + k for k in killers), target="tools/gen2_import_dry_run.py", old=old, new=new)
       for key, desc, killers, old, new in (
           ("managed-store-ignored", "a managed deployment's stale JSON queue is mapped as authority",
            ("ReadOnlyTest.test_managed_store_blocks_and_the_json_queue_is_marked_stale", "CommandTest.test_report_written_outside_and_exit_status_reflects_blocking",
@@ -458,7 +458,7 @@ MUTATIONS: list[Mutation] = [
            ("CommandTest.test_numerals_the_parser_cannot_convert_are_reported_not_fatal",), '    if value != value or value in (float("inf"), float("-inf")):\n        return InexactNumeral(token)\n', ""))),
     # --- task 1a / V-10: a gen-1 disposition never imports as accepted support ---
     *(Mutation(f"V10-importer-{key}", "1a", desc, ("test_importer.DryRunMappingTest.test_no_gen1_disposition_imports_as_accepted_support",),
-               target="gen2/importer/dry_run.py", old=old, new=new)
+               target="tools/gen2_import_dry_run.py", old=old, new=new)
       for key, desc, old, new in (
           ("maps-disposition", "gen-1's agent-written 'supported' disposition is mapped as an accepted-support claim status",
            '"obligations", {"obligation_id": oid, "text": text if isinstance(text, TEXT_OR_NULL) else None}, issues))',

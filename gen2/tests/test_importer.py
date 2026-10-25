@@ -34,6 +34,7 @@ which the module docstring states it does not cover).
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import io
 import json
 import os
@@ -46,8 +47,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from gen2.importer import dry_run
 from gen2.tests import children
+
+_spec = importlib.util.spec_from_file_location("import_dry_run_under_test", children.path("tools/gen2_import_dry_run.py"))
+dry_run = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(dry_run)
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCK = "a" * 64
@@ -705,7 +709,7 @@ class CommandTest(ImporterTestCase):
         self.assertEqual(json.loads(out)["blocking"][0]["code"], "managed-store-not-read")
 
     def test_python_dash_m_runs_the_importer(self) -> None:
-        result = children.python(["-m", "gen2.importer", "--gen1-root", str(self.root), "--fleet", "fleet-a"], capture_output=True, text=True, timeout=60)
+        result = children.python(["-m", "tools.gen2_import_dry_run", "--gen1-root", str(self.root), "--fleet", "fleet-a"], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["fleet_id"], "fleet-a")
 
@@ -713,9 +717,9 @@ class CommandTest(ImporterTestCase):
         """The command's exit status is the report's verdict, through the
         module entry point too: a managed store the importer cannot read is
         blocking (1), whatever `python -m` would otherwise return (task 1c:
-        a child-only killer of gen2/importer/__main__.py)."""
+        a child-only killer of tools/gen2_import_dry_run.py)."""
         write(self.root / "state" / "control.sqlite3", "")
-        result = children.python(["-m", "gen2.importer", "--gen1-root", str(self.root), "--fleet", "fleet-a"], capture_output=True, text=True, timeout=60)
+        result = children.python(["-m", "tools.gen2_import_dry_run", "--gen1-root", str(self.root), "--fleet", "fleet-a"], capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(json.loads(result.stdout)["blocking"][0]["code"], "managed-store-not-read")
 

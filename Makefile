@@ -20,9 +20,12 @@ GEN2_CI_SHARD ?= 1/1
 GEN2_GATEWAY_MODE ?= all
 GEN2_BASE ?= origin/gen2
 
-.PHONY: gen2-check gen2-accept gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-source gen2-metrics gen2-metrics-rebaseline gen2-metrics-admit gen2-hotspots gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+GEN2_CC_MAX_FUNCTION = 48
+GEN2_CC_MAX_AVERAGE = 10
 
-gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-source gen2-metrics gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-mutation gen2-size
+.PHONY: gen2-check gen2-accept gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+
+gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-mutation gen2-size
 	@echo "gen2-check: all checks passed"
 
 # Acceptance skips trigger-order only when the committed DDL diff is known empty.
@@ -43,7 +46,7 @@ gen2-accept: gen2-check
 .PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-trigger-order gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db gen2-ci-gateway-mutants
 # T0 is deliberately separate from full acceptance. No acceptance verdict is
 # inferred from this target. Full acceptance uses gen2-accept.
-gen2-push: gen2-sqlite gen2-boundaries gen2-size gen2-schemas gen2-ddl gen2-catalog-check gen2-metrics gen2-debt gen2-locators gen2-source
+gen2-push: gen2-sqlite gen2-boundaries gen2-size gen2-schemas gen2-ddl gen2-catalog-check gen2-complexity gen2-debt gen2-locators
 
 gen2-ci: gen2-venv
 	$(PYTHON) tools/gen2_ci.py --mode $(GEN2_CI_MODE) --shard $(GEN2_CI_SHARD)
@@ -81,7 +84,7 @@ $(GEN2_VENV)/.gen2-installed: gen2/requirements.txt gen2/requirements-dev.txt
 	$(PYTHON_BOOTSTRAP) -m venv --clear $(GEN2_VENV)
 	$(GEN2_VENV)/bin/python -m pip install --no-input --disable-pip-version-check --require-hashes --no-deps \
 		-r gen2/requirements.txt -r gen2/requirements-dev.txt
-	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine"
+	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine, radon"
 	touch $@
 
 # The store's SQLite compatibility gate (gen2/store/compat.py; Astra third
@@ -99,41 +102,10 @@ gen2-sqlite-native: gen2-venv
 gen2-boundaries: gen2-venv
 	$(PYTHON) tools/check_boundaries.py
 
-# The supported-source contract's refusal stage (docs/gen2/SOURCE-CONTRACT.md; task
-# 2q-a-repair-3; tools/gen2_source_contract.py, stdlib only): the production source of
-# BOTH services is indexed once and anything outside the declared subset is refused with
-# file, line, construct and remediation. gen2-metrics, the locator check and every
-# command that reads the production source run it first on their own; it is a target of
-# its own so that the refusal is reported before, and apart from, any measurement.
-# Nothing waives it.
-gen2-source: gen2-venv
-	$(PYTHON) tools/gen2_source_contract.py
-
-# The architecture metrics and their ratchet (charter "Architecture metrics"; task
-# 2q-a; tools/gen2_metrics.py, stdlib only): the engine and the gateway measured
-# apart from the code, production only. Fails on any regression against
-# docs/gen2/metrics-baseline.json: explicit identities and admissions use
-# docs/gen2/metrics-ledger.md; temporary numeric regressions use exemptions. Prints, and never gates on, the git change-coupling hotspots.
-gen2-metrics: gen2-venv
-	$(PYTHON) tools/gen2_metrics.py check
-
-# Draft what the effective transition plan still lacks, with reason: TODO. Fill reasons
-# and reviewing task, then commit. `make gen2-metrics-admit ARGS="--move OLD NEW"` states
-# one explicit file (or directory) move as an entry.
-gen2-metrics-admit: gen2-venv
-	$(PYTHON) tools/gen2_metrics.py admit $(ARGS)
-
-# Fold reviewed ledger transitions; otherwise TIGHTENING only: never run by gen2-check, never automatic.
-# Refuses while a regression stands; commit the diff.
-gen2-metrics-rebaseline: gen2-venv
-	$(PYTHON) tools/gen2_metrics.py rebaseline
-
-# The git-history report for Gate D (churn x complexity, files that change
-# together), as CSV into OUT (write it under private/evidence/<review>/). Not part
-# of gen2-check and never fails the build.
-gen2-hotspots: gen2-venv
-	$(if $(OUT),,$(error gen2-hotspots needs OUT=<directory>, e.g. ~/work/research-loops-public/private/evidence/<review>/hotspots))
-	$(PYTHON) tools/gen2_metrics.py hotspots "$(OUT)"
+# Absolute cyclomatic ceilings over engine and gateway production functions,
+# including methods and closures (ruling 3 / D5). No ledger or exemptions.
+gen2-complexity: gen2-venv
+	$(PYTHON) tools/check_gen2_complexity.py --max-function $(GEN2_CC_MAX_FUNCTION) --max-average $(GEN2_CC_MAX_AVERAGE)
 
 # The debt register's phase-close check (charter "Root-cause fixes, not patches";
 # task 2q-a; tools/check_gen2_debt.py): docs/gen2/DEBT-REGISTER.md against

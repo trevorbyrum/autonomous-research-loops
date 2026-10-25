@@ -562,18 +562,6 @@ MANUAL: dict[str, dict] = {
                "(probed: 0 of 9 candidates pass)"},
     # task 2q-a: five branches that, in the traced run, only a mutant's own killer entered; each got a test of its own, added after the
     # trace, that takes the accepted path through the changed line (the mutant leaves it passing)
-    "2Q-exempt-continuation-lost": {
-        "controls": ["test_metrics_ratchet.ExemptionTest.test_a_wrapped_reason_is_one_value_too"],
-        "why": "runs tools/gen2_metrics.py parse_entries' changed continuation branch on a reason wrapped over two lines, accepted either "
-               "way: the first line alone is a reason, so the exemption still holds under the mutant"},
-    "2Q-ratchet-selfcall-growth-ignored": {
-        "controls": ["test_metrics_ratchet.CollaborationTest.test_unchanged_self_calls_are_no_regression"],
-        "why": "evaluates tools/gen2_metrics.py compare's changed guard (count > was) for a baselined pair whose count is unchanged: false, on "
-               "the accepted path; the mutant's `if False` leaves it so"},
-    "2Q-ratchet-cross-service-ignored": {
-        "controls": ["test_metrics_ratchet.BaselinedCrossServiceTest.test_a_baselined_import_between_the_services_stays_allowed"],
-        "why": "evaluates tools/gen2_metrics.py compare's changed guard (edge not in the baseline) for an import between the services that "
-               "the baseline already holds: false, on the accepted path; the mutant's `if False` leaves it so"},
     "2Q-debt-continuation-lost": {
         "controls": ["test_debt_register.EntryTest.test_a_wrapped_what_continues_too"],
         "why": "runs tools/check_gen2_debt.py parse_register's changed continuation branch on a `what` wrapped over two lines, accepted "
@@ -582,92 +570,6 @@ MANUAL: dict[str, dict] = {
         "controls": ["test_locators.SymbolLocatorTest.test_a_name_in_a_markdown_file_is_found_as_a_word"],
         "why": "runs tools/check_gen2_locators.py defines' changed word search on a markdown file for a whole word it contains: found "
                "under the mutant's substring test too"},
-    # task 2q-a-repair: every traced candidate resolves a base through a submodule (a package's attribute), which this mutant breaks; the control
-    # written for it takes the line's other branch alone
-    "2QR-collab-submodule-not-an-attribute": {
-        "controls": ["test_metrics_collaboration.RefusedBaseTest.test_control_a_name_a_measured_module_does_not_define_is_refused_with_that_reason"],
-        "why": "evaluates tools/gen2_source_index.py Facts.member's changed branch for a name a measured module defines nowhere, so no submodule is looked up "
-               "either: refused with the reason `defines no`, which the mutant's always-false submodule test gives too"},
-    # task 2q-a-repair-3: two fall-throughs of the source index's resolver and the guard of the `__all__` check; each is a refusal no traced test passed through
-    # on an accepted path (the refusal is the last statement of its function, or its guard is only entered by `__all__` forms no fixture had), so each control
-    # is the test of the accepted path the mutant leaves as it was
-    "2QS-src-base-shape-guessed": {
-        "controls": ["test_metrics_collaboration.SupportedSurfaceTest.test_every_spelling_of_a_base_is_resolved_to_the_class"],
-        "why": "resolves bases written as names and as attribute chains through tools/gen2_source_index.py Facts.expr's Name and Attribute branches, which return before the "
-               "changed fall-through (a base that is neither): the mutant, which reads that fall-through as an external base, leaves them resolved"},
-    "2QS-src-base-assignment-alias-accepted": {
-        "controls": ["test_metrics_collaboration.SupportedSurfaceTest.test_every_spelling_of_a_base_is_resolved_to_the_class"],
-        "why": "resolves bases bound by an import or a class statement through tools/gen2_source_index.py Facts.follow's class, import and from branches, which return before "
-               "the changed fall-through (a binding by assignment or parameter): the mutant, which reads that as external, leaves them resolved"},
-    "2QS-con-diagnostics-without-remediation": {
-        "controls": ["test_source_contract.RefusalTest.test_a_contract_refusal_names_its_category_file_line_and_construct"],
-        "why": "makes the contract's own refusal (tools/gen2_source_contract.py Contract.refuse, a class hook) and asserts its category, file, line and construct, none of which the "
-               "mutant's empty remediation changes; every other refusal test asserts the remediation and is a killer. Written after the trace"},
-    "2QS-con-stage-exit-zero": {
-        "controls": ["test_source_contract.EveryCommandTest.test_a_clean_source_passes_every_command"],
-        "why": "runs the contract's stage alone (tools/gen2_source_contract.py main) over source inside the contract: exit 0 either way, which the mutant's constant `return 0` leaves "
-              "as it was; every other test of the stage's exit is a refusal"},
-    # task 2q-a-repair-3: two mutants that over-restrict the accepted path itself; every test that takes it asserts what it resolves, so none can pair
-    "2QR-collab-nested-class-unfound": {
-        "controls": [],
-        "why": "the mutant makes every lookup of a nested class through its outer class a refusal (tools/gen2_source_index.py Facts.member's class branch): the accepted path is the "
-               "lookup itself, and the one traced test that takes it beyond the killer (a class-scope assignment after the nested class) fails under the mutant, which changes "
-               "what the accepted path does rather than removing a refusal. There is no accepted alternative through it to pair"},
-    # task 2q-a-repair-4: a test written for the mutant after the trace (a write through an assignment expression that binds data): the walrus base is data on the accepted path, which
-    # the mutant's `return "data"` leaves unchanged; the refusal fixtures (a walrus that binds a class) are the killer
-    "2QC-con-walrus-base-is-data": {
-        "controls": ["test_source_closure.ClosureAcceptanceTest.test_accepts_ordinary_data_stores"],
-        "why": "a narrow control and nothing more (task 2q-a-repair-5, 2026-10-05): it exercises only tools/gen2_source_contract.py Contract.kind_of's NamedExpr branch, with an attribute written "
-               "through an assignment expression whose value is an ordinary call (`(obj := make()).value = 1`), which the mutant that says data for every such expression accepts as well. It does "
-               "not show that such a value cannot hold a module or a class (SOURCE-CONTRACT version 2 declares that outside its claim), and its family is no closure evidence (ordinary_data_stores)"},
-    # task 2q-a-repair-6b: a test written for the mangling mutant after the trace. Every traced test that takes the mangling's return passes through a private name whose result the lookup then
-    # depends on, so the mutant that returns the name as written fails each of them; this one asks the rule itself and looks at nothing but that its answer is an identifier
-    "2Q6B-idx-mangling-skipped": {
-        "controls": ["test_source_binding.MangleTest.test_a_mangled_private_name_is_a_python_identifier_whatever_the_class"],
-        "why": "a narrow control and nothing more (task 2q-a-repair-6b, 2026-10-05): it calls tools/gen2_source_index.py `mangle` for a private name and checks only that the result is an "
-               "identifier, which the unmangled name is as well; it does not show that any lookup of a private name works. Its killers (the language rule, the probes, the lookups of a private "
-               "name) are what show that"},
-    # task 2q-a-repair-5: the pairing of an unpacking and the consumers of the one resolver (task 2q-a-repair-6 made the nonlocal owner the compiler's: its mutants are 2Q6-idx-free-*). Their
-    # killers are tests written for them after the trace, so none is traced for them; each control is a test that takes another path through the same code and passes under the mutant.
-    # Astra's 2q-a-repair-5 review F2 rejected three pairings that never reached the changed line or the guard; task 2q-a-repair-6 replaced each with a test that does
-    **{mid: {"controls": [control], "why": why} for control, why, mids in (
-        ("test_source_binding.UnpackingTest.test_a_loop_target_takes_the_elements_of_what_it_iterates_and_not_the_values_beside_it",
-         "binds the targets of a loop over a literal, which an unpacking's pairing never touches (tools/gen2_source_index.py paired_values: an assignment only): the mutant that binds every name "
-         "of an assignment to the first value leaves it as it was",
-         ("2QB-idx-unpacking-binds-every-name-to-the-first-value",)),
-        ("test_source_binding.UnpackingTest.test_a_starred_element_on_either_side_pairs_nothing_even_when_the_counts_are_equal",
-         "reaches tools/gen2_source_index.py paired_values's final return with a starred element (`a, *b = x, y`; `a, b = *x, y`: the counts are equal, so the line before it does not return), "
-         "where the answer is None whether or not the starred check is there: the mutant that always returns None leaves it as it was",
-         ("2QB-idx-unpacking-binds-no-value",)),
-        ("test_source_binding.UnpackingTest.test_each_name_takes_the_value_at_its_position_and_a_chain_is_an_alias",
-         "pairs the names of an assignment with literals that have no starred element, the same count and a position each: the mutants that pair a loop's target, a starred literal or a "
-         "literal of another count change none of them",
-         ("2QB-idx-unpacking-pairs-a-loop-target", "2QB-idx-unpacking-pairs-a-starred-value", "2QB-idx-unpacking-pairs-a-different-count")),
-        ("test_source_binding.ResolverTest.test_an_alias_chain_that_ends_in_an_import_is_that_import",
-         "follows an acyclic chain of two aliases to an import (tools/gen2_source_index.py Facts.follow): each step evaluates the alias-cycle guard and passes it, so the mutant that "
-         "answers a cycle with an external name instead of a refusal leaves it as it was",
-         ("2QB-idx-alias-cycle-is-external",)),
-        ("test_source_binding.ResolverTest.test_a_decorator_written_as_its_qualified_identity_has_that_identity",
-         "asks tools/gen2_source_contract.py decorator_transform for `@contextlib.contextmanager`, a decorator whose spelling IS its resolved identity: the mutant that reads the spelling gives "
-         "the same record",
-         ("2QB-con-decorator-identity-is-its-spelling",)),
-        ("test_source_closure.ClosureRefusalTest.test_refuses_global_redirect_of_every_kind_of_binding",
-         "refuses rebindings through `global` (no alias, no decorator; every call in it is a plain name, whose spelling is its identity): the mutant of a consumer that reads a spelling leaves "
-         "these refusals as they were",
-         ("2QB-con-call-identity-is-its-spelling",)),
-        ("test_source_contract.RefusalTest.test_refuses_src_base_subscript",
-         "refuses a subscripted base (tools/gen2_source_contract.py Contract.base's subscript branch, which resolves its own `assignments=False` line): the mutant that lets a base follow an "
-         "assignment changes the other resolution line",
-         ("2QB-con-base-follows-an-assignment",)),
-    ) for mid in mids},
-    "2QS-con-all-mutation-unreported": {
-        "controls": ["test_source_contract.AcceptanceTest.test_accepts_imports_and_exports"],
-        "why": "reads an __all__ without changing it (tools/gen2_source_contract.py Contract.exports' changed elif is evaluated and false for a Load that is no method call and no "
-               "subscript store) beside the literal __all__ the row accepts: the mutant's `elif False` leaves it accepted"},
-    "2Q-rebaseline-crossing-offenders-dropped": {
-        "controls": ["test_metrics_identity.IdentityTest.test_an_admitted_isolated_file_is_a_positive_control"],
-        "why": "folds an admitted file through tools/gen2_metrics_ledger.py fold's admission loop (task 2q-a-repair-2 moved the budget of a threshold offender there): the admitted isolated "
-               "file has no function budget, so the changed function branch is not taken and the mutant leaves the fold as it was"},
     # task 1e-repair: the server's handle_error override runs only for a failed connection
     "1E-engine-connection-fault-traceback": {
         "controls": [],

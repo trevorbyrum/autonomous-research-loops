@@ -11,27 +11,28 @@ This replaces the earlier practice of installing the runtime dependency with `pi
 | `gen2/requirements.txt` | `rfc8785==0.1.4` (no dependencies) | runtime: `gen2/core/canonical.py`, the only module `gen2/boundaries.toml` grants it to |
 | `gen2/requirements-dev.txt` | `jsonschema==4.10.3` and its complete Python 3.12 dependency graph: `attrs==23.2.0`, `pyrsistent==0.20.0` | `tools/check_gen2_schemas.py` only; no gen-2 module may import it |
 | `gen2/requirements-dev.txt` (task 2q-r1) | `rope==1.15.0` with `pytoolconfig==1.3.1`, `packaging==26.3`, `platformdirs==4.12.4`; `hypothesis==6.168.5` with `sortedcontainers==2.4.0`; `time-machine==3.5.1` (no dependencies) | dev tooling for refactors and their verification (below); no gen-2 module and no tool of `make gen2-check` imports them |
+| `gen2/requirements-dev.txt` (S3) | `radon==6.0.1`, `mando==0.7.1`, `colorama==0.4.6`, `six==1.17.0` | `gen2-complexity` and advisory `radon raw` / `radon mi` reports; no production import grant |
 
 Every entry carries its PyPI SHA-256 hashes. `make gen2-venv` runs:
 
 ```
 python3 -m venv --clear .venv-gen2
 .venv-gen2/bin/python -m pip install --require-hashes --no-deps -r gen2/requirements.txt -r gen2/requirements-dev.txt
-.venv-gen2/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine"
+.venv-gen2/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine, radon"
 ```
 
 - `--require-hashes` refuses any file whose hash is not listed.
-- `--no-deps` installs nothing that is not in the lock. A top-level pin alone does not lock its transitive graph, so the lock lists the reference Python 3.12 dependency closure. The five-import check catches missing top-level packages and dependencies those imports load; it does not exercise every tool submodule. For example, it can pass without `pytoolconfig` even though importing `rope.base.project` then fails. Dependency closure was verified separately using installed requirement metadata, `pip check` and tool imports in an isolated environment (Astra's 2q-b10 review, below).
+- `--no-deps` installs nothing that is not in the lock. A top-level pin alone does not lock its transitive graph, so the lock lists the reference Python 3.12 dependency closure. The import smoke check catches missing top-level packages and dependencies those imports load; it does not exercise every tool submodule. For example, it can pass without `pytoolconfig` even though importing `rope.base.project` then fails. Dependency closure was verified separately using installed requirement metadata, `pip check` and tool imports in an isolated environment (Astra's 2q-b10 review, below).
 - `venv --clear` starts from an empty environment every time either lock changes. The target is keyed on both files.
 - A venv does not see the base interpreter's site-packages or the user site (`~/.local`), so a package installed on the host can neither satisfy nor shadow a locked one.
 
-Every check target (`gen2-sqlite`, `gen2-boundaries`, `gen2-schemas`, `gen2-ddl`, `gen2-catalog`, `gen2-catalog-check`, `gen2-test`, `gen2-trigger-order`, `gen2-mutation`, `gen2-size`, `gen2-linecount`) depends on `gen2-venv` and runs with `PYTHON = .venv-gen2/bin/python`. The only host input is the interpreter the venv is created from: `PYTHON_BOOTSTRAP`, default `python3`. The **reference environment is CPython 3.12.3 with SQLite 3.45.1**, pinned exactly for reproducibility. The standard-library `sqlite3` comes with the interpreter; `make gen2-check` reports the linked SQLite version.
+Every check target (`gen2-sqlite`, `gen2-boundaries`, `gen2-complexity`, `gen2-schemas`, `gen2-ddl`, `gen2-catalog`, `gen2-catalog-check`, `gen2-test`, `gen2-trigger-order`, `gen2-mutation`, `gen2-size`, `gen2-linecount`) depends on `gen2-venv` and runs with `PYTHON = .venv-gen2/bin/python`. The only host input is the interpreter the venv is created from: `PYTHON_BOOTSTRAP`, default `python3`. The **reference environment is CPython 3.12.3 with SQLite 3.45.1**, pinned exactly for reproducibility. The standard-library `sqlite3` comes with the interpreter; `make gen2-check` reports the linked SQLite version.
 
 The reference pin does not establish portability. The gateway client's project-owned address serializer preserves the accepted address spelling from value and family across Python patch releases, with interpreter-independent regression tests (task 2b-repair-20; CI design D5). The planned report-only drift qualification is a **Jenkins nightly**, not GitHub Actions (operator-approved CI design D4); it remains planned until that CI work is implemented.
 
 ## Refactoring and verification tools (task 2q-r1; dev-only, operator-authorised 2026-10-08)
 
-The trial in `docs/gen2/research/refactor-verification-trial-20261008.md` adds established tools in place of per-refactor proof tools. None of them is imported by a production module, the boundary graph grants them to no module, and the metrics tool stays stdlib-only.
+The trial in `docs/gen2/research/refactor-verification-trial-20261008.md` adds established tools in place of per-refactor proof tools. None of them is imported by a production module, the boundary graph grants them to no module, and the locator gate stays stdlib-only.
 
 | Tool | Purpose | Notes |
 |---|---|---|
@@ -51,14 +52,7 @@ It runs `docker run --network none --pull never --read-only` with the repository
 
 ## Upgrading the reference interpreter
 
-The reference environment is CPython 3.12.3, and an upgrade of the interpreter (a new minor version, or a patch release the source index has not been run under) is accepted only when each of these holds, because the supported-source contract is validated for 3.12.3 alone (task 2q-t1; DEBT-017 item 4; `docs/gen2/SOURCE-CONTRACT.md`, "Binding identity"):
-
-1. **The scope correspondence is revalidated.** `tools/gen2_source_index.py` pairs every scope of the tree with the table of the standard library's `symtable` by following the compiler's order of entering scopes, and spells private names as the compiler does. Under the new interpreter, the index runs without a pairing refusal over a corpus of real source (the standard library and the installed packages: the 2q-a-repair-6b run used 5,893 files) and over randomly generated programs with a uniquely named lambda or iteration variable in every slot the compiler reads in a different order (the 6b fuzz, 20,383 programs); each file or program the index refuses is explained (syntax the contract declares unsupported, such as the `type` statement and type parameters), and none is an unexplained mismatch.
-2. **The supported syntax is revalidated.** The node classes the walker records (`FORMS` in `tools/gen2_source_index.py`) and the refused-by-design ones are checked against the new `ast`; a node class the walker has no entry for is refused, so a new one is a failure of this criterion, not a silent pass.
-3. **The interpreter-backed tests pass unchanged:** the source and closure tests (`gen2/tests/test_source_*.py`), including the effective-member matrix against `dataclasses` and the data model, and the targeted tests of the metrics, without an edit to a test to make it pass. A change to what the interpreter does that a test asserts is a contract amendment, not a test edit.
-4. **The metrics are unchanged on the production tree:** `make gen2-source` reports zero refusals, and the metrics reports and facts are byte-identical to those of 3.12.3 (a difference is a measurement change and is reported as one).
-
-Until all four are shown, the new interpreter is not a reference environment for the source guard.
+The reference environment is CPython 3.12.3. The analyzer-specific upgrade checks were retired with the supported-source contract (ruling 3). Interpreter changes use the existing build and verifier process.
 
 ## SQLite version floor
 
@@ -82,7 +76,7 @@ The same functions run in three places:
 - **The store's open path, `gen2/store/db.py`.** The library is checked on an in-memory connection before anything on disk is created or opened (`sqlite3.connect(path)` would create the file). The contract is then applied and read back on the durable connection itself. An existing store is admitted only if its schema is exactly the store DDL: the parts in `gen2/store/schema/`, joined in the order `order.txt` declares.
 - **`make gen2-sqlite`.** This runs first in `gen2-check` and prints the record of what the build ran on.
 - **The DDL check, `make gen2-ddl`.** It prints `DDL creates … on SQLite x.y.z (compatibility gate passed)`.
-- **The importer.** The 0b dry-run importer (`gen2/importer/`) has no SQLite access at all: the boundary graph lets it import `core` only, with no `sqlite3` grant. Any importer that writes a store (Phase 4) must open it through `gen2/store/api.py` `open_store`, and so through this gate. That requires amending the importer's boundary entry, which the review path covers.
+- **The importer.** The 0b dry-run importer is a Phase 4 reconnaissance tool (`tools/gen2_import_dry_run.py`, run as `python -m tools.gen2_import_dry_run`). It imports `gen2.core`, reads fixture or explicitly selected JSON trees, and never opens SQLite. Any importer that writes a store (Phase 4) must open it through `gen2/store/api.py` `open_store`, and so through this gate. That requires amending the importer's boundary entry, which the review path covers.
 
 **CI's SQLite version** is the one `actions/setup-python`'s Python 3.12 links. The workflow now records it: its `make gen2-sqlite` step appends the gate's record (version, JSON probes, pragmas) to the job summary, and a refusal fails the job. It has still not been observed, because CI has not run yet (the first push is the operator's call).
 

@@ -5,8 +5,8 @@ Scan tracked Python in the INVARIANTS B-3 surface, excluding test trees.
 Attribute names are forbidden on every receiver, including access without a
 call and literal getattr lookups. Unrelated local names and strings are legal.
 Store literals with write keywords require an explicitly permitted site (6a part 3).
-Dynamic code generation is outside this gate's scope; gen2-source already
-forbids eval/exec in engine and gateway production (SOURCE-CONTRACT.md).
+Dynamic code generation is outside this gate's scope; the boundary graph
+forbids eval/exec in engine and gateway production (gen2/boundaries.toml).
 """
 import argparse
 import ast

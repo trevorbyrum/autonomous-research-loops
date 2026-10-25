@@ -2,8 +2,8 @@
 
 Written before implementation for task 2c-1. The boundary is pure arithmetic
 over typed durable records: no store handle, writes, model, clock or agent totals.
-The Router retains snapshots, authorization and transactions. SOURCE-CONTRACT v2
-and the existing accounting import grant apply; no framework or grant changes.
+The Router retains snapshots, authorization and transactions. The existing
+accounting import grant applies; no framework or grant changes.
 
 Sources: flow architecture S4–S7 and §3 step 5 (the requested §3.5), methodology
 synthesis §§4–6, plan audit F3/F9, BOUNDARIES “Evidence accounting”, INVARIANTS
@@ -300,8 +300,8 @@ remaining implemented-support gap, including statistical recall, without schema
 duplication. Tests in 3a use hand-built inventories and hand-written truth tables,
 failing/unknown gates, stale/unknown labels, repeated/partial/non-search controls,
 and sentinel membership. Hypothesis checks truth-order monotonicity and unknown
-conjunction persistence. Paired mutants cover these guards. SOURCE-CONTRACT v2,
-existing accounting grants and new-file/edge ledger admissions apply; no Router
+conjunction persistence. Paired mutants cover these guards. Existing
+accounting grants apply; no Router
 wiring, DDL, migration, store, clock or provider call is added in 3a.
 
 ### 2c-3a repairs: standing and sound certain-answer bounds

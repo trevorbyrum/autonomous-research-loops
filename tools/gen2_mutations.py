@@ -173,8 +173,7 @@ FILE_TARGETS = {
     "gen2/schema/source-artifact.schema.json": ("attr", "test_source_artifacts", "SCHEMA_PATH"),
     "gen2/schema/quote-check.schema.json": ("attr", "test_governed_quotes", "SCHEMA_PATH"),
     "gen2/schema/outcome-document.schema.json": ("attr", "test_semantic_assessments", "OUTCOME_SCHEMA"),
-    "gen2/importer/dry_run.py": ("module", "gen2.importer.dry_run"),
-    "gen2/importer/__main__.py": ("disk",),  # `python -m gen2.importer` runs it; only children do
+    "tools/gen2_import_dry_run.py": ("module", "tools.gen2_import_dry_run"),
     # task 1c. A supervisor module's dependents are reloaded over the mutant; jobshim.py runs only in children.
     "gen2/router/lifecycle.py": ("module", "gen2.router.lifecycle", "gen2.router.scheduling", "gen2.router.service", "gen2.tests.router_fixtures"),
     "gen2/supervisor/spool.py": ("module", "gen2.supervisor.spool", "gen2.supervisor.supervisor", "gen2.tests.supervisor_fixtures"),
@@ -232,16 +231,10 @@ FILE_TARGETS = {
     "gen2/schema/decision-receipt.schema.json": ("attr", "test_schema_counterfactuals", "DECISION_RECEIPT_SCHEMA"),
     "gen2/schema/invocation.schema.json": ("attr", "test_schema_counterfactuals", "INVOCATION_SCHEMA"),
     "tools/gen2_linecount.py": ("attr", "test_size_rules", "TOOL"),  # task 2r: the size rules
-    # task 2q-a: the metrics ratchet, the debt register's phase-close check and the locator check; their tests run each as a subprocess through the fixtures' globals
-    "tools/gen2_metrics.py": ("disk",),
-    "tools/gen2_metrics_ledger.py": ("disk",),
-    # task 2q-a-repair-3: the shared source facts and the supported-source contract every tool reads (children import them from the child tree), and the fixtures'
-    # judgment of a child run as a program (a module the killers import: reloaded over the mutant)
-    "tools/gen2_source_index.py": ("disk",),
-    "tools/gen2_source_contract.py": ("disk",),
+    # Tool completion fixtures are reloaded over a mutant.
     "gen2/tests/tool_repo_fixtures.py": ("module", "gen2.tests.tool_repo_fixtures", "gen2.tests.test_tool_completion"),
     "tools/check_gen2_debt.py": ("attr", "gen2.tests.tool_repo_fixtures", "DEBT_TOOL"),
-    "tools/check_gen2_locators.py": ("disk",),   # task 2q-a-repair-3: it imports the shared source facts beside it, so it runs from the child tree, not alone from a temp dir
+    "tools/check_gen2_locators.py": ("disk",),   # Run the locator script from the child tree.
     # task 2q-a-repair-4: the harness's own verdict, run by the tests of its rule on a copy the runner hands them by path (the copy imports gen2_mutants, which the tests put on sys.path)
     "tools/gen2_mutations.py": ("attr", "test_mutation_verdict", "HARNESS"),
 }
