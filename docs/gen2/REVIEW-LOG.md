@@ -3469,3 +3469,15 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - **Landing time trend:** about 7,900 s before S1, then 6,091 s after S1, then 5,356 s after S3.
 - **Non-blocking items:** narrow the wording at `test_importer.py:611` and `check_gen2_sqlite_native.py:8`.
   - Records edits needed: the charter "Architecture metrics" text (done in this PR), CI-DESIGN §3.3/§3.4 and lines 192/196 (with R2, operator D12), and DEBT-017 reconciliation.
+
+## 2026-10-25: S2 tool spike and operator ruling on mutation scope
+- **Spike** (Sol `e95cecdc`; `private/evidence/s2-spike/REPORT.md`): recommends **Cosmic Ray 8.7.0 + pytest 9.1.1** with outcome normalization.
+  - mutmut 3.8.0 skips decorated functions, so `Store.transaction()` (a `@contextmanager`) gets no mutants. Cosmic Ray mutates it.
+  - Cosmic Ray on `gen2/store/api.py`: 318 mutants, 81 survivors, 23 min. Its native "kills" mix assertion failures, errors and syntax-invalid variants, so verdicts must be normalized.
+  - The changed-line filter (`cr-filter-git`) on each file's last real change kept 3 of 723 and 1 of 318 mutants.
+  - The dependency closure is 31 runtime packages.
+- **Operator ruling (Trevor, 2026-10-25): the acceptance gate mutates changed lines only.**
+  - Any survivor in changed lines fails acceptance, unless accepted with an inline `# pragma: no mutate` plus a reason, which Astra reviews.
+  - Full-file campaigns are report-only, run at phase gates and Gate S.
+  - This narrows plan §4 S2's "changed files".
+- S2 dispatched to Sol, branching after S3 (PR #22) merges.
