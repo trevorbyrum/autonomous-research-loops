@@ -94,8 +94,10 @@ class AcceptanceCoverageReuseTest(unittest.TestCase):
         for base in (fixture.git("rev-parse", "HEAD"), None):
             for coverage in (None, "build/explicit-coverage.sqlite"):
                 with self.subTest(base=base, coverage=coverage):
-                    result = fixture.run_acceptance(base=base, coverage=coverage, run_units=True)
+                    with mock.patch.dict(os.environ, {"GEN2_TEST_LOG": str(root / "summary.log")}):
+                        result = fixture.run_acceptance(base=base, coverage=coverage, run_units=True)
                     self.assertEqual(result.returncode, 0, result.stdout)
+                    self.assertEqual([row["exit"] for row in json.loads((root / "summary.log").read_text())], [0] * 8)
                     reports = root.glob("build/mutation-evidence/*/mutation-report.json")
                     report = json.loads(max(reports, key=lambda p: p.stat().st_mtime_ns).read_text())
                     self.assertTrue(report["baseline_reused"], result.stdout)

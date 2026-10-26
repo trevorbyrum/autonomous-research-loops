@@ -237,6 +237,7 @@ every shard, and coverage.py parallel files merged with `Coverage.combine`.
 The receipt binds the resulting combined bytes. A partial CI shard cannot publish it.
 Worker Python temporary roots are distinct; nested harnesses cannot overwrite
 parent evidence. No tests are skipped or assigned a special serial partition.
+For coordinated runs, `GEN2_TEST_LOG` names the summary linking each shard's logs.
 
 Stage-2 shards finish independently; a typed assertion/error kill identifies its
 shard, selection and local boundary. Its clean control constructs full discovery,

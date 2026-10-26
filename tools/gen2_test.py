@@ -56,9 +56,12 @@ def main() -> int:
     if not 1 <= args.workers <= 64 or (args.workers > 1 and args.shard != (1, 1)):
         raise ValueError("workers must be 1..64 and require full discovery")
     if args.workers > 1:
-        if directory := os.environ.get("GEN2_CI_EVIDENCE"):
+        directory = os.environ.get("GEN2_CI_EVIDENCE")
+        if not directory and os.environ.get("GEN2_TEST_LOG"):
+            directory = str(Path(os.environ["GEN2_TEST_LOG"]).resolve().parent)
+        if directory:
             Path(directory).mkdir(parents=True, exist_ok=True)
-        out = Path(tempfile.mkdtemp(prefix="gen2-shards-", dir=os.environ.get("GEN2_CI_EVIDENCE"))).resolve()
+        out = Path(tempfile.mkdtemp(prefix="gen2-shards-", dir=directory)).resolve()
         capture = os.environ.get("GEN2_TEST_COVERAGE")
         baseline = Baseline(capture) if capture else None
         if baseline:
@@ -67,6 +70,9 @@ def main() -> int:
         print(f"gen2-test: {args.workers} shards; logs in {out}", flush=True)
         runs = parallel([[sys.executable, __file__, "--worker", "--shard", f"{i}/{args.workers}"]
                          for i in range(1, args.workers + 1)], out)
+        if log := os.environ.get("GEN2_TEST_LOG"):
+            Path(log).parent.mkdir(parents=True, exist_ok=True)
+            Path(log).write_text(json.dumps([dict(exit=code, directory=str(path)) for code, path in runs]) + "\n")
         inventories = [json.loads((path / "engine-unit-inventory.json").read_text()) for _, path in runs]
         for (code, _), row in zip(runs, inventories):
             row["success"] = row["success"] and code == 0
