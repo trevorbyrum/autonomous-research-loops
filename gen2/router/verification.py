@@ -34,12 +34,14 @@ class Verification:
             return False
         # Receipt effects are planned before insertion. SQL 32/33 and the
         # Router must admit each new basis later in this same transaction;
-        # otherwise no operation receipt or hold survives. Actual hold writes
-        # use the durable predicate, also for retained pre-consumer receipts.
+        # otherwise no operation receipt or hold survives. Same-outcome bases
+        # do not exist yet. Successful admission guarantees basis membership,
+        # including text references; alarms affect promotion, not membership.
+        # Actual writes re-read membership, including retained history.
         if admitted:
             return False
         row = self._core._one("verification_receipts", {"verification_receipt_id": doc["verification_receipt_id"]})
-        return row is None or not DetailedChecks(self._core)._has_basis(row, boundary.TIER)
+        return row is None or not DetailedChecks(self._core)._basis_member(row, boundary.TIER)
 
     def _hold_id(self, doc: dict) -> str:
         return "hold_" + canonical.logical_hash({"verification_receipt_id": doc["verification_receipt_id"]})[7:]
