@@ -3564,3 +3564,18 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - The S2b measurement invoked the tools directly and missed it.
   - Fix dispatched (Sol `80558bbb`, brief `private/reviews/gen2-s2c-coverage-reuse-brief-20261026.md`).
 
+## 2026-10-26: S2c merged; S4 rounds 1–3 (PR #35)
+- **S2c** (PR #33, `6cfd65d`): removed the redundant command-line overrides on the recursive `$(MAKE) gen2-mutation`.
+  - Astra (`55f5459a`): A and C PASS, ROOT-CAUSE, no findings. Six invocation forms were probed, including CI.
+  - Verifier: gen2-accept exit 0 in 4,142 s. Merged.
+  - Confirmed live: the S4 run at `01defff` reused the unit coverage, and mutation started seconds after the unit run.
+- **S4 round 1** (`6325c90`, Sol `3290d2e7`, +113): Astra (`b0d34e37`) BLOCK.
+  - **B1:** `write_holds` reused the promotion predicate `_has_basis`, which is alarm-aware. A bound, adjudicated extraction with a tier-0 alarm got a false unbound hold, and the commit receipt diverged from the written holds.
+  - **B2:** no text-type check on the extraction reference, so a retained numeric reference lost its hold.
+  - One cause; the three insertion rules themselves passed.
+- **S4 round 2** (`5b1c4c7`, +153): `_basis_member` (SQL 34 membership plus the text type) is factored out of `_has_basis` (membership plus alarm). Astra: PASS, ROOT-CAUSE, accepted pending the verifier.
+- **Verifier at `01defff`** (round 2 merged with gen2): the changed-line campaign found a full-suite **SURVIVED** mutant, `evidence_writer.py:358` `==` changed to `>=` on the acquisition `retrieved_at`. The orchestrator stopped the run at 10/158 when round 3 superseded the filter; the evidence is in `private/evidence/s4/verifier-01defff-stopped/`.
+- **S4 round 3** (`af81ff9`, +185 against +140 planned): Sol found the time match necessary, because a different-time, higher-tier acquisition could authorize a table receipt. Changes: exact call and time lookup; literal both-direction cases for all three methods; the route and acquirer filters and the table tier guard removed as redundant; equivalent variants documented, with no pragmas.
+- **Status:** Astra round 3 and the verifier are running.
+- **Lesson:** the changed-line mutation gate found a real false-certification path that two review rounds and 1,631 targeted tests missed. That is what S2 was adopted for.
+
