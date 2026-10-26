@@ -3548,3 +3548,19 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **Verifier:** gen2-accept at `1d54e1d` dispatched (Sonnet `9e8fda2f`).
 - **Lesson (Gate S always-on):** a correctness repair needs its cost measured before review, not after. The eager design was the per-finding answer; the lazy one keeps the same guarantee with 8.5 min of controls instead of a projected 3 h or more.
 
+## 2026-10-26: S2b merged; 6a part 4 ACCEPTED, so 6a is complete; S2c found
+- **S2b** (PR #30, `1d54e1d`): verifier gen2-accept exit 0 in 4,129 s (tools-only diff, so the changed-line scope was empty). Merged.
+- **6a part 4** (PR #28): merged origin/gen2 at `4fdfe4d` with no conflicts.
+  - Verifier (Sonnet `5514f2a8`): gen2-accept exit 0 in 11,090 s; 3,927 tests OK.
+  - Changed-line mutation: 3,793 candidates. FILTERED_GIT 3,632, PRAGMA 66, ASSERTION_KILL 60, ERROR_KILL 5, SYNTAX_INVALID 30, **SURVIVED 0**. 23 clean controls (940 s).
+- **Astra mutation-gate confirmation** (`f1e99957`; `private/reviews/gen2-2d-6a-p4-mutation-gate-astra-20261026.md`): **6a part 4 is ACCEPTED.**
+  - The four pragma lines pass for the exact excluded spans: keyword-only `*` and annotation `|` only. This is not blanket approval for future executable changes on those lines.
+  - The 30 SYNTAX_INVALID variants are all keyword-marker replacements.
+  - All five ERROR_KILLs have matching clean controls.
+  - The merge leaves the part 4 files unchanged from `82befcb`.
+  - Merged. **2d slice 6a is complete.**
+- **S2c (cost defect, orchestrator diagnosis):** the mutation step re-ran the full suite as its baseline (4,370 s) instead of reusing the acceptance coverage.
+  - Cause, reproduced with a throwaway Makefile: the recursive `$(MAKE) gen2-mutation GEN2_COVERAGE=…` exports `GEN2_COVERAGE` into the mutation process's environment, but not into the unit run's. `source_state()` hashes the environment, so reuse is refused.
+  - The S2b measurement invoked the tools directly and missed it.
+  - Fix dispatched (Sol `80558bbb`, brief `private/reviews/gen2-s2c-coverage-reuse-brief-20261026.md`).
+
