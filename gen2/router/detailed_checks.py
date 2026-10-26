@@ -61,6 +61,13 @@ class DetailedChecks:
         raise Refusal("payload_invalid", "support requires exactly bound performed detailed checks (V-4, V-8)")
 
     def _has_basis(self, row: dict, rank: dict) -> bool:
+        """Promotion also excludes extraction alarms; membership alone does not."""
+        if (row["extraction_method"] in ("verifier_extraction", "validated_extraction")
+                and row["receipt"]["checks"].get("tier0", {}).get("signal") in ("alarm",)):
+            return False
+        return self._basis_member(row, rank)
+
+    def _basis_member(self, row: dict, rank: dict) -> bool:
         """Re-read SQL 15/32/33/34 operands; admission owns their authentication."""
         method = row["extraction_method"]
         basis = None if method == "canonical_bytes" else self._extraction_basis(row, rank)
@@ -100,10 +107,10 @@ class DetailedChecks:
                 return None
         if method not in ("verifier_extraction", "validated_extraction"):
             return None
-        if row["receipt"]["checks"].get("tier0", {}).get("signal") == "alarm":
-            return None
         extraction_id = (validation["target_extraction_id"] if validation else
             row["receipt"]["extraction"].get("extraction_id"))
+        if not isinstance(extraction_id, str):
+            return None
         bases = self._core._store.select("source_extractions", {"extraction_id": extraction_id})
         if not bases:
             return None

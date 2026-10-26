@@ -280,6 +280,14 @@ class PromotionCases:
 
 
 class BoundPromotionRouterTest(PromotionCases, unittest.TestCase):
+    def test_adjudicated_canonical_alarm_promotes(self):
+        self.context('canonical_bytes')
+        self.doc['checks']['tier0'] = dict(checker='minicheck', checker_version='1', signal='alarm')
+        self.doc['adjudication'] = dict(adjudication_ref='operator:fixture', resolved_at=self.doc['verified_at'],
+            resolution='supports')
+        self.store()
+        self.promote()
+
     def test_replay_conflict_rollback(self):
         self.context('validated_extraction'); self.store()
         before = self.case.state(exclude=())

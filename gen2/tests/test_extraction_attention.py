@@ -41,6 +41,37 @@ class ExtractionAttentionTest(unittest.TestCase):
         self.effects(self.case.send(self.doc), [])
         self.assertEqual(self.case.rows('SELECT * FROM holds'), [])
 
+    def test_bound_alarm_keeps_hold_exemption(self):
+        for method in METHODS:
+            with self.subTest(method=method):
+                self.context(method, 'abstract')
+                self.doc['checks']['tier0'] = dict(checker='minicheck', checker_version='1', signal='alarm')
+                self.doc['adjudication'] = dict(adjudication_ref='operator:fixture', resolved_at=self.doc['verified_at'],
+                    resolution='supports')
+                self.effects(self.case.send(self.doc), [])
+                self.assertEqual(self.case.rows('SELECT hold_id FROM holds'), [])
+                self.assertTrue(self.case.store.bound_extraction_receipt(self.doc['verification_receipt_id']))
+
+    def test_retained_reference_type_controls_hold(self):
+        for reference, expected_count in ((123, 1), ('123', 0)):
+            with self.subTest(reference=reference):
+                self.context('verifier_extraction')
+                basis = self.doc['extraction']['extraction_id']
+                self.clone('source_extractions', dict(extraction_id='123'), "extraction_id='" + basis + "'")
+                self.doc['extraction']['extraction_id'] = reference
+                self.store(legacy=True)
+                c, payload = self.case, dict(verification_receipts=[self.doc])
+                op = c.value('SELECT recorded_by_operation_id FROM source_extractions LIMIT 1')
+                with c.store.transaction():
+                    written = c.router._verification.write_holds(payload, op, self.doc['verified_at'])
+                ids = [r[0] for r in c.rows('SELECT hold_id FROM holds')]
+                self.assertEqual(len(ids), expected_count)
+                self.assertEqual(written, dict(verification_holds=ids))
+                self.assertEqual(c.router._verification.hold_ids(payload), ids)
+                self.assertEqual(c.rows('SELECT cause, recoverability FROM holds'),
+                    [('verification missing content: extraction evidence not durably bound', 'needs_remediation')]
+                    if expected_count else [])
+
     def test_missing_content(self):
         for method in METHODS:
             with self.subTest(method=method):
