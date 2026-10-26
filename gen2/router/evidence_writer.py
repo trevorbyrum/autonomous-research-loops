@@ -15,6 +15,7 @@ from typing import Callable, Mapping, Protocol
 from gen2.core import canonical
 from gen2.router import boundary, quote_matching
 from gen2.router.boundary import Refusal
+from gen2.router.detailed_checks import DetailedChecks
 
 
 class Rows(Protocol):
@@ -204,6 +205,7 @@ class EvidenceWriter:
                 "extraction_validation_ref": doc["extraction"]["validation_ref"], "producer_invocation_id": doc["producer_invocation_id"],
                 "verifier_invocation_id": doc["verifier_invocation_id"], "quote_check_id": doc["quote_check_id"], "verdict": doc["verdict"],
                 "receipt": doc, "verified_at": doc["verified_at"]})
+            self._require_acquired_content(doc)
             self._require_own_extraction(doc)
             self._require_validated_extraction(doc)
         verification = self._core._write_verification_holds(payload, op_id, now)
@@ -344,6 +346,28 @@ class EvidenceWriter:
             self._core._store.update("review_episodes", {"episode_id": closure["episode_id"]}, {"closed_at": now, "closed_by_operation_id": op_id})
             for trigger in self._core._store.select("review_triggers", {"episode_id": closure["episode_id"]}):
                 self._core._store.update("review_triggers", {"trigger_identity": trigger["trigger_identity"]}, {"handled_at": now})
+
+    def _require_acquired_content(self, doc: dict) -> None:
+        """V-2/V-3 insertion checks, inside the existing writer fence (SQL 15/16/19/20)."""
+        checks = DetailedChecks(self._core)
+        method = doc["extraction"]["method"]
+        acquisitions = [a for a in self._core._store.select("source_acquisitions", {
+            "topic_id": doc["topic_id"], **doc["source"], "verifier_invocation_id": doc["verifier_invocation_id"],
+            "content_hash": doc["obtained_content_hash"]})
+            if a["gateway_call_ref"] == doc["acquisition"]["gateway_call_ref"]
+            and a["retrieved_at"] == doc["acquisition"]["retrieved_at"] and "gateway:" + a["lane"] == doc["acquisition"]["route"]
+            and (method != "canonical_bytes" or a["acquired_by_invocation_id"] == doc["extraction"]["produced_by_invocation_id"])]
+        # Missing acquisitions retain their binding refusal, as in SQL 16/19/20.
+        recorded_rank = max((checks._content_rank(a) for a in acquisitions), default=4)
+        if boundary.TIER[doc["access_tier"]] > recorded_rank:
+            label = "canonical" if method == "canonical_bytes" else "extraction"
+            raise Refusal("payload_invalid", label + " receipt tier exceeds recorded content")
+        row = self._core._one("verification_receipts", {"verification_receipt_id": doc["verification_receipt_id"]})
+        if method == "canonical_bytes" and not checks._has_basis(row, boundary.TIER):
+            raise Refusal("payload_invalid", "canonical receipt must consume its admitted acquisition")
+        if (doc["verdict"] != "cannot_assess_at_required_tier" and doc["access_tier"] in ("bibliographic", "abstract")
+                and any(s["locator"]["kind"] == "table" for s in doc["cited_spans"]) and recorded_rank < 3):
+            raise Refusal("payload_invalid", "table citation requires recorded full-text availability")
 
     def _require_own_extraction(self, doc: dict) -> None:
         # Inside the existing writer fence, after same-outcome extractions.
