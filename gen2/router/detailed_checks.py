@@ -62,8 +62,8 @@ class DetailedChecks:
 
     def _has_basis(self, row: dict, rank: dict) -> bool:
         """Promotion also excludes extraction alarms; membership alone does not."""
-        if (row["extraction_method"] != "canonical_bytes"
-                and row["receipt"]["checks"].get("tier0", {}).get("signal") == "alarm"):
+        if (row["extraction_method"] in ("verifier_extraction", "validated_extraction")
+                and row["receipt"]["checks"].get("tier0", {}).get("signal") in ("alarm",)):
             return False
         return self._basis_member(row, rank)
 

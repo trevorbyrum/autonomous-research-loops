@@ -359,13 +359,13 @@ class EvidenceWriter:
         # Missing acquisitions retain their binding refusal, as in SQL 16/19/20.
         recorded_rank = max((checks._content_rank(a) for a in acquisitions), default=boundary.TIER["reproduced"])
         if boundary.TIER[doc["access_tier"]] > recorded_rank:
-            label = "canonical" if method == "canonical_bytes" else "extraction"
+            label = "canonical" if method in ("canonical_bytes",) else "extraction"
             raise Refusal("payload_invalid", label + " receipt tier exceeds recorded content")
         row = self._core._one("verification_receipts", {"verification_receipt_id": doc["verification_receipt_id"]})
-        if method == "canonical_bytes" and not checks._has_basis(row, boundary.TIER):
+        if method in ("canonical_bytes",) and not checks._has_basis(row, boundary.TIER):
             raise Refusal("payload_invalid", "canonical receipt must consume its admitted acquisition")
-        if (doc["verdict"] != "cannot_assess_at_required_tier"
-                and any(s["locator"]["kind"] == "table" for s in doc["cited_spans"]) and recorded_rank < 3):
+        if (doc["verdict"] in ("supports", "partially_supports", "does_not_support")
+                and any(s["locator"]["kind"] in ("table",) for s in doc["cited_spans"]) and recorded_rank < 3):
             raise Refusal("payload_invalid", "table citation requires recorded full-text availability")
 
     def _require_own_extraction(self, doc: dict) -> None:
