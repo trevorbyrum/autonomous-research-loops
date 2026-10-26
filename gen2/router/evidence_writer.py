@@ -351,21 +351,20 @@ class EvidenceWriter:
         """V-2/V-3 insertion checks, inside the existing writer fence (SQL 15/16/19/20)."""
         checks = DetailedChecks(self._core)
         method = doc["extraction"]["method"]
-        acquisitions = [a for a in self._core._store.select("source_acquisitions", {
+        acquisitions = self._core._store.select("source_acquisitions", {
             "topic_id": doc["topic_id"], **doc["source"], "verifier_invocation_id": doc["verifier_invocation_id"],
-            "content_hash": doc["obtained_content_hash"]})
-            if a["gateway_call_ref"] == doc["acquisition"]["gateway_call_ref"]
-            and a["retrieved_at"] == doc["acquisition"]["retrieved_at"] and "gateway:" + a["lane"] == doc["acquisition"]["route"]
-            and (method != "canonical_bytes" or a["acquired_by_invocation_id"] == doc["extraction"]["produced_by_invocation_id"])]
+            "content_hash": doc["obtained_content_hash"], "gateway_call_ref": doc["acquisition"]["gateway_call_ref"],
+            "retrieved_at": doc["acquisition"]["retrieved_at"]})
+        # Authenticated capture identity fixes lane/acquirer; later basis checks bind their receipt labels.
         # Missing acquisitions retain their binding refusal, as in SQL 16/19/20.
-        recorded_rank = max((checks._content_rank(a) for a in acquisitions), default=4)
+        recorded_rank = max((checks._content_rank(a) for a in acquisitions), default=boundary.TIER["reproduced"])
         if boundary.TIER[doc["access_tier"]] > recorded_rank:
             label = "canonical" if method == "canonical_bytes" else "extraction"
             raise Refusal("payload_invalid", label + " receipt tier exceeds recorded content")
         row = self._core._one("verification_receipts", {"verification_receipt_id": doc["verification_receipt_id"]})
         if method == "canonical_bytes" and not checks._has_basis(row, boundary.TIER):
             raise Refusal("payload_invalid", "canonical receipt must consume its admitted acquisition")
-        if (doc["verdict"] != "cannot_assess_at_required_tier" and doc["access_tier"] in ("bibliographic", "abstract")
+        if (doc["verdict"] != "cannot_assess_at_required_tier"
                 and any(s["locator"]["kind"] == "table" for s in doc["cited_spans"]) and recorded_rank < 3):
             raise Refusal("payload_invalid", "table citation requires recorded full-text availability")
 
