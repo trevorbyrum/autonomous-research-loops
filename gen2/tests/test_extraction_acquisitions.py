@@ -36,7 +36,9 @@ class ExtractionRouterTest(unittest.TestCase):
         before = case.state()
         out = send(case, doc)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
-        self.assertIn("extraction receipt must consume its admitted acquisition", out["detail"])
+        detail = {"verifier_extraction": "receipt needs its verifier durable extraction",
+            "validated_extraction": "receipt needs its successful durable /2 validation"}[doc["extraction"]["method"]]
+        self.assertIn(detail, out["detail"])
         case.assert_audited_state(before, 1)
 
     def test_missing(self):

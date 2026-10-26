@@ -2,10 +2,49 @@
 import json
 import unittest
 
-from gen2.tests.test_store_span_domain import BAD, DUPLICATES
 from gen2.tests.test_table_availability import content, document, METHODS, PAGE, span_fixture
 from gen2.tests.detailed_receipt_fixtures import attach_checks
 from gen2.tests.router_fixtures import empty_outcome
+
+
+def span(**changes):
+    return {**PAGE, **changes}
+
+
+def locator(**changes):
+    return span(locator={**PAGE["locator"], **changes})
+
+
+BAD = {
+    "array_max": [[PAGE] * 51],
+    "span_object": [["page"], [0], [None], [True], [[]]],
+    "span_members": [[span(extra=0)]],
+    "start_type": [[span(start=v)] for v in (None, True, "0", [], {})]
+        + [[{k: v for k, v in span(other=0).items() if k != "start"}]],
+    "start_integer": [[span(start=0.5)]],
+    "start_min": [[span(start=-1)]],
+    "end_type": [[span(end=v)] for v in (None, True, "1", [], {})]
+        + [[{k: v for k, v in span(other=0).items() if k != "end"}]],
+    "end_integer": [[span(end=1.5)]],
+    "end_min": [[span(end=0)]],
+    "locator_object": [[span(locator=v)] for v in (None, True, "page", 1, [])]
+        + [[{k: v for k, v in span(other=0).items() if k != "locator"}]],
+    "locator_members": [[locator(extra=0)]],
+    "kind": [[locator(kind=v)] for v in (None, True, 1, [], {}, "TABLE", "Page", "unknown")]
+        + [[span(locator={"other": "page", "value": "2"})], [PAGE, locator(kind="TABLE")]],
+    "value_type": [[locator(value=v)] for v in (None, True, 1, [], {})]
+        + [[span(locator={"kind": "page", "other": "2"})]],
+    "value_min": [[locator(value="")]],
+    "value_max": [[locator(value="x" * 501)], [locator(value="\0" * 501)], [locator(value="字" * 501)]],
+}
+DUPLICATES = (
+    '[{"start":5,"end":9,"locator":{"kind":"page","kind":"table","value":"2"}}]',
+    '[{"start":5,"end":9,"locator":{"kind":"page","value":"2"},"locator":{"kind":"table","value":"T"}}]',
+    '[{"start":5,"start":0,"end":9,"locator":{"kind":"page","value":"2"}}]',
+    '[{"start":5,"end":9,"end":10,"locator":{"kind":"page","value":"2"}}]',
+    '[{"start":5,"end":9,"locator":{"kind":"page","value":"2","value":"T"}}]',
+    r'[{"start":5,"end":9,"locator":{"kind":"page","ki\u006ed":"table","value":"2"}}]',
+)
 
 
 class SpanRouterTest(unittest.TestCase):

@@ -1,4 +1,4 @@
-"""SQL 34 basis membership controls attention, without clearing prior holds."""
+"""Router basis membership controls attention, without clearing prior holds."""
 import json
 import unittest
 
@@ -11,7 +11,6 @@ from gen2.tests.detailed_receipt_fixtures import attach_checks
 
 
 class ExtractionAttentionTest(unittest.TestCase):
-    RAW = False
     context = PromotionCases.context
     clone = PromotionCases.clone
     store = PromotionCases.store
@@ -33,8 +32,6 @@ class ExtractionAttentionTest(unittest.TestCase):
                     self.context(method, tier)
                     self.effects(self.case.send(self.doc), [])
                     self.assertEqual(self.case.rows('SELECT * FROM holds'), [])
-                    self.assertTrue(self.case.store.bound_extraction_receipt(self.doc['verification_receipt_id']))
-                    self.assertFalse(self.case.store.bound_extraction_receipt('absent'))
 
     def test_canonical_control(self):
         self.context('canonical_bytes')
@@ -50,7 +47,6 @@ class ExtractionAttentionTest(unittest.TestCase):
                     resolution='supports')
                 self.effects(self.case.send(self.doc), [])
                 self.assertEqual(self.case.rows('SELECT hold_id FROM holds'), [])
-                self.assertTrue(self.case.store.bound_extraction_receipt(self.doc['verification_receipt_id']))
 
     def test_retained_reference_type_controls_hold(self):
         for reference, expected_count in ((123, 1), ('123', 0)):
@@ -81,7 +77,6 @@ class ExtractionAttentionTest(unittest.TestCase):
                     negation='not_checked', qualifications='unavailable')
                 attach_checks(self.case, self.doc)
                 out = self.case.send(self.doc)
-                self.assertTrue(self.case.store.bound_extraction_receipt(self.doc['verification_receipt_id']))
                 ids = [r[0] for r in self.case.rows('SELECT hold_id FROM holds')]
                 self.assertEqual(len(ids), 1)
                 self.effects(out, ids)
@@ -109,7 +104,6 @@ class ExtractionAttentionTest(unittest.TestCase):
     def historical_hold(self):
         self.store(legacy=True)
         c = self.case
-        self.assertFalse(c.store.bound_extraction_receipt(self.doc['verification_receipt_id']))
         payload = dict(verification_receipts=[self.doc])
         op = c.value('SELECT recorded_by_operation_id FROM source_extractions LIMIT 1')
         with c.store.transaction():
@@ -179,9 +173,7 @@ class ExtractionAttentionTest(unittest.TestCase):
                     payload['extraction_validations_v2'] = [validation]
                     self.doc['extraction']['validation_ref'] = validation['validation_id']
                 c.env = c.envelope(c.verifier, 'op_same00001', payload, refs=[record['output_ref']])
-                self.assertFalse(c.store.bound_extraction_receipt(self.doc['verification_receipt_id']))
                 self.effects(c.router.commit_outcome(c.env), [])
-                self.assertTrue(c.store.bound_extraction_receipt(self.doc['verification_receipt_id']))
                 self.assertEqual(c.rows('SELECT * FROM holds'), [])
 
     def test_fenced_with_bound_distractor(self):

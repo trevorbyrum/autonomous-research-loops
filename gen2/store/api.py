@@ -353,13 +353,6 @@ class Store:
             freshness = capture.Freshness(db.generation_state(reader), self._capture_file)
             return replace(capture.read(reader, self._json, topic_id), freshness=freshness)
 
-    def bound_extraction_receipt(self, receipt_id: str) -> bool:
-        """SQL 34's durable basis predicate, including both output ceilings."""
-        self._require_usable()
-        return self._conn.execute(
-            "SELECT 1 FROM bound_extraction_receipts WHERE verification_receipt_id = ?",
-            (receipt_id,)).fetchone() is not None
-
     def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]:
         """Rows as dicts; JSON columns come back parsed."""
         where = where or {}

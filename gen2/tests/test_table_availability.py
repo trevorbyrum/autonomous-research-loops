@@ -10,9 +10,11 @@ from gen2.tests.ddl_fixtures import restore_triggers
 from gen2.tests import store_fixtures as sf
 from gen2.store import db
 from gen2.tests.test_extraction_acquisitions import extraction_document
-from gen2.tests.test_store_table_availability import TABLE, PAGE
 from gen2.tests.test_reaccess_admission import RAW, STAMP
 from gen2.tests.router_fixtures import TOPIC, empty_outcome
+
+TABLE = {"start": 0, "end": 5, "locator": {"kind": "table", "value": "Table 1"}}
+PAGE = {"start": 5, "end": 9, "locator": {"kind": "page", "value": "2"}}
 
 METHODS = ("canonical_bytes", "verifier_extraction", "validated_extraction")
 

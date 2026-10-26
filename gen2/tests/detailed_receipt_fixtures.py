@@ -87,7 +87,6 @@ def historical_receipt(doc):
 def historical_admission(case):
     """Explicit old-admission experiments; restore exact subject predicates/order."""
     catalog = case.rows(TRIGGERS)
-    case.x('DROP TRIGGER IF EXISTS verification_receipts_require_detailed_checks')
     checker = getattr(getattr(case, 'router', None), '_detailed_checks', None)
     with patch.object(checker, '_require_performed_references', return_value=None) if checker else nullcontext():
         try:

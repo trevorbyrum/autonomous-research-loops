@@ -27,3 +27,12 @@ def restore_triggers(case, ddl, omit=(), *, catalog=None):
         case.x(sql)
     assert_triggers(case, expected)
     return expected
+
+
+def reverse_triggers(ddl):
+    # Independent catalog construction: do not trust the runner's reversal.
+    with sqlite3.connect(':memory:') as reference:
+        reference.executescript(ddl)
+        triggers = reference.execute(TRIGGERS).fetchall()
+    return ddl + '\n' + '\n'.join('DROP TRIGGER ' + n + ';' for n, _ in triggers) + '\n' + '\n'.join(
+        sql + ';' for _, sql in reversed(triggers))

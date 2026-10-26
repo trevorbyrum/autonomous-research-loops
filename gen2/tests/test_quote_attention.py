@@ -7,7 +7,8 @@ import json
 from gen2.tests.router_fixtures import TOPIC
 from gen2.tests.detailed_receipt_fixtures import historical_receipt
 from gen2.tests.test_capture_support import CaptureCase
-from gen2.tests.test_store_capture_support import CaptureDDLTest
+import sqlite3
+from gen2.tests.test_store_governed_quotes import DDLTest
 
 ADJ = {"adjudication_ref": "adj-quote", "resolved_at": "2026-09-27T10:00:00Z", "resolution": "entailment confirmed on re-read"}
 HOLD = "hold_quote_qck_quote00001"
@@ -178,8 +179,21 @@ class RouterGuardTest(AttentionCase):
         self.assertEqual(self.state(exclude=()), before)
 
 
-class AdjudicationDDLTest(CaptureDDLTest):
-    # Inherited capture tests exercise the accepted relationship with DDL 13.
+class AdjudicationDDLTest(DDLTest):
+    def bound(self, status="matched", verdict="supports", check_id="qck_governed001", **changes):
+        exact = {"status": status, "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": self.source_hash}
+        self.verify("ver_bound00001", method="canonical_bytes", extraction="inv_pppppppp", gateway="gw-call:1",
+            quote=(status, check_id), verdict=verdict, receipt_overrides={"checks": {**self.CHECKS_OK, "exact_quote": exact}, **changes})
+
+    def refused(self, action):
+        before = {n: self.rows("SELECT * FROM " + n) for n in self.tables()}
+        self.x("SAVEPOINT refusal")
+        with self.assertRaises(sqlite3.IntegrityError):
+            action()
+        self.x("ROLLBACK TO refusal")
+        self.x("RELEASE refusal")
+        self.assertEqual({n: self.rows("SELECT * FROM " + n) for n in self.tables()}, before)
+
     def test_byte_adjudication(self):
         self.raw("mismatch")
         self.refused(lambda: self.bound(status="mismatch", verdict="does_not_support", adjudication=ADJ))

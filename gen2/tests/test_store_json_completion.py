@@ -50,18 +50,6 @@ class CompletionPairs(RolloutPairs):
         if (self.table, self.column) in MIRRORS:
             mirror, _ = MIRRORS[self.table, self.column]
             exclusions += [f'member_domain_{self.table}_{mirror}_{e}' for e in ('i', 'u')]
-        if self.table == 'verification_receipts':
-            # SQL 21 redundantly refuses duplicate/unknown names. Isolate SQL 27;
-            # unchanged full-schema span tests still enforce shape and numerals.
-            exclusions.append('verification_receipts_span_domain_v4')
-            if self.column == 'cited_spans':
-                # This member-name probe appends arbitrary objects, outside the
-                # cited-span relationship domain. Full-catalog binding tests remain.
-                exclusions.append('verification_receipts_detailed_binding')
-        if self.table == 'claim_source_links':
-            # The member-name probe appends arbitrary objects, without a
-            # locator. Full-catalog locator tests separately enforce SQL 39.
-            exclusions.append('claim_source_links_locator_string')
         if self.table == 'obligations':
             # Facet tags normally admit strings only. Exercise object names in
             # the array without an unrelated facet/document binding masking it.

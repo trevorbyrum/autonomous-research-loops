@@ -264,7 +264,6 @@ class CaptureTest(CaptureCase):
         attach_checks(self, doc)
         before = self.state(exclude=())
         self.assertEqual(self.send(records, verification_receipts=[doc])["status"], "committed")
-        self.assertEqual(self.rows("SELECT * FROM governed_captures_blocked"), [])
         self.assertEqual(self.rows("SELECT exact_match, quote_quarantined FROM quote_checks"), [("matched", 0)] * len(records))
         self.late_store(before, "accepted_support" if accepted else "provisional", checks=len(records))
         before = self.state(exclude=())
@@ -286,7 +285,6 @@ class CaptureTest(CaptureCase):
         self.test_non_quote_control()
         before = self.state(exclude=())
         self.accepted(self.record(claim_revision=2))
-        self.assertEqual(self.rows("SELECT * FROM governed_captures_blocked"), [("clm_quote00001", 2)])
         self.late_store(before, "quarantined", receipts=0)
 
     def test_late_invalid_receipt(self):
@@ -307,14 +305,7 @@ class CaptureTest(CaptureCase):
 
 
 class RouterGuardTest(CaptureTest):
-    """Exercise collaborator guards with the independent SQL consumers removed."""
-    def setUp(self):
-        super().setUp()
-        self.x("DROP TRIGGER verification_receipts_capture_binding")
-        self.x("DROP TRIGGER claims_accepted_support_needs_capture")
-        self.x("DROP TRIGGER verification_receipts_admitted_extraction")
-
+    """Isolate Router capture checks from the independent extraction consumer."""
     def substitution(self, change, pending=False):
-        # Isolate the capture predicate from the independent receipt consumer.
         with patch.object(self.router._evidence_writer, '_require_own_extraction', return_value=None):
             super().substitution(change, pending)

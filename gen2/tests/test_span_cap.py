@@ -52,6 +52,25 @@ class SpanCapTest(unittest.TestCase):
         finally:
             case.tearDown()
 
+    def test_quote_router_cap(self):
+        from gen2.tests.test_governed_quotes import QuotesCase
+        case = QuotesCase()
+        case.setUp()
+        self.addCleanup(case.tearDown)
+        for field in ('span_start', 'span_end'):
+            with self.subTest(field=field):
+                before = case.state()
+                payload = {**empty_outcome(case.grant['invocation_id'], 'interim_transition'),
+                    'quote_checks': [case.record(**{field: 9007199254740992})]}
+                env = case.envelope(case.grant, case.ids('op_cap_'), empty_outcome(case.grant['invocation_id'], 'interim_transition'))
+                raw = json.dumps(payload).encode()
+                env.update(payload_digest=case.spool.put(raw, media_type='application/json'), payload_size_bytes=len(raw))
+                out = case.router.commit_outcome(env)
+                self.assertEqual((out['status'], out.get('reason')), ('rejected', 'payload_invalid'), out)
+                self.assertEqual(case.rows('SELECT * FROM quote_checks'), [])
+                case.assert_audited_state(before, 1)
+        self.assertEqual(case.send([case.record()])['status'], 'committed')
+
     def test_schemas(self):
         schemas = schema_set()
         targets = ('verification-receipt.schema.json#/properties/cited_spans',
