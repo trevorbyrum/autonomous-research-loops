@@ -90,7 +90,6 @@ def generation_state(conn: sqlite3.Connection) -> tuple[str | None, int, int]:
     """Epoch/counter/schema cookie; caller owns the snapshot or writer fence.
 
     File identity is a separate admitted pin. This read never repairs state.
-    Binding into capture and commit consumption belong to D part 4.
     """
     rows = conn.execute("SELECT singleton, epoch, generation FROM store_generation").fetchall()
     if rows and (len(rows) != 1 or rows[0][0] != 'store'):

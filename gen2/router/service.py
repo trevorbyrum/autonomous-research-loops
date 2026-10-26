@@ -279,6 +279,17 @@ class Router:
     def _dossier_inputs(self, topic_id: str, *, history: accounting.History) -> DossierInput:
         return self._accounting.dossier_inputs(topic_id, history=history)
 
+    def _commit_dossier_inputs(self, topic_id: str, *, invocation_id: str, history: accounting.History, prepare: Callable, commit: Callable) -> object:
+        inv = self._one("invocations", {"invocation_id": invocation_id})
+        if inv is None or inv["topic_id"] != topic_id:
+            raise Refusal("unknown_invocation", "dossier caller must be an admitted invocation of this topic")
+        def require_live(now=None):
+            refusal = self._launch_refusal(inv, self._now() if now is None else now)
+            if refusal is not None:
+                raise refusal
+        return self._accounting.commit_dossier_inputs(topic_id=topic_id, history=history, prepare=prepare, commit=commit,
+                                                       require_live=require_live)
+
     def record_gateway_facts(self, request: Mapping) -> dict:
         return self._capabilities.record_gateway_facts(request)
 
@@ -529,15 +540,18 @@ class Router:
         self._store.update("queue_entries", {"topic_id": topic["topic_id"]}, changes, expect={"state_revision": before})
         return before + 1
 
-    def _guarded(self, reason: str, body: Callable[[str], object]) -> object:
+    def _guarded(self, reason: str, body: Callable[[str], object], *, freshness=None) -> object:
         """Run one transaction; a write the store refuses is a refusal (nothing
         was written), never retried. The body gets the clock read once the
         write lock is held (BEGIN IMMEDIATE has returned), so time spent
         waiting for the lock counts against every lease, deadline and expiry
-        it checks (L-7; Astra 1b review A1)."""
+        it checks (L-7; Astra 1b review A1). Typed stale inputs go back to
+        the internal dossier caller that owns bounded recapture."""
         try:
-            with self._store.transaction():
+            with self._store.transaction(freshness=freshness):
                 return body(self._now())
+        except api.StaleInput:
+            raise
         except (api.ConstraintViolation, api.StoreWriteError) as exc:
             raise Refusal(reason, f"the store refused the write: {exc}") from None
 

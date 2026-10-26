@@ -38,9 +38,16 @@ class RawTable:
 
 
 @dataclass(frozen=True)
+class Freshness:
+    generation: tuple[str | None, int, int]  # pragma: no mutate - type annotation only
+    file: tuple | None  # pragma: no mutate - type annotation only
+
+
+@dataclass(frozen=True)
 class TopicCapture:
     topic_id: str
     tables: tuple[RawTable, ...]
+    freshness: Freshness | None = None  # pragma: no mutate - annotation; Store binds every admitted capture
 
 
 def read(conn, json_columns: dict, topic_id: str) -> TopicCapture:
