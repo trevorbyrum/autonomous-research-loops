@@ -23,7 +23,7 @@ from coverage import CoverageData
 import toml
 
 from gen2_mutation_runner import marker, normalize
-from gen2_coverage import Baseline, DEFAULT
+from gen2_coverage import Baseline, DEFAULT, source_state
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,17 +68,22 @@ def main():
             request = out / f"{name}.json"
             request.write_text(json.dumps(config))
             return [sys.executable, str(ROOT / "tools/gen2_mutation_runner.py"), str(request)]
-        qualified = {}
-        def qualify(tests):
-            key = tuple(tests) if tests is not None else None
+        qualified, accepted = {}, set()
+        def qualify(stage):
+            tests = stage["tests"]
+            cutoff = stage["boundary"] if all(event.get("boundary") == stage["boundary"]
+                for event in stage["events"]) else None
+            identity = json.dumps(source_state(), sort_keys=True)
+            key = (tuple(tests) if tests is not None else None, tuple(cutoff) if cutoff else None, identity)
             if key not in qualified:
                 began = time.monotonic()
                 name = f"qualification-{len(qualified)}"
-                outcome, output = run_tests(shlex.join(runner(dict(targets=targets, tests=tests), name)), 7200)
+                outcome, output = run_tests(shlex.join(runner(dict(targets=targets, tests=tests, cutoff=cutoff), name)), 7200)
                 (out / f"{name}.log").write_text(output)
                 verdict = normalize(SimpleNamespace(worker_outcome="normal", output=output, test_outcome=outcome))
-                qualified[key] = verdict == "SURVIVED"
-                report["qualifications"].append(dict(tests=tests, verdict=verdict, valid=qualified[key],
+                qualified[key] = (verdict == "SURVIVED" and (cutoff is None or marker(output)["boundary"] == cutoff)
+                    and identity == json.dumps(source_state(), sort_keys=True))
+                report["qualifications"].append(dict(tests=tests, cutoff=cutoff, identity=identity, verdict=verdict, valid=qualified[key],
                     seconds=time.monotonic() - began))
             return qualified[key]
         cached = Baseline(args.coverage)
@@ -112,22 +117,22 @@ def main():
                 modules = {item.job_id: covering_tests(data, item.mutations, module=True) for item in selected}
                 (out / "test-selection.json").write_text(json.dumps(selection, indent=2) + "\n")
                 (out / "module-selection.json").write_text(json.dumps(modules, indent=2) + "\n")
-                # Same native executor used by Cosmic Ray's local distributor;
-                # only the per-job test command differs. It owns disk restoration.
                 with use_db(session) as db:
                     for index, item in enumerate(selected, 1):
-                        tests, stage = args.tests, 2
-                        for candidate, level in ((selection[item.job_id], 1), (modules[item.job_id], "1b")):
-                            if candidate and qualify(candidate):
-                                tests, stage = candidate, level
-                                break
-                        config = dict(targets=targets, tests=tests or args.tests, full_tests=args.tests, stage=stage)
-                        result = mutate_and_test(item.mutations, shlex.join(runner(config, item.job_id)), 7200)
+                        for tests, stage in ((selection[item.job_id], 1), (modules[item.job_id], "1b"), (args.tests, 2)):
+                            if stage != 2 and not tests:
+                                continue
+                            config = dict(targets=targets, tests=tests, full_tests=args.tests, stage=stage)
+                            result = mutate_and_test(item.mutations, shlex.join(runner(config, item.job_id)), 7200)
+                            if normalize(result) in {"ASSERTION_KILL", "ERROR_KILL"}:
+                                last = marker(result.output)["stages"][-1]
+                                if qualify(last):
+                                    accepted.add(item.job_id)
+                                elif last["stage"] != 2:
+                                    continue
+                            break
                         db.set_result(item.job_id, result)
                         print(f"gen2-mutation: {index}/{len(selected)} result recorded", flush=True)
-                    if any(stage["stage"] == 2 for _, result in db.results
-                           for stage in marker(result.output or "").get("stages", [])) and not qualify(args.tests):
-                        raise ValueError("clean full-suite execution failed")
             report["status"] = "complete"
         else:
             report["status"] = "no-applicable-files"
@@ -141,10 +146,8 @@ def main():
                     result = results.get(item.job_id)
                     verdict = ("FILTERED_GIT" if item.job_id in locals().get("git_skipped", set()) else
                                "PRAGMA" if result and result.worker_outcome == "skipped" else normalize(result))
-                    if verdict in {"ASSERTION_KILL", "ERROR_KILL"} and any(
-                            stage["stage"] == 2 for stage in marker(result.output or "").get("stages", [])):
-                        if not qualified.get(tuple(args.tests) if args.tests else None, False):
-                            verdict = "INVALID"
+                    if verdict in {"ASSERTION_KILL", "ERROR_KILL"} and item.job_id not in accepted:
+                        verdict = "INVALID"
                     mutation = item.mutations[0]
                     pragma = None
                     if verdict == "PRAGMA":

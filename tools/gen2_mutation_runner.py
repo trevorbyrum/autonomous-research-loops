@@ -16,25 +16,31 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EvidenceResult(unittest.TextTestResult):
-    def __init__(self, *args, coverage=None, **kwargs):
+    def __init__(self, *args, coverage=None, cutoff=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.events = []
         self.coverage = coverage
+        self.cutoff = cutoff
+        self.boundary = None
 
     def startTest(self, test):
         if self.coverage:
             self.coverage.switch_context(test.id())
         super().startTest(test)
+        self.boundary = [self.testsRun, test.id()]
 
     def stopTest(self, test):
         super().stopTest(test)
         if self.coverage:
             self.coverage.switch_context("")
+        if self.boundary == self.cutoff:
+            self.stop()
 
     def event(self, kind, test, err):
         self.events.append(dict(kind=kind, test=test.id(),
             exception_type=f"{err[0].__module__}.{err[0].__qualname__}", message=str(err[1]),
-            executed=not isinstance(test, unittest.loader._FailedTest)))
+            executed=not isinstance(test, unittest.loader._FailedTest),
+            boundary=self.boundary if isinstance(test, unittest.TestCase) else None))
 
     def addError(self, test, err):
         self.event("error", test, err)
@@ -100,7 +106,8 @@ def run(config):
                  loader.discover(str(ROOT / "gen2/tests"), pattern="test_*.py"))
         stream = open(config["coverage"] + ".log", "w", buffering=1) if baseline else sys.stdout
         result = unittest.TextTestRunner(stream=stream, verbosity=2 if baseline else 0, failfast=True,
-            resultclass=lambda *a, **kw: EvidenceResult(*a, coverage=baseline.coverage if baseline else None, **kw)).run(suite)
+            resultclass=lambda *a, **kw: EvidenceResult(*a, coverage=baseline.coverage if baseline else None,
+                cutoff=config.get("cutoff"), **kw)).run(suite)
         if baseline:
             if not config["tests"]:
                 baseline.finish(result)
@@ -109,7 +116,8 @@ def run(config):
                 baseline.coverage.save()
             stream.close()
         data = dict(tests_run=result.testsRun, errors=len(result.errors), failures=len(result.failures),
-                    skipped=len(result.skipped), unexpected_successes=len(result.unexpectedSuccesses), events=result.events)
+                    skipped=len(result.skipped), unexpected_successes=len(result.unexpectedSuccesses),
+                    events=result.events, boundary=result.boundary)
         print(MARKER + json.dumps(data), flush=True)
         return 0 if result.wasSuccessful() else 1
     try:
