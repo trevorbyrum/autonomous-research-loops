@@ -9,7 +9,6 @@ import subprocess
 import sys
 import unittest
 from unittest import mock
-from coverage import CoverageData
 
 from gen2.tests import test_acceptance
 
@@ -104,8 +103,9 @@ class AcceptanceCoverageReuseTest(unittest.TestCase):
                     receipt = json.loads(Path(report["coverage"]).with_suffix(".json").read_text())
                     self.assertEqual(receipt["workers"], 8)
                     self.assertEqual(len(receipt["shards"]), 8)
-                    data = CoverageData(basename=report["coverage"])
-                    data.read()
-                    self.assertIn("test_probe.Probe.test_answer", data.measured_contexts())
+                    with mock.patch.object(sys, "path", [str(repository / "tools"), *sys.path]):
+                        collected = importlib.import_module("gen2_coverage").Baseline(report["coverage"]).coverage
+                    collected.load()
+                    self.assertIn("test_probe.Probe.test_answer", collected.get_data().measured_contexts())
                     self.assertEqual(report["counts"].get("ASSERTION_KILL"), 2)
                     self.assertEqual(Path(report["coverage"]), root / (coverage or "build/gen2-coverage.sqlite"))
