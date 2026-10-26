@@ -5,13 +5,18 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 ## Current
 *(This section is current state only; history is in REVIEW-LOG.md. Contract and rulings: DOSSIER.md.)*
 - **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
-- **Open task:** 2d, slice 6. **6a is complete** (parts 1–4; PR #28 merged 2026-10-26). The checks cut-back S1–S3 and S2b are complete (PR #30 merged).
-  - **S2c** (in progress, Sol): `make gen2-accept` never reused the acceptance coverage. `make` passes `GEN2_COVERAGE` into the mutation step's environment, the environment hash differs, and the full suite re-runs, costing about 73 min per landing.
-  - **Next:** S4 (Router owns the three insertion-time rules; brief `private/reviews/gen2-s4-brief-20261026.md`), after S2c.
-- **Last verifier result:** 6a part 4 `4fdfe4d`, gen2-accept exit 0 in 11,090 s: 3,927 tests; 95 executable changed-line mutants, 0 survivors; 23 clean controls, 940 s. 4,370 s of the total was the un-reused baseline (S2c). gen2-gateway was carried forward from 14c31e1.
+- **Open task:** 2d, slice 6. **6a is complete** (parts 1–4; PR #28 merged 2026-10-26). The checks cut-back S1–S3, S2b and **S2c** (PR #33: the coverage is reused through `make gen2-accept`, confirmed live in the S4 run) are complete.
+  - **S4** (Router owns the three insertion-time rules, PR #35, head `af81ff9`), round 3.
+    - Round 1: BLOCKED. The hold exemption had promotion semantics.
+    - Round 2: accepted, then the verifier's changed-line mutation found a survivor: no test caught a weakened acquisition-time match, which would let a different-time, higher-tier acquisition authorize a table receipt.
+    - Round 3: exact acquisition lookup, both-direction tests, redundant filters removed. Net +185 against +140 planned.
+    - Astra round 3: accepted pending the verifier, which is running.
+  - **Next:** S5 (delete the semantic DDL; brief `private/reviews/gen2-s5-brief-20261026.md`) after S4 merges.
+- **Last verifier result:** 6a part 4 `4fdfe4d`, gen2-accept exit 0 in 11,090 s (4,370 s of it the un-reused baseline, now fixed by S2c). gen2-gateway carried forward from 14c31e1.
+- **Gate S watch item:** a stage-1 survivor costs a full serial suite (about 70 min) in stage 2. Candidate: run stage 2 sharded or in parallel.
 - **Blockers:** none. **Open operator decisions:** none.
 - **Gate S:** last run #1 at `65fb30e`. Since then, the batches have been net-negative (S1 −2,447; S3 −22,845).
-- **What's next:** S2c, then S4–S5, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
+- **What's next:** S4, then S5, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 
@@ -19,7 +24,7 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 **Size rules (the user, 2026-09-29):** no hand-written file over 1,500 lines (enforced by `make gen2-check`); 15,000 total production lines is a growth-review trigger.
 - **Done:** 2a (bootstrap chain), 2r (size rules), 2b (gateway input contract), 2q (architecture refactors), 2c (accounting views and confidence), and in 2d: slices 1–5 and 6a parts 1–3.
 - **Remaining, in order** (S = Gate S simplification batch, R = records batch):
-  1. ~~R1 records collapse~~, ~~S1 tiered checks~~, ~~S2 automatic mutation~~, ~~S3 retire the metrics ratchet~~ (all done); ~~S2b mutation test selection~~ (done); S2c coverage reuse through make (in progress).
+  1. ~~R1 records collapse~~, ~~S1 tiered checks~~, ~~S2 automatic mutation~~, ~~S3 retire the metrics ratchet~~ (all done); ~~S2b mutation test selection~~ (done); ~~S2c coverage reuse through make~~ (done).
   2. ~~**2d slice 6a part 4**~~ (freshness binding; accepted 2026-10-26).
   3. S4 Router owns the three insertion-time rules, S5 delete the semantic DDL, R2 INVARIANTS and traceability table, S6 JSON member-domain DDL guards (only if confirmed).
   4. **2d 6b1** persist the rich dossier (≈ 350), **6b2** completion gates (6b2 + 6b3 merged, ≈ 450), **slice 7** completion approval binding (≈ 200).
