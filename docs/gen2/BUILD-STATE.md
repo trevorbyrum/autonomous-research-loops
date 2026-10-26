@@ -6,17 +6,13 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 *(This section is current state only; history is in REVIEW-LOG.md. Contract and rulings: DOSSIER.md.)*
 - **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
 - **Open task:** 2d, slice 6. **6a is complete** (parts 1–4; PR #28 merged 2026-10-26). The checks cut-back S1–S3, S2b and **S2c** (PR #33: the coverage is reused through `make gen2-accept`, confirmed live in the S4 run) are complete.
-  - **S4** (Router owns the three insertion-time rules, PR #35, head `af81ff9`), round 3.
-    - Round 1: BLOCKED. The hold exemption had promotion semantics.
-    - Round 2: accepted, then the verifier's changed-line mutation found a survivor: no test caught a weakened acquisition-time match, which would let a different-time, higher-tier acquisition authorize a table receipt.
-    - Round 3: exact acquisition lookup, both-direction tests, redundant filters removed. Net +185 against +140 planned.
-    - Astra round 3: accepted pending the verifier, which is running.
-  - **Next:** S5 (delete the semantic DDL; brief `private/reviews/gen2-s5-brief-20261026.md`) after S4 merges.
-- **Last verifier result:** 6a part 4 `4fdfe4d`, gen2-accept exit 0 in 11,090 s (4,370 s of it the un-reused baseline, now fixed by S2c). gen2-gateway carried forward from 14c31e1.
+  - **S4 is complete** (PR #35 merged at `90d5070`, 2026-10-26). It took four rounds: B1/B2 hold semantics, then two mutation-found missing tests, then equivalent-mutant removal through membership tests. Net +194 against +140 planned (production +36, tests +158).
+  - **S5** (delete the semantic DDL and raw matrices, about −4,300; brief `private/reviews/gen2-s5-brief-20261026.md`) dispatched to Sol `2ab2c299`.
+- **Last verifier result:** S4 `90d5070`, gen2-accept exit 0 in 4,729 s: 3,937 tests; 34 executable changed-line mutants (22 assertion, 12 error kills), 0 survivors; baseline reused (0.08 s); mutation step 457 s.
 - **Gate S watch item:** a stage-1 survivor costs a full serial suite (about 70 min) in stage 2. Candidate: run stage 2 sharded or in parallel.
 - **Blockers:** none. **Open operator decisions:** none.
 - **Gate S:** last run #1 at `65fb30e`. Since then, the batches have been net-negative (S1 −2,447; S3 −22,845).
-- **What's next:** S4, then S5, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
+- **What's next:** S5, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 

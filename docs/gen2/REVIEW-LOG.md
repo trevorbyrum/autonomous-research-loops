@@ -3579,3 +3579,24 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **Astra round 3** (`private/reviews/gen2-s4-r3-astra-review-20261026.md`): A, B and C PASS, ROOT-CAUSE. **Accepted pending the verifier.** The removed route, acquirer and table-tier conditions are enforced by `_basis_member`, `_require_own_extraction` and `_require_validated_extraction`; no newly admitted operand class.
 - **Lesson:** the changed-line mutation gate found an untested false-certification guard (weakening it changes admissibility) that two review rounds and 1,631 targeted tests missed. That is what S2 was adopted for.
 
+## 2026-10-26: S4 rounds 4 and acceptance (90d5070, PR #35); S5 dispatched
+- **Verifier at `af81ff9`:** stopped at 18/105.
+  - Survivor `detailed_checks.py:65` `!=` changed to `>=`: a canonical alarm-bearing receipt was unpinned.
+  - The next mutant in stage 2 (`NotEq_Gt`) was equivalent, because `"canonical_bytes"` sorts before both extraction methods.
+  - Evidence: `private/evidence/s4/verifier-af81ff9-stopped/`.
+- **Round 4** (`90d5070`, brief `gen2-s4-r4-brief-20261026.md`):
+  - an 8-line literal test (an adjudicated canonical alarm is admitted and promotes, at SQL parity);
+  - closed-domain string comparisons on changed lines rewritten as explicit membership tests;
+  - a new optional annotation quoted.
+  - Sol's own changed-line pre-check was clean. Net +194.
+- **Astra round 4** (`private/reviews/gen2-s4-r4-astra-review-20261026.md`): A, B and C PASS, ROOT-CAUSE.
+  - The original implementation already had the intended canonical-alarm behaviour. The test repairs a coverage gap.
+  - The rewrites are equivalent over the supported domains.
+- **Verifier** (`c1245d1d`): gen2-accept exit 0 in 4,729 s. 34 executable mutants, all killed in stage 1. Baseline reused. Mutation step 457 s. **S4 merged.**
+- **Process changes (orchestrator):**
+  - Coders run the changed-line gate through `make gen2-accept` on a disposable copy before pushing mutation-sensitive repairs.
+  - Survivors are batched into one push.
+  - A superseded campaign is stopped and archived.
+  - Gate S watch: stage-1 survivors cost a serial full suite (about 70 min) each.
+- **S5** dispatched (fresh Sol `2ab2c299`).
+
