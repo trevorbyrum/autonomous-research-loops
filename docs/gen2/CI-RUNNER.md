@@ -20,7 +20,7 @@ the authority for the executed checkout and branch head versus PR merge.
 | `push` (default) | sqlite, boundaries, size, schemas, DDL, catalog consistency, metrics, debt, locators, supported source | One execution |
 | `engine-unit` | Full unittest discovery through the existing verbose runner | Classes assigned by SHA-256 modulo shard count; all class occurrences stay together in discovery-relative order |
 | `engine-trigger-order` | Original and reversed store suites, with the unchanged rebuild and outcome gates | One execution |
-| `engine-mutation` | Cosmic Ray changed-line campaign against the merge-base of `GEN2_BASE` (default `origin/gen2`), native git/pragma filters, full-suite fail-fast baseline and fresh tests per mutant | One serial execution |
+| `engine-mutation` | Cosmic Ray changed-line campaign against the merge-base of `GEN2_BASE` (default `origin/gen2`), native git/pragma filters, shared full-suite coverage; line/module selections before full-suite escalation | One serial execution |
 | `gateway-no-db` | Existing full gateway discovery without a DSN | One execution; requires psycopg even without PostgreSQL |
 | `gateway-db` | Schema/seed plus full gateway discovery on a disposable Unix-socket PostgreSQL cluster | One DB owner in this invocation |
 | `gateway-mutants` | Schema/seed and every gateway mutant on a disposable cluster | One DB owner in this invocation |
@@ -29,9 +29,10 @@ Unit partitioning is exhaustive: every index must finish before acceptance.
 Mutation is unsharded and records every generated identity, filtered outcome,
 normalized verdict, raw diagnostics and diff in `mutation-report.json` and its
 native session database. Only inline `# pragma: no mutate` comments with a reason
-can exclude changed-line survivors; Astra reviews them. Test errors need review
-and fail; timeouts, crashes and unclassified results fail. Syntax-invalid
-variants are reported separately and never counted as kills.
+can exclude changed-line survivors; Astra reviews them. After a passing clean
+baseline, test execution errors count as `ERROR_KILL`, separately from
+`ASSERTION_KILL`. Timeouts, crashes, loader/harness/internal errors and missing
+or unclassified outcomes fail. Syntax-invalid variants are separate non-kills.
 Unit discovery is a multiset: existing re-exported TestCase occurrences retain
 their original multiplicities, and all occurrences of a class stay together.
 Comparison requires those counts exactly. Mutation IDs remain unique.
@@ -39,11 +40,12 @@ Filtering can coalesce class/module fixture transitions when intervening classes
 are assigned elsewhere. Class placement does not promise identical fixture
 transitions for arbitrary suites; the unsharded sequence remains unchanged.
 The unit and trigger-order runners also emit test/subtest outcomes and JUnit;
-the mutation runner retains typed failures/errors, fresh test PIDs and baseline logs.
+the mutation runner retains typed failures/errors, fresh test PIDs, baseline coverage, per-job test selections and per-stage outcomes/timings.
 
-`make gen2-check` runs static gates and units. `make gen2-accept` adds changed-line
-mutation and trigger-order when
-`git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema` is non-empty or unavailable;
+`make gen2-check` runs static gates and units. Under `make gen2-accept`, that
+unit run also collects coverage once; acceptance then runs
+trigger-order when `git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema`
+is non-empty or unavailable, followed by changed-line mutation;
 `GEN2_BASE` defaults to `origin/gen2`. These targets have no shard arguments
 by default. `make gen2-gateway` still runs no-DB, DB and all mutants by default,
 on its existing bootstrap interpreter. Its new `GEN2_GATEWAY_MODE` only selects
@@ -56,7 +58,7 @@ including visible ancestors, and intersects that allocation with process CPU
 affinity. Fractional quotas round down, with a minimum of one runnable process.
 It does not use host-visible `os.cpu_count()`. `GEN2_CPU_BUDGET` can lower the
 allocation, never increase it; malformed quotas or allocations fail visibly.
-The engine mutation campaign uses Cosmic Ray's serial local distributor, with
+The engine mutation campaign uses Cosmic Ray's serial native executor, with
 one test worker and fresh child interpreters. It has no worker override.
 
 Each mode owns the aggregate allocation. Engine and gateway execute separately,
@@ -126,7 +128,7 @@ existing local gateway command. Image `:2` and DB modes stay off the Jenkins pat
 
 ## Equivalence evidence
 
-At a pinned commit, run `make gen2-check gen2-trigger-order` for the exhaustive
+At a pinned commit, run `make gen2-accept GEN2_BASE=<merge-base>` for the complete
 CI qualification comparison in a disposable `git archive` snapshot with
 `.venv-gen2` copied using `cp -a`. Start only when
 no `gen2-landing-*` unit is active, under `systemd-run --user --collect
@@ -199,3 +201,28 @@ evidence at phase gates and Gate S. It never participates in acceptance or block
 The gateway retains its existing 413-mutant PostgreSQL step pending separate adoption.
 The wrapper observes the test-runner boundary: an outer assertion following a
 nested child crash can still look like an assertion failure. Astra reviews intent.
+
+The acceptance unit run records coverage.py per-test dynamic contexts through
+`switch_context(test.id())`, including test setup/cleanup. `GEN2_COVERAGE` defaults
+to `build/gen2-coverage.sqlite`. A successful unsharded full run publishes a
+receipt bound to HEAD, tracked source bytes/differences, untracked source inputs,
+interpreter path/version/options, coverage version, installed/locked dependencies,
+discovery arguments, hashed environment and the coverage file's SHA-256. Mutation reuses only a
+matching receipt; missing, stale, corrupt or incomplete maps require a fresh
+full baseline; nondefault interpreter options force recollection. Plain `gen2-check` need not collect coverage. Set
+`GEN2_TEST_COVERAGE=<path>` to collect it in a standalone unsharded `gen2-test`.
+
+Stage 1 runs tests covering the mutated source span. If none exist, stage 1b
+runs tests covering any line of that module. A survivor of either selection
+runs the full suite in a fresh process (stage 2); an entirely uncovered module
+goes directly to stage 2. Assertion and test-error kills retain fail-fast
+semantics. Typed errors during test or fixture execution become `ERROR_KILL`;
+failed discovery/imports represented by unittest's loader remain invalid.
+No survivor passes on a partial suite.
+Kills need clean controls on restored source, constructing the complete selection/discovery
+before stopping after the observed test ordinal/ID. Fixture errors use whole controls.
+Cache exact selection/boundary/source/configuration; failed controls try module/full selection.
+Survivors and syntax-invalid results need none.
+`coverage.sqlite`, its receipt, `test-selection.json`, `module-selection.json`,
+and each result's `stages` preserve selection, verdict and timing evidence.
+Timing separates units from mutation, including controls (`qualifications`/`qualification_seconds`).

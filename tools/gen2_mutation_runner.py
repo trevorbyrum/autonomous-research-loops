@@ -4,20 +4,43 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
+import time
+from types import SimpleNamespace
 import unittest
+
+from gen2_coverage import Baseline
 
 MARKER = "GEN2_MUTATION_RESULT "
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class EvidenceResult(unittest.TextTestResult):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, coverage=None, cutoff=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.events = []
+        self.coverage = coverage
+        self.cutoff = cutoff
+        self.boundary = None
+
+    def startTest(self, test):
+        if self.coverage:
+            self.coverage.switch_context(test.id())
+        super().startTest(test)
+        self.boundary = [self.testsRun, test.id()]
+
+    def stopTest(self, test):
+        super().stopTest(test)
+        if self.coverage:
+            self.coverage.switch_context("")
+        if self.boundary == self.cutoff:
+            self.stop()
 
     def event(self, kind, test, err):
         self.events.append(dict(kind=kind, test=test.id(),
-            exception_type=f"{err[0].__module__}.{err[0].__qualname__}", message=str(err[1])))
+            exception_type=f"{err[0].__module__}.{err[0].__qualname__}", message=str(err[1]),
+            executed=not isinstance(test, unittest.loader._FailedTest),
+            boundary=self.boundary if isinstance(test, unittest.TestCase) else None))
 
     def addError(self, test, err):
         self.event("error", test, err)
@@ -56,10 +79,14 @@ def normalize(result):
     rc = data.get("exit")
     if isinstance(rc, int) and rc < 0:
         return "CRASH"
-    if rc not in (0, 1) or not data.get("tests_run") or data.get("unexpected_successes"):
+    if rc not in (0, 1) or not isinstance(data.get("tests_run"), int) or data.get("unexpected_successes"):
         return "INVALID"
     if data.get("errors"):
-        return "TEST_ERROR"
+        errors = [event for event in data.get("events", []) if event.get("kind") == "error"]
+        return "ERROR_KILL" if (rc == 1 and result.test_outcome == "killed" and
+            len(errors) == data["errors"] and all(event.get("executed") for event in errors)) else "INVALID"
+    if not data["tests_run"]:
+        return "INVALID"
     if rc == 1 and data.get("failures", 0) > 0 and result.test_outcome == "killed":
         return "ASSERTION_KILL"
     if rc == 0 and data.get("failures") == 0 and result.test_outcome == "survived":
@@ -71,13 +98,26 @@ def run(config):
     if config.pop("inner", False):
         sys.path[:0] = [str(ROOT / "gen2/tests"), str(ROOT)]
         os.environ.pop("GEN2_CI_EVIDENCE", None)
+        baseline = Baseline(config["coverage"]) if config.get("coverage") else None
+        if baseline:
+            baseline.start()
         loader = unittest.defaultTestLoader
         suite = (loader.loadTestsFromNames(config["tests"]) if config["tests"] else
                  loader.discover(str(ROOT / "gen2/tests"), pattern="test_*.py"))
-        result = unittest.TextTestRunner(stream=sys.stdout, verbosity=0, failfast=True,
-                                         resultclass=EvidenceResult).run(suite)
+        stream = open(config["coverage"] + ".log", "w", buffering=1) if baseline else sys.stdout
+        result = unittest.TextTestRunner(stream=stream, verbosity=2 if baseline else 0, failfast=True,
+            resultclass=lambda *a, **kw: EvidenceResult(*a, coverage=baseline.coverage if baseline else None,
+                cutoff=config.get("cutoff"), **kw)).run(suite)
+        if baseline:
+            if not config["tests"]:
+                baseline.finish(result)
+            else:
+                baseline.coverage.stop()
+                baseline.coverage.save()
+            stream.close()
         data = dict(tests_run=result.testsRun, errors=len(result.errors), failures=len(result.failures),
-                    skipped=len(result.skipped), unexpected_successes=len(result.unexpectedSuccesses), events=result.events)
+                    skipped=len(result.skipped), unexpected_successes=len(result.unexpectedSuccesses),
+                    events=result.events, boundary=result.boundary)
         print(MARKER + json.dumps(data), flush=True)
         return 0 if result.wasSuccessful() else 1
     try:
@@ -86,14 +126,29 @@ def run(config):
     except SyntaxError as exc:
         print(MARKER + json.dumps(dict(kind="SYNTAX_INVALID", detail=str(exc))), flush=True)
         return 86
-    child = subprocess.Popen([sys.executable, __file__, json.dumps({**config, "inner": True})],
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    output, _ = child.communicate()
-    # Keep all diagnostics, with exactly one wrapper-owned result marker.
-    print("\n".join(line for line in output.splitlines() if not line.startswith(MARKER)))
-    print(MARKER + json.dumps({**marker(output), "exit": child.returncode, "test_pid": child.pid}), flush=True)
+    stages = []
+    while True:
+        started = time.monotonic()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json") as request:
+            json.dump({**config, "inner": True}, request)
+            request.flush()
+            child = subprocess.Popen([sys.executable, __file__, request.name],
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            output, _ = child.communicate()
+        data = {**marker(output), "exit": child.returncode, "test_pid": child.pid}
+        verdict = normalize(SimpleNamespace(worker_outcome="normal", output=MARKER + json.dumps(data),
+                                           test_outcome="survived" if child.returncode == 0 else "killed"))
+        # Keep diagnostics and per-stage evidence, with one final result marker.
+        print("\n".join(line for line in output.splitlines() if not line.startswith(MARKER)))
+        stages.append(dict(stage=config.get("stage", "baseline"), tests=config["tests"],
+                           seconds=time.monotonic() - started, verdict=verdict, **data))
+        if config.get("stage") not in (1, "1b") or verdict != "SURVIVED":
+            break
+        config.update(tests=config["full_tests"], stage=2)
+    print(MARKER + json.dumps({**data, "stages": stages}), flush=True)
     return child.returncode if child.returncode in (0, 1) else 86
 
 
 if __name__ == "__main__":
-    sys.exit(run(json.loads(sys.argv[1])))
+    argument = sys.argv[1]
+    sys.exit(run(json.loads(argument if argument.startswith("{") else Path(argument).read_text())))

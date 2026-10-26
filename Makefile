@@ -19,6 +19,7 @@ GEN2_CI_MODE ?= push
 GEN2_CI_SHARD ?= 1/1
 GEN2_GATEWAY_MODE ?= all
 GEN2_BASE ?= origin/gen2
+GEN2_COVERAGE ?= build/gen2-coverage.sqlite
 
 GEN2_CC_MAX_FUNCTION = 48
 GEN2_CC_MAX_AVERAGE = 10
@@ -30,6 +31,7 @@ gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-
 
 # Acceptance skips trigger-order only when the committed DDL diff is known empty.
 # A missing base or failed comparison runs the conservative trigger-order check.
+gen2-accept: export GEN2_TEST_COVERAGE = $(abspath $(GEN2_COVERAGE))
 gen2-accept: gen2-check
 	@if ddl_changes=$$(git diff --name-only "$(GEN2_BASE)...HEAD" -- gen2/store/schema); then \
 		if [ -z "$$ddl_changes" ]; then \
@@ -41,7 +43,7 @@ gen2-accept: gen2-check
 	fi; \
 	echo "gen2-accept: running trigger-order ($$reason: $(GEN2_BASE)...HEAD)"; \
 	$(MAKE) gen2-trigger-order
-	$(MAKE) gen2-mutation GEN2_BASE="$(GEN2_BASE)"
+	$(MAKE) gen2-mutation GEN2_BASE="$(GEN2_BASE)" GEN2_COVERAGE="$(GEN2_COVERAGE)"
 	@echo "gen2-accept: all checks passed"
 
 .PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-trigger-order gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db gen2-ci-gateway-mutants
@@ -86,7 +88,7 @@ $(GEN2_VENV)/.gen2-installed: gen2/requirements.txt gen2/requirements-dev.txt ge
 	$(GEN2_VENV)/bin/python -m pip install --no-input --disable-pip-version-check --require-hashes --no-deps --only-binary=:all: -r gen2/requirements-build.txt
 	$(GEN2_VENV)/bin/python -m pip install --no-build-isolation --no-input --disable-pip-version-check --require-hashes --no-deps \
 		-r gen2/requirements.txt -r gen2/requirements-dev.txt
-	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine, radon, cosmic_ray, pytest"
+	$(GEN2_VENV)/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine, radon, cosmic_ray, pytest, coverage"
 	touch $@
 
 # The store's SQLite compatibility gate (gen2/store/compat.py; Astra third
@@ -156,11 +158,11 @@ gen2-trigger-order: gen2-venv
 
 # Acceptance mutates changed production lines against the explicit merge-base.
 gen2-mutation: gen2-venv
-	$(PYTHON) tools/gen2_mutation_scope.py --base "$(GEN2_BASE)" $(GEN2_MUTATION_ARGS)
+	$(PYTHON) tools/gen2_mutation_scope.py --base "$(GEN2_BASE)" --coverage "$(GEN2_COVERAGE)" $(GEN2_MUTATION_ARGS)
 
 # Full production campaigns are advisory evidence for phase gates and Gate S.
 gen2-mutation-report: gen2-venv
-	$(PYTHON) tools/gen2_mutation_scope.py --full --report-only $(GEN2_MUTATION_ARGS)
+	$(PYTHON) tools/gen2_mutation_scope.py --full --report-only --coverage "$(GEN2_COVERAGE)" $(GEN2_MUTATION_ARGS)
 
 # Size rules (charter "Size rules"; task 2r): fails on a hand-written gen-2
 # file over 1,500 lines (generated files are exempt only by the reasoned list

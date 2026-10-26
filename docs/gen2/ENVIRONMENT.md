@@ -12,6 +12,7 @@ This replaces the earlier practice of installing the runtime dependency with `pi
 | `gen2/requirements-dev.txt` | `jsonschema==4.10.3` and its complete Python 3.12 dependency graph: `attrs==23.2.0`, `pyrsistent==0.20.0` | `tools/check_gen2_schemas.py` only; no gen-2 module may import it |
 | `gen2/requirements-dev.txt` (task 2q-r1) | `rope==1.15.0` with `pytoolconfig==1.3.1`, `packaging==26.3`, `platformdirs==4.12.4`; `hypothesis==6.168.5` with `sortedcontainers==2.4.0`; `time-machine==3.5.1` (no dependencies) | dev tooling for refactors and their verification (below); no gen-2 module and no tool of `make gen2-check` imports them |
 | `gen2/requirements-dev.txt` (S2) | Cosmic Ray 8.7.0 and pytest 9.1.1, spike's exact 31-package runtime closure; `requirements-build.txt` pins setuptools 84.2.1 | Acceptance mutation tooling; no production imports |
+| `gen2/requirements-dev.txt` (S2b) | `coverage==7.10.7`, no active Python 3.12 runtime dependencies | Per-test dynamic contexts for staged mutation selection |
 | `gen2/requirements-dev.txt` (S3) | `radon==6.0.1`, `mando==0.7.1`, `colorama==0.4.6`, `six==1.17.0` | `gen2-complexity` and advisory `radon raw` / `radon mi` reports; no production import grant |
 
 Every entry carries its PyPI SHA-256 hashes. `make gen2-venv` runs:
@@ -20,7 +21,7 @@ Every entry carries its PyPI SHA-256 hashes. `make gen2-venv` runs:
 python3 -m venv --clear .venv-gen2
 .venv-gen2/bin/python -m pip install --require-hashes --no-deps --only-binary=:all: -r gen2/requirements-build.txt
 .venv-gen2/bin/python -m pip install --no-build-isolation --require-hashes --no-deps -r gen2/requirements.txt -r gen2/requirements-dev.txt
-.venv-gen2/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine, radon, cosmic_ray, pytest"
+.venv-gen2/bin/python -c "import rfc8785, jsonschema, rope, hypothesis, time_machine, radon, cosmic_ray, pytest, coverage"
 ```
 
 - `--require-hashes` refuses any file whose hash is not listed.
