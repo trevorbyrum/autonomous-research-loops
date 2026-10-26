@@ -8,9 +8,9 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 - **Open task:** 2d, slice 6. **6a is complete** (parts 1–4; PR #28 merged 2026-10-26). The checks cut-back S1–S3, S2b and **S2c** (PR #33: the coverage is reused through `make gen2-accept`, confirmed live in the S4 run) are complete.
   - **S4** (Router owns the three insertion-time rules, PR #35, head `af81ff9`), round 3.
     - Round 1: BLOCKED. The hold exemption had promotion semantics.
-    - Round 2: accepted, then the verifier's changed-line mutation found a survivor. A different-time, higher-tier acquisition could authorize a table receipt, which is a real defect.
+    - Round 2: accepted, then the verifier's changed-line mutation found a survivor: no test caught a weakened acquisition-time match, which would let a different-time, higher-tier acquisition authorize a table receipt.
     - Round 3: exact acquisition lookup, both-direction tests, redundant filters removed. Net +185 against +140 planned.
-    - Verifier and Astra round 3 are running.
+    - Astra round 3: accepted pending the verifier, which is running.
   - **Next:** S5 (delete the semantic DDL; brief `private/reviews/gen2-s5-brief-20261026.md`) after S4 merges.
 - **Last verifier result:** 6a part 4 `4fdfe4d`, gen2-accept exit 0 in 11,090 s (4,370 s of it the un-reused baseline, now fixed by S2c). gen2-gateway carried forward from 14c31e1.
 - **Gate S watch item:** a stage-1 survivor costs a full serial suite (about 70 min) in stage 2. Candidate: run stage 2 sharded or in parallel.
