@@ -43,7 +43,7 @@ gen2-accept: gen2-check
 	fi; \
 	echo "gen2-accept: running trigger-order ($$reason: $(GEN2_BASE)...HEAD)"; \
 	$(MAKE) gen2-trigger-order
-	$(MAKE) gen2-mutation GEN2_BASE="$(GEN2_BASE)" GEN2_COVERAGE="$(GEN2_COVERAGE)"
+	$(MAKE) gen2-mutation
 	@echo "gen2-accept: all checks passed"
 
 .PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-trigger-order gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db gen2-ci-gateway-mutants
