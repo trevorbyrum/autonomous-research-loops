@@ -3493,3 +3493,58 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **Selection-rule addition:** a change to a Makefile recipe requires running every test that executes that recipe (`test_acceptance`).
 - **Repair dispatched** as one combined pass. A fresh gen2-accept and gen2-gateway will run at the repaired head.
 - **Noted for the operator, no action taken:** `.github/workflows/gen2-check.yml` has been tracked since task 0a (2026-09-25). PR checks show only Jenkins. It is a deletion candidate under the "no GitHub Actions" rule.
+
+## 2026-10-25: batch S2 (14c31e1, PR #25): ACCEPTED, round 2
+- **Astra** (`8d7e46f0`; `private/reviews/gen2-s2-r2-astra-review-20261025.md`): PASS, ROOT-CAUSE.
+  - S2-C1 and S2-C2 are closed: the order is check → conditional trigger-order → mutation → success, and the `test_acceptance` fixture models the full graph.
+  - NB1 is done.
+- **Verifier** (Sonnet `7be8a57c`): **gen2-accept exit 0 in 3,263 s** (3,910 tests; changed-line mutation had legitimately no applicable files); gen2-gateway exit 0 in 1,012 s (413/413).
+- **The checks cut-back S1–S3 is complete.** Landing time went from about 7,900 s to 6,091, then 5,356, then 3,263 s.
+  - Retired: the replay, differential and move tools; the metrics ratchet, ledger and source contract; the hand-written mutant inventory and controls.
+  - Adopted: tiered trigger-order, radon ceilings, and Cosmic Ray changed-line mutation (gate) plus full-file campaigns (report-only).
+- **Next:** 6a part 4 (freshness binding), contract plan §6.1, dispatched to Sol (branching after PR #25 merges).
+
+## 2026-10-25: S2 cost defect found on first real use; S2b dispatched
+- 6a part 4 (`5eb31d0`, PR #28): the verifier's gen2-check passed (3,922 tests).
+- The changed-line Cosmic Ray step had **79 executable mutants**, and **each ran the entire suite** (about 52 min serially, fail-fast).
+  - After about 71 min, only the baseline and **2 mutants** (both killed) were done. The projection was about 6 more hours.
+  - The orchestrator stopped the run; the partial session is saved in the part 4 evidence.
+- **Root cause:** S2 had no per-mutant test selection.
+- **S2b** (Sol `01b7dbdf`): two-stage selection.
+  - Stage 1 runs the tests covering the mutated line (coverage.py contexts preferred).
+  - Stage 2 runs the full suite for stage-1 survivors only.
+  - There is no loss of rigor: a survivor is always judged against the full suite. The target is under about 20 min for a part-4-sized slice.
+- Astra's part 4 review continues statically. The mutation gate stays pending until a re-run with S2b.
+
+## 2026-10-25: 2d slice 6a part 4, freshness binding (5eb31d0, PR #28): BLOCK, round 1
+- **Astra** (`100fb0d6`; `private/reviews/gen2-2d-6a-p4-astra-review-20261025.md`):
+  - A BLOCK, B PASS, C BLOCK, Gate S proportionality PASS.
+  - The freshness fence is ROOT-CAUSE and sound: coherent capture, pre-effect writer fence, typed differences, a correct three-attempt bound, and the audit is respected.
+  - Size: production +63 net, tests +241, matching the estimate.
+- **R1:** recapture is not bound to the caller's finite deadline, as the 2026-10-23 ruling requires. It must reuse the existing deadline authority, with no new framework. Tests needed: expiry after a mismatch, expiry while awaiting the fence, and a live-deadline success case.
+- **C1:** the exhaustion test needs an in-callback attempt-ceiling assertion, so that removing the bound fails by assertion.
+- **N1** (non-blocking): consider tool-level skipping of annotation-only mutations instead of per-line pragmas. All six pragmas were accepted.
+- **Mutation gate:** pending S2b.
+- **Repair queued** behind S2b (one coder at a time on the shared tree).
+
+## 2026-10-25: S2b (c334e03, PR #30): BLOCK, round 1; 6a part 4 (82befcb, PR #28): ACCEPTED pending the mutation gate, round 2
+- **S2b, Astra** (`55f5459a`; `private/reviews/gen2-s2b-astra-review-20261025.md`): BLOCK on **S2b-C1** (MITIGATION as delivered).
+  - Kills were awarded from selected test executions that had not been qualified on clean source. Astra reproduced a selected subset failing on unmutated code, so a survivor was counted as a kill.
+  - A cached baseline was not bound to the execution configuration.
+  - Everything else PASSED: shared coverage, staged selection, `ERROR_KILL` policy, the +18% overhead, and the 25-min mutation budget as reasonable.
+  - Verifier gen2-accept exit 0 (3,955 s).
+  - **Repair dispatched** (fresh Sol `80558bbb`): qualify each distinct selection on clean source, fall back conservatively, and bind the baseline to the configuration.
+- **6a part 4, Astra round 2** (`f1e99957`): **A, B, C and S PASS, ROOT-CAUSE.**
+  - R1 is closed: recapture is bound to the invocation's existing `deadline_at`, checked before capture, before preparation and inside the writer fence.
+  - C1 is closed: an in-callback ceiling assertion.
+  - **ACCEPTED pending the independent mutation gate**, which runs after S2b merges into the part 4 branch.
+
+## 2026-10-26: S2b-C1 repair: eager controls too costly; lazy controls ACCEPTED (1d54e1d, PR #30), round 2
+- **First repair** (`9f08939`, Sol `80558bbb`) qualified every distinct selection whole on clean source. Correct, but one 2,747-test control took 3,059 s to authorise a mutant run that stopped at position 471 (423 s). The projected mutation step was about 4 h, against 24.96 min. The orchestrator stopped the measurement at 18/79 results and kept the partial evidence (`private/evidence/s2b-c1/STATE.md`).
+- **Astra cost consult** (`55f5459a`; `private/reviews/gen2-s2b-c1-cost-consult-astra-20261026.md`): lazy, kill-only controls are SOUND WITH CHANGES, under four conditions: construct the full ordered selection and stop at the boundary; fixture and unknown boundaries fall back to the whole selection; keep the source and execution-identity binding; exact cache only. Reusing the acceptance run as the stage-2 control is unsound without aligning the runners.
+- **Round 2** (`1d54e1d`, brief `private/reviews/gen2-s2b-c1-lazy-control-brief-20261026.md`): replaces the eager controls. Net 0 lines against `9f08939`, +120 against `c334e03`. All five fault removals fail by assertion.
+- **Measurement** on the part 4 changes: mutation 2,010.8 s (33.5 min) including 510.8 s of controls (18 controls over 12 sequences, all clean). Unit run 4,492 s.
+- **Astra round 2** (`private/reviews/gen2-s2b-r2-astra-review-20261026.md`): A, B, C and proportionality PASS, ROOT-CAUSE. **ACCEPTED pending the verifier.** NB1: no executed fault receipt for "survivors take no control"; a passing assertion covers it.
+- **Verifier:** gen2-accept at `1d54e1d` dispatched (Sonnet `9e8fda2f`).
+- **Lesson (Gate S always-on):** a correctness repair needs its cost measured before review, not after. The eager design was the per-finding answer; the lazy one keeps the same guarantee with 8.5 min of controls instead of a projected 3 h or more.
+

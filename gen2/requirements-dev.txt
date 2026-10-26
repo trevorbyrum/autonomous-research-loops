@@ -196,3 +196,8 @@ yattag==1.16.1 \
 
 # Cosmic Ray 8.7.0 / pytest 9.1.1 closure: measured S2 spike, CPython 3.12 Linux.
 -r requirements-build.txt
+
+# Per-test dynamic coverage contexts for staged automatic mutation (no runtime dependencies).
+coverage==7.10.7 \
+    --hash=sha256:314f2c326ded3f4b09be11bc282eb2fc861184bc95748ae67b360ac962770be7 \
+    --hash=sha256:f4ab143ab113be368a3e9b795f9cd7906c5ef407d6173fe9675a902e1fffc239
