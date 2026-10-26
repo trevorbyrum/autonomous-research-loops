@@ -9,6 +9,7 @@ import sys
 import time
 
 from coverage import Coverage, __version__
+from gen2_ci_evidence import complete_union
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / "build/gen2-coverage.sqlite"
@@ -43,16 +44,21 @@ def source_state(arguments=None):
 
 
 class Baseline:
-    def __init__(self, path, arguments=None):
+    def __init__(self, path, arguments=None, parallel=False):
         self.arguments = arguments
+        self.parallel = parallel
         self.path = Path(path).resolve()
         self.receipt = self.path.with_suffix(".json")
-        self.coverage = Coverage(data_file=str(self.path), config_file=False,
+        self.coverage = Coverage(data_file=str(self.path), config_file=False, data_suffix=parallel,
             source=[str(ROOT / "gen2")], omit=[str(ROOT / "gen2/tests/*")])
 
     def valid(self):
         try:
             data = json.loads(self.receipt.read_text())
+            if "shards" in data:
+                complete_union(data["shards"], data["workers"])
+                if any(row["before"] != data["state"] or row["after"] != data["state"] for row in data["shards"]):
+                    return False
             return (data["state"] == source_state(self.arguments) and not data["state"]["options"]
                     and data["tests_run"] > 0 and data["sha256"] == hashlib.sha256(self.path.read_bytes()).hexdigest())
         except (OSError, ValueError, KeyError, TypeError):
@@ -60,14 +66,31 @@ class Baseline:
 
     def start(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.receipt.unlink(missing_ok=True)
-        self.coverage.erase()
+        if not self.parallel:
+            self.receipt.unlink(missing_ok=True)
+            self.coverage.erase()
         self.before, self.started = source_state(self.arguments), time.monotonic()
         self.coverage.start()
 
     def finish(self, result):
         self.coverage.stop()
         self.coverage.save()
-        if result.wasSuccessful() and result.testsRun > 0 and self.before == source_state(self.arguments):
+        if not self.parallel and result.wasSuccessful() and result.testsRun > 0 and self.before == source_state(self.arguments):
             self.receipt.write_text(json.dumps(dict(state=self.before, tests_run=result.testsRun,
                 seconds=time.monotonic() - self.started, sha256=hashlib.sha256(self.path.read_bytes()).hexdigest())) + "\n")
+
+    def combine(self, inventories, total):
+        complete_union(inventories, total)
+        if any(row["before"] != self.before or row["after"] != self.before for row in inventories):
+            raise ValueError("shards used different source states")
+        paths = [row["coverage_file"] for row in inventories]
+        if len(set(paths)) != total or any(hashlib.sha256(Path(row["coverage_file"]).read_bytes()).hexdigest() !=
+                row["coverage_sha256"] for row in inventories):
+            raise ValueError("missing, repeated or corrupt shard coverage")
+        self.coverage.combine(data_paths=paths, strict=True, keep=True)
+        from types import SimpleNamespace
+        self.finish(SimpleNamespace(wasSuccessful=lambda: True,
+            testsRun=sum(row["tests_run"] for row in inventories)))
+        if self.receipt.exists():
+            data = json.loads(self.receipt.read_text())
+            self.receipt.write_text(json.dumps({**data, "shards": inventories, "workers": total}) + "\n")

@@ -20,6 +20,7 @@ GEN2_CI_SHARD ?= 1/1
 GEN2_GATEWAY_MODE ?= all
 GEN2_BASE ?= origin/gen2
 GEN2_COVERAGE ?= build/gen2-coverage.sqlite
+GEN2_TEST_WORKERS ?= 8
 
 GEN2_CC_MAX_FUNCTION = 48
 GEN2_CC_MAX_AVERAGE = 10
@@ -32,6 +33,8 @@ gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-
 # Acceptance skips trigger-order only when the committed DDL diff is known empty.
 # A missing base or failed comparison runs the conservative trigger-order check.
 gen2-accept: export GEN2_TEST_COVERAGE = $(abspath $(GEN2_COVERAGE))
+gen2-accept: GEN2_TEST_ARGS += --workers $(GEN2_TEST_WORKERS)
+gen2-accept: export GEN2_MUTATION_ARGS += --workers $(GEN2_TEST_WORKERS)
 gen2-accept: gen2-check
 	@if ddl_changes=$$(git diff --name-only "$(GEN2_BASE)...HEAD" -- gen2/store/schema); then \
 		if [ -z "$$ddl_changes" ]; then \

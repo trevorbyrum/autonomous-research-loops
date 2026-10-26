@@ -28,6 +28,11 @@ from gen2_coverage import Baseline, DEFAULT, source_state
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def control_key(stage, cutoff, identity):
+    return (tuple(stage["tests"]) if stage["tests"] is not None else None,
+            tuple(cutoff) if cutoff else None, identity, tuple(stage.get("shard") or (1, 1)))
+
+
 def covering_tests(data, mutations, module=False):
     return sorted({test for mutation in mutations
         for line, contexts in data.contexts_by_lineno(str(ROOT / mutation.module_path)).items()
@@ -42,6 +47,7 @@ def main():
     parser.add_argument("--report-only", action="store_true")
     parser.add_argument("--tests", nargs="+", help="targeted coder demonstrations only; default: full unittest discovery")
     parser.add_argument("--coverage", type=Path, default=DEFAULT)
+    parser.add_argument("--workers", type=int, default=1, choices=range(1, 65))
     parser.add_argument("--out", type=Path, default=Path(os.environ.get("GEN2_CI_EVIDENCE", "build/mutation-evidence")))
     args = parser.parse_args()
     os.chdir(ROOT)
@@ -50,7 +56,7 @@ def main():
     out = Path(tempfile.mkdtemp(prefix="campaign-", dir=args.out)).resolve()
     started = time.monotonic()
     report = dict(status="incomplete", scope="full" if args.full else "changed-lines", tests=args.tests,
-                  blocking=not args.report_only, mutants=[], qualifications=[])
+                  blocking=not args.report_only, workers=args.workers, mutants=[], qualifications=[])
     def git(*argv):
         return subprocess.check_output(["git", *argv], text=True).strip()
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPYCACHEPREFIX": str(out / "empty-pycache")}
@@ -65,6 +71,7 @@ def main():
         targets = sorted(name for name in names.splitlines() if name.endswith(".py") and not name.startswith("gen2/tests/"))
         report["targets"] = targets
         def runner(config, name="baseline"):
+            config.update(workers=args.workers, shard_logs=str(out))
             request = out / f"{name}.json"
             request.write_text(json.dumps(config))
             return [sys.executable, str(ROOT / "tools/gen2_mutation_runner.py"), str(request)]
@@ -74,16 +81,17 @@ def main():
             cutoff = stage["boundary"] if all(event.get("boundary") == stage["boundary"]
                 for event in stage["events"]) else None
             identity = json.dumps(source_state(), sort_keys=True)
-            key = (tuple(tests) if tests is not None else None, tuple(cutoff) if cutoff else None, identity)
+            key = control_key(stage, cutoff, identity)
             if key not in qualified:
                 began = time.monotonic()
                 name = f"qualification-{len(qualified)}"
-                outcome, output = run_tests(shlex.join(runner(dict(targets=targets, tests=tests, cutoff=cutoff), name)), 7200)
+                shard = stage.get("shard")
+                outcome, output = run_tests(shlex.join(runner(dict(targets=targets, tests=tests, cutoff=cutoff, shard=shard), name)), 7200)
                 (out / f"{name}.log").write_text(output)
                 verdict = normalize(SimpleNamespace(worker_outcome="normal", output=output, test_outcome=outcome))
                 qualified[key] = (verdict == "SURVIVED" and (cutoff is None or marker(output)["boundary"] == cutoff)
                     and identity == json.dumps(source_state(), sort_keys=True))
-                report["qualifications"].append(dict(tests=tests, cutoff=cutoff, identity=identity, verdict=verdict, valid=qualified[key],
+                report["qualifications"].append(dict(tests=tests, cutoff=cutoff, shard=shard, identity=identity, verdict=verdict, valid=qualified[key],
                     seconds=time.monotonic() - began))
             return qualified[key]
         cached = Baseline(args.coverage)
