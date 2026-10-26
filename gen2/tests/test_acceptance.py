@@ -53,7 +53,7 @@ class AcceptanceSelectionTest(unittest.TestCase):
         self.git("add", "--", path)
         self.git("commit", "-qm", path)
 
-    def run_acceptance(self, *, base=None, trigger_exit=0, mutation_exit=0, run_units=False):
+    def run_acceptance(self, *, base=None, coverage=None, trigger_exit=0, mutation_exit=0, run_units=False):
         for name in ("trigger-invoked", "mutation-base", "step-order"):
             (self.root / name).unlink(missing_ok=True)
         skipped = ["gen2-sqlite", "gen2-sqlite-native", "gen2-boundaries", "gen2-complexity", "gen2-debt",
@@ -62,9 +62,11 @@ class AcceptanceSelectionTest(unittest.TestCase):
                    "gen2-accept", f"PYTHON={sys.executable}"]
         if base is not None:
             command.append(f"GEN2_BASE={base}")
+        if coverage is not None:
+            command.append(f"GEN2_COVERAGE={coverage}")
         env = {key: value for key, value in os.environ.items()
-               if key not in {"MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GEN2_BASE", "GEN2_VENV"}}
-        return subprocess.run(command, cwd=self.root, env={**env, "STUB_TRIGGER_EXIT": str(trigger_exit),
+               if key not in {"MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GEN2_BASE", "GEN2_COVERAGE", "GEN2_VENV"}}
+        return subprocess.run(command, cwd=self.root, env={**env, "PWD": str(self.root), "STUB_TRIGGER_EXIT": str(trigger_exit),
                               "STUB_MUTATION_EXIT": str(mutation_exit)},
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=15)
 
