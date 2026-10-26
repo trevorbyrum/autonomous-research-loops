@@ -147,6 +147,10 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
 - **Gate S rulings 1–5** (2026-10-24): 1 Router owns semantic rules; 2 the counter redo (PR #14); 3 cut back the checking machinery (tiered checks, automatic mutation, retire the metrics ratchet); 4 Phase 2 reorder around 2f (slices 8–11 to task 2g, slice 12 dropped); 5 collapse the records, no rule changes.
 - **D1–D12 plan decisions** (approved 2026-10-24, all): D1 mechanical-batch counting by file for whole-file deletions; D2 retire the exact replay oracle and equivalence tools in S1; D3 SQL 38/39 go in S5; D4 JSON member-domain DDL guards go in S6 (`Store._prepare` is the one enforcement point); D5 radon cyclomatic ceilings blocking; D6 checks first (S1→S2→S3 before 6a part 4); D7 slices 8–11 owned by new task `2g` after 2f; D8 `export-bundle/2` rich member deferred to slice 8 / DEBT-040; D9 Gate S #1 stands as the 15,000-line growth review; D10 `gen2/importer/dry_run.py` moves under `tools/` until Phase 4; D11 6b2 and 6b3 merge; D12 CI-DESIGN amendment text drafted in R2 for approval.
 - **2026-10-25, mutation scope (S2):** the acceptance gate runs Cosmic Ray on changed production lines only. Surviving mutants fail acceptance unless accepted with an inline `# pragma: no mutate` plus a reason (Astra reviews). Full-file campaigns are report-only, at phase gates and Gate S.
+- **2026-10-26, build throughput (Trevor approved all three):**
+  1. **Parallel test execution.** The acceptance unit run and the stage-2 full-suite mutation runs execute as parallel shards, with merged coverage. The tests and verdict rules don't change.
+  2. **Design review before code** for new slices, 6b1 onward: Astra reviews the slice design against the existing code before the coder starts.
+  3. **Up to two coders at once** on independent tasks, each in its own worktree with its own PR, verifier and Astra review.
 
 ## Current contract
 
