@@ -5,17 +5,14 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 ## Current
 *(This section is current state only; history is in REVIEW-LOG.md. Contract and rulings: DOSSIER.md.)*
 - **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
-- **Open task:** 2d, slice 6. 6a parts 1–3 complete. **The checks cut-back S1–S3 is complete:**
-  - S1 merged `b7747e1`;
-  - S3 PR #22 accepted;
-  - S2 PR #25 accepted (Cosmic Ray changed-line gate), with auto-merge set.
-  - **6a part 4** (`82befcb`, PR #28): **Astra ACCEPTED pending the mutation gate.**
-  - **S2b** (mutation test selection, PR #30): mutation step about 25 min. **Astra BLOCK S2b-C1** (selected runs not qualified on clean source); repair in progress.
-  - **Then:** S2b merges, part 4 merges gen2, then one full gen2-accept on part 4.
-- **Last verifier result:** S2 `14c31e1`, gen2-accept exit 0 in **3,263 s** and gen2-gateway exit 0 in 1,012 s. Landing time went from about 7,900 s to 6,091, then 5,356, then 3,263 s.
+- **Open task:** 2d, slice 6. 6a parts 1–3 complete. The checks cut-back S1–S3 is complete.
+  - **S2b** (mutation test selection, PR #30, head `1d54e1d`): **Astra ACCEPTED pending the verifier** (round 2: lazy, kill-only clean controls). Mutation step 33.5 min on the part 4 changes (8.5 min of it clean controls), against 24.96 min unqualified and about 4 h for the eager first repair. Verifier gen2-accept running.
+  - **6a part 4** (`82befcb`, PR #28): Astra ACCEPTED pending the mutation gate.
+  - **Then:** S2b merges, part 4 merges gen2, one full gen2-accept on part 4, Astra confirms the mutation gate, then 6a is complete.
+- **Last verifier result:** S2 `14c31e1`, gen2-accept exit 0 in **3,263 s** and gen2-gateway exit 0 in 1,012 s (no production lines changed). The S2b r2 measurement projects gen2-accept on a real slice at about 75 min unit run plus about 34 min mutation.
 - **Blockers:** none. **Open operator decisions:** none.
 - **Gate S:** last run #1 at `65fb30e`. Since then, the batches have been net-negative (S1 −2,447; S3 −22,845).
-- **What's next:** S2 (after the spike), then 6a part 4, S4–S5, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
+- **What's next:** finish 6a (above), then S4–S5, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 
@@ -23,8 +20,8 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 **Size rules (the user, 2026-09-29):** no hand-written file over 1,500 lines (enforced by `make gen2-check`); 15,000 total production lines is a growth-review trigger.
 - **Done:** 2a (bootstrap chain), 2r (size rules), 2b (gateway input contract), 2q (architecture refactors), 2c (accounting views and confidence), and in 2d: slices 1–5 and 6a parts 1–3.
 - **Remaining, in order** (S = Gate S simplification batch, R = records batch):
-  1. ~~R1 records collapse~~ (done), ~~S1 tiered checks~~ (done), S2 automatic mutation, ~~S3 retire the metrics ratchet~~ (done).
-  2. **2d slice 6a part 4** (freshness binding, ≈ 250).
+  1. ~~R1 records collapse~~, ~~S1 tiered checks~~, ~~S2 automatic mutation~~, ~~S3 retire the metrics ratchet~~ (all done); S2b mutation test selection (accepted, verifier pending).
+  2. **2d slice 6a part 4** (freshness binding, ≈ 250; accepted pending the mutation gate).
   3. S4 Router owns the three insertion-time rules, S5 delete the semantic DDL, R2 INVARIANTS and traceability table, S6 JSON member-domain DDL guards (only if confirmed).
   4. **2d 6b1** persist the rich dossier (≈ 350), **6b2** completion gates (6b2 + 6b3 merged, ≈ 450), **slice 7** completion approval binding (≈ 200).
   5. **2e1** live-execution preflight (F1, F5, §4(d)); **2e2** real executors and the S4–S7 workflow (F3, F10), minimum scope first; **2f** the supervised live single-topic run (operator inputs needed: test question and deliverable, spend ceiling, provider/runner configuration, allowed lanes, one JSONL export destination).
@@ -46,7 +43,7 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 ## Debt register, phase status and architecture metrics (task 2q-a)
 - `docs/gen2/DEBT-REGISTER.md` holds every operator-accepted mitigation (none has been accepted) and every obligation an operator ruling or review has assigned to a later task or phase (15 entries: the 2e1 construction rule and client model, the §4(d) rejected-credential demonstration, the 2e2 retrieval-audit evidence, the Phase 3 and Phase 4 items below, the importer's inventory of unexamined files that must exist before a dry-run report is used as migration-planning evidence (DEBT-014), and the Phase 3 usage estimator (DEBT-015)), each with an owner and a removal condition. The inclusion test is whether the build could lose the obligation, not who assigned it (an operator ruling, a review at any gate, or an operator request); a "before X is used" prerequisite is part of the entry. `make gen2-debt` (part of `gen2-check`) fails when a closed task or phase owns an open entry.
 - **Closing a task or a phase:** set it to `closed` in `docs/gen2/phase-status.json` in the same commit that records its acceptance here. That is what arms the check; it cannot tell a task was accepted unless it is told. Closing a register entry takes `status: closed` and a `closed by`. A new operator ruling, review ruling or operator request that assigns something to a later task adds its register entry in the same commit as the ruling.
-- `make gen2-metrics` (part of `gen2-check`) ratchets the architecture metrics (engine and gateway apart) against `docs/gen2/metrics-baseline.json`, recorded at the production tree accepted with 2b (its digest equals that of `28a2e83`; version 2 since 2q-a-repair, which added each file's fan-out, fan-in and reach). Besides propagation cost, cycles, cross-file self-calls, smells and function complexity (a baselined function is compared in both scores whatever the thresholds say), it gates the charter's per-module dependency measures: a file's fan-out may not rise, the fan-in of a file that was stable may not rise through files that existed, and no pair of existing files may become reachable that was not (absolute pairs); instability is judged by its causes and direction, as `tools/gen2_metrics.py` states. Since 2q-a-repair-3 (in review), source outside the supported-source contract (`docs/gen2/SOURCE-CONTRACT.md`, v1; operator ruling 2026-10-05) is refused before any measurement, by `make gen2-source` and by every metrics and locator command. No exemption or ledger entry can waive a refusal, and the old `unresolved_base` classification has been removed. The only way past a regression is an entry in `docs/gen2/metrics-exemptions.md`; `make gen2-metrics-rebaseline` tightens and never loosens; `make gen2-hotspots OUT=<dir>` writes the change-coupling and hotspot report Gate D reads (it never fails the build). `make gen2-locators` fails on a file, symbol or module-path locator in INVARIANTS or the register that names something that is not there, and on a backticked dotted name that is neither one of those forms nor marked `code:` or `history:`.
+- The architecture-metrics ratchet, the supported-source contract check and the hotspot report were retired by S3 (2026-10-25); `make gen2-complexity` (radon per-function ceiling 48, mean 10) replaces them. `make gen2-locators` still fails on a file, symbol or module-path locator in INVARIANTS or the register that names something that is not there.
 
 ## Phase 4 release items
   - (from Astra 13b review) Stores written before 13b are refused by the current opener (schema mismatch, same user_version). Any import/restore must keep the old counts and identities and mark unrecoverable end knowledge `unknown`; never infer exhaustion from old `complete` rows. (operator rulings 2026-09-30, from the 2b review chain)
