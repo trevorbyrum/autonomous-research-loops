@@ -365,7 +365,8 @@ class EvidenceWriter:
         if method in ("canonical_bytes",) and not checks._has_basis(row, boundary.TIER):
             raise Refusal("payload_invalid", "canonical receipt must consume its admitted acquisition")
         if (doc["verdict"] in ("supports", "partially_supports", "does_not_support")
-                and any(s["locator"]["kind"] in ("table",) for s in doc["cited_spans"]) and recorded_rank < 3):
+                and any(s["locator"]["kind"] in ("table",) for s in doc["cited_spans"])
+                and recorded_rank in (boundary.TIER["bibliographic"], boundary.TIER["abstract"])):
             raise Refusal("payload_invalid", "table citation requires recorded full-text availability")
 
     def _require_own_extraction(self, doc: dict) -> None:
