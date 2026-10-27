@@ -15,15 +15,12 @@ position, not by the DDL's own guards (those have their own suites).
 from __future__ import annotations
 
 import tempfile
-import threading
 import unittest
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from gen2.router import service
-from gen2.store import api
 from gen2.tests import router_crash_child  # not its World by name: the loader would collect it
-from gen2.tests.router_fixtures import TOPIC, RouterTestCase
+from gen2.tests.router_fixtures import TOPIC, RouterTestCase, LockWaitCase, Refusing
 
 E = "2026-09-27T11:00:00Z"
 E_MINUS = "2026-09-27T10:59:59.999999999Z"
@@ -48,25 +45,6 @@ class Spy:
             self.calls.append((name, args, kwargs))
             return ("answered", name)
         return call
-
-
-class Refusing:
-    """The router's store, refusing the write after `allowed` writes (an insert or an update); everything else is the real store's."""
-
-    def __init__(self, store, allowed: int) -> None:
-        self._store, self.allowed = store, allowed
-
-    def __getattr__(self, name: str):
-        member = getattr(self._store, name)
-        if name not in ("insert", "update"):
-            return member
-
-        def write(*args, **kwargs):
-            if self.allowed == 0:
-                raise api.StoreWriteError("refused for the test")
-            self.allowed -= 1
-            return member(*args, **kwargs)
-        return write
 
 
 class DelegateTest(RouterTestCase):
@@ -115,7 +93,7 @@ class TransactionTest(RouterTestCase):
         self.assertEqual(self.value("SELECT state FROM invocations"), "failed")
 
 
-class LockWaitTest(unittest.TestCase):
+class LockWaitTest(LockWaitCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.world = router_crash_child.World(Path(self.tmp.name))
@@ -127,33 +105,6 @@ class LockWaitTest(unittest.TestCase):
         self.world.router.close()
         self.world.db.close()
         self.tmp.cleanup()
-
-    def waiting(self, operation: str, request: dict, *, cross: bool) -> dict:
-        """`operation` on a second router while this test's connection holds the write lock; with `cross` the clock moves from E-1ns to E while the router waits for it."""
-        clock = {"now": E_MINUS}
-        issued = threading.Event()
-
-        def admitted():  # admission finishes before the operation's lock wait
-            router = service.Router.open(self.world.directory / "store.sqlite3", self.world.spool, clock=lambda: clock["now"])
-            router._store._conn.set_trace_callback(lambda sql: issued.set() if sql == "BEGIN IMMEDIATE" else None)
-            return router
-
-        with ThreadPoolExecutor(1) as pool:
-            router = pool.submit(admitted).result(timeout=10)
-            try:
-                self.world.db.execute("BEGIN IMMEDIATE")
-                pending = pool.submit(getattr(router, operation), request)
-                if not issued.wait(10):
-                    pending.result(timeout=0)  # an error before the lock is the failure to report
-                    self.fail("the router never asked for the write lock")
-                if cross:
-                    clock["now"] = E
-                self.world.db.execute("ROLLBACK")
-                return pending.result(timeout=10)
-            finally:
-                if self.world.db.in_transaction:
-                    self.world.db.execute("ROLLBACK")
-                pool.submit(router.close).result(timeout=10)
 
     def instants(self) -> set:
         """Every instant the cancellation wrote: the request and the end, the transition, the lease's release, the topic's update and the audit event."""

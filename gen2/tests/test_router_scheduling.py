@@ -23,12 +23,8 @@ cancelled, which is where a retry happens.
 from __future__ import annotations
 
 import json
-import sqlite3
-import tempfile
-from pathlib import Path
 
 from gen2.core import canonical
-from gen2.store import api
 from gen2.tests import router_fixtures as rf, store_fixtures
 from gen2.core.instants import utc_instant_ns
 from gen2.tests.router_fixtures import TOPIC, RouterTestCase, empty_outcome
@@ -422,33 +418,16 @@ class SignalQueueTest(PolicyCase):
         self.refused(self.review(1, "method_fit"), "review_conflict", before)
 
 
-class SchedulingRestartTest(ContractWorld):
+class SchedulingRestartTest(rf.DurableRouterTestCase, ContractWorld):
     """RG-9: re-queues, reservations and their draws are store state: after a
     restart a waiting lane still waits for its retry, a claimed re-queue is
     still claimed, and a reservation's drawn units still count."""
 
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.directory = Path(self._tmp.name)
-        api.open_store(self.directory / "store.sqlite3", create=True).close()
-        self.db = sqlite3.connect(self.directory / "store.sqlite3", isolation_level=None)
-        self.db.executescript(store_fixtures.CONNECTION_TEXT)
-        self.store = api.open_store(self.directory / "store.sqlite3")
-        self.spool, self.clock, self.ids, self.faults = rf.Spool(), rf.Clock(), rf.Ids(), {}
-        self.router = self.make_router()
-        self.seed()
+        super().setUp()
         self.build_world()
         assert self.router.activate_config_bundle(POLICY)["status"] == "activated"
 
-    def tearDown(self) -> None:
-        self.router.close()
-        self.db.close()
-        self._tmp.cleanup()
-
-    def reopen(self) -> None:
-        self.router.close()
-        self.store = api.open_store(self.directory / "store.sqlite3")
-        self.router = self.make_router()
 
     def claim(self, inv: str, kind: str = "research_pass", tid: str = TOPIC, **extra) -> dict:
         extra.setdefault("config_bundle_hash", POLICY_HASH)

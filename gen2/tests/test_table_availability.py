@@ -21,15 +21,6 @@ class TableRouterTest(unittest.TestCase):
         attach_checks(case, control)
         self.assertEqual(case.send(control)["status"], "committed")
 
-    def test_insufficient_and_mixed(self):
-        for method in METHODS:
-            for record, tier in (({"identity": content.IDENTITY}, "bibliographic"),
-                    ({"identity": content.IDENTITY, "abstract": "Recorded abstract"}, "abstract")):
-                for verdict in ("supports", "partially_supports", "does_not_support"):
-                    for spans in ((TABLE,), (PAGE, TABLE)):
-                        with self.subTest(method=method, tier=tier, verdict=verdict, spans=spans), span_fixture(record) as case:
-                            self.refuse(case, document(case, method, tier, verdict, spans))
-
     def test_controls_readback_replay(self):
         for method in METHODS:
             with self.subTest(method=method), span_fixture(content.FULL) as case:

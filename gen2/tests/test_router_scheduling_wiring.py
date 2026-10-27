@@ -18,7 +18,8 @@ from __future__ import annotations
 from gen2.router import service
 from gen2.tests import test_router_scheduling as sched
 from gen2.tests.router_fixtures import TOPIC, RouterTestCase
-from gen2.tests.test_router_lifecycle_wiring import Refusing, Spy
+from gen2.tests.router_fixtures import Refusing
+from gen2.tests.test_router_lifecycle_wiring import Spy
 
 DELEGATES = (  # name, arguments
     ("requeue", ({"r": 1},)), ("open_reservation", ({"r": 2},)), ("open_review", ({"r": 3},)), ("create_topic", ({"r": 4},)), ("raise_signal", ({"r": 5},)),
