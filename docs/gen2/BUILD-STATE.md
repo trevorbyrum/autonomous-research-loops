@@ -10,14 +10,15 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
   - **S5 is complete** (PR #40 merged at `2085e10`, −4,492). **S2d is complete** (PR #39 merged: parallel test shards; acceptance about 900 s against about 4,100 s).
   - **S6 is complete** (PR #46): the DDL is integrity-only, with 242 triggers. **Gateway hand-written mutants retired** (PR #48).
   - **Batch C complete** (PR #50, supervisor plus O-1; follow-up C-fu due before 2f). **Batch D1 complete** (PR #51, store fixtures plus O-8).
-  - **In flight:**
-    - Batch E (accounting, store, config, plus O-3/O-4; Sonnet, worktree `gen2-wt-5`);
-    - Batch F (operator tokens, O-2; Sol, shared tree).
-    - **Held:** Batch B (worktree `gen2-wt-3`) pending the operator's mutation-scope decision for refactors.
+  - **Trigger-order retired** (PR #55).
+  - **In flight:** Batch E (Sonnet, `gen2-wt-5`) and C-fu (Sol, `gen2-wt-2`).
+  - **Held for operator decisions:**
+    - Batch F (PR #54, Astra F1: tokens can form inside JSON escapes);
+    - Batch B (`gen2-wt-3`), Batch A and O-5 (mutation scope for refactors).
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`. That is S6 → B → A → O-5 → the 6b1′ design (13 inputs) in the shared tree. The second coder takes the gateway mutants, trigger-order retirement (after S6), C, E, F and D2. D1 and O-9 come after S6.
-- **Last verifier result:** Batch D1 `4641ccc`, gen2-accept exit 0 in 750 s (8 shards, 2,969 tests). Batch C `f250716`, exit 0 in 1,753 s.
+- **Last verifier result:** trigger-order retirement `2d5ffeb`, gen2-accept exit 0 in 692 s (8 shards, 2,954 tests).
 - **Gate S watch item:** stage 2 is now sharded (S2d). Remaining cost driver: changed-line mutation of pure-move refactors (moved lines count as changed; stage 1 runs serially per mutant). This is the pending operator decision below.
-- **Blockers:** none. **Open operator decisions:** the mutation scope for refactors, put to Trevor 2026-10-27: (1) move-aware changed-line scope, and (2) parallel stage-1 workers. Batch B, Batch A and O-5 wait on it.
+- **Blockers:** none. **Open operator decisions:** (1) the mutation scope for refactors (move-aware scope, parallel stage-1 workers), which Batch B, A and O-5 wait on; (2) the Batch F redaction design after Astra F1 (recommended: check the final wire bytes).
 - **Gate S:** last run **#2 at `b3ffd23`** (2026-10-27; `private/reviews/gen2-gate-s2-fable-20261027.md`). Engine side 109,026 lines; production 13,100. Operator decisions S2-1 to S2-7 are pending.
 - **What's next:** Batch B, Batch A, O-5, then 6b1′; second coder: trigger-order retirement, C, E, F, D2; after S6: D1, O-9; R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.

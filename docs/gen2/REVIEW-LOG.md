@@ -3696,3 +3696,19 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - **Operator decision pending:** (1) move-aware changed-line scope, and (2) parallel stage-1 workers.
 - **Dispatched:** Batch E (Sonnet `95e7ea69`: accounting, store `api.py`, config, plus O-3 and O-4) and Batch F (Sol `6dc32759`: operator tokens, O-2).
 
+## 2026-10-27: trigger-order retired (S2-2); Batch F BLOCK (O-2 premise); Batch E and C-fu in flight
+- **Trigger-order retired** (PR #55, `2d5ffeb`, Sol `88f19ad0`): net −614 (tooling and recipes −255, tests and fixtures −355, docs −4).
+  - All 720 assertions preserved in identical AST and order across 27 files (checked independently by Astra).
+  - 23 reversal loops and 15 `DDL_TEXT` patches removed. 14 authorized test ids removed.
+  - Jenkins' default workload never ran trigger-order.
+  - **Astra** (`55f5459a`): A and C PASS.
+  - Verifier exit 0 in 692 s (8 shards, 2,954 tests). Merged.
+  - VERIFIER.md and the charter were updated (this PR). Stale CI-DESIGN sentences are left for R2.
+- **Batch F** (PR #54, `037f8c7`, Sol `6dc32759`, net −645): **Astra BLOCK F1** (`private/reviews/gen2-batch-f-astra-review-20261027.md`).
+  - The O-2 premise ("json.dumps never escapes an alphabet token, so no reply can form one") is false. JSON escapes in *other* values can form a token: `"\nABCDEFGHIJKLMNO"` serializes to bytes containing `nABCDEFGHIJKLMNO`.
+  - Reproduced over real HTTP: a raw configured token appeared in MCP and REST reply bytes, where the base refused. Nested MCP results also produced invalid JSON after replacement.
+  - The verifier's acceptance passed. Its auth-demo d2b failure is the known by-design residual (DEBT-004, owned by 2e1), not a regression.
+  - **Not merged. Operator decision pending.** Recommended: check the final wire bytes at each serialization layer, and send a generic error if any configured token appears.
+- **Refactor mutation scope** (Batch B, A, O-5): operator decision still pending.
+- **In flight:** Batch E (Sonnet `95e7ea69`) and C-fu (Sol `4836f21b`).
+

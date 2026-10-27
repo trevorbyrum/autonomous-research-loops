@@ -24,7 +24,7 @@ Items 1–3 are cited by document identity (file name and dates). They belong to
 **Gate D independence (the user, 2026-09-30: "I want a fresh Astra on the architecture review every time. I don't want other gates tainting it.").** Every Gate D run is a **new Astra session** that has never run another gate and is never resumed or reused for one, so no reviewer's working context carries over between gates. It works in the normal repository and may read anything there, including REVIEW-LOG.md and earlier review reports.
 
 **Mutation testing (operator rulings 3, 2026-10-24, and mutation scope, 2026-10-25; replaces the hand-written mutant inventory, paired controls, reload and attestation reviews).**
-- `make gen2-accept GEN2_BASE=<merge-base>` runs Cosmic Ray on the **production lines the change touched** (native `cr-filter-git` against the explicit merge-base). It runs after the conditional trigger-order step.
+- `make gen2-accept GEN2_BASE=<merge-base>` runs Cosmic Ray on the **production lines the change touched** (native `cr-filter-git` against the explicit merge-base). (Trigger-order, which used to run before it on DDL changes, was retired by S2-2 on 2026-10-27.)
 - Any surviving mutant fails acceptance, unless the line carries `# pragma: no mutate` with a reason, which Astra reviews in Gate C.
 - Timeouts, internal errors and syntax-invalid variants are never kills. Test errors are reported separately for review.
 - Full-production campaigns (`make gen2-mutation-report`) are **report-only**, run at phase gates and Gate S, and never block.
@@ -89,7 +89,7 @@ Both are re-indexed from the reviewed commit before every Gate D and are availab
 ## Checking-pipeline rules (operator ruling S2-7, 2026-10-27)
 - **Harness changes.** After S2d, the mutation and acceptance pipeline changes only when a real campaign produced a wrong verdict: a survivor later shown killed, or a kill later shown false on clean code. A reviewer-constructed harness adversary is recorded as non-blocking unless the suite can produce the condition.
 - **Cost before review.** A tooling repair states its cost budget in the brief and measures it before review (the S2b-C1 lesson).
-- **Trigger-order** is retired after S6's final DDL baseline run (S2-2).
+- **Trigger-order is retired** (S2-2). S6's final DDL baseline passed at `ed21d5a` (242 triggers, 1,868 identical outcomes), and the tool, recipe and CI mode were removed in PR #55.
 
 ## Review throughput (the user, 2026-10-05)
 Adopted after asking what research suggests for speeding up the build. The research: repair loops get most of their achievable gain within 3–4 rounds (arXiv 2607.05197). Review rounds and turnaround grow with change size (Google's modern code review study; Greptile's analysis). Expensive suites belong once at the gate, not on every iteration (Google's diff-based mutation testing; merge-queue practice). These rules apply from the next dispatch onward. They do not change a review already running.
