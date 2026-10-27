@@ -8,7 +8,7 @@ from gen2.tests.router_fixtures import TOPIC
 from gen2.tests.detailed_receipt_fixtures import historical_receipt
 from gen2.tests.test_capture_support import CaptureCase
 import sqlite3
-from gen2.tests.test_store_governed_quotes import DDLTest
+from gen2.tests import test_store_governed_quotes as raw
 
 ADJ = {"adjudication_ref": "adj-quote", "resolved_at": "2026-09-27T10:00:00Z", "resolution": "entailment confirmed on re-read"}
 HOLD = "hold_quote_qck_quote00001"
@@ -179,7 +179,7 @@ class RouterGuardTest(AttentionCase):
         self.assertEqual(self.state(exclude=()), before)
 
 
-class AdjudicationDDLTest(DDLTest):
+class AdjudicationDDLTest(raw.DDLTest):
     def bound(self, status="matched", verdict="supports", check_id="qck_governed001", **changes):
         exact = {"status": status, "normalization_version": "quote-nfc-safe/2+ucd15.0.0", "source_artifact_hash": self.source_hash}
         self.verify("ver_bound00001", method="canonical_bytes", extraction="inv_pppppppp", gateway="gw-call:1",

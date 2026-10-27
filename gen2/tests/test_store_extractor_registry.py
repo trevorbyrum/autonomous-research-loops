@@ -4,7 +4,7 @@ import sqlite3
 
 from gen2.tests import store_fixtures as sf
 from gen2.tests.test_extractor_registry import approval
-from gen2.tests.test_store_extraction_records import DDLTest
+from gen2.tests import test_store_extraction_records as raw
 
 
 class RegistryDDLTest(sf.StoreTestCase):
@@ -100,7 +100,7 @@ class RegistryDDLTest(sf.StoreTestCase):
                 self.assertEqual(self.snapshot(table), before)
 
 
-class RegistryExtractionDDLTest(DDLTest):
+class RegistryExtractionDDLTest(raw.DDLTest):
     def test_registry_membership(self):
         for name in ("unknown", "alias-a", "Tool-a", " tool-a", "tool-a ", "tool-a\x00alias"):
             with self.subTest(name=name):

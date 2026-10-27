@@ -7,11 +7,11 @@ from gen2.tests.ddl_fixtures import restore_triggers
 
 from gen2.store import db
 from gen2.tests import store_fixtures as fx
-from gen2.tests.test_extraction_validations_v2 import V2Case
-from gen2.tests.test_store_extraction_records import DDLTest
+from gen2.tests import test_extraction_validations_v2 as v2
+from gen2.tests import test_store_extraction_records as raw
 
 
-class DDLV2Test(V2Case):
+class DDLV2Test(v2.V2Case):
     RAW = True
     def setUp(self):
         self.query = "SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND (tbl_name='extraction_validations_v2' OR name='extraction_validation_results_v2') ORDER BY rowid"
@@ -19,7 +19,7 @@ class DDLV2Test(V2Case):
             reference.executescript(fx.DDL_TEXT)
             objects = reference.execute(self.query).fetchall()
         with patch.object(fx, "DDL_TEXT", db.schema_text()):
-            V2Case.setUp(self)
+            v2.V2Case.setUp(self)
         self.x("DROP VIEW extraction_validation_results_v2")
         self.x("DROP TABLE extraction_validations_v2")
         for _, _, sql in objects:
@@ -29,7 +29,7 @@ class DDLV2Test(V2Case):
 
     def send(self, grant=None, op="op_record0001", **sections):
         if "extraction_validations" not in sections:
-            return DDLTest.send(self, grant, op, **sections)
+            return raw.DDLTest.send(self, grant, op, **sections)
         grant = grant or self.verifier
         self.x("SAVEPOINT successor_write")
         try:
