@@ -1,7 +1,8 @@
 """Explicit disposable history preparation; never a current admission route."""
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 import sqlite3
-from unittest.mock import patch
+
+from gen2.core import canonical
 
 from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 
@@ -21,32 +22,17 @@ def history(case, *, unchecked=False):
         restore_triggers(case, None, catalog=catalog)
 
 
-def subject_views(case, ddl):
-    # Seed real records under pristine DDL, then restore the actual subject
-    # views as well as triggers (including mutants and trace instrumentation).
-    with sqlite3.connect(':memory:') as reference:
-        reference.executescript(ddl)
-        views = reference.execute("SELECT name,sql FROM sqlite_schema WHERE type='view' ORDER BY rowid").fetchall()
-    for name, _ in views:
-        case.x('DROP VIEW "' + name + '"')
-    for _, sql in views:
-        case.x(sql)
-    restore_triggers(case, ddl)
-
-
-@contextmanager
-def prior_consumption(case):
-    """Isolate earlier predicates on explicit historical refusal operands."""
-    catalog = case.rows(TRIGGERS)
-    sql = case.rows("SELECT sql FROM sqlite_schema WHERE name='detailed_support_receipts'")[0][0]
-    case.x('DROP VIEW detailed_support_receipts')
-    case.x('CREATE VIEW detailed_support_receipts AS SELECT verification_receipt_id FROM verification_receipts')
+def insert_receipt(case, doc):
+    """Explicit historical/corrupt operand; never current receipt admission."""
+    d = doc
+    values = [d['verification_receipt_id'], d['topic_id'], d['claim']['claim_id'], d['claim']['claim_revision'],
+        d['source']['work_id'], d['source']['source_version'], d['cited_spans'], d['obtained_content_hash'],
+        d['access_tier'], d['requested_for']['use'], d['requested_for']['required_access_tier'], d['acquisition'],
+        d['extraction']['method'], d['extraction']['produced_by_invocation_id'], d['extraction']['validation_ref'],
+        d['producer_invocation_id'], d['verifier_invocation_id'], d['quote_check_id'], d['verdict'], d, d['verified_at']]
     try:
-        # Earlier SQL-predicate experiments explicitly suspend only the new
-        # independent detailed promotion consumer, never current controls.
-        router = getattr(case, 'router', None)
-        with patch.object(router._detailed_checks, 'require_support', return_value=None) if router else nullcontext():
-            yield
-    finally:
-        case.x('DROP VIEW detailed_support_receipts'); case.x(sql)
-        case.assertEqual(case.rows(TRIGGERS), catalog)
+        case.x('INSERT INTO verification_receipts VALUES (' + ','.join('?' * len(values)) + ')',
+            *[canonical.canonical_bytes(v).decode() if isinstance(v, (dict, list)) else v for v in values])
+        return {'status': 'committed'}
+    except sqlite3.IntegrityError as exc:
+        return {'status': 'rejected', 'detail': str(exc)}

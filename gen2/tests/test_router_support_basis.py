@@ -1,4 +1,4 @@
-"""Same-receipt basis consumption with SQL support and ceiling views disabled."""
+"""Same-receipt basis consumption through the Router."""
 import copy
 import json
 import unittest
@@ -14,7 +14,6 @@ from gen2.tests.test_receipt_summary_domain import METHODS
 
 
 class RouterSupportBasisTest(unittest.TestCase):
-    RAW = True
     store = detailed.RouterDetailedSupportTest.store
     promote = detailed.RouterDetailedSupportTest.promote
     replace_doc = detailed.RouterDetailedSupportTest.replace_doc
@@ -25,10 +24,6 @@ class RouterSupportBasisTest(unittest.TestCase):
         with patch.object(ReceiptCase, 'RESPONSE', json.dumps(response).encode()):
             case = detailed.RouterDetailedSupportTest.opened(self, method, reverse,
                 distinct=method == 'validated_extraction')
-        case.x('DROP VIEW bound_extraction_receipts')
-        case.x('CREATE VIEW bound_extraction_receipts AS SELECT verification_receipt_id FROM verification_receipts')
-        case.x('DROP VIEW source_acquisition_content_tiers')
-        case.x('CREATE VIEW source_acquisition_content_tiers AS SELECT *,4 AS recorded_tier_rank FROM source_acquisitions')
         return case
 
     @contextmanager

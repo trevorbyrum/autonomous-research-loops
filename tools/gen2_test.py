@@ -13,14 +13,16 @@ here masks a failure.
 from __future__ import annotations
 
 import os
+import json
+import hashlib
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-from gen2_ci_evidence import Outcomes, junit, partition, record, shard_spec, tests
-from gen2_coverage import Baseline
+from gen2_ci_evidence import Outcomes, complete_union, junit, parallel, partition, record, shard_spec, tests
+from gen2_coverage import Baseline, source_state
 from gen2_mutation_runner import EvidenceResult
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,13 +50,52 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--shard", type=shard_spec, default=(1, 1))
+    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if not 1 <= args.workers <= 64 or (args.workers > 1 and args.shard != (1, 1)):
+        raise ValueError("workers must be 1..64 and require full discovery")
+    if args.workers > 1:
+        directory = os.environ.get("GEN2_CI_EVIDENCE")
+        if not directory and os.environ.get("GEN2_TEST_LOG"):
+            directory = str(Path(os.environ["GEN2_TEST_LOG"]).resolve().parent)
+        if directory:
+            Path(directory).mkdir(parents=True, exist_ok=True)
+        out = Path(tempfile.mkdtemp(prefix="gen2-shards-", dir=directory)).resolve()
+        capture = os.environ.get("GEN2_TEST_COVERAGE")
+        baseline = Baseline(capture) if capture else None
+        if baseline:
+            baseline.start()
+            baseline.coverage.stop()
+        print(f"gen2-test: {args.workers} shards; logs in {out}", flush=True)
+        runs = parallel([[sys.executable, __file__, "--worker", "--shard", f"{i}/{args.workers}"]
+                         for i in range(1, args.workers + 1)], out)
+        if log := os.environ.get("GEN2_TEST_LOG"):
+            Path(log).parent.mkdir(parents=True, exist_ok=True)
+            Path(log).write_text(json.dumps([dict(exit=code, directory=str(path)) for code, path in runs]) + "\n")
+        inventories = [json.loads((path / "engine-unit-inventory.json").read_text()) for _, path in runs]
+        for (code, _), row in zip(runs, inventories):
+            row["success"] = row["success"] and code == 0
+        complete_union(inventories, args.workers)
+        if baseline:
+            baseline.combine(inventories, args.workers)
+        outcomes = [row for _, path in runs for row in json.loads((path / "engine-unit-outcomes.json").read_text())]
+        record("engine-unit-inventory.json", dict(expected=inventories[0]["expected"],
+            selected=[t for row in inventories for t in row["selected"]], shard=[1, 1], shards=inventories))
+        record("engine-unit-outcomes.json", outcomes)
+        junit("engine-unit", outcomes)
+        print(f"gen2-test: passed {sum(row['tests_run'] for row in inventories)} tests across {args.workers} shards; {out}")
+        return 0
     capture = os.environ.pop("GEN2_TEST_COVERAGE", None)
-    if capture and args.shard != (1, 1):
-        raise ValueError("a coverage baseline requires the complete unsharded suite")
-    baseline = Baseline(capture) if capture else None
+    if capture and args.shard != (1, 1) and not args.worker:
+        raise ValueError("a coverage baseline requires the complete union of shards")
+    baseline = Baseline(capture, parallel=args.worker) if capture else None
+    if args.worker:
+        scratch = Path(os.environ["GEN2_CI_EVIDENCE"]) / "tmp"
+        scratch.mkdir()
+        tempfile.tempdir = str(scratch)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    log = Path(os.environ.get("GEN2_TEST_LOG") or Path(tempfile.gettempdir()) / "gen2-test-logs" / f"gen2-test-{stamp}.log")
+    log = Path(os.environ.pop("GEN2_TEST_LOG", None) or Path(tempfile.gettempdir()) / "gen2-test-logs" / f"gen2-test-{stamp}.log")
     log.parent.mkdir(parents=True, exist_ok=True)
     sys.path[:0] = [str(ROOT / "gen2" / "tests"), str(ROOT)]  # as `python -m unittest discover -s gen2/tests` from the repository
     with open(log, "w", encoding="utf-8") as handle:
@@ -73,7 +114,7 @@ def main() -> int:
                 raise ValueError("test discovery is empty")
             suite = partition(suite, args.shard)
             selected = [test.id() for test in tests(suite)]
-            if not selected:
+            if not selected and not args.worker:
                 raise ValueError("test shard is empty")
             record("engine-unit-inventory.json", {"expected": expected, "selected": selected, "shard": args.shard})
             # Tests launch counterfactual/partial harnesses of their own. Those
@@ -88,6 +129,11 @@ def main() -> int:
                     os.environ["GEN2_CI_EVIDENCE"] = directory
             if baseline:
                 baseline.finish(result)
+            record("engine-unit-inventory.json", dict(expected=expected, selected=selected, shard=args.shard,
+                success=result.wasSuccessful(), tests_run=result.testsRun,
+                before=baseline.before if baseline else None, after=source_state() if baseline else None,
+                coverage_file=baseline.coverage.get_data().data_filename() if baseline else None,
+                coverage_sha256=hashlib.sha256(Path(baseline.coverage.get_data().data_filename()).read_bytes()).hexdigest() if baseline else None))
             record("engine-unit-outcomes.json", result.outcomes)
             junit("engine-unit", result.outcomes)
             print(f"gen2-test: {'passed' if result.wasSuccessful() else 'FAILED'}; the whole verbose output is kept in {log}")

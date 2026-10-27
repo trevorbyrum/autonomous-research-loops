@@ -3621,6 +3621,29 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **Observed growth factors:** 1.3× for contracted engine slices, 2× for new mechanisms or runners, 3× for checking-pipeline changes.
 - **Timeline to 2f:** about 22–30 working days single-threaded, about 17–22 with two coders. Live run around 2026-11-20 to 11-28, with a risk band into mid-December.
 
+## 2026-10-27: S5 merged; S2d merged (parallel test shards); S6 BLOCK B1, round 1; Batch B in flight
+- **S5** (PR #40, `2085e10`): verifier exit 0 in 3,443 s. Trigger-order: 323 triggers, 2,562 outcomes identical. Merged.
+  - A 40-failure verifier run at `3a579af` came from a strengthened shared base (`RecordMatrix.test_domain`) inherited by the RAW class. The `RAW` flag now guards the typed-reason assertion.
+  - Lesson: targeted selection must include every subclassing module.
+- **S2d** (PR #39, `d873982`, Sol `2907f611`, +246). Measured quiet at fixed SHAs:
+  - unit suite 2,949.5 s serial against about 800 s with 8 shards;
+  - stage-2 survivor 3,529.6 s against 789.8 s, verdict unchanged;
+  - peak memory 1.3 GiB.
+  - **Astra** (`55f5459a`, `private/reviews/gen2-s2d-astra-review-20261027.md`): A and C PASS, ROOT-CAUSE. The S2b and S2c conditions are preserved. NB1: the stage-2 survivor summary copies first-shard metadata (reporting only; no change under S2-7).
+  - **Verifier:** gen2-accept exit 0 in **874 s** (8 shards, 3,939 tests, union equal to discovery). Merged. **Acceptance went from about 4,100 s to about 900 s.**
+- **S6** (PR #46, `9e97ed1`, −2,878). **Astra BLOCK B1:**
+  - SQL 35's nonblank rule was not fully transferred. GLOB treats NUL as a terminator; the schema patterns treat NUL as content.
+  - So NUL-only `assessment`/`context_examined`/`applicability_reason` committed. Reproduced through `Router.commit_outcome`.
+  - The rule table was otherwise exact (83 objects).
+  - **Repair** (Sol `eaec591c`): reuse `DetailedChecks._nonblank` at admission, add literal witnesses, and audit every S5 and S6 rule-table row for GLOB/trim/length semantic differences against its new owner.
+- **Batch B** (Sonnet `3468c51e`, worktree `gen2-wt-3`). Pure moves out of `service.py`, plus `core.instants.utc_now`.
+  - The orchestrator caught a behaviour change: compat timestamps gained a microsecond fraction.
+  - Fixed with `utc_now(timespec=...)`, consumer formats byte-identical and pinned by `test_instants`. Acceptance rerunning.
+- **Process:**
+  - coder model mixing (charter, PR #45);
+  - separation practices (PR #43);
+  - coordination rule: coders wait while an S2d benchmark unit is active.
+
 ## 2026-10-27: Gate S full pass (five component reviews plus a reconcile, all Fable, fresh, at `3a579af`)
 - **Reports:** `private/reviews/gen2-gate-s-full-{supervisor,router,production-other,tests-store,tests-other}-fable-20261027.md`, and the reconcile `gen2-gate-s-full-reconcile-fable-20261027.md`.
 - **Do now (no ruling): six one-component batches, about −830 net.**

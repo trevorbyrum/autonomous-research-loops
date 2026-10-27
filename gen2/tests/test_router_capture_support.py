@@ -1,4 +1,4 @@
-"""Independent capture consumption; SQL authority is deliberately permissive."""
+"""Capture consumption and final refencing through the Router."""
 import copy
 import json
 import unittest
@@ -6,16 +6,15 @@ from unittest.mock import patch
 
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
-from gen2.tests.detailed_support_fixtures import history, subject_views
+from gen2.tests.detailed_support_fixtures import history
 from gen2.tests.detailed_receipt_fixtures import attach_checks, historical_receipt
 from gen2.tests.extraction_receipt_fixtures import attach
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_capture_support import CaptureCase
-from gen2.tests.test_store_fixture_order import reverse_triggers
+from gen2.tests.ddl_fixtures import restore_triggers, reverse_triggers
 
 
 class RouterCaptureSupportTest(unittest.TestCase):
-    RAW = True
 
     def opened(self, reverse=False):
         ddl = reverse_triggers(sf.DDL_TEXT) if reverse else sf.DDL_TEXT
@@ -23,18 +22,7 @@ class RouterCaptureSupportTest(unittest.TestCase):
             case = CaptureCase()
             case.setUp()
         self.addCleanup(case.tearDown)
-        subject_views(case, ddl)
-        for name in ('claims_accepted_support_detailed_receipt', 'claims_accepted_support_detailed_extraction',
-                'claims_accepted_support_needs_capture', 'commit_outcome_refence_captures'):
-            case.x('DROP TRIGGER IF EXISTS ' + name)
-        for name, sql in (
-                ('detailed_support_receipts', 'SELECT verification_receipt_id FROM verification_receipts'),
-                ('bound_extraction_receipts', 'SELECT verification_receipt_id FROM verification_receipts'),
-                ('governed_captures_blocked', 'SELECT claim_id,revision FROM claims WHERE 0'),
-                ('governed_receipt_failures', 'SELECT verification_receipt_id FROM verification_receipts WHERE 0'),
-                ('source_acquisition_content_tiers', 'SELECT *,4 AS recorded_tier_rank FROM source_acquisitions')):
-            case.x('DROP VIEW ' + name)
-            case.x('CREATE VIEW ' + name + ' AS ' + sql)
+        restore_triggers(case, ddl)
         return case
 
     def status(self, case, revision=2):

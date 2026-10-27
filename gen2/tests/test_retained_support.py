@@ -11,15 +11,14 @@ from unittest.mock import Mock, patch
 from gen2.app import engine, station
 from gen2.router import history as reader, service
 from gen2.store import api, compat, db
-from gen2.tests import router_fixtures as rf, test_store_detailed_support as raw
-from gen2.tests.detailed_support_fixtures import history
+from gen2.tests import router_fixtures as rf
+from gen2.tests import test_router_detailed_support as detailed
+from gen2.tests.detailed_support_fixtures import history, insert_receipt
 from gen2.tests.test_capture_support import CaptureCase
-from gen2.tests.test_detailed_check_receipts import ReferenceCases
 from gen2.tests.test_receipt_summary_domain import METHODS
 
 
 class RetainedSupportTest(unittest.TestCase):
-    RAW = True
 
     @contextmanager
     def no_dml(self, *connections):
@@ -143,9 +142,9 @@ class RetainedSupportTest(unittest.TestCase):
                 conn.set_authorizer(None)
 
     def retained(self, method='canonical_bytes', reverse=False):
-        case = raw.DetailedSupportDDLTest.opened(self, method, reverse, seed=True,
+        case = detailed.RouterDetailedSupportTest.opened(self, method, reverse,
             distinct=method == 'validated_extraction')
-        self.assertEqual(ReferenceCases.submit(case)['status'], 'committed')
+        self.assertEqual(insert_receipt(case, case.doc)['status'], 'committed')
         case.x("UPDATE claims SET status='accepted_support' WHERE claim_id='clm_loadbear1'")
         return case
 

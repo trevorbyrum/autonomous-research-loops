@@ -1,14 +1,12 @@
 """Promotion consumes one durable basis; historical declarations stay fenced."""
 import json
-import sqlite3
 import unittest
-from contextlib import contextmanager, nullcontext
 from unittest.mock import patch
 
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
 from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
-from gen2.tests.detailed_support_fixtures import prior_consumption
+from gen2.tests.detailed_support_fixtures import insert_receipt
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
 
 from gen2.tests.router_fixtures import empty_outcome
@@ -19,25 +17,9 @@ from gen2.tests.test_validated_extraction_receipts import ValidatedCases
 from gen2.tests.independent_tier_fixtures import independent_basis
 
 
-@contextmanager
-def historical(case):
-    # Model pre-consumer receipts in disposable memory. Preserve every other
-    # guard, then restore the exact installed definitions, including mutants.
-    names = ('verification_receipts_own_extraction', 'verification_receipts_validated_extraction',
-        'verification_receipts_require_detailed_checks')
-    definitions = case.rows(TRIGGERS)
-    selected = [(n, s) for n, s in definitions if n in names]
-    for name, _ in selected:
-        case.x('DROP TRIGGER ' + name)
-    try:
-        yield
-    finally:
-        restore_triggers(case, None, catalog=definitions)
-        case.assertEqual(case.rows(TRIGGERS), definitions)
 
 
 class PromotionCases:
-    RAW = False
 
     def context(self, method, tier='full_text'):
         with patch.object(sf, 'DDL_TEXT', db.schema_text()):
@@ -48,19 +30,7 @@ class PromotionCases:
             seed_checks(self.case, self.doc)
         self.addCleanup(context.__exit__, None, None, None)
         self.target, self.independent = self.case.rows('SELECT target_extraction_id, validator_extraction_id FROM extraction_validations_v2')[0]
-        # Seed authenticated operands under production DDL, then install exactly
-        # the requested live view/trigger (mutants, trace instrumentation and
-        # reversed definitions included). Never adopt an instrumented Store.
-        with sqlite3.connect(':memory:') as reference:
-            reference.executescript(sf.DDL_TEXT)
-            objects = reference.execute("SELECT type, name, sql FROM sqlite_schema WHERE type='trigger' OR name='bound_extraction_receipts' ORDER BY rowid").fetchall()
-        self.case.x('DROP VIEW bound_extraction_receipts')
-        for kind, _, sql in objects:
-            if kind == 'view':
-                self.case.x(sql)
         restore_triggers(self.case, sf.DDL_TEXT)
-        self.assertEqual(self.case.value("SELECT sql FROM sqlite_schema WHERE name='bound_extraction_receipts'"),
-            next(sql for kind, _, sql in objects if kind == 'view'))
 
     def clone(self, table, changes, where=''):
         if table == 'source_acquisitions' and changes.get('provider_record_id') == 'other-record':
@@ -75,36 +45,23 @@ class PromotionCases:
             OwnCases.clone(self, table, changes, where)
 
     def store(self, legacy=False):
-        self.legacy_consumption = legacy
         if legacy:
             historical_receipt(self.doc)
-            with historical(self.case):
-                out = OwnCases.submit(type('Raw', (), dict(RAW=True, case=self.case, doc=self.doc))())
+            out = insert_receipt(self.case, self.doc)
         else:
             attach_checks(self.case, self.doc)
-            out = OwnCases.submit(self) if self.RAW else self.case.send(self.doc)
+            out = self.case.send(self.doc)
         self.assertEqual(out['status'], 'committed', out)
 
     def promote(self, expected='committed'):
         c = self.case
         before = c.state(exclude=())
-        with prior_consumption(c) if getattr(self, 'legacy_consumption', False) else nullcontext():
-            if self.RAW:
-                try:
-                    c.x("UPDATE claims SET status='accepted_support' WHERE claim_id='clm_loadbear1' AND revision=1")
-                    out = dict(status='committed')
-                except sqlite3.IntegrityError as exc:
-                    out = dict(status='rejected', detail=str(exc))
-            else:
-                self.promotion_env = c.envelope(c.producer, 'op_promote001',
-                    {**empty_outcome(c.ACQUIRER, 'interim_transition'), 'claim_promotions':[dict(claim_id='clm_loadbear1', revision=1)]})
-                out = c.router.commit_outcome(self.promotion_env)
+        self.promotion_env = c.envelope(c.producer, 'op_promote001',
+            {**empty_outcome(c.ACQUIRER, 'interim_transition'), 'claim_promotions':[dict(claim_id='clm_loadbear1', revision=1)]})
+        out = c.router.commit_outcome(self.promotion_env)
         self.assertEqual(out['status'], expected, out)
         if expected == 'rejected':
-            if self.RAW:
-                self.assertEqual(c.state(exclude=()), before)
-            else:
-                c.assert_audited_state(before, 1)
+            c.assert_audited_state(before, 1)
         else:
             self.assertEqual(c.rows("SELECT status FROM claims WHERE claim_id='clm_loadbear1'"), [('accepted_support',)])
         self.assertEqual(c.rows('PRAGMA foreign_key_check'), [])
@@ -115,7 +72,6 @@ class PromotionCases:
             for tier in ('bibliographic', 'abstract', 'full_text'):
                 with self.subTest(method=method, tier=tier):
                     self.context(method, tier); self.store(); self.promote()
-                    self.assertEqual(self.case.rows('SELECT verification_receipt_id FROM bound_extraction_receipts'), [(self.doc['verification_receipt_id'],)])
 
     def test_own_control(self):
         self.context('verifier_extraction'); self.store(); self.promote()
@@ -129,9 +85,8 @@ class PromotionCases:
                 self.assertEqual(self.case.value('SELECT recorded_tier_rank FROM source_acquisition_content_tiers'), 3)
                 # Retained receipts must be rechecked even when admission was
                 # formerly allowed. Raw admission still retains this history.
-                self.store(legacy=not self.RAW)
+                self.store(legacy=True)
                 history = self.case.rows('SELECT * FROM extraction_validations_v2')
-                self.assertEqual(self.case.rows('SELECT * FROM bound_extraction_receipts'), [])
                 self.promote('rejected')
                 self.assertEqual(self.case.rows('SELECT * FROM extraction_validations_v2'), history)
 
@@ -143,7 +98,6 @@ class PromotionCases:
                     self.context('validated_extraction', required)
                     independent_basis(self.case, self.doc, independent)
                     self.store(); self.promote()
-                    self.assertEqual(self.case.rows('SELECT verification_receipt_id FROM bound_extraction_receipts'), [(self.doc['verification_receipt_id'],)])
 
     def test_history_control(self):
         self.context('validated_extraction')
@@ -168,7 +122,6 @@ class PromotionCases:
                         else:
                             self.doc['extraction']['validation_ref'] = kind
                     self.store(legacy=True)
-                    self.assertEqual(self.case.rows('SELECT * FROM bound_extraction_receipts'), [])
                     self.promote('rejected')
 
     def test_bindings(self):
@@ -202,7 +155,6 @@ class PromotionCases:
                             self.doc['extraction']['extraction_id'] = 'foreign-basis'
                         else: self.doc['extraction']['produced_by_invocation_id'] = self.case.verifier['invocation_id']
                     self.store(legacy=True)
-                    self.assertEqual(self.case.rows('SELECT * FROM bound_extraction_receipts'), [])
                     self.promote('rejected')
 
     def test_reference_type(self):
@@ -211,7 +163,6 @@ class PromotionCases:
         self.clone('source_extractions', dict(extraction_id='123'), "extraction_id='" + basis + "'")
         self.doc['extraction']['extraction_id'] = 123
         self.store(legacy=True)
-        self.assertEqual(self.case.rows('SELECT * FROM bound_extraction_receipts'), [])
         self.promote('rejected')
 
     def test_hash(self):
@@ -223,7 +174,6 @@ class PromotionCases:
         receipt['obtained_content_hash'] = 'sha256:' + '0' * 64
         self.case.x('UPDATE verification_receipts SET obtained_content_hash=?, receipt=?', receipt['obtained_content_hash'], json.dumps(receipt))
         self.case.x(immutable)
-        self.assertEqual(self.case.rows('SELECT * FROM bound_extraction_receipts'), [])
         self.promote('rejected')
 
     def test_content_ceiling(self):
@@ -237,7 +187,6 @@ class PromotionCases:
                 body['records'] = [dict(identity='doi:10.1/fixture', abstract='Abstract')]
                 self.case.x('DROP TRIGGER source_acquisitions_immutable_u')
                 self.case.x('UPDATE source_acquisitions SET response_bytes=?', json.dumps(body).encode().ljust(len(raw)))
-                self.assertEqual(self.case.rows('SELECT * FROM bound_extraction_receipts'), [])
                 self.promote('rejected')
 
     def test_v4(self):

@@ -22,7 +22,7 @@ from __future__ import annotations
 import sqlite3
 import unittest
 
-from gen2.tests.raw_population_fixtures import SOURCE_HASH, prepare
+from gen2.tests.store_fixtures import SOURCE_HASH
 from gen2.tests.store_fixtures import FIND_REQUEST, OTHER, TOPIC, StoreTestCase, T, h
 
 
@@ -37,7 +37,6 @@ def canonical_support(case, rid, **changes):
         case.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
         case.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_content001', ?)", TOPIC, case.source_hash, T)
         case.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, case.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
-    prepare(case, changes.get("claim", ("clm_00000001", 1)))
     case.verify(rid, method="canonical_bytes", extraction="inv_pppppppp", **changes)
 
 
@@ -137,7 +136,6 @@ class VerificationTest(StoreTestCase):
         self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
         self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_acquire01', ?)", TOPIC, self.source_hash, T)
         self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, self.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
-        prepare(self)
         self.verify("ver_00000001", tier="bibliographic", required="bibliographic", use="sampled", method="canonical_bytes", extraction="inv_pppppppp")  # producer-acquired canonical bytes below the recorded ceiling
         from gen2.tests.extraction_receipt_fixtures import seed
         seed(self)
@@ -157,7 +155,6 @@ class VerificationTest(StoreTestCase):
         self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
         self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_qqqqqqqq', 'op_acquire01', ?)", TOPIC, self.source_hash, T)
         self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_qqqqqqqq', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, self.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
-        prepare(self)
         self.verify("ver_00000001", method="canonical_bytes", extraction="inv_qqqqqqqq")
         self.assertEqual(self.rows("SELECT acquired_by_invocation_id FROM source_acquisitions"), [("inv_qqqqqqqq",)])
         self.assertEqual(self.rows("SELECT extraction_method, extraction_invocation_id, producer_invocation_id, verifier_invocation_id, extraction_validation_ref, access_tier FROM verification_receipts"),
@@ -218,7 +215,6 @@ class VerificationTest(StoreTestCase):
         self.recorded_verification_basis()
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000002', 1, ?, ?, 'inv_pppppppp', 0, 'full_text', 'provisional', ?)", TOPIC, self.source_hash, T)
         self.quote_check("qc-2", claim=("clm_00000002", 1))
-        prepare(self, ("clm_00000002", 1))
         refused = "that claim's own required tier"
         for label, kw in (("a higher required tier than the claim's", dict(tier="reproduced", required="reproduced")),
                           ("a lower required tier than the claim's", dict(tier="abstract", required="abstract")),
@@ -275,9 +271,7 @@ class VerificationTest(StoreTestCase):
         """SQLite passes a CHECK that evaluates to NULL, so an absent JSON key must
         fail closed: 'supports' with an adverse check and NO adjudication key, or
         with no exact-quote status, is refused like an explicit null."""
-        # Isolate SQL 03's NULL-sensitive checks; SQL 21 independently refuses
-        # missing schema members before those checks (test_store_exact_spans).
-        self.x("DROP TRIGGER verification_receipts_span_domain_v4")
+        # SQL 03's original NULL-sensitive column/receipt checks remain active.
         self.recorded_verification_basis()
         with self.assertRaises(sqlite3.IntegrityError):
             self.verify("ver_00000001", checks=dict(self.CHECKS_OK, numeric_units="checked_problem"), drop=("adjudication",))

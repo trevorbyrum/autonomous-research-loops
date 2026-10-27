@@ -32,8 +32,8 @@ class Verification:
             return True
         if doc["extraction"]["method"] == "canonical_bytes":
             return False
-        # Receipt effects are planned before insertion. SQL 32/33 and the
-        # Router must admit each new basis later in this same transaction;
+        # Receipt effects are planned before insertion. The Router must admit
+        # each new basis later in this same transaction;
         # otherwise no operation receipt or hold survives. Same-outcome bases
         # do not exist yet. Successful admission guarantees basis membership,
         # including text references; alarms affect promotion, not membership.

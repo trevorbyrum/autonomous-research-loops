@@ -1,10 +1,8 @@
-"""Durable own-extraction receipt bindings; SQL 17 promotion remains fenced."""
+"""Durable own-extraction receipt bindings through the Router."""
 import json
-import sqlite3
 import unittest
 from unittest.mock import patch
 
-from gen2.core import canonical
 from gen2.store import db
 from gen2.tests import store_fixtures as sf
 from gen2.tests.ddl_fixtures import restore_triggers
@@ -14,7 +12,6 @@ from gen2.tests.test_extraction_acquisitions import extraction_document, send
 
 
 class OwnCases:
-    RAW = False
 
     def setUp(self):
         # Seed under production DDL, then install the requested raw predicate.
@@ -25,23 +22,10 @@ class OwnCases:
             seed_checks(self.case, self.doc)
         self.addCleanup(context.__exit__, None, None, None)
         self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'bibliographic'
-        restore_triggers(self.case, sf.DDL_TEXT,
-            omit=() if self.RAW else ('verification_receipts_own_extraction',))
+        restore_triggers(self.case, sf.DDL_TEXT)
 
     def submit(self):
-        if not self.RAW:
-            return send(self.case, self.doc)
-        d = self.doc
-        try:
-            self.case.x("INSERT INTO verification_receipts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                d['verification_receipt_id'], d['topic_id'], d['claim']['claim_id'], d['claim']['claim_revision'],
-                d['source']['work_id'], d['source']['source_version'], canonical.canonical_bytes(d['cited_spans']).decode(), d['obtained_content_hash'],
-                d['access_tier'], d['requested_for']['use'], d['requested_for']['required_access_tier'], canonical.canonical_bytes(d['acquisition']).decode(),
-                d['extraction']['method'], d['extraction']['produced_by_invocation_id'], d['extraction']['validation_ref'],
-                d['producer_invocation_id'], d['verifier_invocation_id'], d['quote_check_id'], d['verdict'], canonical.canonical_bytes(d).decode(), d['verified_at'])
-            return {'status': 'committed'}
-        except sqlite3.IntegrityError as exc:
-            return {'status': 'rejected', 'detail': str(exc)}
+        return send(self.case, self.doc)
 
     def refuse(self):
         # Historical /1 operands isolate the existing extraction predicate.
@@ -50,11 +34,9 @@ class OwnCases:
         with historical_admission(self.case):
             out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)
+        self.assertEqual(out.get('reason'), 'payload_invalid', out)
         self.assertIn('receipt needs its verifier durable extraction', out['detail'])
-        if self.RAW:
-            self.assertEqual(self.case.state(exclude=()), before)
-        else:
-            self.case.assert_audited_state(before, 1)
+        self.case.assert_audited_state(before, 1)
         self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])
 
     def clone(self, table, changes, where=''):

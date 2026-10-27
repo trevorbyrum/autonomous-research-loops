@@ -37,7 +37,7 @@ class AcceptanceSelectionTest(unittest.TestCase):
             "raise SystemExit(int(os.environ['STUB_TRIGGER_EXIT']))\n")
         (self.root / "tools/gen2_mutation_scope.py").write_text(
             "import argparse, os\nfrom pathlib import Path\n"
-            "parser = argparse.ArgumentParser()\nparser.add_argument('--base', required=True)\nparser.add_argument('--coverage')\n"
+            "parser = argparse.ArgumentParser()\nparser.add_argument('--base', required=True)\nparser.add_argument('--coverage')\nparser.add_argument('--workers', type=int)\n"
             "args = parser.parse_args()\nPath('mutation-base').write_text(args.base)\n"
             "Path('shared-coverage').write_text(os.path.abspath(args.coverage))\n"
             "with Path('step-order').open('a') as log: log.write('mutation\\n')\n"
@@ -65,7 +65,8 @@ class AcceptanceSelectionTest(unittest.TestCase):
         if coverage is not None:
             command.append(f"GEN2_COVERAGE={coverage}")
         env = {key: value for key, value in os.environ.items()
-               if key not in {"MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GEN2_BASE", "GEN2_COVERAGE", "GEN2_VENV"}}
+               if key not in {"MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GEN2_BASE", "GEN2_COVERAGE", "GEN2_VENV",
+                              "GEN2_TEST_WORKERS", "GEN2_MUTATION_ARGS", "GEN2_TEST_ARGS"}}
         return subprocess.run(command, cwd=self.root, env={**env, "PWD": str(self.root), "STUB_TRIGGER_EXIT": str(trigger_exit),
                               "STUB_MUTATION_EXIT": str(mutation_exit)},
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=15)

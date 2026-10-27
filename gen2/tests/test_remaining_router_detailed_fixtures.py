@@ -11,14 +11,39 @@ from gen2.store import db
 from gen2.tests import store_fixtures as sf
 from gen2.tests import test_router_amendments as amendments
 from gen2.tests import test_span_cap as cap
-from gen2.tests import test_store_detailed_receipt_fixtures as converted
 from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.test_store_fixture_order import reverse_triggers
+from gen2.tests.ddl_fixtures import reverse_triggers
 
 
 class RemainingRouterFixtureTest(unittest.TestCase):
-    check_receipt = converted.ConvertedFixtureTest.check_receipt
+    def check_receipt(self, case, doc, expected_ref):
+        self.assertEqual(doc['receipt_version'], 'verification-receipt/2')
+        self.assertEqual(case.store.select('verification_receipts',
+            {'verification_receipt_id': doc['verification_receipt_id']})[0]['receipt'], doc)
+        self.assertEqual(set(doc['detailed_checks']), {'numeric_units', 'denominators', 'negation', 'qualifications'})
+        for kind, entry in doc['detailed_checks'].items():
+            row = case.store.select('detailed_check_records', {'check_id': entry['record_id']})[0]
+            report = row['assessment']
+            self.assertEqual((report['kind'], report['outcome']), (kind, entry['outcome']))
+            self.assertEqual((report['claim_id'], report['claim_revision']),
+                (doc['claim']['claim_id'], doc['claim']['claim_revision']))
+            self.assertEqual((report['work_id'], report['source_version']),
+                (doc['source']['work_id'], doc['source']['source_version']))
+            self.assertEqual(report['cited_spans'], doc['cited_spans'])
+            self.assertEqual(report['examined_artifact_ref'], expected_ref)
+            self.assertEqual(report['source_artifact_hash'], case.source['content_hash'])
+            self.assertEqual(row['performer_invocation_id'], doc['verifier_invocation_id'])
+            self.assertNotEqual(row['performer_invocation_id'], doc['producer_invocation_id'])
+            operation = case.store.select('operation_receipts', {'operation_id': row['recorded_by_operation_id']})[0]
+            self.assertEqual(operation['invocation_id'], row['performer_invocation_id'])
+            self.assertEqual(report['method'], 'attributed-assessment/1')
+            self.assertTrue(report['assessment']); self.assertTrue(report['context_examined'])
+            if entry['outcome'] == 'not_applicable': self.assertTrue(report['applicability_reason'])
+            raw = case.spool.read(row['evidence_ref']['content_hash'], topic_id=doc['topic_id'])
+            self.assertEqual(raw, canonical.canonical_bytes(report))
+            self.assertEqual(canonical.bytes_digest(raw), row['evidence_ref']['content_hash'])
+        self.assertEqual(case.rows('PRAGMA foreign_key_check'), [])
 
     def opened(self):
         case = amendments.ImpactTest()
@@ -103,8 +128,7 @@ class RemainingRouterFixtureTest(unittest.TestCase):
                 self.assertEqual(case.rows('SELECT * FROM detailed_check_records'), records)
 
     def test_amendment_reseed_restores_exact_requested_catalog(self):
-        ddl = reverse_triggers(sf.DDL_TEXT).replace('d.topic_id = NEW.topic_id', '1 = 1')
-        ddl += '\nDROP TRIGGER verification_receipts_detailed_domain;\n'
+        ddl = reverse_triggers(sf.DDL_TEXT)
         with sqlite3.connect(':memory:') as reference:
             reference.executescript(ddl); expected = list(reference.execute(TRIGGERS))
         for method in ('canonical_producer', 'acquisition_producer'):

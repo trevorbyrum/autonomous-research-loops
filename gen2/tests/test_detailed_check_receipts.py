@@ -1,7 +1,6 @@
 """Optional /2 references bind recorded relationships, never semantic truth."""
 import copy
 import json
-import sqlite3
 from unittest.mock import patch
 
 from gen2.core import canonical
@@ -14,7 +13,6 @@ from gen2.tests.test_detailed_checks import CheckCase, KINDS, OUTCOMES
 
 
 class ReferenceCases:
-    RAW = False
     record = CheckCase.record
 
     def setUp(self):
@@ -28,8 +26,7 @@ class ReferenceCases:
                 self.doc['checks'][k] = 'checked_ok'
             self.records = [self.make_record(k) for k in KINDS]
             self.assertEqual(self.commit_records(self.records)['status'], 'committed')
-        restore_triggers(self, sf.DDL_TEXT,
-            omit=() if self.RAW else ('verification_receipts_detailed_binding',))
+        restore_triggers(self, sf.DDL_TEXT)
 
     def make_record(self, kind, outcome='succeeded'):
         r = self.record(kind=kind, outcome=outcome, **self.doc['claim'], cited_spans=self.doc['cited_spans'],
@@ -42,30 +39,15 @@ class ReferenceCases:
         return self.router.commit_outcome(self.envelope(self.verifier, op, payload, refs=[r['evidence_ref'] for r in records]))
 
     def submit(self):
-        if not self.RAW:
-            return self.send(self.doc, op="op_" + self.doc["verification_receipt_id"])
-        d = self.doc
-        values = [d['verification_receipt_id'], d['topic_id'], d['claim']['claim_id'], d['claim']['claim_revision'],
-            d['source']['work_id'], d['source']['source_version'], d['cited_spans'], d['obtained_content_hash'],
-            d['access_tier'], d['requested_for']['use'], d['requested_for']['required_access_tier'], d['acquisition'],
-            d['extraction']['method'], d['extraction']['produced_by_invocation_id'], d['extraction']['validation_ref'],
-            d['producer_invocation_id'], d['verifier_invocation_id'], d['quote_check_id'], d['verdict'], d, d['verified_at']]
-        try:
-            self.x('INSERT INTO verification_receipts VALUES (' + ','.join('?' * len(values)) + ')',
-                *[canonical.canonical_bytes(v).decode() if isinstance(v, (dict, list)) else v for v in values])
-            return {'status': 'committed'}
-        except sqlite3.IntegrityError as exc:
-            return {'status': 'rejected', 'detail': str(exc)}
+        return self.send(self.doc, op="op_" + self.doc["verification_receipt_id"])
 
     def rejected_reference(self):
         before = self.state(exclude=())
         result = self.submit()
         self.assertEqual(result['status'], 'rejected', result)
+        self.assertEqual(result.get('reason'), 'payload_invalid', result)
         self.assertIn('receipt detailed check binding', result['detail'])
-        if self.RAW:
-            self.assertEqual(self.state(exclude=()), before)
-        else:
-            self.assert_audited_state(before, 1)
+        self.assert_audited_state(before, 1)
 
     def corrupt(self, field, value):
         self.x('DROP TRIGGER IF EXISTS detailed_check_records_immutable_u')
@@ -232,11 +214,9 @@ class ReferenceCases:
             if change == 'version': self.doc['receipt_version'] = 'verification-receipt/99'
             if change == 'v1': self.doc['receipt_version'] = 'verification-receipt/1'
             before = self.state(exclude=())
-            self.assertEqual(self.submit()['status'], 'rejected', change)
-            if self.RAW:
-                self.assertEqual(self.state(exclude=()), before)
-            else:
-                self.assert_audited_state(before, 1)
+            out = self.submit()
+            self.assertEqual((out['status'], out.get('reason')), ('rejected', 'payload_invalid'), change)
+            self.assert_audited_state(before, 1)
             self.doc = original
 
     def test_outcomes_optional_legacy(self):

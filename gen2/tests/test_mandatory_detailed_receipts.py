@@ -9,15 +9,13 @@ from gen2.tests import test_detailed_check_receipts as references
 from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 from gen2.tests.detailed_receipt_fixtures import OUTCOME, attach_checks, seed_checks, historical_receipt, historical_admission
 from gen2.tests.test_pending_extraction_support import load_claim
-from gen2.tests.test_store_fixture_order import reverse_triggers
+from gen2.tests.ddl_fixtures import reverse_triggers
 
 
 class MandatoryCases:
-    RAW = False
 
     def opened(self):
-        from gen2.tests import test_store_detailed_check_receipts as raw
-        case = (raw.ReferenceDDLTest if self.RAW else references.ReferenceRouterTest)('test_control')
+        case = references.ReferenceRouterTest('test_control')
         case.setUp()
         self.addCleanup(case.tearDown)
         restore_triggers(case, db.schema_text())
@@ -25,20 +23,16 @@ class MandatoryCases:
         case.doc['claim']['claim_id'] = 'clm_loadbear1'
         case.doc['requested_for']['use'] = 'load_bearing'
         seed_checks(case, case.doc)
-        # Router must independently refuse even with both SQL consumer guards absent.
-        restore_triggers(case, sf.DDL_TEXT, omit=() if self.RAW else (
-            'verification_receipts_require_detailed_checks', 'verification_receipts_detailed_binding'))
+        restore_triggers(case, sf.DDL_TEXT)
         return case
 
     def refused(self, case, detail=None):
         before = case.state(exclude=())
         out = case.submit()
         self.assertEqual(out['status'], 'rejected', out)
+        self.assertEqual(out.get('reason'), 'payload_invalid', out)
         if detail: self.assertIn(detail, out['detail'])
-        if self.RAW:
-            self.assertEqual(case.state(exclude=()), before)
-        else:
-            case.assert_audited_state(before, 1)
+        case.assert_audited_state(before, 1)
 
     def test_control(self):
         case = self.opened()
@@ -120,8 +114,6 @@ class MandatoryCases:
     def test_historical_isolation_restores_current_policy_and_catalog(self):
         for reverse in (False, True):
             ddl = reverse_triggers(sf.DDL_TEXT) if reverse else sf.DDL_TEXT
-            ddl = ddl.replace('d.topic_id = NEW.topic_id', '1 = 1')
-            ddl += '\nDROP TRIGGER verification_receipts_detailed_domain;\n'
             with self.subTest(reverse=reverse), patch.object(sf, 'DDL_TEXT', ddl):
                 case = self.opened()
                 restore_triggers(case, ddl)
