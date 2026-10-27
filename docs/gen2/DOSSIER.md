@@ -169,6 +169,18 @@ is the next engine slice** and its contract is not yet written. Its scope, from
 the approved plan §6.1 (≈ 250 lines; was 440), to be turned into an acceptance
 contract before dispatch:
 
+- **2026-10-27, Gate S full pass (Trevor: "Approve all"; reconcile report private/reviews/gen2-gate-s-full-reconcile-fable-20261027.md §5):**
+  - **O-1:** the supervisor keeps one concurrency backstop: the per-job lock plus `_save`'s stale-journal check. The caller-copy re-reads in `_call`/`_incident` and their stale-copy matrix go.
+  - **O-2:** operator tokens are constrained to `[A-Za-z0-9_-]{16,}`, and the decoding redaction is deleted. The DEPLOYMENT-CONTRACT §1.1 line changes in that batch.
+  - **O-3:** retained-byte hash truth is the Router's only. `Store.insert`'s `request_bytes` digest recomputation goes.
+  - **O-4:** restore stays a documented Python-level operator procedure in Phase 2 (two doc lines); an entry point comes with 2g.
+  - **O-5:** BOUNDARIES "Router composition" is amended: one `gen2/router/protocols.py` replaces the 23 protocol copies, and the 33 private forwarders are dropped. This lands as one contract-first interface PR before 6b2′.
+  - **O-6:** keep `schemas.py`; no `jsonschema` adoption.
+  - **O-7:** freeze reservations and auto-promotion draws, which have Phase 3 consumers only (DEBT-050). Delete them only if a Phase 2 slice must touch them.
+  - **O-8:** delete `test_schema_counterfactuals.py`; its two probes become example fixtures.
+  - **O-9:** after S6's rule table, the six RAW twins are replaced by direct per-table integrity tests, and the raw-DDL classes leave the Router test modules.
+  - **O-10:** drop `verification-receipt/1` from the schema enum and its isolation matrices **if** no store 2f opens holds a `/1` row, with Astra confirming the history rule first. One literal witness that a `/1`-shaped row is not support stays.
+  - **O-11:** drop the four `RealRegisterTest` content pins and keep the armed phase-close test.
 - **Trace:** R1:D as amended by ruling B (counter, once per committed covered write); the two-recapture ruling (2026-10-23); DEBT-036 (revalidate at commit); the 2026-10-24 no-writes-on-open ruling.
 - **Contract:** capture reads `(epoch, generation, schema_cookie)` and the admitted device/inode inside the same read snapshot (part 1's `mode=ro` reader); the writer fence re-reads them under `BEGIN IMMEDIATE` before the operation's first `insert/update` (so before its own bump) with a fresh `stat`; any difference refuses with a typed stale-input refusal before effects; up to two automatic recaptures, then the operation's normal failure; the recapture count is written as an ordinary audit fact through the existing audit path.
 - **Tests:** two-connection WAL fixtures with deterministic barriers (per-transaction counts), restore-via-`maintain` detected by epoch, cookie change detected, inode change detected, rollback leaves the counter unchanged, unrelated-topic write refuses (conservative, as ruled).

@@ -3644,3 +3644,21 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - separation practices (PR #43);
   - coordination rule: coders wait while an S2d benchmark unit is active.
 
+## 2026-10-27: Gate S full pass (five component reviews plus a reconcile, all Fable, fresh, at `3a579af`)
+- **Reports:** `private/reviews/gen2-gate-s-full-{supervisor,router,production-other,tests-store,tests-other}-fable-20261027.md`, and the reconcile `gen2-gate-s-full-reconcile-fable-20261027.md`.
+- **Do now (no ruling): six one-component batches, about −830 net.**
+  - **B:** `service.py` headroom, through pure moves plus `utc_now`.
+  - **A:** Router admission consolidation: a table-driven record admission, `SECTION_KINDS` contexts, a `support.py` row interface, and `hold_row`.
+  - **C:** supervisor.
+  - **E:** idle and duplicated accounting, store and config code.
+  - **D1:** store test fixtures.
+  - **D2:** fixtures as fixtures.
+  - B and A land before 6b1′ is briefed.
+- **6b1′ design inputs (13).** Two block the design as Gate S #2 described it:
+  - the store holds no artifact bytes, so dossier hash truth needs a home;
+  - the dossier has two commit paths, and only the internal path is freshness-fenced.
+  - Also: `evidence_revision` has no producer; the `dossier/2` codec doesn't cover `frozenset`/`Fraction`/`Count`; and a §7.1 consumer list is needed against about 1,650 idle lines.
+- **Operator decisions O-1 to O-11:** approved 2026-10-27 (DOSSIER).
+- **O-12 was a false alarm:** S2-1 to S2-7 had merged in records PR #42 at 00:48; the reviewers read stale copies.
+- **S6 brief amended** (tests-store item 1): it previously missed three test families, one of which would have broken an import.
+

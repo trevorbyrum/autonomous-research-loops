@@ -541,3 +541,12 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: INVARIANTS §13 originally placed the real intake conversation and scoping workflow (S1–S3 live) in Phase 2. Under S2-6 option A it moves to Phase 3. Phase 2 (2f) runs under an operator-authored contract, which the operator confirms through G-4's durable machinery.
 - source: operator ruling S2-5/S2-6, 2026-10-27 (Gate S #2, private/reviews/gen2-gate-s2-fable-20261027.md §6.3/§6.5)
 - removal: Phase 3 delivers live S1–S3 executors, and INVARIANTS §13 records the move (R2).
+
+### DEBT-050 - reservations and auto-promotion draws are frozen until their Phase 3 consumers (Phase 3)
+- kind: obligation
+- status: open
+- owner: phase 3
+- what: The reservation and auto-promotion draw code (about 110 production lines, about 400 test lines, and DDL) has no Phase 2 production caller. It is frozen: no Phase 2 slice extends it. Phase 3's qualified-automation and decision-layer work either becomes its consumer or deletes it.
+- source: operator ruling O-7, 2026-10-27 (Gate S full pass, private/reviews/gen2-gate-s-full-reconcile-fable-20261027.md §5)
+- removal: a Phase 3 slice consumes it with a production caller, or deletes it; the Phase 3 Gate S confirms.
+
