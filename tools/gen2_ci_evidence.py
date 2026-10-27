@@ -2,11 +2,46 @@
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
+import subprocess
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+
+def complete_union(inventories, total):
+    """Validate occurrences, while forbidding identities shared between shards."""
+    expected = Counter(inventories[0]["expected"]) if inventories else Counter()
+    seen, selected = set(), Counter()
+    if len(inventories) != total or not expected:
+        raise ValueError("requires the complete union of shards")
+    for index, row in enumerate(inventories, 1):
+        identities = set(row["selected"])
+        if (row["shard"] != [index, total] or not row["success"] or
+                Counter(row["expected"]) != expected or seen & identities):
+            raise ValueError("failed, overlapping or inconsistent shard")
+        seen.update(identities)
+        selected.update(row["selected"])
+    if selected != expected:
+        raise ValueError("requires the complete union of shards")
+
+
+def parallel(commands, directory):
+    """Standard process execution; each worker owns its evidence and log files."""
+    def execute(item):
+        index, command = item
+        out = Path(directory) / f"shard-{index}"
+        out.mkdir(parents=True)
+        log = out / "console.log"
+        env = {**os.environ, "GEN2_CI_EVIDENCE": str(out), "GEN2_TEST_LOG": str(out / "tests.log")}
+        with log.open("w") as stream:
+            result = subprocess.run(command, env=env, stdout=stream, stderr=subprocess.STDOUT)
+        return result.returncode, out
+    with ThreadPoolExecutor(max_workers=len(commands)) as executor:
+        return list(executor.map(execute, enumerate(commands, 1)))
 
 
 def write_json(path: Path, value: object) -> None:
