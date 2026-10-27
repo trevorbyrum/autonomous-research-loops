@@ -16,8 +16,8 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
     - **Held:** Batch B (worktree `gen2-wt-3`) pending the operator's mutation-scope decision for refactors.
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`. That is S6 → B → A → O-5 → the 6b1′ design (13 inputs) in the shared tree. The second coder takes the gateway mutants, trigger-order retirement (after S6), C, E, F and D2. D1 and O-9 come after S6.
 - **Last verifier result:** Batch D1 `4641ccc`, gen2-accept exit 0 in 750 s (8 shards, 2,969 tests). Batch C `f250716`, exit 0 in 1,753 s.
-- **Gate S watch item:** a stage-1 survivor costs a full serial suite (about 70 min) in stage 2. Candidate: run stage 2 sharded or in parallel.
-- **Blockers:** none. **Open operator decisions:** none.
+- **Gate S watch item:** stage 2 is now sharded (S2d). Remaining cost driver: changed-line mutation of pure-move refactors (moved lines count as changed; stage 1 runs serially per mutant). This is the pending operator decision below.
+- **Blockers:** none. **Open operator decisions:** the mutation scope for refactors, put to Trevor 2026-10-27: (1) move-aware changed-line scope, and (2) parallel stage-1 workers. Batch B, Batch A and O-5 wait on it.
 - **Gate S:** last run **#2 at `b3ffd23`** (2026-10-27; `private/reviews/gen2-gate-s2-fable-20261027.md`). Engine side 109,026 lines; production 13,100. Operator decisions S2-1 to S2-7 are pending.
 - **What's next:** Batch B, Batch A, O-5, then 6b1′; second coder: trigger-order retirement, C, E, F, D2; after S6: D1, O-9; R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
