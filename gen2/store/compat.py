@@ -86,7 +86,7 @@ class StoreCompatibilityError(RuntimeError):
 
 
 def capability_fact(state: str, detail: str, observed: dict) -> dict:
-    now = instants.utc_now()
+    now = instants.utc_now("seconds")
     return {"capability": CAPABILITY, "state": state, "detail": detail, "since": now, "last_success_at": None,
             "affected_lanes": list(AFFECTED_LANES), "recorded_at": now, "observed": observed,
             "required": {"sqlite_floor": ".".join(map(str, SQLITE_FLOOR)), "json_functions": [p[0] for p in JSON_PROBES],
