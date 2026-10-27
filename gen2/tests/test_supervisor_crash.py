@@ -64,11 +64,8 @@ import unittest
 from gen2.supervisor import jobs
 from gen2.tests import children
 from gen2.tests import router_fixtures as rf
-from gen2.tests.supervisor_fixtures import DEADLINE, MAIN, PARENT, SupervisedTestCase, released, succeed
+from gen2.tests.supervisor_fixtures import GATED, HANG, CLEAN, DEADLINE, MAIN, PARENT, SupervisedTestCase, released, succeed
 
-GATED = [{"op": "wait_for", "name": "gate", "seconds": 60}, *succeed()]
-HANG = [{"op": "hang"}]
-CLEAN = ["admitted", "launching", "running", "result_ready", "committed"]
 CHILD_CLOCK = "2026-09-27T10:30:00Z"
 SHORT_DEADLINE = "2026-09-27T10:30:00.300Z"
 LAPSES = "2026-09-27T10:45:00Z"  # a lease expiring after the child's claim (10:30), before the restart (11:00)  # passes while the child polls its running job (its clock reads a millisecond at a time)
@@ -254,7 +251,7 @@ class CrashFaults:
         identity unknown to the router. The restarted supervisor enters
         outcome_unknown, finds the job by its handle, verifies its identity
         and reconciles it as running — it never starts a second copy."""
-        self.crash("spawned", GATED)
+        self.crash("spawned", [*GATED, *succeed()])
         self.wait_for_file("identity.json")  # the orphaned launcher runs on; this makes the lookup's finding deterministic
         self.assertEqual(self.restart()[MAIN], "running")
         self.gate()
@@ -309,9 +306,9 @@ class CrashFaults:
                                         "failure_class": "timeout", "evidence": True, "lease_release": released(self.KIND, "failed")})
 
     def test_a_second_crash_after_entering_outcome_unknown(self) -> None:
-        self.crash("spawned", GATED)
+        self.crash("spawned", [*GATED, *succeed()])
         self.wait_for_file("identity.json")
-        self.crash("unknown_recorded", GATED, clock="2026-09-27T10:40:00Z", prepare=False)
+        self.crash("unknown_recorded", [*GATED, *succeed()], clock="2026-09-27T10:40:00Z", prepare=False)
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "outcome_unknown")
         self.assertEqual(self.restart()[MAIN], "running")
         self.gate()

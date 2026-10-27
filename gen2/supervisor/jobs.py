@@ -206,14 +206,13 @@ class Job:
         vanished (the launcher is gone with no exit record: killed, or the
         host rebooted)."""
         identity = self.read("identity.json")
-        view = {"identity": identity, "exit": None, "members": [], "same_boot": None}
+        view = {"identity": identity, "exit": None, "members": []}
         spawn = self.read("spawn.json")
         if identity is None and (spawn is None or spawn["failed"] >= spawn["attempts"]):  # no start tried, or every one refused by the OS
             return {**view, "verdict": "not_started"}
         if identity is None:
             return {**view, "verdict": "unstarted" if self._lock_free() else "starting"}
-        view["same_boot"] = identity["boot_id"] == boot_id()
-        stat = proc_stat(identity["pid"]) if view["same_boot"] else None
+        stat = proc_stat(identity["pid"]) if identity["boot_id"] in (boot_id(),) else None
         alive = stat is not None and stat[0] != "Z" and stat[2] == identity["starttime"]
         # liveness before the exit record: a launcher writes its exit record before it ends, so one found
         # dead with no exit record never wrote it (read the other way round, a launcher ending in between

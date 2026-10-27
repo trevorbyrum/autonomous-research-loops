@@ -14,6 +14,8 @@ hanging research pass of the same supervisor, running before the delegate
 is submitted. tearDown ends every process any job left behind and checks
 none survives it.
 
+`fake_executor.py` is the deterministic, scriptable test executor: no model,
+gateway or network. `TestSupervisor.run()` is the tests' bounded advance loop.
 Expected outcomes are written by hand in each test.
 """
 from __future__ import annotations
@@ -27,13 +29,14 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest import mock
 
 from gen2.core import canonical
 from gen2.core.control import ControlUnavailable
 from gen2.store import api
 from gen2.supervisor import jobs
 from gen2.supervisor.spool import Spool
-from gen2.supervisor.supervisor import Policy, Supervisor, WorkOrder
+from gen2.supervisor.supervisor import Policy, Supervisor, TERMINAL, WorkOrder
 from gen2.tests import children, store_fixtures
 from gen2.tests import router_fixtures as rf
 
@@ -63,13 +66,49 @@ def launcher() -> tuple[str, ...]:
     return (sys.executable, str(children.path("gen2/supervisor/jobshim.py")))
 
 
+# Scriptable executor steps and the literal clean lifecycle, shared by the fault matrices.
+HANG = [{"op": "hang"}]
+HANG_WITH_DESCENDANT = [{"op": "spawn_descendant", "marker": "descendant.pid"}, *HANG]
+GATED = [{"op": "wait_for", "name": "gate", "seconds": 60}]
+CLEAN = ["admitted", "launching", "running", "result_ready", "committed"]
+
+
+def alive(pid: int) -> bool:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except FileNotFoundError:
+        return False
+    return stat[stat.rindex(")") + 2] != "Z"
+
+
+class Unconfirmed:
+    """jobs.Job.terminate for a group that will not end: nothing is signalled
+    and the group is never confirmed empty. `calls` counts the attempts."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def terminate(self, job, identity, **kwargs) -> dict:
+        self.calls += 1
+        return {"found": len(jobs.members(identity)), "confirmed": False}
+
+    def patched(self):
+        return mock.patch.object(jobs.Job, "terminate", lambda job, identity, **kwargs: self.terminate(job, identity, **kwargs))
+
+
 class TestSupervisor(Supervisor):
     """A supervisor whose run() gives up after 20 s of wall time (not 60): a
     normal job ends in well under a second, and a mutant that leaves a job
     running should cost each test 20 s, not a minute."""
 
-    def run(self, invocation_id: str, *, timeout_s: float = 20.0, **kwargs) -> str:
-        return super().run(invocation_id, timeout_s=timeout_s, **kwargs)
+    def run(self, invocation_id: str, *, timeout_s: float = 20.0, until: tuple[str, ...] = TERMINAL + ("not_admitted",)) -> str:
+        """Advance until an outcome in `until`, or `timeout_s` of wall time."""
+        deadline = time.monotonic() + timeout_s
+        while True:
+            outcome = self.advance(invocation_id)
+            if outcome in until or time.monotonic() >= deadline:
+                return outcome
+            time.sleep(self.policy.poll_s)
 
 
 class Unreachable:
@@ -206,7 +245,7 @@ class SupervisedTestCase(rf.RouterTestCase):
         return WorkOrder(invocation_id=inv, kind=kind, topic_id=topic, config_bundle_hash=rf.CONFIG, deadline_at=deadline,
                          lease_expires_at=None if kind == "delegate" else (lease_expires or deadline),
                          parent_invocation_id=PARENT if kind == "delegate" else None,
-                         command=(sys.executable, str(children.path("gen2/supervisor/fake_executor.py")), str(script)))
+                         command=(sys.executable, str(children.path("gen2/tests/fake_executor.py")), str(script)))
 
     def start_parent(self, lease_expires: str | None = None) -> None:
         """A delegate's parent: a hanging research pass of this supervisor, running."""
