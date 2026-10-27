@@ -80,7 +80,8 @@ class ValidationIntegrityTest(sf.RecordIntegrityCase):
 
     def test_method(self):
         for changes, method in (({'extractor_identity':'tool-a'}, 'independent_extraction'),
-                ({'extractor_identity':'tool-a','extractor_version':'2'}, 'same_extractor_replay')):
+                ({'extractor_identity':'tool-a','extractor_version':'2'}, 'same_extractor_replay'),
+                ({'extractor_identity':'tool-a','extractor_version':'2'}, 'independent_extraction')):
             with self.subTest(changes=changes), self.corrupt('source_extractions', "extraction_id='ext-independent'", **changes):
                 with self.assertRaisesRegex(sqlite3.IntegrityError, 'validation method or byte comparison disagrees with extraction records'):
                     self.insert_record('extraction_validations', method=method)

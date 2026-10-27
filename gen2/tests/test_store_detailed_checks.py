@@ -36,6 +36,11 @@ class DetailedIntegrityTest(sf.RecordIntegrityCase):
         report = json.loads(self.record_row('detailed_check_records')['assessment'])
         ref = report['examined_artifact_ref']
         for kind in KINDS:
+            try:
+                self.insert_record('detailed_check_records', check_id='ok-'+kind, assessment=json.dumps({**report,'kind':kind}), evidence_ref=json.dumps(ref))
+            except sqlite3.IntegrityError as refusal:
+                self.fail(f'{kind}: valid evidence_ref refused: {refusal}')
+            self.assertEqual(self.rows('SELECT evidence_ref FROM detailed_check_records WHERE check_id=?', 'ok-'+kind), [(json.dumps(ref),)])
             for field in ('examined_artifact_ref','evidence_ref'):
                 for change in ({'size_bytes':999}, {'media_type':'text/plain'}, {'content_hash':sf.h('0')}):
                     changes = {'assessment':json.dumps({**report,'kind':kind,field:{**ref,**change}})} if field=='examined_artifact_ref' else {'evidence_ref':json.dumps({**ref,**change})}
