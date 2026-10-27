@@ -3600,3 +3600,24 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - Gate S watch: stage-1 survivors cost a serial full suite (about 70 min) each.
 - **S5** dispatched (fresh Sol `2ab2c299`).
 
+## 2026-10-27: Gate S #2 (Fable, fresh, `fe31c24a`) at S5 head `b3ffd23`
+- **Report:** `private/reviews/gen2-gate-s2-fable-20261027.md`. Trigger: before 6b1 is designed.
+- **Size:** engine side 177,868 at `65fb30e`, now 109,026 (−68,842 in 2.3 days, 10 landings). Production is 13,100.
+- **Do now (no operator decision per the report):**
+  1. the S5 repair;
+  2. S6 widened to all value-domain DDL, adding SQL 22 `source_extractions_tier`, SQL 35 `detailed_check_records_domain`/`_spans` and their helper views, plus an approximately 8-line Router twin (about −2,760);
+  3. delete the hand-written gateway mutants after S2d (about −2,470);
+  4. R2 plus moving `docs/gen2/tasks/` history to evidence;
+  5. delete the unused `.github/workflows/gen2-check.yml`;
+  6. use the design-brief form of §7.1 for 6b1 and 6b2.
+- **Operator decisions requested (S2-1 to S2-7):**
+  - slice 7 absorbed into 6b1′/6b2′;
+  - retire trigger-order after S6's final baseline;
+  - shrink stage 2 once data from 10 or more sharded campaigns shows no verdict flip;
+  - defer 2e1's subscription-window reader;
+  - the 2e2-minimum scope;
+  - INVARIANTS §13: the live S1–S3 intake moves out of Phase 2 (recommended option A);
+  - charter rules on harness changes and on measuring cost before review.
+- **Observed growth factors:** 1.3× for contracted engine slices, 2× for new mechanisms or runners, 3× for checking-pipeline changes.
+- **Timeline to 2f:** about 22–30 working days single-threaded, about 17–22 with two coders. Live run around 2026-11-20 to 11-28, with a risk band into mid-December.
+
