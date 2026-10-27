@@ -3793,4 +3793,4 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
     - **Astra round 1 BLOCK**, with two coverage losses, each shown by a selective trigger defect that the new tests passed:
       - B1: the same-identity, different-version `independent_extraction` refusal;
       - B2: no non-NULL evidence positive control for the detailed-check artifact negatives.
-    - **Round 2** (Sonnet `f51b9686`, `83162f7`, 8 touched lines): both defects now fail by assertion. Astra: ACCEPTED pending the verifier.
+    - **Round 2** (Sonnet `f51b9686`, `83162f7`, 8 touched lines): both defects now fail by assertion. Astra ACCEPTED. Verifier exit 0 in 700 s. Merged (PR #68). **O-9 is complete.**

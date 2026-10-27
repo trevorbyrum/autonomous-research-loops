@@ -6,13 +6,13 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 *(This section is current state only; history is in REVIEW-LOG.md. Contract and rulings: DOSSIER.md.)*
 - **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
 - **Open task:** 2d, slice 6. 6a is complete. The checks cut-back S1–S6, S2b–S2d and the gateway-mutant and trigger-order retirements are complete.
-  - **Complete:** the Gate S full-pass batches C, C-fu, D1, D2 (a1–a3, b), E, O-9a; R2 (INVARIANTS rules plus generated traceability); 6b1′ PR 0.
-  - **In flight:** O-9b (PR #68, Astra-accepted, verifier running).
+  - **Complete:** the Gate S full-pass batches C, C-fu, D1, D2 (a1–a3, b), E, O-9 (a, b); R2 (INVARIANTS rules plus generated traceability); 6b1′ PR 0.
+  - **In flight:** none; both coders idle pending the operator decisions below.
   - **Held for operator decisions:**
     - Batch F (PR #54, Astra F1: tokens can form inside JSON escapes);
     - Batch B (`gen2-wt-3`), and behind it Batch A, O-5 and 6b1′ PR 1 (mutation scope for refactors).
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`.
-- **Last verifier result:** R2 `9ca1502`, gen2-accept exit 0 in 717 s (8 shards).
+- **Last verifier result:** O-9b `83162f7`, gen2-accept exit 0 in 700 s (8 shards).
 - **Blockers:** none. **Open operator decisions:**
   1. the mutation scope for refactors (move-aware scope, parallel stage-1 workers), which Batch B, A, O-5 and 6b1′ PR 1 wait on;
   2. the Batch F redaction design after Astra F1 (recommended: check the final wire bytes);
