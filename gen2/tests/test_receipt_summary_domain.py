@@ -3,10 +3,11 @@ import copy
 import unittest
 
 from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt
-from gen2.tests.test_canonical_receipt_admission import ReceiptCase
-from gen2.tests.test_detailed_check_receipts import KINDS, ReferenceCases
-from gen2.tests.test_extraction_acquisitions import extraction_document
-from gen2.tests.test_pending_extraction_support import load_claim
+from gen2.tests.router_fixtures import ReceiptCase
+from gen2.tests.router_fixtures import KINDS
+from gen2.tests.test_detailed_check_receipts import ReferenceCases
+from gen2.tests.router_fixtures import extraction_document
+from gen2.tests.router_fixtures import load_claim
 
 
 METHODS = ('canonical_bytes', 'verifier_extraction', 'validated_extraction')

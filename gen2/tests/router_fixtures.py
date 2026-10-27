@@ -32,10 +32,13 @@ import hashlib
 import json
 import sqlite3
 import unittest
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 
 from gen2.core import canonical
+from gen2.core.gateway_capture import RetainedExchange
 from gen2.core.instants import utc_instant_ns
 from gen2.router import service
 from gen2.store import api
@@ -780,3 +783,496 @@ class ContractWorld(RouterTestCase):
         if detail is not None:
             self.assertIn(detail, out.get("detail", ""))
         self.assertEqual(self.state(), before)
+
+
+# -- Retained acquisition and receipt worlds ----------------------------------
+
+
+def digest(raw):
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+REQUEST = b'{"lane":"crossref","page":1,"request":{"query":"fixture","request_type":"find"}}'
+
+
+RAW = b'{"request_type":"find","observation":{"captured":true,"call_ref":101,"invocation_id":"inv_capture001","attempt":1},"lanes":[{"source":"crossref","coverage":"searched_ok","completeness":"complete","retrieved":["doi:10.1/fixture"]}],"records":[{"identity":"doi:10.1/fixture","kind":"article","title":"Fixture","abstract":"An abstract"}]}'
+
+
+STAMP = "2026-09-27T10:00:00Z"
+
+
+def raw_acquisition(case, **changes):
+    row = {"topic_id": TOPIC, "work_id": case.work, "source_version": "v1", "content_hash": digest(case.raw),
+        "observation_id": "obs_capture001", "event_id": "rev_capture001", "gateway_call_ref": "gw-call:101",
+        "acquired_by_invocation_id": case.ACQUIRER, "attempt": 1, "lane": "crossref", "request_type": "find",
+        "provider_record_id": "doi:10.1/fixture", "retrieved_at": STAMP, "verifier_invocation_id": "inv_verify0001",
+        "request_identity": digest(REQUEST), "request_bytes": REQUEST, "response_bytes": case.raw, "admitted_at": STAMP, **changes}
+    case.x(f"INSERT INTO source_acquisitions ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", *row.values())
+
+
+class AcquisitionCase(Workflow):
+    ACQUIRER = "inv_capture001"
+    EVENT_ID = "rev_capture001"
+    RESPONSE = RAW
+    COVERAGE = "searched_ok"
+
+    def setUp(self):
+        super().setUp()
+        self.approved()
+        self.producer = self.started("inv_capture001")
+        self.acquirer = self.producer if self.ACQUIRER == "inv_capture001" else self.started(self.ACQUIRER, "checkpoint")
+        self.raw = self.RESPONSE.replace(b"inv_capture001", self.ACQUIRER.encode())
+        obs = {"observation_id": "obs_capture001", "request": json.loads(REQUEST), "request_identity": digest(REQUEST),
+            "attempt": 1, "lane": "crossref", "obligation_ids": ["O-1"], "started_at": STAMP, "ended_at": STAMP,
+            "coverage_state": self.COVERAGE, "result_count": 1, "completeness": "complete", "error_class": None,
+            "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None, "gateway_call_ref": "gw-call:101",
+            "page_outcome": "end_unknown", "continuation": None}
+        event = {"event_id": self.EVENT_ID, "provider_record_id": "doi:10.1/fixture", "rank": 1, "captured_at": STAMP}
+        self.assertEqual(self.router.record_observation({**{k: self.acquirer[k] for k in ("capability_id", "invocation_id")},
+            "observation": obs, "retrieval_events": [event]})["status"], "recorded")
+        self.work = self.register(self.acquirer, [("doi", "10.1/fixture", [self.EVENT_ID])])["works"][0]["work_id"]
+        self.source = self.artifact(self.raw, "application/json")
+        payload = {**empty_outcome("inv_capture001", "interim_transition"),
+            "source_artifacts": [{"work_id": self.work, "source_version": "v1", "artifact_ref": self.source}]}
+        self.assertEqual(self.router.commit_outcome(self.envelope(self.producer, "op_capture001", payload, refs=[self.source]))["status"], "committed")
+        self.verifier = self.started("inv_verify0001", "verification")
+        self.exchange = RetainedExchange(TOPIC, self.ACQUIRER, 1, "gw-call:101", REQUEST, self.raw)
+        self.reads, self.after_read = [], lambda: None
+        self.router = self.make_router(gateway_captures=self)
+
+    def read(self, **key):
+        self.reads.append((key, self.db.in_transaction))
+        self.after_read()
+        return self.exchange
+
+    def request(self, **changes):
+        return {**{k: self.verifier[k] for k in ("capability_id", "invocation_id")},
+            "work_id": self.work, "source_version": "v1", "event_id": self.EVENT_ID, **changes}
+
+    def refuse(self, detail, reason="reaccess_invalid", **changes):
+        before = self.state(exclude=())
+        out = self.router.admit_reaccess(self.request(**changes))
+        self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
+        self.assertIn(detail, out.get("detail", ""))
+        self.assertEqual(self.state(exclude=()), before)
+
+
+class ReceiptCase(AcquisitionCase):
+    def setUp(self):
+        super().setUp()
+        text = self.artifact(b"Fixture claim")
+        payload = {**empty_outcome("inv_capture001", "interim_transition"),
+            "claims": [{"claim_id": "clm_fixture001", "revision": 1, "text_ref": text,
+                "load_bearing": False, "required_access_tier": None}]}
+        self.assertEqual(self.router.commit_outcome(self.envelope(self.producer, "op_claim001", payload, refs=[text]))["status"], "committed")
+
+    def document(self):
+        return {"receipt_version": "verification-receipt/1", "verification_receipt_id": "ver_fixture001", "topic_id": TOPIC,
+            "claim": {"claim_id": "clm_fixture001", "claim_revision": 1}, "source": {"work_id": self.work, "source_version": "v1"},
+            "cited_spans": [{"start": 0, "end": 5, "locator": {"kind": "section", "value": "Abstract"}}],
+            "obtained_content_hash": self.source["content_hash"], "access_tier": "abstract",
+            "requested_for": {"use": "sampled", "required_access_tier": "abstract"},
+            "acquisition": {"route": "gateway:crossref", "retrieved_at": STAMP, "gateway_call_ref": "gw-call:101", "cache_reuse": True},
+            "extraction": {"method": "canonical_bytes", "extractor": "canonical/1", "produced_by_invocation_id": self.ACQUIRER, "validation_ref": None},
+            "producer_invocation_id": "inv_capture001", "verifier_invocation_id": "inv_verify0001", "verifier_capability_id": self.verifier["capability_id"],
+            "quote_check_id": None, "checks": {"exact_quote": {"status": "not_applicable", "normalization_version": "none/1", "source_artifact_hash": self.source["content_hash"]},
+                "numeric_units": "not_applicable", "denominators": "not_applicable", "negation": "checked_ok", "qualifications": "checked_ok"},
+            "adjudication": None, "verdict": "supports", "verified_at": STAMP}
+
+    def send(self, doc=None, op="op_verify001"):
+        payload = {**empty_outcome(self.verifier['invocation_id'], "interim_transition"), "verification_receipts": [doc or self.document()]}
+        self.env = self.envelope(self.verifier, op, payload)
+        return self.router.commit_outcome(self.env)
+
+    def rejected(self, doc=None):
+        before = self.state()
+        out = self.send(doc)
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
+        self.assertIn("must consume its admitted acquisition", out["detail"])
+        self.assert_audited_state(before, 1)
+
+    def admit(self):
+        self.assertEqual(self.router.admit_reaccess(self.request())["status"], "admitted")
+        from gen2.tests.extraction_receipt_fixtures import seed
+        seed(self)
+
+
+class AttributedReceiptCase(ReceiptCase):
+    """Attributed current receipts; base ReceiptCase isolates format/refusal probes."""
+    def document(self):
+        from gen2.tests.detailed_receipt_fixtures import attach_checks
+        doc = super().document()
+        doc.update(verifier_invocation_id=self.verifier['invocation_id'],
+            verifier_capability_id=self.verifier['capability_id'])
+        attach_checks(self, doc)
+        return doc
+
+    def admit(self):
+        # Seed attributed assessments before snapshots.
+        from gen2.tests.detailed_receipt_fixtures import seed_checks
+        super().admit()
+        doc = ReceiptCase.document(self)
+        doc.update(verifier_invocation_id=self.verifier['invocation_id'],
+            verifier_capability_id=self.verifier['capability_id'])
+        seed_checks(self, doc)
+
+    def rejected(self, doc=None):
+        # Explicit /1 isolation of acquisition refusals, never a positive basis.
+        from gen2.tests.detailed_receipt_fixtures import historical_receipt
+        doc = doc or ReceiptCase.document(self)
+        historical_receipt(doc)
+        super().rejected(doc)
+
+
+class RecordCase(AcquisitionCase):
+    RAW = False
+
+    def setUp(self):
+        super().setUp()
+        self.assertEqual(self.router.register_extractor_registry({"registry_version": 1, "operator_id": "fixture-operator",
+            "reason": "approve fixture tools", "tools": [{"extractor_identity": "tool-a", "family": "family-a"},
+                {"extractor_identity": "tool-b", "family": "family-b"}]})["status"], "registered")
+        self.assertEqual(self.router.admit_reaccess(self.request())["status"], "admitted")
+        self.extractor = self.started("inv_extract001", "checkpoint")
+        self.output = self.artifact(b"independent extraction output")
+        self.evidence = self.artifact(b"validator comparison rationale")
+        for grant in (self.extractor, self.verifier):
+            payload = empty_outcome(grant["invocation_id"], "interim_transition")
+            self.assertEqual(self.router.commit_outcome(self.envelope(grant, "op_setup_" + grant["invocation_id"],
+                payload, refs=[self.output, self.evidence]))["status"], "committed")
+
+    def extraction(self, identity="target", **changes):
+        return {**dict(extraction_id=identity, work_id=self.work, source_version="v1", event_id=self.EVENT_ID,
+            verifier_invocation_id=self.verifier["invocation_id"], extractor_identity="tool-a" if identity == "target" else "tool-b",
+            extractor_version="1", extractor_registry_version=1, output_ref=self.output, supported_tier="abstract"), **changes}
+
+    def validation(self, **changes):
+        return {"validation_id": "validation-1", "target_extraction_id": "target", "validator_extraction_id": "independent",
+            "method": "independent_extraction", "policy_version": 1, "outcome": "succeeded", "comparison": "byte_equal",
+            "comparison_evidence_ref": self.evidence, **changes}
+
+    def foreign_ref(self, text):
+        ref = self.artifact(text)
+        self.to_scoping(OTHER)
+        other = self.started("inv_other001", tid=OTHER)
+        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, ?, ?, ?)",
+            ref["content_hash"], ref["size_bytes"], ref["media_type"], STAMP)
+        self.x("INSERT INTO artifact_topics VALUES (?, ?, ?, ?)", ref["content_hash"], OTHER, other["invocation_id"], STAMP)
+        return ref
+
+    def send(self, grant=None, op="op_record0001", **sections):
+        grant = grant or self.extractor
+        payload = {**empty_outcome(grant["invocation_id"], "interim_transition"), **sections}
+        return self.router.commit_outcome(self.envelope(grant, op, payload))
+
+    def basis(self, target_grant=None, target=None, independent=None):
+        self.assertEqual(self.send(target_grant, source_extractions=[target or self.extraction()])["status"], "committed")
+        self.assertEqual(self.send(self.verifier, "op_independent1", source_extractions=[independent or self.extraction("independent")])["status"], "committed")
+
+    def refuse(self, **sections):
+        before = self.state()
+        grant = self.verifier if "extraction_validations" in sections else self.extractor
+        out = self.send(grant, "op_refused001", **sections)
+        self.assertEqual(out["status"], "rejected", out)
+        if self.RAW:
+            self.assertEqual(self.state(exclude=()), before)
+        else:
+            self.assert_audited_state(before, 1)
+
+
+IDENTITY = "doi:10.1/fixture"
+
+
+FULL = {"identity": IDENTITY, "kind": "full_text", "text": "Complete fixture text"}
+
+
+@contextmanager
+def fixture(record, coverage="searched_ok", others=(), *, detailed=False):
+    case = AttributedReceiptCase() if detailed else ReceiptCase()
+    response = json.loads(RAW)
+    response["records"] = [record, *others]
+    response["lanes"][0]["coverage"] = coverage
+    case.RESPONSE = json.dumps(response).encode()
+    case.COVERAGE = coverage
+    case.setUp()
+    try:
+        case.admit()
+        yield case
+    finally:
+        case.tearDown()
+
+
+# Current positive owners opt into admitted assessments; base fixtures isolate probes.
+attributed_fixture = partial(fixture, detailed=True)
+
+
+def content_document(case, tier, verdict="supports"):
+    doc = case.document()
+    doc["access_tier"] = tier
+    doc["requested_for"]["required_access_tier"] = tier
+    doc["verdict"] = verdict
+    return doc
+
+
+def send(case, doc):
+    case.env = case.envelope(case.verifier, "op_verify001",
+        {**empty_outcome(case.verifier["invocation_id"], "interim_transition"), "verification_receipts": [doc]})
+    return case.router.commit_outcome(case.env)
+
+
+def extraction_document(case, method, *, detailed=True):
+    from gen2.tests.detailed_receipt_fixtures import attach_checks
+    doc = ReceiptCase.document(case)
+    doc['access_tier'] = doc['requested_for']['required_access_tier'] = 'bibliographic'
+    doc["extraction"].update(method=method,
+        produced_by_invocation_id=case.verifier["invocation_id"] if method == "verifier_extraction" else case.ACQUIRER,
+        validation_ref="validation_unrecorded" if method == "validated_extraction" else None)
+    doc["verifier_invocation_id"] = case.verifier["invocation_id"]
+    doc["verifier_capability_id"] = case.verifier["capability_id"]
+    from gen2.tests.extraction_receipt_fixtures import attach
+    attach(case, doc)
+    if detailed and isinstance(case, AttributedReceiptCase):
+        attach_checks(case, doc)
+    return doc
+
+
+def load_claim(case, tier):
+    ref = case.artifact(b"Independent load-bearing claim")
+    out = case.router.commit_outcome(case.envelope(case.producer, "op_loadclaim1",
+        {**empty_outcome("inv_capture001", "interim_transition"), "claims": [{"claim_id": "clm_loadbear1", "revision": 1,
+            "text_ref": ref, "load_bearing": True, "required_access_tier": tier}]}, refs=[ref]))
+    case.assertEqual(out["status"], "committed", out)
+
+
+def support_document(case, method, tier):
+    from gen2.tests.detailed_receipt_fixtures import attach_checks
+    doc = content_document(case, tier)
+    doc["claim"]["claim_id"] = "clm_loadbear1"
+    doc["requested_for"]["use"] = "load_bearing"
+    doc["extraction"].update(method=method)
+    if method == "verifier_extraction":
+        doc["extraction"]["produced_by_invocation_id"] = "inv_verify0001"
+    if method == "validated_extraction":
+        doc["extraction"]["validation_ref"] = "validation_unrecorded"
+    from gen2.tests.extraction_receipt_fixtures import attach
+    attach(case, doc)
+    if isinstance(case, AttributedReceiptCase):
+        attach_checks(case, doc)
+    return doc
+
+
+@contextmanager
+def bound_fixture(record, tier='full_text'):
+    from gen2.tests.detailed_receipt_fixtures import seed_checks
+    with attributed_fixture(record) as case:
+        load_claim(case, tier)
+        doc = ReceiptCase.document(case)
+        doc['claim']['claim_id'] = 'clm_loadbear1'
+        # Ordinary extraction outputs equal these canonical bytes. The
+        # distinct-output regression separately checks artifact selection.
+        seed_checks(case, doc)
+        yield case
+
+
+EXTRACTION_METHODS = ("verifier_extraction", "validated_extraction")
+
+
+TABLE = {"start": 0, "end": 5, "locator": {"kind": "table", "value": "Table 1"}}
+
+
+PAGE = {"start": 5, "end": 9, "locator": {"kind": "page", "value": "2"}}
+
+
+METHODS = ("canonical_bytes", "verifier_extraction", "validated_extraction")
+
+
+def seed_spans(case, bindings=((TABLE,), (PAGE,), (PAGE, TABLE))):
+    from gen2.tests.detailed_receipt_fixtures import seed_checks
+    for spans in bindings:
+        doc = ReceiptCase.document(case)
+        doc['cited_spans'] = list(spans)
+        # Byte-equal ordinary outputs share this exact binding; no
+        # source/target/validator discrimination is claimed here.
+        seed_checks(case, doc)
+
+
+@contextmanager
+def span_fixture(record, coverage='searched_ok', others=(), *, bindings=((TABLE,), (PAGE,), (PAGE, TABLE))):
+    with attributed_fixture(record, coverage, others) as case:
+        seed_spans(case, bindings)
+        yield case
+
+
+def document(case, method, tier, verdict="supports", spans=(TABLE,), *, detailed=True):
+    from gen2.tests.detailed_receipt_fixtures import attach_checks
+    doc = extraction_document(case, method)
+    if method == "verifier_extraction":
+        doc["extraction"]["produced_by_invocation_id"] = case.verifier["invocation_id"]
+    doc.update(access_tier=tier, verdict=verdict, cited_spans=list(spans))
+    doc["requested_for"]["required_access_tier"] = tier
+    if detailed:
+        attach_checks(case, doc)
+    return doc
+
+
+class CheckCase(AcquisitionCase):
+    RAW = False
+
+    def setUp(self):
+        super().setUp()
+        self.assertEqual(self.capture(self.producer, 'op_claimcheck1')['status'], 'committed')
+        self.assertEqual(self.capture(self.verifier, 'op_setupcheck1', claim=None)['status'], 'committed')
+
+    def record(self, **changes):
+        span = {'start': 0, 'end': 10, 'locator': {'kind': 'paragraph', 'value': '1'}}
+        report = dict(claim_id='clm_00000001', claim_revision=1, work_id=self.work, source_version='v1',
+            source_artifact_hash=self.source['content_hash'], examined_artifact_ref=self.source,
+            cited_spans=[span], context_spans=[{**span, 'end': 20}], kind='numeric_units', outcome='succeeded',
+            method='attributed-assessment/1', assessment='Verifier assessment of this claim and source.',
+            context_examined='No quantities; units interpreted in the retained surrounding text.', applicability_reason='')
+        report.update(changes)
+        ref = self.artifact(json.dumps(report).encode(), 'application/json')
+        return dict(check_id='check-1', assessment=report, evidence_ref=ref)
+
+    def env(self, record, grant=None, op='op_detailcheck1'):
+        grant = grant or self.verifier
+        payload = {**empty_outcome(grant['invocation_id'], 'interim_transition'), 'detailed_check_records': [record]}
+        return self.envelope(grant, op, payload, refs=[record['evidence_ref']] if record['evidence_ref'] else [])
+
+    def send(self, record, grant=None, op='op_detailcheck1'):
+        return self.router.commit_outcome(self.env(record, grant, op))
+
+    def refuse(self, record):
+        before = self.state(exclude=())
+        out = self.send(record)
+        self.assertEqual(out['status'], 'rejected', out)
+        if self.RAW:
+            self.assertEqual(self.state(exclude=()), before)
+        else:
+            self.assert_audited_state(before, 1)
+        return out
+
+
+KINDS = ('numeric_units', 'denominators', 'negation', 'qualifications')
+
+
+OUTCOMES = ('succeeded', 'failed', 'not_applicable', 'not_checked', 'unavailable')
+
+
+class OwnCases:
+
+    def setUp(self):
+        from gen2.tests.detailed_receipt_fixtures import seed_checks
+        context = fixture(FULL)
+        self.case = context.__enter__()
+        self.doc = extraction_document(self.case, 'verifier_extraction')
+        seed_checks(self.case, self.doc)
+        self.addCleanup(context.__exit__, None, None, None)
+        self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'bibliographic'
+
+    def submit(self):
+        return send(self.case, self.doc)
+
+    def refuse(self):
+        # Historical /1 operands isolate the existing extraction predicate.
+        from gen2.tests.detailed_receipt_fixtures import historical_receipt, historical_admission
+        historical_receipt(self.doc)
+        before = self.case.state(exclude=())
+        with historical_admission(self.case):
+            out = self.submit()
+        self.assertEqual(out['status'], 'rejected', out)
+        self.assertEqual(out.get('reason'), 'payload_invalid', out)
+        self.assertIn('receipt needs its verifier durable extraction', out['detail'])
+        self.case.assert_audited_state(before, 1)
+        self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])
+
+    def clone(self, table, changes, where=''):
+        cur = self.case.db.execute('SELECT * FROM ' + table + (' WHERE ' + where if where else '') + ' LIMIT 1')
+        row = {**dict(zip([d[0] for d in cur.description], cur.fetchone())), **changes}
+        self.case.x(f"INSERT INTO {table} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", *row.values())
+
+    def foreign(self, selector):
+        c = self.case
+        inv = self.doc['verifier_invocation_id']; version = 'v1'; work = c.work; event = c.EVENT_ID
+        if selector == 'version':
+            version = 'v2'
+            self.clone('source_artifacts', {'source_version': version})
+            self.clone('source_acquisitions', {'source_version': version})
+        elif selector == 'verifier':
+            self.assertEqual(c.finish(c.verifier, 'op_oldverify1')['status'], 'committed')
+            c.verifier = c.started('inv_foreign01', 'verification')
+            c.admit()
+            self.doc = extraction_document(c, 'verifier_extraction')
+            op = c.value('SELECT operation_id FROM operation_receipts WHERE invocation_id = ?', c.verifier['invocation_id'])
+            self.clone('source_extractions', dict(extraction_id='foreign-basis', extracting_invocation_id=c.verifier['invocation_id'],
+                recorded_by_operation_id=op), "verifier_invocation_id = '" + inv + "'")
+            self.doc['extraction']['extraction_id'] = 'foreign-basis'
+            return
+        else:
+            observation = 'obs_foreign01'; event = 'rev_foreign01'
+            changes = dict(observation_id=observation, attempt=2)
+            if selector == 'call': changes['gateway_call_ref'] = 'gw-call:102'
+            if selector == 'route':
+                request = json.loads(c.value('SELECT request FROM search_observations'))
+                request['lane'] = 'core'
+                changes.update(lane='core', request=json.dumps(request))
+            self.clone('search_observations', changes)
+            event_changes = dict(event_id=event, observation_id=observation)
+            if selector == 'time': event_changes['captured_at'] = '2026-09-28T10:00:00Z'
+            if selector == 'work':
+                work = 'wrk_foreign01'
+                self.clone('works', dict(work_id=work, identity_value='10.1/foreign'))
+                event_changes['provider_record_id'] = 'other-record'
+            self.clone('retrieval_events', event_changes)
+            self.clone('record_work_links', dict(event_id=event, work_id=work))
+            if selector == 'work': self.clone('source_artifacts', {'work_id': work})
+            obs = dict(zip([d[0] for d in c.db.execute('SELECT * FROM search_observations LIMIT 0').description],
+                c.rows('SELECT * FROM search_observations WHERE observation_id = ?', observation)[0]))
+            self.clone('source_acquisitions', dict(event_id=event, work_id=work, observation_id=observation, attempt=2,
+                gateway_call_ref=obs['gateway_call_ref'], lane=obs['lane'], request_bytes=obs['request'].encode(),
+                provider_record_id=event_changes.get('provider_record_id', 'doi:10.1/fixture'),
+                retrieved_at=event_changes.get('captured_at', self.doc['acquisition']['retrieved_at'])))
+        self.clone('source_extractions', dict(extraction_id='foreign-basis', work_id=work, source_version=version,
+            event_id=event, verifier_invocation_id=inv, supported_tier='bibliographic'))
+        self.doc['extraction']['extraction_id'] = 'foreign-basis'
+
+    def test_control(self):
+        self.assertEqual(self.submit()['status'], 'committed')
+        self.assertEqual(json.loads(self.case.value('SELECT receipt FROM verification_receipts')), self.doc)
+        self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])
+
+    def test_missing(self):
+        del self.doc['extraction']['extraction_id']
+        self.refuse()
+
+    def test_invented(self):
+        self.doc['extraction']['extraction_id'] = 'invented'
+        self.refuse()
+
+    def test_tool(self):
+        self.doc['extraction']['extractor'] = 'Receipt-tool'
+        self.refuse()
+
+    def test_unpinned(self):
+        self.case.x('DROP TRIGGER source_extractions_immutable_u')
+        self.case.x('UPDATE source_extractions SET extractor_registry_version = NULL')
+        self.refuse()
+
+    def test_tier(self):
+        self.case.x('DROP TRIGGER source_extractions_immutable_u')
+        self.case.x("UPDATE source_extractions SET supported_tier = 'bibliographic'")
+        self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'abstract'
+        self.refuse()
+
+    def test_extractor(self):
+        op = self.case.value('SELECT operation_id FROM operation_receipts WHERE invocation_id = ?', self.case.ACQUIRER)
+        self.clone('source_extractions', dict(extraction_id='foreign-basis', extracting_invocation_id=self.case.ACQUIRER, recorded_by_operation_id=op))
+        self.doc['extraction']['extraction_id'] = 'foreign-basis'
+        self.refuse()
+
+    def test_version(self): self.foreign('version'); self.refuse()
+    def test_work(self): self.foreign('work'); self.refuse()
+    def test_verifier(self): self.foreign('verifier'); self.refuse()
+    def test_call(self): self.foreign('call'); self.refuse()
+    def test_time(self): self.foreign('time'); self.refuse()
+    def test_route(self): self.foreign('route'); self.refuse()

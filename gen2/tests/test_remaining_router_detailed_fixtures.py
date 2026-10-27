@@ -10,6 +10,7 @@ from gen2.core import canonical
 from gen2.store import db
 from gen2.tests import test_router_amendments as amendments
 from gen2.tests import test_span_cap as cap
+from gen2.tests import router_fixtures as rf
 from gen2.tests.ddl_fixtures import TRIGGERS
 from gen2.tests.router_fixtures import empty_outcome
 
@@ -77,14 +78,14 @@ class RemainingRouterFixtureTest(unittest.TestCase):
                 self.assertEqual(seen[0]['access_tier'], 'full_text')
 
     def test_cap_literals_retain_current_exact_bindings_for_all_methods(self):
-        fixture = cap.tables.span_fixture; seen = []; selected = {}
+        fixture = rf.span_fixture; seen = []; selected = {}
         @contextmanager
         def observe(*args, **kwargs):
             with fixture(*args, **kwargs) as case:
                 with self.observe(case, seen): yield case
-        with patch.object(cap.tables, 'span_fixture', observe):
+        with patch.object(rf, 'span_fixture', observe):
             cap.SpanCapTest().test_receipt_router_matrix()
-        self.assertEqual(len(seen), len(cap.tables.METHODS) * sum(cap.admitted(k, n) for k in ('start', 'end') for n in cap.NUMERALS))
+        self.assertEqual(len(seen), len(rf.METHODS) * sum(cap.admitted(k, n) for k in ('start', 'end') for n in cap.NUMERALS))
         for doc in seen:
             key = (doc['extraction']['method'], canonical.canonical_bytes(doc['cited_spans']))
             ids = {e['record_id'] for e in doc['detailed_checks'].values()}
@@ -93,7 +94,7 @@ class RemainingRouterFixtureTest(unittest.TestCase):
             else:
                 self.assertTrue(all(ids.isdisjoint(v) for (method, _), v in selected.items() if method == key[0]))
                 selected[key] = ids
-        self.assertEqual({d['extraction']['method'] for d in seen}, set(cap.tables.METHODS))
+        self.assertEqual({d['extraction']['method'] for d in seen}, set(rf.METHODS))
 
     def test_foreign_span_refuses_atomically_and_matching_receipt_replays(self):
         for method in ('canonical_producer', 'acquisition_producer'):

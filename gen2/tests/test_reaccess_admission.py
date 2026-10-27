@@ -5,70 +5,10 @@ from dataclasses import replace
 
 from gen2.core.gateway_capture import RetainedExchange
 from gen2.tests.router_fixtures import TOPIC, OTHER, empty_outcome
-from gen2.tests.test_reaccess import digest
-from gen2.tests.router_fixtures import Workflow, contract
+from gen2.tests.router_fixtures import digest
+from gen2.tests.router_fixtures import contract
 from gen2.tests.router_fixtures import protocol_changed
-
-REQUEST = b'{"lane":"crossref","page":1,"request":{"query":"fixture","request_type":"find"}}'
-RAW = b'{"request_type":"find","observation":{"captured":true,"call_ref":101,"invocation_id":"inv_capture001","attempt":1},"lanes":[{"source":"crossref","coverage":"searched_ok","completeness":"complete","retrieved":["doi:10.1/fixture"]}],"records":[{"identity":"doi:10.1/fixture","kind":"article","title":"Fixture","abstract":"An abstract"}]}'
-STAMP = "2026-09-27T10:00:00Z"
-
-
-def raw_acquisition(case, **changes):
-    row = {"topic_id": TOPIC, "work_id": case.work, "source_version": "v1", "content_hash": digest(case.raw),
-        "observation_id": "obs_capture001", "event_id": "rev_capture001", "gateway_call_ref": "gw-call:101",
-        "acquired_by_invocation_id": case.ACQUIRER, "attempt": 1, "lane": "crossref", "request_type": "find",
-        "provider_record_id": "doi:10.1/fixture", "retrieved_at": STAMP, "verifier_invocation_id": "inv_verify0001",
-        "request_identity": digest(REQUEST), "request_bytes": REQUEST, "response_bytes": case.raw, "admitted_at": STAMP, **changes}
-    case.x(f"INSERT INTO source_acquisitions ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", *row.values())
-
-
-class AcquisitionCase(Workflow):
-    ACQUIRER = "inv_capture001"
-    EVENT_ID = "rev_capture001"
-    RESPONSE = RAW
-    COVERAGE = "searched_ok"
-
-    def setUp(self):
-        super().setUp()
-        self.approved()
-        self.producer = self.started("inv_capture001")
-        self.acquirer = self.producer if self.ACQUIRER == "inv_capture001" else self.started(self.ACQUIRER, "checkpoint")
-        self.raw = self.RESPONSE.replace(b"inv_capture001", self.ACQUIRER.encode())
-        obs = {"observation_id": "obs_capture001", "request": json.loads(REQUEST), "request_identity": digest(REQUEST),
-            "attempt": 1, "lane": "crossref", "obligation_ids": ["O-1"], "started_at": STAMP, "ended_at": STAMP,
-            "coverage_state": self.COVERAGE, "result_count": 1, "completeness": "complete", "error_class": None,
-            "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None, "gateway_call_ref": "gw-call:101",
-            "page_outcome": "end_unknown", "continuation": None}
-        event = {"event_id": self.EVENT_ID, "provider_record_id": "doi:10.1/fixture", "rank": 1, "captured_at": STAMP}
-        self.assertEqual(self.router.record_observation({**{k: self.acquirer[k] for k in ("capability_id", "invocation_id")},
-            "observation": obs, "retrieval_events": [event]})["status"], "recorded")
-        self.work = self.register(self.acquirer, [("doi", "10.1/fixture", [self.EVENT_ID])])["works"][0]["work_id"]
-        self.source = self.artifact(self.raw, "application/json")
-        payload = {**empty_outcome("inv_capture001", "interim_transition"),
-            "source_artifacts": [{"work_id": self.work, "source_version": "v1", "artifact_ref": self.source}]}
-        self.assertEqual(self.router.commit_outcome(self.envelope(self.producer, "op_capture001", payload, refs=[self.source]))["status"], "committed")
-        self.verifier = self.started("inv_verify0001", "verification")
-        self.exchange = RetainedExchange(TOPIC, self.ACQUIRER, 1, "gw-call:101", REQUEST, self.raw)
-        self.reads, self.after_read = [], lambda: None
-        self.router = self.make_router(gateway_captures=self)
-
-    def read(self, **key):
-        self.reads.append((key, self.db.in_transaction))
-        self.after_read()
-        return self.exchange
-
-    def request(self, **changes):
-        return {**{k: self.verifier[k] for k in ("capability_id", "invocation_id")},
-            "work_id": self.work, "source_version": "v1", "event_id": self.EVENT_ID, **changes}
-
-    def refuse(self, detail, reason="reaccess_invalid", **changes):
-        before = self.state(exclude=())
-        out = self.router.admit_reaccess(self.request(**changes))
-        self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
-        self.assertIn(detail, out.get("detail", ""))
-        self.assertEqual(self.state(exclude=()), before)
-
+from gen2.tests.router_fixtures import REQUEST, STAMP, raw_acquisition, AcquisitionCase
 
 class AdmissionTest(AcquisitionCase):
     def test_control(self):

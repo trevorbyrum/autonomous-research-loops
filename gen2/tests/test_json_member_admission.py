@@ -8,10 +8,10 @@ from gen2.core import canonical
 from gen2.router import boundary
 from gen2.store import api
 from gen2.tests import store_fixtures
-from gen2.tests import test_extraction_records as records
+from gen2.tests import router_fixtures as rf
 
 
-class AdmissionTest(records.RecordCase):
+class AdmissionTest(rf.RecordCase):
     def test_control(self):
         value = {'outer': [{'name': 'allowed\0value'}]}
         self.assertEqual(boundary.normalize(value, 'payload_invalid', member_domain=True), value)

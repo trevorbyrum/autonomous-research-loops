@@ -3,48 +3,9 @@ import unittest
 from contextlib import contextmanager
 
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.test_canonical_content_tiers import IDENTITY, FULL, attributed_fixture, document
-from gen2.tests.test_canonical_receipt_admission import AttributedReceiptCase, ReceiptCase
+from gen2.tests.router_fixtures import FULL
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
-
-METHODS = ("verifier_extraction", "validated_extraction")
-
-
-def load_claim(case, tier):
-    ref = case.artifact(b"Independent load-bearing claim")
-    out = case.router.commit_outcome(case.envelope(case.producer, "op_loadclaim1",
-        {**empty_outcome("inv_capture001", "interim_transition"), "claims": [{"claim_id": "clm_loadbear1", "revision": 1,
-            "text_ref": ref, "load_bearing": True, "required_access_tier": tier}]}, refs=[ref]))
-    case.assertEqual(out["status"], "committed", out)
-
-
-def support_document(case, method, tier):
-    doc = document(case, tier)
-    doc["claim"]["claim_id"] = "clm_loadbear1"
-    doc["requested_for"]["use"] = "load_bearing"
-    doc["extraction"].update(method=method)
-    if method == "verifier_extraction":
-        doc["extraction"]["produced_by_invocation_id"] = "inv_verify0001"
-    if method == "validated_extraction":
-        doc["extraction"]["validation_ref"] = "validation_unrecorded"
-    from gen2.tests.extraction_receipt_fixtures import attach
-    attach(case, doc)
-    if isinstance(case, AttributedReceiptCase):
-        attach_checks(case, doc)
-    return doc
-
-
-@contextmanager
-def bound_fixture(record, tier='full_text'):
-    with attributed_fixture(record) as case:
-        load_claim(case, tier)
-        doc = ReceiptCase.document(case)
-        doc['claim']['claim_id'] = 'clm_loadbear1'
-        # Ordinary extraction outputs equal these canonical bytes. The
-        # distinct-output regression separately checks artifact selection.
-        seed_checks(case, doc)
-        yield case
-
+from gen2.tests.router_fixtures import support_document, bound_fixture, EXTRACTION_METHODS as METHODS
 
 class PendingRouterTest(unittest.TestCase):
     def promote(self, case, expected):

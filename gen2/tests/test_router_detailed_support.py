@@ -11,6 +11,7 @@ from gen2.tests.detailed_receipt_fixtures import attach_checks, seed_checks, his
 from gen2.tests.detailed_support_fixtures import history, insert_receipt
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_receipt_summary_domain import METHODS
+from gen2.tests import router_fixtures as rf
 
 
 class RouterDetailedSupportTest(unittest.TestCase):
@@ -20,8 +21,8 @@ class RouterDetailedSupportTest(unittest.TestCase):
         if distinct:
             case.record = refs.ReferenceCases.record.__get__(case)
             refs.ReferenceCases.distinct_validated(case)
-            case.doc['checks'].update({k: 'checked_ok' for k in refs.KINDS})
-            case.doc['detailed_checks'] = {k: dict(outcome='succeeded', record_id='target-' + k) for k in refs.KINDS}
+            case.doc['checks'].update({k: 'checked_ok' for k in rf.KINDS})
+            case.doc['detailed_checks'] = {k: dict(outcome='succeeded', record_id='target-' + k) for k in rf.KINDS}
             case.doc['receipt_version'] = 'verification-receipt/2'
         else:
             seed_checks(case, case.doc)
@@ -70,14 +71,14 @@ class RouterDetailedSupportTest(unittest.TestCase):
                         doc['receipt_version'] = 'verification-receipt/1'
                     elif shape == 'old_domain':
                         historical_receipt(doc)
-                        doc['checks'].update({k: 'invented' for k in refs.KINDS})
+                        doc['checks'].update({k: 'invented' for k in rf.KINDS})
                         doc['adjudication'] = dict(adjudication_ref='adj-history', resolved_at=doc['verified_at'],
                             resolution='Retained old-domain assessment, never detailed authority.')
                     elif shape == 'empty':
                         historical_receipt(doc)
                         doc['receipt_version'] = 'verification-receipt/2'
                         doc['detailed_checks'] = {}
-                        doc['checks'].update({k: 'invented' for k in refs.KINDS})
+                        doc['checks'].update({k: 'invented' for k in rf.KINDS})
                     elif shape == 'null': doc['detailed_checks'] = None
                     elif shape == 'partial':
                         doc['detailed_checks'].pop('qualifications')
@@ -94,7 +95,7 @@ class RouterDetailedSupportTest(unittest.TestCase):
         for method in METHODS:
             case = self.opened(method, distinct=method == 'validated_extraction')
             self.store(case)
-            for kind in refs.KINDS:
+            for kind in rf.KINDS:
                 rid = case.doc['detailed_checks'][kind]['record_id']
                 original = case.store.select('detailed_check_records', {'check_id': rid})[0]
                 fields = dict(kind='foreign', outcome='failed', claim_id='clm_foreign01', claim_revision=2,
@@ -126,7 +127,7 @@ class RouterDetailedSupportTest(unittest.TestCase):
         for method in METHODS:
             case = self.opened(method)
             self.store(case)
-            for kind in refs.KINDS:
+            for kind in rf.KINDS:
                 for outcome in ('missing', 'absent', 'not_checked', 'unavailable', 'projection', 'outcome'):
                     with self.subTest(method=method, kind=kind, outcome=outcome):
                         doc = copy.deepcopy(case.doc)
@@ -156,7 +157,7 @@ class RouterDetailedSupportTest(unittest.TestCase):
             for summary in ('checked_ok', 'checked_problem', 'not_applicable'):
                 with self.subTest(method=method, summary=summary):
                     case = self.opened(method)
-                    case.doc['checks'].update({k: summary for k in refs.KINDS})
+                    case.doc['checks'].update({k: summary for k in rf.KINDS})
                     attach_checks(case, case.doc)
                     case.doc['adjudication'] = dict(adjudication_ref='adj-performed', resolved_at=case.doc['verified_at'],
                         resolution='Attributed performed assessment retained.')

@@ -5,7 +5,8 @@ import sqlite3
 
 from gen2.tests import store_fixtures as fx
 
-from gen2.tests.test_detailed_checks import CheckCase, KINDS, RecordMatrix
+from gen2.tests.router_fixtures import CheckCase, KINDS
+from gen2.tests.test_detailed_checks import RecordMatrix
 
 
 class DDLCheckTest(RecordMatrix, CheckCase):

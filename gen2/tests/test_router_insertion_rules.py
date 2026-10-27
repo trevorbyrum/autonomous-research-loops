@@ -4,9 +4,9 @@ import unittest
 from unittest.mock import patch
 
 from gen2.router.boundary import Refusal
-from gen2.tests import test_canonical_content_tiers as content
-from gen2.tests import test_table_availability as tables
-from gen2.tests.test_reaccess_admission import RAW
+from gen2.tests import router_fixtures as content
+from gen2.tests import router_fixtures as tables
+from gen2.tests.router_fixtures import RAW
 
 
 class RouterInsertionRulesTest(unittest.TestCase):
