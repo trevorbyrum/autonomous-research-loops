@@ -68,7 +68,7 @@ from gen2.store import capture, compat, db
 # [0, 2**53-1] by canonical.identity_integer, by value, in every table.
 IDENTITY_COLUMNS = frozenset({
     "revision", "successor_revision", "parent_revision", "protocol_revision", "framing_version", "contract_revision", "active_contract_revision",
-    "claim_revision", "dossier_revision", "evidence_revision", "source_revision", "subject_revision", "state_revision",
+    "claim_revision", "dossier_revision", "source_revision", "subject_revision", "state_revision",
     "state_revision_before", "state_revision_after", "generation", "lease_generation", "supersedes_generation",
     "options_revision", "supersedes_options_revision", "unknown_episode", "seq", "ordinal", "brief_version", "template_version",
     "policy_version", "eligibility_protocol_version", "attempt", "version", "parent_version", "opened_after_generation",

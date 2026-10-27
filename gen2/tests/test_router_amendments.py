@@ -134,8 +134,8 @@ class AmendmentApprovalTest(ContractWorld):
     def test_an_approved_amendment_requeues_a_completed_topic(self) -> None:
         self.x("UPDATE queue_entries SET status = 'active', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), "2026-09-27T09:00:00Z")
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) "
-               "VALUES (?, 1, 2, 1, 'eval-1', ?, ?, ?)", TOPIC, h("3"), h("7"), "2026-09-27T09:00:00Z")
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evaluator_version, content_hash, document_ref, created_at) "
+               "VALUES (?, 1, 2, 'eval-1', ?, ?, ?)", TOPIC, h("3"), h("7"), "2026-09-27T09:00:00Z")
         self.assertEqual(self.decide("opd_complete01", "completion_approval", {"kind": "dossier", "revision": 1, "hash": h("3")})["status"], "applied")
         self.assertEqual(self.status(), "completed_with_qualified_conclusions")
         out = self.approve(self.propose(3, compatible))

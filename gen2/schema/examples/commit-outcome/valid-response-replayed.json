@@ -38,7 +38,6 @@
         ]
       },
       "effects": {
-        "evidence_revision": 12,
         "research_ordinal": 9,
         "queue_transition": {
           "from": "active",

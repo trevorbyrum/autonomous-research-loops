@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "commit-outcome.schema.json#/$defs/receipt",
+    "expect": "invalid",
+    "tests": "C-4: the receipt has no evidence_revision effect; the topic state revision after the commit is the revision it records",
+    "base": "valid-receipt-final.json",
+    "patch": [
+      {"op": "add", "path": "/effects/evidence_revision", "value": 12}
+    ],
+    "errors": [
+      {"keyword": "additionalProperties", "path": "/effects"}
+    ]
+  }
+}
