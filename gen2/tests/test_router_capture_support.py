@@ -7,7 +7,7 @@ from gen2.tests.detailed_support_fixtures import history
 from gen2.tests.detailed_receipt_fixtures import attach_checks, historical_receipt
 from gen2.tests.extraction_receipt_fixtures import attach
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.test_capture_support import CaptureCase
+from gen2.tests.router_fixtures import CaptureCase
 
 
 class RouterCaptureSupportTest(unittest.TestCase):

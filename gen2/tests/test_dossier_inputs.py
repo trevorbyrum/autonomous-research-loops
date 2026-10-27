@@ -8,7 +8,7 @@ from gen2.store.capture import input_hash
 from gen2.tests.router_fixtures import TOPIC, RouterTestCase, find_request
 from gen2.tests import test_accounting as at
 from gen2.tests.router_fixtures import ContractWorld, reframed
-from gen2.tests.test_verification_attention import AttentionCase
+from gen2.tests.router_fixtures import AttentionCase
 from gen2.tests.test_branch_windows import World
 
 

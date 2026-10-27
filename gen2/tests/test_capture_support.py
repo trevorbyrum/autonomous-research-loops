@@ -2,63 +2,8 @@
 import json
 from unittest.mock import patch
 
-from gen2.tests.canonical_quotes_fixtures import CanonicalQuotesCase
-from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt, historical_admission
-
-
-class CaptureCase(CanonicalQuotesCase):
-    def setUp(self):
-        super().setUp()
-        self.new_capture(2, b"effect observed")
-
-    def new_capture(self, revision, text):
-        ref = self.artifact(text)
-        out = self.send([], grant=self.capture_grant, refs=[ref], claims=[{"claim_id": "clm_quote00001", "revision": revision,
-            "text_ref": ref, "load_bearing": True, "required_access_tier": "full_text"}])
-        self.assertEqual(out["status"], "committed", out)
-        doc = self.receipt_document(detailed=False)
-        doc['claim']['claim_revision'] = revision
-        single = doc['cited_spans']
-        for spans in (single, [*single, dict(start=0, end=1, locator=dict(kind='section', value='Results'))]):
-            doc['cited_spans'] = spans
-            seed_checks(self, doc)
-
-    def operands(self, revision=2):
-        doc = self.receipt_document()
-        doc["claim"]["claim_revision"] = revision
-        doc["requested_for"]["use"] = "load_bearing"
-        attach_checks(self, doc)
-        return self.record(claim_revision=revision), doc
-
-    def promote(self, revision=2, accepted=True):
-        before = self.state(exclude=())
-        out = self.send([], grant=self.capture_grant, claim_promotions=[{"claim_id": "clm_quote00001", "revision": revision}])
-        self.assertEqual(out["status"], "committed" if accepted else "rejected", out)
-        if not accepted:
-            self.rolled_back(before)
-        self.assertEqual(self.value("SELECT status FROM claims WHERE claim_id = 'clm_quote00001' AND revision = ?", revision),
-            "accepted_support" if accepted else "provisional")
-
-    def refuse(self, records, doc, revision=2):
-        historical_receipt(doc)  # Explicit /1 capture-guard refusal isolation.
-        before = self.state(exclude=())
-        with historical_admission(self):
-            out = self.send(records, verification_receipts=[doc])
-        self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
-        self.rolled_back(before)
-        if revision is not None:
-            self.promote(revision, accepted=False)
-
-    def rolled_back(self, before):
-        after = self.state(exclude=())
-        audit = after.pop("audit_events")
-        old_audit = before.pop("audit_events")
-        self.assert_generation_delta(before, after, 1)  # committed rejection audit only
-        self.assertEqual(after, before)
-        self.assertEqual(audit[:-1], old_audit)
-        self.assertEqual(len(audit), len(old_audit) + 1)
-        self.assertEqual(self.value("SELECT kind FROM audit_events ORDER BY rowid DESC LIMIT 1"), "commit_rejected")
-        self.assertEqual(json.loads(self.value("SELECT detail FROM audit_events ORDER BY rowid DESC LIMIT 1"))["reason"], "payload_invalid")
+from gen2.tests.detailed_receipt_fixtures import attach_checks
+from gen2.tests.router_fixtures import CaptureCase
 
 
 class CaptureTest(CaptureCase):

@@ -1276,3 +1276,223 @@ class OwnCases:
     def test_call(self): self.foreign('call'); self.refuse()
     def test_time(self): self.foreign('time'); self.refuse()
     def test_route(self): self.foreign('route'); self.refuse()
+
+
+class QuotesCase(Workflow):
+    SOURCE_BYTES = b"<effect observed>"
+    SOURCE_MEDIA = "text/plain"
+    SPAN = (1, 16)
+
+    def setUp(self):
+        super().setUp()
+        self.to_queued()
+        self.capture_grant = self.started("inv_capture001")
+        events = self.observe(self.capture_grant, "obs_quote00001", ("quote-record",))
+        self.work = self.register(self.capture_grant, [("doi", "10.1/quote", events)])["works"][0]["work_id"]
+        self.source = self.artifact(self.SOURCE_BYTES, self.SOURCE_MEDIA)
+        self.text = self.artifact(b"effect observed")
+        payload = {**empty_outcome("inv_capture001", "interim_transition"),
+            "source_artifacts": [{"work_id": self.work, "source_version": "v1", "artifact_ref": self.source}],
+            "claims": [{"claim_id": "clm_quote00001", "revision": 1, "text_ref": self.text, "load_bearing": False, "required_access_tier": None}]}
+        out = self.router.commit_outcome(self.envelope(self.capture_grant, "op_capture001", payload, refs=[self.source, self.text]))
+        self.assertEqual(out["status"], "committed", out)
+        self.grant = self.started("inv_verify0001", "verification")
+
+    def record(self, **changes):
+        return {"check_id": "qck_quote00001", "claim_id": "clm_quote00001", "claim_revision": 1,
+            "work_id": self.work, "source_version": "v1", "artifact_ref": self.source,
+            "quoted_text": "effect observed", "span_start": self.SPAN[0], "span_end": self.SPAN[1], **changes}
+
+    def send(self, records, grant=None, refs=(), **sections):
+        grant = grant or self.grant
+        payload = {**empty_outcome(grant["invocation_id"], "interim_transition", grant["topic_id"]), "quote_checks": records, **sections}
+        self.env = self.envelope(grant, self.ids("op_"), payload, refs=refs)
+        return self.router.commit_outcome(self.env)
+
+    def accepted(self, record=None, **kwargs):
+        out = self.send([record or self.record()], **kwargs)
+        self.assertEqual(out["status"], "committed", out)
+        return out
+
+    def rejected(self, record, reason, detail=None, **kwargs):
+        before = self.state()
+        out = self.send([record], **kwargs)
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
+        if detail is not None:
+            self.assertIn(detail, out.get("detail", ""))
+        self.assert_audited_state(before, 1)
+
+    def result(self):
+        raw = self.value("SELECT match_result FROM quote_checks WHERE check_id = 'qck_quote00001'")
+        self.assertIsNotNone(raw)
+        return json.loads(raw)
+
+    def receipt_document(self, status="matched", verdict="supports"):
+        """Explicit /1 refusal fixture; admitted support uses CanonicalQuotesCase."""
+        path = Path(__file__).resolve().parents[1] / "schema/examples/verification-receipt/valid-load-bearing-full-text.json"
+        doc = json.loads(path.read_text())["instance"]
+        doc.update(verification_receipt_id="ver_quote00001", topic_id=TOPIC,
+            claim={"claim_id": "clm_quote00001", "claim_revision": 1}, source={"work_id": self.work, "source_version": "v1"},
+            cited_spans=[{"start": self.SPAN[0], "end": self.SPAN[1], "locator": {"kind": "section", "value": "Results"}}],
+            obtained_content_hash=self.source["content_hash"], requested_for={"use": "sampled", "required_access_tier": "full_text"},
+            producer_invocation_id="inv_capture001", verifier_invocation_id="inv_verify0001", verifier_capability_id=self.grant["capability_id"],
+            quote_check_id="qck_quote00001", verdict=verdict, verified_at="2026-09-27T10:00:00Z")
+        doc["extraction"].update(produced_by_invocation_id="inv_verify0001")
+        doc["checks"]["exact_quote"].update(status=status, source_artifact_hash=self.source["content_hash"], normalization_version="quote-nfc-safe/2+ucd15.0.0")
+        del doc["checks"]["tier0"]
+        return doc
+
+
+class CanonicalQuotesCase(QuotesCase):
+    # Exact quote offsets 2..17, plus a separately checked opening brace.
+    SOURCE_BYTES = b'{"effect observed":0,"request_type":"find","observation":{"captured":true,"call_ref":1,"invocation_id":"inv_capture001","attempt":1},"lanes":[{"source":"crossref","coverage":"searched_ok","completeness":"complete","retrieved":["quote-record"]}],"records":[{"identity":"quote-record","kind":"full_text","text":"effect observed"}]}'
+    SOURCE_MEDIA = "application/json"
+    SPAN = (2, 17)
+
+    def observe(self, grant, observation_id, records):
+        request = find_request(observation_id)
+        events = [{"event_id": f"rev_{observation_id[4:]}{n:02d}", "provider_record_id": record, "rank": n, "captured_at": STAMP}
+            for n, record in enumerate(records, 1)]
+        observation = {"observation_id": observation_id, "request": request, "request_identity": canonical.logical_hash(request),
+            "attempt": 1, "lane": "crossref", "obligation_ids": ["O-1"], "started_at": STAMP, "ended_at": STAMP,
+            "coverage_state": "searched_ok", "result_count": len(events), "completeness": "complete", "error_class": None,
+            "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None, "gateway_call_ref": "gw-call:1",
+            "page_outcome": "end_unknown", "continuation": None}
+        out = self.router.record_observation({**{k: grant[k] for k in ("capability_id", "invocation_id")},
+            "observation": observation, "retrieval_events": events})
+        self.assertEqual(out["status"], "recorded", out)
+        return [e["event_id"] for e in events]
+
+    def read(self, **key):
+        request = json.loads(self.value("SELECT request FROM search_observations WHERE observation_id = 'obs_quote00001'"))
+        return RetainedExchange(self.grant["topic_id"], "inv_capture001", 1, "gw-call:1", canonical.canonical_bytes(request), self.SOURCE_BYTES)
+
+    def setUp(self):
+        from gen2.tests.detailed_receipt_fixtures import seed_checks
+        super().setUp()
+        self.router = self.make_router(gateway_captures=self)
+        out = self.router.admit_reaccess({**{k: self.grant[k] for k in ("capability_id", "invocation_id")},
+            "work_id": self.work, "source_version": "v1", "event_id": "rev_quote0000101"})
+        self.assertEqual(out["status"], "admitted", out)
+        from gen2.tests.extraction_receipt_fixtures import seed
+        seed(self)
+        self.verifier = self.grant
+        seed_checks(self, self.receipt_document(detailed=False))
+
+    def receipt_document(self, *args, detailed=True, **kwargs):
+        from gen2.tests.detailed_receipt_fixtures import attach_checks
+        doc = super().receipt_document(*args, **kwargs)
+        doc["extraction"].update(method="canonical_bytes", produced_by_invocation_id="inv_capture001")
+        doc["acquisition"].update(route="gateway:crossref", retrieved_at=STAMP, gateway_call_ref="gw-call:1")
+        if detailed:
+            attach_checks(self, doc)
+        return doc
+
+
+class CaptureCase(CanonicalQuotesCase):
+    def setUp(self):
+        super().setUp()
+        self.new_capture(2, b"effect observed")
+
+    def new_capture(self, revision, text):
+        from gen2.tests.detailed_receipt_fixtures import seed_checks
+        ref = self.artifact(text)
+        out = self.send([], grant=self.capture_grant, refs=[ref], claims=[{"claim_id": "clm_quote00001", "revision": revision,
+            "text_ref": ref, "load_bearing": True, "required_access_tier": "full_text"}])
+        self.assertEqual(out["status"], "committed", out)
+        doc = self.receipt_document(detailed=False)
+        doc['claim']['claim_revision'] = revision
+        single = doc['cited_spans']
+        for spans in (single, [*single, dict(start=0, end=1, locator=dict(kind='section', value='Results'))]):
+            doc['cited_spans'] = spans
+            seed_checks(self, doc)
+
+    def operands(self, revision=2):
+        from gen2.tests.detailed_receipt_fixtures import attach_checks
+        doc = self.receipt_document()
+        doc["claim"]["claim_revision"] = revision
+        doc["requested_for"]["use"] = "load_bearing"
+        attach_checks(self, doc)
+        return self.record(claim_revision=revision), doc
+
+    def promote(self, revision=2, accepted=True):
+        before = self.state(exclude=())
+        out = self.send([], grant=self.capture_grant, claim_promotions=[{"claim_id": "clm_quote00001", "revision": revision}])
+        self.assertEqual(out["status"], "committed" if accepted else "rejected", out)
+        if not accepted:
+            self.rolled_back(before)
+        self.assertEqual(self.value("SELECT status FROM claims WHERE claim_id = 'clm_quote00001' AND revision = ?", revision),
+            "accepted_support" if accepted else "provisional")
+
+    def refuse(self, records, doc, revision=2):
+        from gen2.tests.detailed_receipt_fixtures import historical_receipt, historical_admission
+        historical_receipt(doc)  # Explicit /1 capture-guard refusal isolation.
+        before = self.state(exclude=())
+        with historical_admission(self):
+            out = self.send(records, verification_receipts=[doc])
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
+        self.rolled_back(before)
+        if revision is not None:
+            self.promote(revision, accepted=False)
+
+    def rolled_back(self, before):
+        after = self.state(exclude=())
+        audit = after.pop("audit_events")
+        old_audit = before.pop("audit_events")
+        self.assert_generation_delta(before, after, 1)  # committed rejection audit only
+        self.assertEqual(after, before)
+        self.assertEqual(audit[:-1], old_audit)
+        self.assertEqual(len(audit), len(old_audit) + 1)
+        self.assertEqual(self.value("SELECT kind FROM audit_events ORDER BY rowid DESC LIMIT 1"), "commit_rejected")
+        self.assertEqual(json.loads(self.value("SELECT detail FROM audit_events ORDER BY rowid DESC LIMIT 1"))["reason"], "payload_invalid")
+
+
+HOLD = "hold_6937eef24b17d742001c84e3a97f10290ae7ee206ea1a34b5f606ff2c4792dda"
+
+
+class AttentionCase(CanonicalQuotesCase):
+    verifier_station = "verifier-station"
+    verifier_deadline = "2026-09-27T10:30:00Z"
+
+    def started(self, inv, kind="research_pass", tid=TOPIC, **extra):
+        extra["deadline_at"] = "2026-09-27T11:00:00Z"
+        if kind == "verification":
+            extra.update(station_id=self.verifier_station, deadline_at=self.verifier_deadline)
+        return super().started(inv, kind, tid, **extra)
+
+    def document(self, verdict="does_not_support"):
+        doc = self.receipt_document(verdict=verdict)
+        doc["quote_check_id"] = None
+        doc["checks"]["exact_quote"]["status"] = "not_applicable"
+        return doc
+
+    def commit(self, doc=None):
+        out = self.send([], verification_receipts=[doc or self.document()])
+        self.assertEqual(out["status"], "committed", out)
+        return out
+
+    def attention(self, verdict="does_not_support", missing=False):
+        from gen2.tests.detailed_receipt_fixtures import attach_checks
+        doc = self.document(verdict)
+        if missing:
+            doc["access_tier"] = "abstract"
+            doc["checks"].update(numeric_units="not_checked", denominators="unavailable", negation="not_checked", qualifications="unavailable")
+        attach_checks(self, doc)
+        out = self.commit(doc)
+        self.assertEqual(self.rows("SELECT hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, "
+            "owner, deadline_at, clears_when, created_at, created_by_operation_id, cleared_at FROM holds"), [(
+            HOLD, TOPIC, "verification:ver_quote00001", "judgment",
+            ("verification missing content: " if missing else "verification disagreement: ") + verdict,
+            "needs_remediation" if missing else "needs_decision", "primary", "primary:station-1", "2026-09-27T11:00:00Z",
+            "independent verification with the required content" if missing else "primary adjudication of this verification disagreement",
+            out["receipt"]["committed_at"], self.env["operation_id"], None)])
+        self.assertEqual(out["receipt"]["effects"]["holds_created"], [HOLD])
+        audit = json.loads(self.value("SELECT detail FROM audit_events WHERE audit_event_id = ?", out["receipt"]["effects"]["audit_event_id"]))
+        self.assertEqual(audit["verification_holds"], [HOLD])
+        self.assertEqual(json.loads(self.value("SELECT receipt FROM verification_receipts")), doc)
+        self.assertEqual(self.rows("SELECT status FROM claims"), [("provisional",)])
+        self.assertEqual(self.rows("SELECT status FROM queue_entries WHERE topic_id = ?", TOPIC), [("active",)])
+        holds = self.router.status({"topic_id": TOPIC})["topics"][0]["holds"]
+        self.assertEqual([(h["hold_id"], h["subject_ref"], h["owner"], h["deadline_at"]) for h in holds],
+            [(HOLD, "verification:ver_quote00001", "primary:station-1", "2026-09-27T11:00:00Z")])
+        return out

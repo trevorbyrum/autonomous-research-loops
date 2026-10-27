@@ -128,7 +128,7 @@ class SpanCapTest(unittest.TestCase):
                 case.tearDown()
 
     def test_quote_router_cap(self):
-        from gen2.tests.test_governed_quotes import QuotesCase
+        from gen2.tests.router_fixtures import QuotesCase
         case = QuotesCase()
         case.setUp()
         self.addCleanup(case.tearDown)
