@@ -75,25 +75,20 @@ reply and log line passes through Credentials.redact() before it leaves, so
 no configured token a request carries — in its path, its query or its body,
 echoed by a refusal — is written back or logged; a tool's reply over MCP
 passes through it before it is nested as text, and an MCP id carrying one is
-refused (_mcp; Astra 1e-repair re-review finding 2). Serialization can
-re-form a token no value holds, so each JSON text is checked as the text it
-is — a tool's nested text as it is nested (_mcp), every answer as the
-transport writes it (encode()) — and an id whose answer would be written
-with one is refused before anything is dispatched (Credentials.dumps and
-writes; Astra 1e-repair-2 re-review finding 1). No later pass changes what an
-earlier one let through: an id taken is echoed as it came, and a tool's text
-stays the JSON it was nested as, or the answer is the fixed fault (_mcp;
-Astra 1e-repair-3 re-review finding 1).
+refused (_mcp). Operator ruling O-2 (2026-10-27) constrains the token
+alphabet: JSON escaping cannot re-form a token, so serialization uses
+json.dumps.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Callable
 from urllib.parse import parse_qs
 
 from gen2.core import canonical
 from gen2.operator import status as status_view
-from gen2.operator.auth import Credentials, Principal, Unwritable
+from gen2.operator.auth import Credentials, Principal
 
 MAX_BODY = 1024 * 1024
 LENGTH = re.compile(r"[0-9]{1,12}")
@@ -237,22 +232,10 @@ class OperatorService:
         "2.0"; method a string; id, where present, a string or an integer
         (never null, a float, a boolean or a structure); params, where
         present, an object (-32600 Invalid Request otherwise). An id that
-        carries a configured token, in any form redaction takes out (auth.py
-        Credentials.redact: as it is, JSON-escaped, percent-decoded or
-        JSON-unescaped, an integer's digits), or that is written with one —
-        its answer's text showing one the id alone does not, where the id
-        stands after `"id": ` and before `, "jsonrpc"` (Credentials.writes:
-        the quote written before an id `abc...` completes a token `"abc...`)
-        — is refused the same way, before anything is dispatched, and
-        answered with a null id: echoing it
-        would repeat the credential, and replacing it would answer another
-        request's id (Astra 1e-repair re-review finding 2, 1e-repair-2
-        re-review finding 1). Both are checked, redaction's (whose pass the
-        answer then takes, and must leave the id as it came) and the written
-        text's: the quote written after an id can end the escape a decoding
-        of it leaves, keeping from its text a token the id shows (Astra
-        1e-repair-3 re-review finding 1). A message
-        without an id is a notification: a notifications/ method is accepted
+        carries a configured token, raw or percent-encoded, is refused
+        before dispatch and answered with a null id: echoing it would repeat
+        the credential, and replacing it would answer another request's id.
+        A message without an id is a notification: a notifications/ method is accepted
         (202) and does nothing; any other method needs an id (-32600). Each
         method's params carry only its members, each of its type, the
         required ones present (MCP_PARAMS; -32602 Invalid params otherwise):
@@ -263,15 +246,9 @@ class OperatorService:
         well-formed call's refusal, at any later step — the role, who acts
         named, an unknown or capability-bearing tool, the arguments, the
         router's own — is an in-band tool error carrying its reply, redacted
-        before it is serialized into the tool's text (redaction after would
-        see the token JSON-escaped, and miss it), and that text checked as it
-        is nested (Credentials.dumps). The answer is then checked as the
-        transport writes it: a token the text shows only beside the quote
-        MCP writes before or after it would have the whole text replaced
-        there, leaving no JSON in it — that answer is Unwritable, the fixed
-        fault (Astra 1e-repair-3 re-review finding 1)."""
+        before it is serialized into the tool's text."""
         has_id, ident = "id" in message, message.get("id")
-        usable = has_id and _request_id(ident) and self._credentials.redact(ident) == ident and self._credentials.writes({"id": ident, "jsonrpc": "2.0"})
+        usable = has_id and _request_id(ident) and self._credentials.redact(ident) == ident
         if set(message) - JSONRPC_MEMBERS or message.get("jsonrpc") != "2.0" or not isinstance(message.get("method"), str) \
                 or (has_id and not usable) or ("params" in message and not isinstance(message["params"], dict)):
             return self._rpc_refusal(ident if usable else None, -32600, "invalid request")
@@ -303,9 +280,7 @@ class OperatorService:
         else:
             code, reply = 404, {"status": "refused", "reason": "no_such_route"}
         failed = code != 200 or reply.get("status") in ("refused", "rejected")
-        nested = answer({"content": [{"type": "text", "text": self._credentials.dumps(self._credentials.redact(reply), nested=True)}], "isError": failed})
-        if not self._credentials.writes(nested):
-            raise Unwritable("the tool's text is written in MCP's answer with a configured token")
+        nested = answer({"content": [{"type": "text", "text": json.dumps(self._credentials.redact(reply))}], "isError": failed})
         return 200, nested, f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
 
     @staticmethod
@@ -334,7 +309,5 @@ class OperatorService:
         return code, self._credentials.redact(reply)
 
     def encode(self, reply: dict) -> bytes:
-        """An answer as the transport writes it: its JSON text, checked as
-        that text (Credentials.dumps: a value its serialization would make
-        a token of is replaced whole), in UTF-8."""
-        return self._credentials.dumps(reply).encode("utf-8")
+        """An answer as JSON text in UTF-8."""
+        return json.dumps(reply, sort_keys=True).encode("utf-8")

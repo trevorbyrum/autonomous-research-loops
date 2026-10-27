@@ -122,6 +122,17 @@ class McpEnvelopeTest(McpClient, of.CommandWorld):
         code, reply = self.mcp(base)
         self.assertEqual((code, reply["id"], reply["result"]["isError"], json.loads(reply["result"]["content"][0]["text"])["status"]), (200, 7, False, "recorded"))
 
+    def test_an_id_carrying_a_configured_token_is_refused_before_dispatch(self) -> None:
+        before = self.state(exclude=())
+        for ident in ("req-op-token-alice-0123456789abcdef-7", "%6fp-token-alice-0123456789abcdef"):
+            with self.subTest(ident=ident):
+                self.assertEqual(self.mcp({**self.valid(), "id": ident}), (400, {"jsonrpc": "2.0", "id": None,
+                    "error": {"code": -32600, "message": "invalid request", "data": {"status": "refused", "reason": "request_invalid"}}}))
+        self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.rpc("ping", ident="request-100%"), (200, {"jsonrpc": "2.0", "id": "request-100%", "result": {}}))
+        code, reply = self.mcp({**self.valid(), "id": "request-7"})
+        self.assertEqual((code, reply["id"], reply["result"]["isError"]), (200, "request-7", False))
+
     def test_initialize_answers_a_version_it_supports(self) -> None:
         """The version asked for when the server supports it, its newest
         otherwise (never the request's text); a protocolVersion is required."""
