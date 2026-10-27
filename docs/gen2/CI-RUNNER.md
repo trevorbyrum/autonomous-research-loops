@@ -46,8 +46,9 @@ the mutation runner retains typed failures/errors, fresh test PIDs, baseline cov
 unit run also collects coverage once; acceptance then runs
 trigger-order when `git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema`
 is non-empty or unavailable, followed by changed-line mutation;
-`GEN2_BASE` defaults to `origin/gen2`. These targets have no shard arguments
-by default. `make gen2-gateway` still runs no-DB, DB and all mutants by default,
+`GEN2_BASE` defaults to `origin/gen2`. Local acceptance uses `GEN2_TEST_WORKERS` concurrent unit and stage-2
+shards (default 8; set 1 for serial comparison). Standalone CI partitions
+retain their explicit selection and allocation contract. `make gen2-gateway` still runs no-DB, DB and all mutants by default,
 on its existing bootstrap interpreter. Its new `GEN2_GATEWAY_MODE` only selects
 an explicit invocation; the full default is unchanged.
 
@@ -204,25 +205,44 @@ nested child crash can still look like an assertion failure. Astra reviews inten
 
 The acceptance unit run records coverage.py per-test dynamic contexts through
 `switch_context(test.id())`, including test setup/cleanup. `GEN2_COVERAGE` defaults
-to `build/gen2-coverage.sqlite`. A successful unsharded full run publishes a
+to `build/gen2-coverage.sqlite`. A successful full run publishes a
 receipt bound to HEAD, tracked source bytes/differences, untracked source inputs,
 interpreter path/version/options, coverage version, installed/locked dependencies,
 discovery arguments, hashed environment and the coverage file's SHA-256. Mutation reuses only a
 matching receipt; missing, stale, corrupt or incomplete maps require a fresh
 full baseline; nondefault interpreter options force recollection. Plain `gen2-check` need not collect coverage. Set
-`GEN2_TEST_COVERAGE=<path>` to collect it in a standalone unsharded `gen2-test`.
+`GEN2_TEST_COVERAGE=<path>` to collect it in a standalone `gen2-test --workers N` (through `GEN2_TEST_ARGS`).
 
 Stage 1 runs tests covering the mutated source span. If none exist, stage 1b
 runs tests covering any line of that module. A survivor of either selection
-runs the full suite in a fresh process (stage 2); an entirely uncovered module
+runs the full suite in fresh shard processes (stage 2); an entirely uncovered module
 goes directly to stage 2. Assertion and test-error kills retain fail-fast
 semantics. Typed errors during test or fixture execution become `ERROR_KILL`;
 failed discovery/imports represented by unittest's loader remain invalid.
 No survivor passes on a partial suite.
 Kills need clean controls on restored source, constructing the complete selection/discovery
 before stopping after the observed test ordinal/ID. Fixture errors use whole controls.
-Cache exact selection/boundary/source/configuration; failed controls try module/full selection.
+Cache exact selection/boundary/source/configuration/shard spec; failed controls try module/full selection.
 Survivors and syntax-invalid results need none.
 `coverage.sqlite`, its receipt, `test-selection.json`, `module-selection.json`,
 and each result's `stages` preserve selection, verdict and timing evidence.
 Timing separates units from mutation, including controls (`qualifications`/`qualification_seconds`).
+
+Local acceptance uses the existing class SHA-256 partition and preserves discovery
+multiplicities. Every shard keeps separate inventory, outcomes and logs; one
+summary merges outcomes. Empty partitions are valid only inside the complete
+coordinated run. A coverage receipt requires successful, disjoint inventories
+whose multiset union equals full discovery, equal source states before/after
+every shard, and coverage.py parallel files merged with `Coverage.combine`.
+The receipt binds the resulting combined bytes. A partial CI shard cannot publish it.
+Worker Python temporary roots are distinct; nested harnesses cannot overwrite
+parent evidence. No tests are skipped or assigned a special serial partition.
+For coordinated runs, `GEN2_TEST_LOG` names the summary linking each shard's logs.
+
+Stage-2 shards finish independently; a typed assertion/error kill identifies its
+shard, selection and local boundary. Its clean control constructs full discovery,
+applies that same shard spec, then stops at that boundary (fixture errors require
+the whole shard). All shards must succeed for a survivor. Logs remain per shard;
+timeouts, syntax-invalid variants and internal errors retain their non-kill meanings.
+The campaign itself remains serial across mutants. `--workers N` is an explicit
+mutation-tool option; standalone/CI mutation defaults to one worker.
