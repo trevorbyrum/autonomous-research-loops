@@ -46,10 +46,6 @@ class RestartTest(unittest.TestCase):
         self.world.db.close()
         self.tmp.cleanup()
 
-    def restart(self) -> None:
-        self.world.router.close()
-        self.world.router = service.Router.open(self.world.directory / "store.sqlite3", self.world.spool, clock=self.world.clock, new_id=self.world.ids)
-
     def committed_result(self) -> tuple[dict, dict]:
         """A checkpoint whose result_ready is recorded and whose final outcome
         is committed, its lease and deadline at LAPSED; its router closed.
@@ -70,14 +66,14 @@ class RestartTest(unittest.TestCase):
                                 input=json.dumps(request), capture_output=True, text=True, timeout=120)
         self.assertEqual(child.returncode, 0, child.stderr)
         self.world.clock.set("2026-09-27T11:00:00Z")
-        self.restart()
+        self.world.reopen()
         return [json.loads(child.stdout), self.world.router.record_transition(request)]
 
     def test_recorded_facts_replay_after_a_restart(self) -> None:
         grant = self.world.started("inv_research01")
         facts = (("launching", {"job_handle": "job-inv_research01"}),
                  ("running", {"host_id": "host-1", "boot_id": "boot-1", "start_fingerprint": "ticks=1"}))
-        self.restart()
+        self.world.reopen()
         before = self.world.state(exclude=())
         for to_state, recorded in facts:
             with self.subTest(to_state):
@@ -128,7 +124,7 @@ class RestartTest(unittest.TestCase):
                 self.world.delivery_receipt("exr_000000000003", attempt=3)]
         for doc in docs:
             self.assertEqual(self.world.router.ack_delivery(doc)["status"], "recorded")
-        self.restart()
+        self.world.reopen()
         self.assertEqual(self.world.rows("SELECT receipt, written_status, written_value, hold_id FROM export_delivery_receipts ORDER BY attempt"),
                          [(rf.jcs(docs[0]).decode(), "partial", 7, "hold_000000000001"), (rf.jcs(docs[1]).decode(), "unknown", None, None),
                           (rf.jcs(docs[2]).decode(), "observed", 12, None)])

@@ -1,3 +1,119 @@
+# Batch D2b completion
+
+TO2 shares durable setup/reopen (all four suites, including amendments), lock-wait logic and `Refusing(once=True)`; the file-spool world keeps its spool/clock/IDs. The existing receipt-only `OwnCases` mixin moves to `store_fixtures.py` to provide headroom; no new TO1 families or re-export shims.
+TO4 retains the authoritative refusal-spy witnesses below and adds both span shapes plus the existing reproduced-metadata/abstract operands before removing three duplicate matrices. TO5 removes four approved redundant tests and four no-op poll-host iterations. O-11 removes four pins and their unused parser; the armed phase-close test is unchanged.
+TO6's 12-minute vector comparison removes only four exact duplicate refusal literals; extreme/long spellings, signed zero and the legacy-hash oracle remain. Detailed reasons and vector mappings are in `to6-vector-review.json`.
+
+Base: `e1669ede5d668cfdd930e80187bb3c4643292bc6`. Evidence: `~/work/research-loops-public/private/evidence/batch-d2/d2b/`.
+
+- AST preservation: passed; 3,607 retained function mappings and 6,714 assertion expressions. Approved removals and TO2 contract details are explicit in `ast-preservation.json` / `differential-helpers.json`.
+- Refusal-double differential: 3,410 profiles passed against both old implementations.
+- Collected IDs: 2,953 → 2,942, delta −11: 3 TO4 duplicates, 4 TO5 redundant tests, 4 O-11 pins; no additions. Complete ID/reason map: `collected-delta.json`.
+- Cross-test imports: 59 → 59 statements; strict `from gen2.tests.test_X`: 29 → 29. Every remaining statement is accepted residue with its reason below.
+- Focused verification: 421 tests passed; 22 canonical/decimal tests passed after TO6's final literal edit.
+- Full disposable-copy `gen2-accept` (8 shards): **passed**, 2,942 tests; all gates green.
+- Mutation scope: **empty**, no applicable production files or mutants.
+- Tested code: `4719fda312d1388b73015f41482e372e652b82eb`; final evidence amendment changes only this file.
+- Size: 802 touched / -82 net, including this file; Router fixtures 1,468 lines, workflow 1,360.
+
+PR #63 exclusions are lifted. The active exclusions are the explicit D2a-1 test-file list below, all production/protected records/other worktrees, and the current open-PR diffs. PR #54's diff was checked against `origin/gen2`; all its files remain untouched. Accounting/research-view imports retain their earlier standing authorization.
+TO5 kept witnesses: boundary reachability in `BoundaryCheckerTest.test_importer_cannot_reach_a_store_under_the_real_graph`; all redirect statuses/origins/polls in `DirectHttpOnly.test_a_redirect_is_never_followed_whatever_the_status_and_wherever_it_points`; ordinary endpoint matrices plus mapped/unmapped rendering tests in `TheEndpointForms`; supervisor runtime skip owners remain untouched. Only the source-text skip pin is removed.
+
+Publication scope recheck: #65, #54; zero code/test overlaps. Newly reserved test files: `gen2/tests/test_traceability.py`. PR #65 also updates the required `COMPLETION.md` acceptance record; that shared metadata file is authorized by the completion contract. All other PR paths remain excluded; full inventory in `scope.json`.
+
+# Batch D2b witness table (written before TO4 edits)
+
+Base: `e1669ede5d668cfdd930e80187bb3c4643292bc6`.
+Authoritative S4 Router-path witnesses stay in `test_router_insertion_rules.py`.
+Its refusal spy proves the Router predicate raised `Refusal`, and each refused
+operand has a committed control. Edge-case/readback/rollback witnesses in the
+three content/table modules stay where they are.
+
+| Rule | Refuse and commit witness (`RouterInsertionRulesTest`) | Literal coverage |
+| --- | --- | --- |
+| Canonical acquisition binding | `test_canonical_acquisition_binding` | producer, route, call reference, retrieval time; unmodified receipt commits |
+| Canonical recorded-content ceiling | `test_canonical_content_ceiling` | bibliographic→abstract, abstract→full text, full text→reproduced; four verdicts; admitted tier commits |
+| Extraction recorded-content ceiling | `test_extraction_content_ceiling` | same three ceilings and four verdicts for verifier/validated extraction; admitted tier commits |
+| Table availability | `test_table_availability` | bibliographic/abstract, all three methods, three non-exempt verdicts; page-only commits; retain table-only and mixed span operands |
+| Exemption and availability controls | `test_table_controls_and_hold_exemption` | recorded full text commits with table citations; cannot-assess commits and creates a hold |
+| Acquisition-local content | `test_acquisition_time_does_not_pool_content` | earlier/later distracting full text cannot inflate the bound abstract; ceiling/table refusals plus page control |
+
+| TO4 duplicate ID to remove | Kept witness |
+| --- | --- |
+| `test_canonical_content_tiers.ContentRouterTest.test_inflation_all_verdicts` | `test_router_insertion_rules.RouterInsertionRulesTest.test_canonical_content_ceiling` |
+| `test_extraction_content_tiers.ExtractionContentRouterTest.test_inflation` | `test_router_insertion_rules.RouterInsertionRulesTest.test_extraction_content_ceiling` |
+| `test_table_availability.TableRouterTest.test_insufficient_and_mixed` | `test_router_insertion_rules.RouterInsertionRulesTest.test_table_availability`, retaining both span shapes |
+
+---
+
+## Accepted TO1 residue
+
+Each row is one AST import statement, including local imports and module aliases. These are accepted under Trevor's instruction to stop further TO1 parts, except the explicit ownership exclusions noted in the reasons. The full import text is in `accepted-residue.json`.
+
+| Consumer | Imported test module/symbol | Reason |
+| --- | --- | --- |
+| `coverage_reference.py:12` | `test_coverage_dependencies.history,page` | Coverage history/page oracle builders; accepted remaining accounting family. |
+| `coverage_reference.py:13` | `test_stopping.CTX,DATE` | Stopping inventory/context literals; accepted remaining family. |
+| `test_acceptance_coverage.py:13` | `test_acceptance` | S2d acceptance files are explicitly excluded. |
+| `test_bound_extraction_support.py:12` | `test_validated_extraction_receipts.ValidatedCases` | Validated-receipt base; further TO1 family moves are stopped. |
+| `test_branch_windows.py:15` | `test_registry_dispositions.example_disposition` | Disposition document builder; marginal TO1 move intentionally stopped. |
+| `test_canonical_decimal.py:8` | `test_canonical` | Published vectors/hash oracle retained after TO6; compatibility checks are distinct. |
+| `test_capture_reader.py:11` | `test_topic_capture.group` | Capture table selector group; marginal TO1 move intentionally stopped. |
+| `test_coverage.py:8` | `test_stopping.CTX,DATE,N,S,U,inventory` | Stopping inventory/context literals; accepted remaining family. |
+| `test_coverage.py:218` | `test_accounting.WindowTest` | Accounting/window world; another TO1 family extraction is intentionally stopped. |
+| `test_coverage_dependencies.py:7` | `test_stopping.CTX,DATE,N,S,U` | Stopping inventory/context literals; accepted remaining family. |
+| `test_coverage_dependencies.py:109` | `test_accounting.WindowTest` | Accounting/window world; another TO1 family extraction is intentionally stopped. |
+| `test_coverage_dependencies.py:137` | `test_accounting.WindowTest` | Accounting/window world; another TO1 family extraction is intentionally stopped. |
+| `test_dossier_inputs.py:9` | `test_accounting` | Accounting/window world; another TO1 family extraction is intentionally stopped. |
+| `test_dossier_inputs.py:12` | `test_branch_windows.World` | Branch World would exceed the remaining Router-fixture headroom; accepted TO1 residue. |
+| `test_extraction_attention.py:6` | `test_bound_extraction_support.PromotionCases` | PromotionCases extraction fixture family; further TO1 moves are stopped. |
+| `test_extraction_attention.py:8` | `test_validated_extraction_receipts.ValidatedCases` | Validated-receipt base; further TO1 family moves are stopped. |
+| `test_failed_attempt_retention.py:14` | `test_attempted_request_bytes` | Batch A files are explicitly excluded. |
+| `test_generation_lifecycle.py:8` | `test_capture_reader` | Capture-reader generation harness; further TO1 family moves are stopped. |
+| `test_mandatory_detailed_receipts.py:5` | `test_detailed_check_receipts` | ReferenceCases/literal detailed receipts; accepted remaining family. |
+| `test_obligation_admission.py:11` | `test_confidence_contract.declare,SCHEME` | Confidence declare/SCHEME operands; marginal TO1 move intentionally stopped. |
+| `test_opaque_attempts.py:12` | `test_attempted_request_bytes` | Batch A files are explicitly excluded. |
+| `test_operator_mcp.py:218` | `test_operator_auth.raw_exchange` | raw_exchange deferred: owned by Batch F's file (open PR #54). |
+| `test_quote_attention.py:11` | `test_store_governed_quotes` | Raw governed-quote matrix; module alias preserves collected test ownership. |
+| `test_receipt_summary_domain.py:8` | `test_detailed_check_receipts.ReferenceCases` | ReferenceCases/literal detailed receipts; accepted remaining family. |
+| `test_reconciliation_bundle.py:13` | `test_reconciliation_operands.SCHEME` | Shared SCHEME literal; marginal TO1 move intentionally stopped. |
+| `test_remaining_router_detailed_fixtures.py:11` | `test_router_amendments` | Literal amendment regression harness; retained under its test owner. |
+| `test_remaining_router_detailed_fixtures.py:12` | `test_span_cap` | Literal span-cap regression harness; retained under its test owner. |
+| `test_research_views.py:8` | `test_accrual` | Accrual/research-view world; another TO1 family extraction is intentionally stopped. |
+| `test_retained_support.py:15` | `test_router_detailed_support` | Detailed-support seed/selectors; accepted remaining receipt family. |
+| `test_retained_support.py:18` | `test_receipt_summary_domain.METHODS` | SummaryCases/METHODS receipt basis; accepted remaining family. |
+| `test_router_amendments_wiring.py:24` | `test_router_lifecycle_wiring.Spy` | Spy remains with its call-forwarding tests; TO2 consolidates only Refusing. |
+| `test_router_commit.py:33` | `test_router_schemas.verdicts` | Schema-verdict driver; accepted test-tool residue. |
+| `test_router_commit_wiring.py:15` | `test_router_evidence_wiring` | Rollback harness stays with its evidence tests; its store double is now shared. |
+| `test_router_detailed_support.py:8` | `test_receipt_summary_domain.SummaryCases` | SummaryCases/METHODS receipt basis; accepted remaining family. |
+| `test_router_detailed_support.py:9` | `test_detailed_check_receipts` | ReferenceCases/literal detailed receipts; accepted remaining family. |
+| `test_router_detailed_support.py:13` | `test_receipt_summary_domain.METHODS` | SummaryCases/METHODS receipt basis; accepted remaining family. |
+| `test_router_evidence.py:28` | `test_router_schemas.verdicts` | Schema-verdict driver; accepted test-tool residue. |
+| `test_router_evidence_wiring.py:18` | `test_router_evidence` | Evidence/ScreeningBase/qualification fixtures; further TO1 family moves are stopped. |
+| `test_router_registries.py:31` | `test_router_evidence.T,ScreeningBase,qual_ref` | Evidence/ScreeningBase/qualification fixtures; further TO1 family moves are stopped. |
+| `test_router_scheduling_wiring.py:19` | `test_router_scheduling` | Scheduling ContractWorld test harness; accepted remaining family. |
+| `test_router_scheduling_wiring.py:22` | `test_router_lifecycle_wiring.Spy` | Spy remains with its call-forwarding tests; TO2 consolidates only Refusing. |
+| `test_router_support_basis.py:8` | `test_router_detailed_support` | Detailed-support seed/selectors; accepted remaining receipt family. |
+| `test_router_support_basis.py:13` | `test_receipt_summary_domain.METHODS` | SummaryCases/METHODS receipt basis; accepted remaining family. |
+| `test_semantic_assessments.py:207` | `test_registry_dispositions.example_disposition` | Disposition document builder; marginal TO1 move intentionally stopped. |
+| `test_span_cap.py:11` | `test_router_workflow` | ClaimSourceLinkTest scenario harness; retains its literal test owner. |
+| `test_stopping_bindings.py:8` | `test_stopping` | Stopping inventory/context literals; accepted remaining family. |
+| `test_stopping_protocol.py:6` | `test_accounting, test_stopping` | Accounting/window world; another TO1 family extraction is intentionally stopped. Stopping inventory/context literals; accepted remaining family. |
+| `test_stopping_protocol.py:7` | `test_stopping_bindings` | Stopping binding harness; accepted remaining family. |
+| `test_store_acquisition_relationships.py:9` | `test_store_acquisitions` | Acquisition DDL rejection matrix; retains its literal test owner. |
+| `test_store_detailed_checks.py:9` | `test_detailed_checks.RecordMatrix` | RecordMatrix DDL rejection matrix; retains its literal test owner. |
+| `test_store_extraction_records.py:6` | `test_extraction_records` | Extraction record rejection matrix; retains its literal test owner. |
+| `test_store_extraction_validations_v2.py:7` | `test_extraction_validations_v2` | Validation-v2 operands/case family; further TO1 moves are stopped. |
+| `test_store_extraction_validations_v2.py:8` | `test_store_extraction_records` | Raw extraction-record matrix; module alias preserves collected test ownership. |
+| `test_store_extractor_registry.py:6` | `test_extractor_registry.approval` | Extractor approval builder; marginal TO1 move intentionally stopped. |
+| `test_store_extractor_registry.py:7` | `test_store_extraction_records` | Raw extraction-record matrix; module alias preserves collected test ownership. |
+| `test_store_validation_current_registry.py:2` | `test_validation_current_registry` | Current-registry validation case family; accepted remaining family. |
+| `test_store_validation_current_registry.py:3` | `test_store_extraction_validations_v2` | Raw validation matrix is reused by module alias to preserve collection ownership. |
+| `test_topic_capture.py:15` | `test_semantic_assessments` | Instantiated SemanticTest needs a helper-only base extraction; further TO1 is stopped. |
+| `test_validation_current_registry.py:5` | `test_extraction_validations_v2` | Validation-v2 operands/case family; further TO1 moves are stopped. |
+
+---
+
 # Batch D2a-3 completion
 
 This TO1 slice moves `QuotesCase`, `CanonicalQuotesCase`, `CaptureCase`,

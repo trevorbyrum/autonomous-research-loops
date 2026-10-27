@@ -29,11 +29,6 @@ class ContentRouterTest(unittest.TestCase):
         case.assert_audited_state(before, 1)
         self.assertEqual(case.send(document(case, control))["status"], "committed")
 
-    def test_inflation_all_verdicts(self):
-        for verdict in ("supports", "partially_supports", "does_not_support", "cannot_assess_at_required_tier"):
-            with self.subTest(verdict=verdict), attributed_fixture({"identity": IDENTITY, "abstract": "Fixture abstract"}) as case:
-                self.refuse(case, "full_text", "abstract", verdict)
-
     def test_link_only(self):
         with attributed_fixture({"identity": IDENTITY, "kind": "full_text", "links": ["https://fixture.invalid/paper.pdf"],
                 "has_full_text": True, "raw": {"text": "Untrusted metadata"}}) as case:

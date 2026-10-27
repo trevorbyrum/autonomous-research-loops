@@ -41,15 +41,6 @@ class ExtractionContentRouterTest(unittest.TestCase):
                     self.assertEqual(case.router.commit_outcome(case.env), {"status": "replayed", "receipt": out["receipt"]})
                     self.assertEqual(case.state(exclude=()), before)
 
-    def test_inflation(self):
-        for method in METHODS:
-            for record, tier, control in (({"identity": content.IDENTITY}, "abstract", "bibliographic"),
-                    ({"identity": content.IDENTITY, "abstract": "Fixture abstract"}, "full_text", "abstract"),
-                    ({**content.FULL, "reproduced": True, "access_tier": "reproduced"}, "reproduced", "full_text")):
-                for verdict in ("supports", "partially_supports", "does_not_support", "cannot_assess_at_required_tier"):
-                    with self.subTest(method=method, tier=tier, verdict=verdict), content.attributed_fixture(record) as case:
-                        self.refuse(case, method, tier, control, verdict)
-
     def test_record_and_route(self):
         scenarios = (({"identity": content.IDENTITY, "kind": "full_text", "links": ["https://fixture.invalid/paper"],
                 "has_full_text": True, "raw": {"text": "Metadata"}}, "searched_ok", (), "bibliographic"),
