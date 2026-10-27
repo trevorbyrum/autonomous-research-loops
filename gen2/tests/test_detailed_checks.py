@@ -33,8 +33,7 @@ class RecordMatrix:
                     {'outcome': 'not_applicable', 'applicability_reason': '\u200b\u00a0'}, {'cited_spans': []}):
                 with self.subTest(kind=kind, change=change):
                     out = self.refuse(self.record(**{'kind': kind, **change}))
-                    if not self.RAW:
-                        self.assertEqual(out.get('reason'), 'payload_invalid', out)
+                    self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_missing_evidence(self):
         for kind in KINDS:
@@ -42,8 +41,7 @@ class RecordMatrix:
                 record = self.record(kind=kind, outcome=outcome, applicability_reason='Explicit scope rationale')
                 record['evidence_ref'] = None
                 out = self.refuse(record)
-                if not self.RAW:
-                    self.assertEqual(out.get('reason'), 'payload_invalid', out)
+                self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_bindings(self):
         for kind in KINDS:
@@ -64,8 +62,7 @@ class RecordMatrix:
                     {'start': 0, 'end': 2, 'locator': {'kind': 'invented', 'value': '1'}}):
                 for kind in KINDS:
                     out = self.refuse(self.record(kind=kind, **{field: [span]}))
-                    if not self.RAW:
-                        self.assertEqual(out.get('reason'), 'payload_invalid', out)
+                    self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_topic_artifact(self):
         self.x("DROP TRIGGER artifact_topics_immutable_d")

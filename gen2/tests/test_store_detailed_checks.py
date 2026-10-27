@@ -1,74 +1,55 @@
-"""Raw SQL 35 integrity bindings and conflict immutability."""
+"""Direct SQL 35 claim/source, attribution and artifact integrity witnesses."""
 import json
 import sqlite3
 
+from gen2.tests import store_fixtures as sf
 
-from gen2.tests import store_fixtures as fx
-
-from gen2.tests.router_fixtures import CheckCase, KINDS
-from gen2.tests.test_detailed_checks import RecordMatrix
+KINDS = ('numeric_units', 'denominators', 'negation', 'qualifications')
 
 
-class DDLCheckTest(RecordMatrix, CheckCase):
-    RAW = True
-    test_domain = test_missing_evidence = test_spans = None
+class DetailedIntegrityTest(sf.RecordIntegrityCase):
+    def test_control(self):
+        self.insert_record('detailed_check_records')
+        self.assertEqual(self.rows("SELECT performer_invocation_id,recorded_by_operation_id FROM detailed_check_records WHERE check_id='raw-candidate'"), [('inv_vvvvvvvv', 'op_extractval')])
+        self.assertEqual(self.rows('PRAGMA foreign_key_check'), [])
 
-    def setUp(self):
-        # Install raw target objects over admitted fixture operands.
-        with sqlite3.connect(':memory:') as reference:
-            reference.executescript(fx.DDL_TEXT)
-            objects = reference.execute("SELECT sql FROM sqlite_schema WHERE tbl_name='detailed_check_records' AND sql IS NOT NULL ORDER BY rowid").fetchall()
-        CheckCase.setUp(self)
-        self.x('DROP TABLE detailed_check_records')
-        for sql, in objects:
-            self.x(sql)
-
-    def send(self, record, grant=None, op='op_detailcheck1'):
-        self.x('SAVEPOINT detailed_record')
-        try:
-            ref = record['evidence_ref']
-            if ref and isinstance(ref, dict) and not self.rows('SELECT 1 FROM artifacts WHERE content_hash=?', ref['content_hash']):
-                raw = self.spool.read(ref['content_hash'], topic_id=self.verifier['topic_id'])
-                self.x('INSERT INTO artifacts (content_hash,size_bytes,media_type,staged_at) VALUES (?,?,?,?)', ref['content_hash'], len(raw), 'application/json', '2026-10-17T00:00:00Z')
-                self.x('INSERT INTO artifact_topics VALUES (?,?,?,?)', ref['content_hash'], self.verifier['topic_id'], self.producer['invocation_id'], '2026-10-17T00:00:00Z')
-            row = dict(check_id=record['check_id'], topic_id=self.verifier['topic_id'],
-                performer_invocation_id=(grant or self.verifier)['invocation_id'], assessment=record['assessment'], evidence_ref=ref,
-                recorded_by_operation_id='op_setupcheck1', created_at='2026-10-17T00:00:00Z')
-            self.x(f"INSERT INTO detailed_check_records ({','.join(row)}) VALUES ({','.join('?' * len(row))})",
-                *[json.dumps(v) if isinstance(v, dict) else v for v in row.values()])
-            return {'status': 'committed'}
-        except sqlite3.IntegrityError:
-            self.x('ROLLBACK TO detailed_record')
-            return {'status': 'rejected'}
-        finally:
-            self.x('RELEASE detailed_record')
-
-
-    def test_immutable(self):
-        self.test_control()
-        for statement in ('UPDATE detailed_check_records SET created_at=created_at', 'DELETE FROM detailed_check_records',
-                'INSERT OR REPLACE INTO detailed_check_records SELECT * FROM detailed_check_records',
-                'INSERT INTO detailed_check_records SELECT * FROM detailed_check_records WHERE true ON CONFLICT DO UPDATE SET created_at=excluded.created_at'):
-            before = self.state(exclude=())
-            with self.assertRaises(sqlite3.IntegrityError):
-                self.x(statement)
-            self.assertEqual(self.state(exclude=()), before)
+    def test_bindings(self):
+        report = json.loads(self.record_row('detailed_check_records')['assessment'])
+        for kind in KINDS:
+            for changes in ({'claim_id':'absent'}, {'claim_revision':2}, {'work_id':'absent'},
+                    {'source_version':'foreign'}, {'source_artifact_hash':sf.h('0')}):
+                with self.subTest(kind=kind,changes=changes), self.assertRaisesRegex(sqlite3.IntegrityError, 'detailed check needs exact claim/source and independent committing verifier'):
+                    self.insert_record('detailed_check_records', assessment=json.dumps({**report,'kind':kind,**changes}))
 
     def test_attribution(self):
-        self.x('PRAGMA foreign_keys=OFF')
-        for table, field, value in (('invocations', 'kind', 'checkpoint'), ('invocations', 'topic_id', 'foreign'),
-                ('invocations', 'admission_context', 'scoping/1'), ('invocations', 'parent_invocation_id', self.producer['invocation_id']),
-                ('source_artifacts', 'invocation_id', self.verifier['invocation_id']),
-                ('operation_receipts', 'invocation_id', self.producer['invocation_id']), ('operation_receipts', 'topic_id', 'foreign'),
-                ('operation_receipts', 'contract_revision', 999)):
-            self.x('SAVEPOINT corrupt_operand')
-            for name, in self.rows("SELECT name FROM sqlite_schema WHERE type='trigger' AND tbl_name=?", table):
-                self.x('DROP TRIGGER ' + name)
-            key = " WHERE invocation_id='inv_verify0001'" if table == 'invocations' else " WHERE operation_id='op_setupcheck1'" if table == 'operation_receipts' else ''
-            self.x('PRAGMA ignore_check_constraints=ON')
-            self.x(f'UPDATE {table} SET {field}=?' + key, value)
-            self.x('PRAGMA ignore_check_constraints=OFF')
-            for kind in KINDS:
-                self.refuse(self.record(kind=kind))
-            self.x('ROLLBACK TO corrupt_operand')
-            self.x('RELEASE corrupt_operand')
+        report = json.loads(self.record_row('detailed_check_records')['assessment'])
+        for table, where, field, value in (
+                *(('invocations', "invocation_id='inv_vvvvvvvv'", f, v) for f, v in (('topic_id',sf.OTHER),('kind','checkpoint'),('admission_context','scoping/1'),('parent_invocation_id','inv_pppppppp'))),
+                ('source_artifacts','1=1','invocation_id','inv_vvvvvvvv'), ('claims','1=1','producer_invocation_id','inv_vvvvvvvv'),
+                *(('operation_receipts', "operation_id='op_extractval'", f, v) for f, v in (('invocation_id','inv_pppppppp'),('topic_id',sf.OTHER),('contract_revision',999)))):
+            with self.subTest(table=table,field=field), self.corrupt(table, where, **{field:value}):
+                for kind in KINDS:
+                    with self.assertRaisesRegex(sqlite3.IntegrityError, 'detailed check needs exact claim/source and independent committing verifier'):
+                        self.insert_record('detailed_check_records', assessment=json.dumps({**report,'kind':kind}))
+
+    def test_artifacts(self):
+        report = json.loads(self.record_row('detailed_check_records')['assessment'])
+        ref = report['examined_artifact_ref']
+        for kind in KINDS:
+            for field in ('examined_artifact_ref','evidence_ref'):
+                for change in ({'size_bytes':999}, {'media_type':'text/plain'}, {'content_hash':sf.h('0')}):
+                    changes = {'assessment':json.dumps({**report,'kind':kind,field:{**ref,**change}})} if field=='examined_artifact_ref' else {'evidence_ref':json.dumps({**ref,**change})}
+                    with self.subTest(kind=kind,field=field,change=change), self.assertRaisesRegex(sqlite3.IntegrityError, 'detailed check needs topic-authorized artifact metadata'):
+                        self.insert_record('detailed_check_records', **changes)
+        with self.corrupt('artifact_topics', '1=1', topic_id=sf.OTHER):
+            with self.assertRaisesRegex(sqlite3.IntegrityError, 'detailed check needs topic-authorized artifact metadata'):
+                self.insert_record('detailed_check_records')
+
+    def test_immutable(self):
+        before = self.snapshot('detailed_check_records')
+        for sql, message in (("UPDATE detailed_check_records SET created_at=created_at", 'detailed checks are immutable'),
+                ("DELETE FROM detailed_check_records", 'detailed checks are retained'),
+                ("INSERT OR REPLACE INTO detailed_check_records SELECT * FROM detailed_check_records", 'detailed checks are retained'),
+                ("INSERT INTO detailed_check_records SELECT * FROM detailed_check_records WHERE true ON CONFLICT DO UPDATE SET created_at=excluded.created_at", 'detailed checks are immutable')):
+            self.rejects(message, sql)
+            self.assertEqual(self.snapshot('detailed_check_records'), before)

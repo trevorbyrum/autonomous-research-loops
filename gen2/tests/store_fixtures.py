@@ -15,6 +15,7 @@ import copy
 import json
 import sqlite3
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 from gen2.core.canonical import bytes_digest
@@ -919,3 +920,53 @@ class OwnCases:
     def test_call(self): self.foreign('call'); self.refuse()
     def test_time(self): self.foreign('time'); self.refuse()
     def test_route(self): self.foreign('route'); self.refuse()
+
+
+class RecordIntegrityCase(StoreTestCase):
+    """Admitted raw operands, with explicit corruption confined to each savepoint."""
+    def setUp(self):
+        super().setUp()
+        self.populate_every_table()
+        self.other_ref = dict(content_hash=h('6'), size_bytes=13, media_type='text/plain')
+        self.x("INSERT INTO artifacts (content_hash,size_bytes,media_type,staged_at) VALUES (?,13,'text/plain',?)", h('6'), T)
+        self.x("INSERT INTO artifact_topics VALUES (?,?,'inv_pppppppp',?)", h('6'), TOPIC, T)
+
+    def record_row(self, table, **changes):
+        key, identity = {'source_extractions': ('extraction_id', 'ext-target'),
+            'extraction_validations': ('validation_id', 'val-fixture'),
+            'extraction_validations_v2': ('validation_id', 'val-fixture'),
+            'detailed_check_records': ('check_id', 'check-fixture')}[table]
+        columns = [r[1] for r in self.rows(f'PRAGMA table_info({table})')]
+        row = dict(zip(columns, self.rows(f'SELECT * FROM {table} WHERE {key}=?', identity)[0]))
+        return {**row, key: 'raw-candidate', **changes}
+
+    def insert_record(self, table, **changes):
+        row = self.record_row(table, **changes)
+        self.x(f"INSERT INTO {table} ({','.join(row)}) VALUES ({','.join('?' for _ in row)})", *row.values())
+
+    def registry(self, version, tools):
+        doc = dict(registry_version=version, operator_id='user', reason='fixture approval',
+            tools=[dict(extractor_identity=i, family=f) for i, f in tools])
+        audit = 'aud_registry_' + str(version)
+        self.x("INSERT INTO audit_events VALUES (?,?,'extractor_registry_registered',NULL,NULL,NULL,?)", audit, T, json.dumps(doc))
+        self.x('INSERT INTO extractor_registry_revisions VALUES (?,?,?,?,?)', version, 'user', 'fixture approval', audit, T)
+        for identity, family in tools:
+            self.x('INSERT INTO extractor_tools VALUES (?,?,?)', version, identity, family)
+
+    @contextmanager
+    def corrupt(self, table, where, **changes):
+        self.x('PRAGMA foreign_keys=OFF')
+        self.x('SAVEPOINT corrupt_operand')
+        try:
+            for name, sql in self.rows("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=?", table):
+                if 'BEFORE UPDATE' in sql:
+                    self.x('DROP TRIGGER "' + name + '"')
+            self.x('PRAGMA ignore_check_constraints=ON')
+            self.x(f"UPDATE {table} SET {','.join(k+'=?' for k in changes)} WHERE {where}", *changes.values())
+            self.x('PRAGMA ignore_check_constraints=OFF')
+            yield
+        finally:
+            self.x('PRAGMA ignore_check_constraints=OFF')
+            self.x('ROLLBACK TO corrupt_operand')
+            self.x('RELEASE corrupt_operand')
+            self.x('PRAGMA foreign_keys=ON')
