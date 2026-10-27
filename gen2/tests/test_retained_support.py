@@ -14,7 +14,7 @@ from gen2.store import api, compat, db
 from gen2.tests import router_fixtures as rf
 from gen2.tests import test_router_detailed_support as detailed
 from gen2.tests.detailed_support_fixtures import history, insert_receipt
-from gen2.tests.test_capture_support import CaptureCase
+from gen2.tests.router_fixtures import CaptureCase
 from gen2.tests.test_receipt_summary_domain import METHODS
 
 

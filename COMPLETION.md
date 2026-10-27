@@ -1,3 +1,84 @@
+# Batch D2a-3 completion
+
+This TO1 slice moves `QuotesCase`, `CanonicalQuotesCase`, `CaptureCase`,
+verification `AttentionCase`, and their literals into `router_fixtures.py`,
+with every moved-name consumer updated. The intermediate
+`canonical_quotes_fixtures.py` is removed after its class and consumers
+move. Its `STAMP` reuses the identical existing fixture literal; local
+receipt-fixture imports avoid a module-initialization cycle. No re-export
+shims, production changes, test deletions or assertion changes.
+
+Remaining TO1: branch/window, `Spy`/`Refusing`, and remaining
+Router/gateway/other helpers. D2b has not begun. `raw_exchange`:
+**deferred: owned by Batch F's file**; its definition/importers are unchanged.
+`router_fixtures.py` is 1,498 lines, leaving two lines of headroom.
+Further TO1 slices need a permitted fixture home within the file-size cap.
+
+Base: `1dc3cbddda348dff7e9915afbed920f9e3238e07` (#61 merged).
+Evidence: `~/work/research-loops-public/private/evidence/batch-d2/d2a3/`.
+
+- AST: 6 mapped nodes (4 classes, `HOLD`, identical existing `STAMP`),
+  3,619 functions and 6,730 assertion expressions preserved. Zero failures.
+- Collected IDs: 2,953 → 2,953; delta 0. No IDs added or removed and no
+  duplicate collections; original test classes retain their literal tests.
+- Cross-test import statements: 65 → 59; strict
+  `from gen2.tests.test_X` statements: 35 → 29. Complete inventories kept.
+- Consumer closure: zero moved-name imports/references through test modules.
+- Focused verification: 171 tests passed across all nine consumer modules.
+- Full disposable-copy sharded `gen2-accept`: **passed**, 2,953 tests / 8 shards.
+- Mutation scope: **empty**, no applicable production files or mutants.
+- Tested code: `fcbcb02a6f270b86e48b469667181ab816e7cad5`; the final evidence amendment changes only this file.
+- Size: 548 touched / +78 net, including this completion update.
+
+Open PR #54 (Batch F) and #62 (records) were checked with
+`gh pr list --state open --base gen2` and each branch's
+`git diff --name-only origin/gen2...origin/<branch>`. All their files and
+the prior exclusion list below remain untouched. Consumer-only files
+receive imports or fixture-reference changes; every assertion is preserved.
+The additional 6b1′ exclusions, including its schema examples, are:
+
+```text
+gen2/tests/store_fixtures.py
+gen2/tests/test_router_ops.py
+gen2/tests/test_router_amendments.py
+gen2/tests/test_sqlite_gate.py
+gen2/store/schema/02-invocations-and-records.sql
+gen2/store/api.py
+gen2/router/service.py
+gen2/schema/commit-outcome.schema.json
+gen2/schema/examples/commit-outcome/invalid-caller-supplied-role.json
+gen2/schema/examples/commit-outcome/invalid-contract-and-brief-mixed.json
+gen2/schema/examples/commit-outcome/invalid-interim-receipt-with-ordinal.json
+gen2/schema/examples/commit-outcome/invalid-invocation-id-in-operation-slot.json
+gen2/schema/examples/commit-outcome/invalid-lease-generation-beyond-bound-exponent.json
+gen2/schema/examples/commit-outcome/invalid-missing-expected-state-revision.json
+gen2/schema/examples/commit-outcome/invalid-missing-lease-generation.json
+gen2/schema/examples/commit-outcome/invalid-oversized-payload.json
+gen2/schema/examples/commit-outcome/invalid-pre-contract-without-confirmation.json
+gen2/schema/examples/commit-outcome/invalid-receipt-unfrozen-canonicalization.json
+gen2/schema/examples/commit-outcome/invalid-receipt-unfrozen-fingerprint-contract.json
+gen2/schema/examples/commit-outcome/invalid-receipt-without-hash-contract.json
+gen2/schema/examples/commit-outcome/invalid-receipt-without-validation-binding.json
+gen2/schema/examples/commit-outcome/invalid-rejection-carrying-receipt.json
+gen2/schema/examples/commit-outcome/invalid-rejection-negative-state-revision.json
+gen2/schema/examples/commit-outcome/invalid-rejection-unlisted-reason.json
+gen2/schema/examples/commit-outcome/invalid-rejection-without-state-revision.json
+gen2/schema/examples/commit-outcome/invalid-state-revision-beyond-bound-decimal.json
+gen2/schema/examples/commit-outcome/invalid-unversioned-admission-context.json
+gen2/schema/examples/commit-outcome/valid-final-outcome-envelope.json
+gen2/schema/examples/commit-outcome/valid-pre-contract-envelope.json
+gen2/schema/examples/commit-outcome/valid-receipt-final.json
+gen2/schema/examples/commit-outcome/valid-response-rejected-unknown-topic.json
+gen2/schema/examples/commit-outcome/valid-response-rejected.json
+gen2/schema/examples/commit-outcome/valid-response-replayed.json
+```
+
+The existing exclusions below still apply, including S2d, Batch A, Batch B,
+Batch F, supervisor tests, `ddl_fixtures.py`, and protected records.
+The pagination docstring rider is already merged in D2a-1 and stays intact.
+
+---
+
 # Batch D2a-2 completion
 
 This capped TO1 slice moves `AcquisitionCase`, `ReceiptCase`,

@@ -9,57 +9,7 @@ from unittest.mock import patch
 
 from gen2.tests.router_fixtures import TOPIC
 from gen2.tests.store_fixtures import StoreTestCase, T
-from gen2.tests.canonical_quotes_fixtures import CanonicalQuotesCase
-from gen2.tests.detailed_receipt_fixtures import attach_checks
-
-HOLD = "hold_6937eef24b17d742001c84e3a97f10290ae7ee206ea1a34b5f606ff2c4792dda"
-
-
-class AttentionCase(CanonicalQuotesCase):
-    verifier_station = "verifier-station"
-    verifier_deadline = "2026-09-27T10:30:00Z"
-
-    def started(self, inv, kind="research_pass", tid=TOPIC, **extra):
-        extra["deadline_at"] = "2026-09-27T11:00:00Z"
-        if kind == "verification":
-            extra.update(station_id=self.verifier_station, deadline_at=self.verifier_deadline)
-        return super().started(inv, kind, tid, **extra)
-
-    def document(self, verdict="does_not_support"):
-        doc = self.receipt_document(verdict=verdict)
-        doc["quote_check_id"] = None
-        doc["checks"]["exact_quote"]["status"] = "not_applicable"
-        return doc
-
-    def commit(self, doc=None):
-        out = self.send([], verification_receipts=[doc or self.document()])
-        self.assertEqual(out["status"], "committed", out)
-        return out
-
-    def attention(self, verdict="does_not_support", missing=False):
-        doc = self.document(verdict)
-        if missing:
-            doc["access_tier"] = "abstract"
-            doc["checks"].update(numeric_units="not_checked", denominators="unavailable", negation="not_checked", qualifications="unavailable")
-        attach_checks(self, doc)
-        out = self.commit(doc)
-        self.assertEqual(self.rows("SELECT hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, "
-            "owner, deadline_at, clears_when, created_at, created_by_operation_id, cleared_at FROM holds"), [(
-            HOLD, TOPIC, "verification:ver_quote00001", "judgment",
-            ("verification missing content: " if missing else "verification disagreement: ") + verdict,
-            "needs_remediation" if missing else "needs_decision", "primary", "primary:station-1", "2026-09-27T11:00:00Z",
-            "independent verification with the required content" if missing else "primary adjudication of this verification disagreement",
-            out["receipt"]["committed_at"], self.env["operation_id"], None)])
-        self.assertEqual(out["receipt"]["effects"]["holds_created"], [HOLD])
-        audit = json.loads(self.value("SELECT detail FROM audit_events WHERE audit_event_id = ?", out["receipt"]["effects"]["audit_event_id"]))
-        self.assertEqual(audit["verification_holds"], [HOLD])
-        self.assertEqual(json.loads(self.value("SELECT receipt FROM verification_receipts")), doc)
-        self.assertEqual(self.rows("SELECT status FROM claims"), [("provisional",)])
-        self.assertEqual(self.rows("SELECT status FROM queue_entries WHERE topic_id = ?", TOPIC), [("active",)])
-        holds = self.router.status({"topic_id": TOPIC})["topics"][0]["holds"]
-        self.assertEqual([(h["hold_id"], h["subject_ref"], h["owner"], h["deadline_at"]) for h in holds],
-            [(HOLD, "verification:ver_quote00001", "primary:station-1", "2026-09-27T11:00:00Z")])
-        return out
+from gen2.tests.router_fixtures import HOLD, AttentionCase
 
 
 class AttentionTest(AttentionCase):

@@ -6,7 +6,7 @@ import json
 
 from gen2.tests.router_fixtures import TOPIC
 from gen2.tests.detailed_receipt_fixtures import historical_receipt
-from gen2.tests.test_capture_support import CaptureCase
+from gen2.tests.router_fixtures import CaptureCase
 import sqlite3
 from gen2.tests import test_store_governed_quotes as raw
 
