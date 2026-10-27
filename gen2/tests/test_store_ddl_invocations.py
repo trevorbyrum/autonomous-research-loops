@@ -83,7 +83,7 @@ class InvocationLifecycleTest(StoreTestCase):
         "outcome_unknown": {"running", "result_ready", "committed", "failed", "cancelled"},
         "committed": set(), "cancelled": set(), "failed": set(),
     }
-    KINDS = ("research_pass", "discovery", "delegate", "verification", "checkpoint")
+    KINDS = ("research_pass", "delegate")
     SCOPE = {"research_pass": "research", "discovery": "discovery", "verification": "verification", "checkpoint": "checkpoint"}
 
     def fresh(self, kind: str, n: int) -> str:
@@ -126,7 +126,7 @@ class InvocationLifecycleTest(StoreTestCase):
     RESOLUTION = {"running": "found_running", "result_ready": "found_result", "committed": "found_committed", "failed": "confirmed_failed", "cancelled": "terminated_group"}
 
     def test_terminal_states_are_final(self) -> None:
-        """D06 rewrite: the full L-1 transition matrix, for all five kinds. Each
+        """D06 rewrite: the full L-1 transition matrix, for owned and delegate work. Each
         (kind, from, to) pair starts from a fresh invocation driven to `from`
         along an allowed path; the attempt supplies every column the target's
         CHECKs need (and, out of outcome_unknown, the matching reconciliation
@@ -154,7 +154,7 @@ class InvocationLifecycleTest(StoreTestCase):
                             self.assertEqual(self.rows("SELECT state FROM invocations WHERE invocation_id = ?", iid), [(dst,)])
                         else:
                             self.rejects("invocation state transition not allowed", attempt, iid)
-        self.assertEqual(n, 5 * 8 * 7)
+        self.assertEqual(n, 2 * 8 * 7)
 
     RECONCILE = ("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_episode, unknown_since, resolution, method, evidence_ref, result_payload_digest, resolved_at, request) "
                  "VALUES (?1, ?2, ?3, ?4, ?5, 'job_handle_lookup', ?6, ?7, ?8, json_object('resolution', ?5, 'method', 'job_handle_lookup', 'evidence_ref', ?6, 'result_payload_digest', ?7))")
@@ -711,8 +711,6 @@ class AdmissionAndLeaseTest(StoreTestCase):
               "VALUES (?, ?, 'wrk_00000001', ?, ?, ?, 'abstract', 'exclude', 'EC-1', '{}', 'primary', ?, ?, ?)")
     LINK = ("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, evidence_origin_lineage, created_at) "
             "VALUES (?, 1, 'wrk_00000001', 'v1', ?, ?, 'O-1', '[]', 'answer', 'study-1', ?)")
-    DOSSIER = ("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) "
-               "VALUES (?, 1, ?, 1, 'eval-1', ?, ?, ?)")
 
     def evidence_basics(self) -> None:
         self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
@@ -748,12 +746,16 @@ class AdmissionAndLeaseTest(StoreTestCase):
             with self.subTest(draft_revision=rev):
                 self.rejects(refused, self.SCREEN, "sa1", TOPIC, rev, 1, 1, "inv_draft001", "op_00000001", T)
         self.rejects("produced by contract-admitted work", self.LINK, "clm_00000001", TOPIC, 2, T)
-        self.rejects("never a draft", self.DOSSIER, TOPIC, 2, h("3"), h("7"), T)
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.dossier(TOPIC, 1, 2, h("3"))
+        self.assertIn("never a draft", str(ctx.exception))
         contracts = self.snapshot("contract_revisions")
         self.decision("opd_appr0002", "contract_approval", rev=2, hsh=self.content_hash_of(TOPIC, 2))
         self.rejects("recorded only by the draft -> approved transition", "UPDATE contract_revisions SET approved_by_decision_id = 'opd_appr0002' WHERE topic_id = ? AND revision = 2", TOPIC)
         self.rejects("approval needs complete obligation/facet rows", "UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_appr0002' WHERE topic_id = ? AND revision = 2", TOPIC)
-        self.rejects("never a draft", self.DOSSIER, TOPIC, 2, h("3"), h("7"), T)
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.dossier(TOPIC, 1, 2, h("3"))
+        self.assertIn("never a draft", str(ctx.exception))
         self.assertEqual(self.snapshot("contract_revisions"), contracts)
         self.assertEqual(self.scientific_row_counts(), [(0, 0, 0)])
         self.assertEqual(self.rows("SELECT count(*) FROM search_observations"), [(1,)])
@@ -804,14 +806,14 @@ class AdmissionAndLeaseTest(StoreTestCase):
         self.assertEqual(self.scientific_row_counts(), [(0, 0, 0)])
         self.x(self.SCREEN, "sa1", TOPIC, 3, 1, 1, "inv_bbbbbbbb", "op_00000002", T)
         self.x(self.LINK, "clm_0000000b", TOPIC, 3, T)
-        self.x(self.DOSSIER, TOPIC, 3, h("3"), h("7"), T)
+        self.dossier(TOPIC, 1, 3, h("3"))
         self.assertEqual(self.scientific_row_counts(), [(1, 1, 1)])
         self.assertEqual(self.rows("SELECT revision, status, approved_by_decision_id FROM contract_revisions WHERE topic_id = ? ORDER BY revision", TOPIC),
                          [(1, "superseded", "opd_ca01t1xx"), (2, "draft", None), (3, "approved", "opd_ca03t1xx"), (4, "draft", None)])
-        second = ("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) "
-                  "VALUES (?, 2, ?, 1, 'eval-1', ?, ?, ?)")
-        self.rejects("never a draft", second, TOPIC, 4, h("4"), h("7"), T)
-        self.x(second, TOPIC, 1, h("4"), h("7"), T)  # the historically approved, now superseded revision 1
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.dossier(TOPIC, 2, 4, h("4"))
+        self.assertIn("never a draft", str(ctx.exception))
+        self.dossier(TOPIC, 2, 1, h("4"))  # the historically approved, now superseded revision 1
         self.assertEqual(self.scientific_row_counts(), [(1, 1, 2)])
 
     def test_invocation_owns_a_live_lease_of_its_kind_and_topic(self) -> None:

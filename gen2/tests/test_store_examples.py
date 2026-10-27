@@ -266,8 +266,6 @@ class ExampleWorldTest(StoreTestCase):
         and the dossier are refused too, and the revision reads back as an
         undecided draft with no dossier. Control: once its rows exist, the
         same decision approves it in one update and the dossier is accepted."""
-        dossier = ("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) "
-                   "VALUES (?, 1, 2, 1, 'eval-1', ?, ?, ?)")
         self.raw_artifact(h("7"))
         self.store_contract(self.contract_doc)
         self.decision("opd_pointer", "contract_approval", WORLD, rev=2, hsh=self.contract_doc["content_hash"])
@@ -276,13 +274,15 @@ class ExampleWorldTest(StoreTestCase):
         with self.assertRaises(sqlite3.IntegrityError) as ctx:  # the approval gate, or (with no decision named) the status CHECK
             self.x("UPDATE contract_revisions SET status = 'approved' WHERE topic_id = 'fleet-a:intake-latency' AND revision = 2")
         self.assertTrue(any(f in str(ctx.exception) for f in ("approval needs complete obligation/facet rows", "CHECK constraint failed")), str(ctx.exception))
-        self.rejects("never a draft", dossier, WORLD, h("3"), h("7"), T)
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.dossier(WORLD, 1, 2, h("3"))
+        self.assertIn("never a draft", str(ctx.exception))
         readback = ("SELECT c.status, c.approved_by_decision_id, x.contract_revision FROM contract_revisions c "
                     "LEFT JOIN dossiers x ON x.topic_id = c.topic_id AND x.contract_revision = c.revision WHERE c.topic_id = ? AND c.revision = 2")
         self.assertEqual(self.rows(readback, WORLD), [("draft", None, None)])
         self.store_rows(self.contract_doc)
         self.x("UPDATE contract_revisions SET status = 'approved', approved_by_decision_id = 'opd_pointer' WHERE topic_id = ? AND revision = 2", WORLD)
-        self.x(dossier, WORLD, h("3"), h("7"), T)
+        self.dossier(WORLD, 1, 2, h("3"))
         self.assertEqual(self.rows(readback, WORLD), [("approved", "opd_pointer", 2)])
 
 

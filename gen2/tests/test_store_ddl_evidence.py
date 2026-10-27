@@ -28,15 +28,8 @@ from gen2.tests.store_fixtures import FIND_REQUEST, OTHER, TOPIC, StoreTestCase,
 
 def canonical_support(case, rid, **changes):
     """Raw recorded full-text control; SQL fixtures do not authenticate transport."""
-    if not case.rows("SELECT 1 FROM source_acquisitions WHERE source_version = 'v1'"):
-        lease, generation = case.rows("SELECT i.lease_id, l.generation FROM invocations i JOIN leases l USING (lease_id) WHERE i.invocation_id = 'inv_pppppppp'")[0]
-        case.receipt("op_content001", "inv_pppppppp", lease=lease, gen=generation)
-        case.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", case.source_hash, TOPIC, T)
-        case.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
-        case.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
-        case.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
-        case.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_content001', ?)", TOPIC, case.source_hash, T)
-        case.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, case.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+    lease, generation = case.rows("SELECT i.lease_id, l.generation FROM invocations i JOIN leases l USING (lease_id) WHERE i.invocation_id = 'inv_pppppppp'")[0]
+    case.acquire("inv_pppppppp", "op_content001", lease, generation, call_ref="gw-call-1")
     case.verify(rid, method="canonical_bytes", extraction="inv_pppppppp", **changes)
 
 
@@ -63,13 +56,13 @@ class VerificationTest(StoreTestCase):
         self.recorded_verification_basis()
         # Realistic case: the research-pass producer names itself as verifier (the role trigger fires first).
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", verifier="inv_pppppppp", extraction="inv_pppppppp", historical=True)
+            self.verify("ver_00000001", verifier="inv_pppppppp", extraction="inv_pppppppp")
         self.assertIn("separate verification invocation", str(ctx.exception))
         # Isolate the producer != verifier CHECK: a claim whose producer is itself a
         # verification-kind invocation passes the role trigger, so only the CHECK can refuse it.
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 2, ?, ?, 'inv_vvvvvvvv', 0, NULL, 'provisional', ?)", TOPIC, self.source_hash, T)
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000002", claim=("clm_00000001", 2), quote=("not_applicable", None), producer="inv_vvvvvvvv", use="sampled", historical=True)  # not load-bearing: sampled
+            self.verify("ver_00000002", claim=("clm_00000001", 2), quote=("not_applicable", None), producer="inv_vvvvvvvv", use="sampled")  # not load-bearing: sampled
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         self.verify("ver_00000001")
 
@@ -81,7 +74,7 @@ class VerificationTest(StoreTestCase):
         self.recorded_verification_basis()
         self.second_research_pass()  # a second research_pass, not a verifier
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", verifier="inv_qqqqqqqq", extraction="inv_qqqqqqqq", historical=True)
+            self.verify("ver_00000001", verifier="inv_qqqqqqqq", extraction="inv_qqqqqqqq")
         self.assertIn("separate verification invocation", str(ctx.exception))
         # control parentage: refused when the verification invocation is admitted
         self.x("UPDATE leases SET released_at = ?, release_reason = 'finalized' WHERE lease_id = 'lease_vvvvvvvv'", T)
@@ -117,25 +110,19 @@ class VerificationTest(StoreTestCase):
         staged artifact. Positives: canonical-byte reuse of producer-acquired
         bytes; a validated producer extraction."""
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", method="validated_extraction", extraction="inv_pppppppp", validation=None, historical=True)
+            self.verify("ver_00000001", method="validated_extraction", extraction="inv_pppppppp", validation=None)
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", method="verifier_extraction", extraction="inv_pppppppp", historical=True)
+            self.verify("ver_00000001", method="verifier_extraction", extraction="inv_pppppppp")
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway=None, historical=True)
+            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway=None)
         self.assertIn("CHECK constraint failed", str(ctx.exception))
         with self.assertRaises(sqlite3.IntegrityError) as ctx:
-            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", obtained=h("0"), historical=True)
+            self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", obtained=h("0"))
         self.assertIn("authenticated canonical bytes", str(ctx.exception))
         # Raw admitted operands; authenticated transport is tested through Router.
-        self.receipt("op_acquire01", "inv_pppppppp")
-        self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", self.source_hash, TOPIC, T)
-        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
-        self.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
-        self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
-        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_acquire01', ?)", TOPIC, self.source_hash, T)
-        self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, self.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+        self.acquire("inv_pppppppp", "op_acquire01", "lease_aaaaaaaa", 1, call_ref="gw-call-1")
         self.verify("ver_00000001", tier="bibliographic", required="bibliographic", use="sampled", method="canonical_bytes", extraction="inv_pppppppp")  # producer-acquired canonical bytes below the recorded ceiling
         from gen2.tests.extraction_receipt_fixtures import seed
         seed(self)
@@ -148,13 +135,7 @@ class VerificationTest(StoreTestCase):
         killer. Raw admitted operands do not authenticate gateway transport.
         """
         self.second_research_pass()
-        self.receipt("op_acquire01", "inv_qqqqqqqq", lease="lease_bbbbbbbb", gen=3)
-        self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_qqqqqqqq', ?)", self.source_hash, TOPIC, T)
-        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_qqqqqqqq', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
-        self.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
-        self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
-        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_qqqqqqqq', 'op_acquire01', ?)", TOPIC, self.source_hash, T)
-        self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_qqqqqqqq', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)", TOPIC, self.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+        self.acquire("inv_qqqqqqqq", "op_acquire01", "lease_bbbbbbbb", 3, call_ref="gw-call-1")
         self.verify("ver_00000001", method="canonical_bytes", extraction="inv_qqqqqqqq")
         self.assertEqual(self.rows("SELECT acquired_by_invocation_id FROM source_acquisitions"), [("inv_qqqqqqqq",)])
         self.assertEqual(self.rows("SELECT extraction_method, extraction_invocation_id, producer_invocation_id, verifier_invocation_id, extraction_validation_ref, access_tier FROM verification_receipts"),
@@ -340,7 +321,7 @@ class VerificationTest(StoreTestCase):
         for label, value in probes.items():
             with self.subTest(field=label):
                 with self.assertRaises(sqlite3.IntegrityError) as ctx:
-                    self.verify("ver_00000001", receipt_overrides={label.split(".")[0]: value}, historical=True)
+                    self.verify("ver_00000001", receipt_overrides={label.split(".")[0]: value})
                 self.assertIn("CHECK constraint failed", str(ctx.exception))
         self.verify("ver_00000001")
 
