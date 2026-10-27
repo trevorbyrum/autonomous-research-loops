@@ -3730,3 +3730,18 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - Corrected inventory: five fixtures, 22 helper calls.
 - **D2** (Sol `ce0452c3`) stopped correctly when its consumer closure needed Batch E's and F's files. It resumed after E merged; `raw_exchange` is deferred to Batch F's file.
 
+## 2026-10-27: D2a-1 and D2a-2 merged; first design-before-code review (6b1′) ACCEPTED WITH CHANGES
+- **D2 split** to respect the 1,200-touched-line mechanical cap (Trevor's rule): D2a-n for the TO1 helper moves, D2b for dedup, TO4–TO6 and O-11.
+  - **D2a-1** (PR #60, `f372eb9`): 832 touched, +94 net; cross-test imports 143 → 118. Also carried the pagination docstring rider (Batch E NB2).
+  - **D2a-2** (PR #61, `b9f08ba`): 1,190 touched, +76 net; cross-test imports 118 → 65.
+  - Both kept 2,953 collected ids and 6,730 assertions, AST-preserved. Astra (`b0d34e37`) accepted both. Verifiers exit 0 in 691 s and 681 s. Merged.
+  - `raw_exchange` is deferred to Batch F's file.
+- **6b1′ design** (Sonnet `7ecf6019`, `private/reviews/gen2-6b1-design-20261027.md`). This is the **first pre-code design review** (charter "Build throughput").
+  - **Astra** (`5ad3aab0`, `private/reviews/gen2-6b1-design-review-astra-20261027.md`): **ACCEPTED WITH CHANGES.**
+    - **B1:** PR 0 must be internally complete. Remove the `dossiers.evidence_revision` column with its classification, receipt member and schema in one PR, and witness the schema-identity refusal of pre-change stores.
+    - **B2:** `ProfileResult` drops raw window uncertainty: stale standing rewrites indeterminate to ineligible, and the scoped result omits out-of-scope uncertain windows, both shown by probe. Carry compact raw-window provenance. This is the S4-type operand mismatch the step exists to catch.
+    - **B3:** `_commit_dossier_inputs` checks cancellation on a cached invocation row. Re-fetch it at each authority check, with a route-level interleaving test.
+    - **B4:** bind `protocol_revision` to the captured contract, and retain a producer `invocation_id` (needed by 6b2′'s non-author review).
+    - **B5:** named debt-case witnesses through record → stored → decode, with an independent encoded shape.
+  - Brief: `private/reviews/gen2-6b1-brief-20261027.md`. **PR 0** (B1) is dispatched; **PR 1** follows Batch A.
+
