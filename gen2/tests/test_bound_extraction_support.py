@@ -8,7 +8,7 @@ from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, his
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.router_fixtures import FULL, fixture
 from gen2.tests.router_fixtures import EXTRACTION_METHODS as METHODS, load_claim, support_document
-from gen2.tests.router_fixtures import OwnCases
+from gen2.tests.store_fixtures import OwnCases
 from gen2.tests.test_validated_extraction_receipts import ValidatedCases
 from gen2.tests.independent_tier_fixtures import independent_basis
 

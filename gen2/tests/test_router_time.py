@@ -29,14 +29,11 @@ statement began, which here is the wait for the lock.
 from __future__ import annotations
 
 import tempfile
-import threading
 import unittest
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from gen2.core import canonical
 from gen2.router import service
-from gen2.store import api
 from gen2.tests import router_fixtures as rf
 from gen2.tests import router_crash_child  # not its World by name: the loader would collect it
 
@@ -147,7 +144,7 @@ class ExactInstantTest(rf.RouterTestCase):
         self.assertEqual(self.rows("SELECT released_at, release_reason FROM leases WHERE lease_id = ?", first["lease"]["lease_id"]), [(E, "expired")])
 
 
-class LockWaitTest(unittest.TestCase):
+class LockWaitTest(rf.LockWaitCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.world = router_crash_child.World(Path(self.tmp.name))
@@ -158,34 +155,6 @@ class LockWaitTest(unittest.TestCase):
         self.world.router.close()
         self.world.db.close()
         self.tmp.cleanup()
-
-    def waiting(self, operation: str, request: dict, *, cross: bool = True) -> dict:
-        """`operation` on a second router while this test's connection holds
-        the write lock; the clock crosses E while the router waits for it."""
-        clock = {"now": E_MINUS}
-        issued = threading.Event()
-
-        def admitted():  # admission finishes before the operation's lock wait
-            router = service.Router.open(self.world.directory / "store.sqlite3", self.world.spool, clock=lambda: clock["now"])
-            router._store._conn.set_trace_callback(lambda sql: issued.set() if sql == "BEGIN IMMEDIATE" else None)
-            return router
-
-        with ThreadPoolExecutor(1) as pool:
-            router = pool.submit(admitted).result(timeout=10)
-            try:
-                self.world.db.execute("BEGIN IMMEDIATE")
-                pending = pool.submit(getattr(router, operation), request)
-                if not issued.wait(10):
-                    pending.result(timeout=0)  # an error before the lock is the failure to report
-                    self.fail("the router never asked for the write lock")
-                if cross:
-                    clock["now"] = E
-                self.world.db.execute("ROLLBACK")
-                return pending.result(timeout=10)
-            finally:
-                if self.world.db.in_transaction:
-                    self.world.db.execute("ROLLBACK")
-                pool.submit(router.close).result(timeout=10)
 
     def refused_across_the_wait(self, operation: str, request: dict, reason: str) -> None:
         before = self.world.state(exclude=())

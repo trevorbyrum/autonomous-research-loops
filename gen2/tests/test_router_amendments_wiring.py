@@ -20,7 +20,8 @@ from __future__ import annotations
 from gen2.router import service
 from gen2.tests import router_fixtures as amend
 from gen2.tests.router_fixtures import OTHER, TOPIC
-from gen2.tests.test_router_lifecycle_wiring import Refusing, Spy
+from gen2.tests.router_fixtures import Refusing
+from gen2.tests.test_router_lifecycle_wiring import Spy
 
 DELEGATES = (  # name, arguments
     ("version_brief", ({"r": 1},)), ("open_brief", ({"r": 2},)), ("mark_brief_overdue", ({"r": 3},)), ("propose_amendment", ({"r": 4},)), ("draft_contract", ({"r": 5},)),

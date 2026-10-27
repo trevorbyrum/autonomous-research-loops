@@ -36,12 +36,8 @@ from __future__ import annotations
 
 import copy
 import json
-import sqlite3
-import tempfile
-from pathlib import Path
 
 from gen2.core import canonical
-from gen2.store import api
 from gen2.tests import router_fixtures as rf, store_fixtures
 from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, find_request, h, jcs
 from gen2.tests.router_fixtures import ContractWorld, REFRAMED_QUESTION, columns, compatible, contract_doc, protocol_changed, reframed
@@ -771,31 +767,14 @@ class BriefLineageTest(RouterTestCase):
         self.assertEqual((brief["brief_id"], brief["version"]), ("brief-2", 1))
 
 
-class AmendmentRestartTest(ContractWorld):
+class AmendmentRestartTest(rf.DurableRouterTestCase, ContractWorld):
     """RG-9: impact records and the pins they judge survive a restart; a
     reopened router still fences what an approval made incompatible."""
 
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.directory = Path(self._tmp.name)
-        api.open_store(self.directory / "store.sqlite3", create=True).close()
-        self.db = sqlite3.connect(self.directory / "store.sqlite3", isolation_level=None)
-        self.db.executescript(store_fixtures.CONNECTION_TEXT)
-        self.store = api.open_store(self.directory / "store.sqlite3")
-        self.spool, self.clock, self.ids, self.faults = rf.Spool(), rf.Clock(), rf.Ids(), {}
-        self.router = self.make_router()
-        self.seed()
+        super().setUp()
         self.build_world()
 
-    def tearDown(self) -> None:
-        self.router.close()
-        self.db.close()
-        self._tmp.cleanup()
-
-    def reopen(self) -> None:
-        self.router.close()
-        self.store = api.open_store(self.directory / "store.sqlite3")
-        self.router = self.make_router()
 
     def test_impacts_and_pins_survive_a_restart(self) -> None:
         self.research()

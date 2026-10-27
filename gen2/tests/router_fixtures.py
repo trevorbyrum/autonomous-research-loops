@@ -31,8 +31,11 @@ import copy
 import hashlib
 import json
 import sqlite3
+import tempfile
+import threading
 import unittest
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
@@ -1159,125 +1162,6 @@ KINDS = ('numeric_units', 'denominators', 'negation', 'qualifications')
 OUTCOMES = ('succeeded', 'failed', 'not_applicable', 'not_checked', 'unavailable')
 
 
-class OwnCases:
-
-    def setUp(self):
-        from gen2.tests.detailed_receipt_fixtures import seed_checks
-        context = fixture(FULL)
-        self.case = context.__enter__()
-        self.doc = extraction_document(self.case, 'verifier_extraction')
-        seed_checks(self.case, self.doc)
-        self.addCleanup(context.__exit__, None, None, None)
-        self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'bibliographic'
-
-    def submit(self):
-        return send(self.case, self.doc)
-
-    def refuse(self):
-        # Historical /1 operands isolate the existing extraction predicate.
-        from gen2.tests.detailed_receipt_fixtures import historical_receipt, historical_admission
-        historical_receipt(self.doc)
-        before = self.case.state(exclude=())
-        with historical_admission(self.case):
-            out = self.submit()
-        self.assertEqual(out['status'], 'rejected', out)
-        self.assertEqual(out.get('reason'), 'payload_invalid', out)
-        self.assertIn('receipt needs its verifier durable extraction', out['detail'])
-        self.case.assert_audited_state(before, 1)
-        self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])
-
-    def clone(self, table, changes, where=''):
-        cur = self.case.db.execute('SELECT * FROM ' + table + (' WHERE ' + where if where else '') + ' LIMIT 1')
-        row = {**dict(zip([d[0] for d in cur.description], cur.fetchone())), **changes}
-        self.case.x(f"INSERT INTO {table} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", *row.values())
-
-    def foreign(self, selector):
-        c = self.case
-        inv = self.doc['verifier_invocation_id']; version = 'v1'; work = c.work; event = c.EVENT_ID
-        if selector == 'version':
-            version = 'v2'
-            self.clone('source_artifacts', {'source_version': version})
-            self.clone('source_acquisitions', {'source_version': version})
-        elif selector == 'verifier':
-            self.assertEqual(c.finish(c.verifier, 'op_oldverify1')['status'], 'committed')
-            c.verifier = c.started('inv_foreign01', 'verification')
-            c.admit()
-            self.doc = extraction_document(c, 'verifier_extraction')
-            op = c.value('SELECT operation_id FROM operation_receipts WHERE invocation_id = ?', c.verifier['invocation_id'])
-            self.clone('source_extractions', dict(extraction_id='foreign-basis', extracting_invocation_id=c.verifier['invocation_id'],
-                recorded_by_operation_id=op), "verifier_invocation_id = '" + inv + "'")
-            self.doc['extraction']['extraction_id'] = 'foreign-basis'
-            return
-        else:
-            observation = 'obs_foreign01'; event = 'rev_foreign01'
-            changes = dict(observation_id=observation, attempt=2)
-            if selector == 'call': changes['gateway_call_ref'] = 'gw-call:102'
-            if selector == 'route':
-                request = json.loads(c.value('SELECT request FROM search_observations'))
-                request['lane'] = 'core'
-                changes.update(lane='core', request=json.dumps(request))
-            self.clone('search_observations', changes)
-            event_changes = dict(event_id=event, observation_id=observation)
-            if selector == 'time': event_changes['captured_at'] = '2026-09-28T10:00:00Z'
-            if selector == 'work':
-                work = 'wrk_foreign01'
-                self.clone('works', dict(work_id=work, identity_value='10.1/foreign'))
-                event_changes['provider_record_id'] = 'other-record'
-            self.clone('retrieval_events', event_changes)
-            self.clone('record_work_links', dict(event_id=event, work_id=work))
-            if selector == 'work': self.clone('source_artifacts', {'work_id': work})
-            obs = dict(zip([d[0] for d in c.db.execute('SELECT * FROM search_observations LIMIT 0').description],
-                c.rows('SELECT * FROM search_observations WHERE observation_id = ?', observation)[0]))
-            self.clone('source_acquisitions', dict(event_id=event, work_id=work, observation_id=observation, attempt=2,
-                gateway_call_ref=obs['gateway_call_ref'], lane=obs['lane'], request_bytes=obs['request'].encode(),
-                provider_record_id=event_changes.get('provider_record_id', 'doi:10.1/fixture'),
-                retrieved_at=event_changes.get('captured_at', self.doc['acquisition']['retrieved_at'])))
-        self.clone('source_extractions', dict(extraction_id='foreign-basis', work_id=work, source_version=version,
-            event_id=event, verifier_invocation_id=inv, supported_tier='bibliographic'))
-        self.doc['extraction']['extraction_id'] = 'foreign-basis'
-
-    def test_control(self):
-        self.assertEqual(self.submit()['status'], 'committed')
-        self.assertEqual(json.loads(self.case.value('SELECT receipt FROM verification_receipts')), self.doc)
-        self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])
-
-    def test_missing(self):
-        del self.doc['extraction']['extraction_id']
-        self.refuse()
-
-    def test_invented(self):
-        self.doc['extraction']['extraction_id'] = 'invented'
-        self.refuse()
-
-    def test_tool(self):
-        self.doc['extraction']['extractor'] = 'Receipt-tool'
-        self.refuse()
-
-    def test_unpinned(self):
-        self.case.x('DROP TRIGGER source_extractions_immutable_u')
-        self.case.x('UPDATE source_extractions SET extractor_registry_version = NULL')
-        self.refuse()
-
-    def test_tier(self):
-        self.case.x('DROP TRIGGER source_extractions_immutable_u')
-        self.case.x("UPDATE source_extractions SET supported_tier = 'bibliographic'")
-        self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'abstract'
-        self.refuse()
-
-    def test_extractor(self):
-        op = self.case.value('SELECT operation_id FROM operation_receipts WHERE invocation_id = ?', self.case.ACQUIRER)
-        self.clone('source_extractions', dict(extraction_id='foreign-basis', extracting_invocation_id=self.case.ACQUIRER, recorded_by_operation_id=op))
-        self.doc['extraction']['extraction_id'] = 'foreign-basis'
-        self.refuse()
-
-    def test_version(self): self.foreign('version'); self.refuse()
-    def test_work(self): self.foreign('work'); self.refuse()
-    def test_verifier(self): self.foreign('verifier'); self.refuse()
-    def test_call(self): self.foreign('call'); self.refuse()
-    def test_time(self): self.foreign('time'); self.refuse()
-    def test_route(self): self.foreign('route'); self.refuse()
-
-
 class QuotesCase(Workflow):
     SOURCE_BYTES = b"<effect observed>"
     SOURCE_MEDIA = "text/plain"
@@ -1496,3 +1380,89 @@ class AttentionCase(CanonicalQuotesCase):
         self.assertEqual([(h["hold_id"], h["subject_ref"], h["owner"], h["deadline_at"]) for h in holds],
             [(HOLD, "verification:ver_quote00001", "primary:station-1", "2026-09-27T11:00:00Z")])
         return out
+
+
+class DurableRouterTestCase(RouterTestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.directory = Path(self._tmp.name)
+        api.open_store(self.directory / "store.sqlite3", create=True).close()
+        self.db = sqlite3.connect(self.directory / "store.sqlite3", isolation_level=None)
+        self.db.executescript(store_fixtures.CONNECTION_TEXT)
+        self.store = api.open_store(self.directory / "store.sqlite3")
+        self.spool, self.clock, self.ids, self.faults = Spool(), Clock(), Ids(), {}
+        self.router = self.make_router()
+        self.seed()
+
+    def tearDown(self) -> None:
+        self.router.close()
+        self.db.close()
+        if hasattr(self, "_tmp"):
+            self._tmp.cleanup()
+
+    def reopen(self) -> None:
+        self.router.close()
+        self.store = api.open_store(self.directory / "store.sqlite3")
+        self.router = self.make_router()
+
+
+E = "2026-09-27T11:00:00Z"
+E_MINUS = "2026-09-27T10:59:59.999999999Z"
+
+
+class LockWaitCase(unittest.TestCase):
+    def waiting(self, operation: str, request: dict, *, cross: bool = True) -> dict:
+        """`operation` on a second router while this test's connection holds
+        the write lock; the clock crosses E while the router waits for it."""
+        clock = {"now": E_MINUS}
+        issued = threading.Event()
+
+        def admitted():  # admission finishes before the operation's lock wait
+            router = service.Router.open(self.world.directory / "store.sqlite3", self.world.spool, clock=lambda: clock["now"])
+            router._store._conn.set_trace_callback(lambda sql: issued.set() if sql == "BEGIN IMMEDIATE" else None)
+            return router
+
+        with ThreadPoolExecutor(1) as pool:
+            router = pool.submit(admitted).result(timeout=10)
+            try:
+                self.world.db.execute("BEGIN IMMEDIATE")
+                pending = pool.submit(getattr(router, operation), request)
+                if not issued.wait(10):
+                    pending.result(timeout=0)  # an error before the lock is the failure to report
+                    self.fail("the router never asked for the write lock")
+                if cross:
+                    clock["now"] = E
+                self.world.db.execute("ROLLBACK")
+                return pending.result(timeout=10)
+            finally:
+                if self.world.db.in_transaction:
+                    self.world.db.execute("ROLLBACK")
+                pool.submit(router.close).result(timeout=10)
+
+
+class Refusing:
+    """Refuse after `allowed` writes, or only that indexed write with `once`.
+
+    In once mode, keep the write-table log and permit a rejection's audit.
+    """
+
+    def __init__(self, store, allowed: int, *, once: bool = False) -> None:
+        self._store, self.allowed, self.once, self.tables = store, allowed, once, []
+
+    def __getattr__(self, name: str):
+        member = getattr(self._store, name)
+        if name not in ("insert", "update"):
+            return member
+
+        def write(table, *args, **kwargs):
+            self.tables.append(table)
+            if self.once:
+                refuse = len(self.tables) - 1 == self.allowed and not (table == "audit_events" and args[0]["kind"] == "commit_rejected")
+            else:
+                refuse = self.allowed == 0
+                if not refuse:
+                    self.allowed -= 1
+            if refuse:
+                raise api.StoreWriteError("refused for the test")
+            return member(table, *args, **kwargs)
+        return write

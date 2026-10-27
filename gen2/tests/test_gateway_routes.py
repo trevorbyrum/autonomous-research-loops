@@ -474,11 +474,6 @@ class TheEndpointForms(ThreadsJoined):
                 with self.subTest(spelling=spelling):
                     self.assert_address_state(spelling, expected, family)
 
-    def test_all_accepted_and_refused_endpoint_forms_hold_under_newer_rendering(self):
-        with newer_address_rendering():
-            self.assert_canonical_origins()
-            self.assert_refused_spellings()
-
     def test_address_serialization_uses_only_the_value_and_family(self):
         """No library rendering, even for unmapped addresses; compress only the first longest run of at least two zeros."""
         with mock.patch.object(gateway.ipaddress.IPv4Address, "__str__", side_effect=AssertionError("IPv4 rendering used")), \

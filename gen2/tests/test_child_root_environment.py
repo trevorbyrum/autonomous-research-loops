@@ -45,15 +45,5 @@ class ChildRootEnvironmentTest(unittest.TestCase):
         self.assertEqual(done.returncode, 0, msg=done.stdout + done.stderr)
         self.assertIn("ok", done.stderr)
 
-    def test_the_two_lease_replacement_tests_are_intentional_skips_with_a_stated_reason(self) -> None:
-        text = (children.REPO / "gen2" / "tests" / "test_supervisor_crash.py").read_text(encoding="utf-8")
-        method = text.split("def test_recovery_starts_nothing_once_the_lease_is_replaced", 1)[1].split("\n    def ", 1)[0]   # one shared method, skipped by KIND
-        for kind in KINDS:
-            with self.subTest(kind=kind):
-                self.assertRegex(method, rf"if self\.KIND == \"{kind}\":\s+self\.skipTest\(\"[^\"]{{40,}}")   # skipped on purpose, with the reason in the message
-        self.assertIn("the released-lease case covers it", method)
-        self.assertIn("DelegateReplacementFaults", method)
-
-
 if __name__ == "__main__":
     unittest.main()

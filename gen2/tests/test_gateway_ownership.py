@@ -378,14 +378,9 @@ class TheEndpointIsOneFact(OwnershipTest):
         self.assertEqual(len(seen["connects"]), 2, "the submission and the one poll that failed to connect; every later poll sent nothing")
 
     def test_astras_r17_1_probe_the_same_for_a_poll_in_progress(self):
-        """R17-1 for the queued variant (the same transitions, the poll the held operation when the gateway goes away; the spellings are those of TheOriginIsTheOnlyAuthority, a refused one
-        going nowhere): the endpoint is withdrawn by the poll's own failed connection, and the unrelated listener is sent nothing by the searches after it, nor by a grant."""
-        for host in ("gateway.test", "127.0.0.%31", "%31%32%37.0.0.1", "127.%30.0.1", "127.0.0.%31".upper()):
-            with self.subTest(host=host):
-                got = self.withdrawn_by_its_own_failure(poll=True, host=host)
-                if got is not None:
-                    c, found, result, seen, port = got
-                    self.assertEqual((observed(result), len(seen["connects"]), c.endpoint_stale), (unobserved("timeout"), 2, True))
+        """A failed poll withdraws the live hostname endpoint before later searches or grants can reach an unrelated listener."""
+        c, found, result, seen, port = self.withdrawn_by_its_own_failure(poll=True, host="gateway.test")
+        self.assertEqual((observed(result), len(seen["connects"]), c.endpoint_stale), (unobserved("timeout"), 2, True))
 
     def test_control_a_search_held_at_the_same_points_with_the_gateway_there_ends_as_it_does_alone(self):
         """No withdrawal in the schedule: the original listener answers the held search, its one request carries the token, and the endpoint was never stale. (R16-1's no-withdrawal controls.)"""

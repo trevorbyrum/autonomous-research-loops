@@ -608,14 +608,6 @@ class ReadOnlyTest(ImporterTestCase):
         (self.root / "state" / "queue.json").unlink()
         self.assertEqual([i["code"] for i in dry_run.dry_run(self.root, "fleet-a")["blocking"]], ["queue-absent"])
 
-    def test_the_importer_cannot_reach_a_store(self) -> None:
-        """Structural: the boundary graph lets it import core only, with no
-        restricted stdlib capability (no sqlite3), so it cannot write a gen-2
-        store or open gen-1's SQLite (make gen2-boundaries enforces it)."""
-        graph = tomllib.loads((ROOT / "gen2" / "boundaries.toml").read_text(encoding="utf-8"))["modules"]["importer"]
-        self.assertEqual((graph["may_import"], graph["stdlib_capabilities"], graph["third_party"]), (["core"], [], []))
-
-
 class CommandTest(ImporterTestCase):
     def run_cli(self, *args: str) -> tuple[int, str, str]:
         out, err = io.StringIO(), io.StringIO()
