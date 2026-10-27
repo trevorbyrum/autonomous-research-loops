@@ -1,7 +1,7 @@
 """A contract's brief basis after the topic's first approval (task 2a-repair-3;
 Astra 2a-repair-2 review, F1-R continued).
 
-Trace: docs/gen2/tasks/2a-repair-3.md; flow S1, §6.1 (an edited brief
+Trace: tasks/2a-repair-3.md (history: moved to the dossier-history evidence directory, 2026-10-27); flow S1, §6.1 (an edited brief
 re-versions; the contract takes the change only through an approved
 framework diff), S3; INVARIANTS G-4, G-6, C-12.
 

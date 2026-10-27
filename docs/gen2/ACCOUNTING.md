@@ -9,7 +9,7 @@ Sources: flow architecture S4–S7 and §3 step 5 (the requested §3.5), methodo
 synthesis §§4–6, plan audit F3/F9, BOUNDARIES “Evidence accounting”, INVARIANTS
 E-1…E-9/G-1/G-11, and Gate D #5 F1. The external sources are the September 24
 flow/methodology documents and September 29/October 9 reviews named in
-`docs/gen2/tasks/2c.md`.
+`history: tasks/2c.md` (moved to the dossier-history evidence directory, 2026-10-27).
 
 | Slice | Types and durable inventories | Outputs and enforcement |
 |---|---|---|
@@ -542,7 +542,7 @@ confidence and old `/1` meaning, and pair every new guard with a mutant.
 ### 2c-4a: ruled design and split (2026-10-09, before code)
 
 Input tip: `5d03caab6ffad2c31e4c3b5fdea676bcb8f0282d`, branch `gen2`.
-The operator rulings in tasks/2c-4.md and tasks/2c-4a.md supersede the
+The operator rulings in `docs/gen2/tasks/2c-4.md` and `history: tasks/2c-4a.md` (moved to the dossier-history evidence directory, 2026-10-27) supersede the
 original decision boundary above. Adopt vocabulary A and confidence A;
 the reconciliation table stands, with `open` admitted as a separate
 not-yet-assessed state. Every contradiction and deferral record survives.

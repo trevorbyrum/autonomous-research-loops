@@ -1,6 +1,6 @@
 """The router's workflow write paths (task 2a), and one topic end to end.
 
-Trace: docs/gen2/tasks/2a.md and its expansion (Astra's Phase 2 plan audit,
+Trace: tasks/2a.md (history: moved to the dossier-history evidence directory, 2026-10-27) and its expansion (Astra's Phase 2 plan audit,
 findings 4 and 8); flow S1 (a topic enters at intake; the brief's first
 version awaits the operator's confirmation), S2 (the scoping report and the
 exact-subject scope approval), S3 (contract drafts, their referential
