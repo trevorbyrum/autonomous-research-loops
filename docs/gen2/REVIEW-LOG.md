@@ -3712,3 +3712,21 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **Refactor mutation scope** (Batch B, A, O-5): operator decision still pending.
 - **In flight:** Batch E (Sonnet `95e7ea69`) and C-fu (Sol `4836f21b`).
 
+## 2026-10-27: C-fu merged; Batch E merged (plus O-3/O-4); O-10 answered "not yet"; D2 resumed
+- **C-fu** (PR #57, `3963097`, Sol `4836f21b`). Batch C NB1 restored the untruncated `unknown_provider` detail (828/500/828 fault receipt). NB2 made `timeout_s=60` explicit at six station calls. Astra confirmed. Verifier exit 0 in 751 s. Merged.
+- **Batch E** (PR #58, `515d2f8`, Sonnet `95e7ea69`): production −37, tests −20, config −21, docs +4.
+  - Deleted P1 `branch_accrual`, P2 `novelty_judgments` and P3 `Store.raw_text`/`integer_columns`. P6 rewrote helpers, with a Hypothesis old-equals-new proof.
+  - **O-3:** Store `request_bytes` digest recomputation deleted; `test_attempted_request_bytes.test_wrong_hash` is the literal Router witness.
+  - **O-4:** DEPLOYMENT-CONTRACT §5 restore lines added.
+  - `[modules.importer]` kept: two tests use it to prove the importer cannot reach a store. Orchestrator accepted.
+  - **Astra** (`e7a9a9fe`): A, B and C PASS, ROOT-CAUSE.
+    - NB1: the completion note's claim that the `is not` mutant is equivalent is wrong (distinct int objects at 256 or more pins). The final membership code is correct.
+    - NB2: the `core/pagination.py` docstring still says "Router/Store admission"; it rides in D2.
+  - Verifier exit 0 in 765 s (3,100 tests). Merged.
+  - **BOUNDARIES updated in this PR:** Accrual operands now names `views.RegistryHistory`; the retained-request paragraph now reads "The Router recomputes the byte hash (the Store does not; O-3)".
+- **O-10** (Astra, `private/reviews/gen2-o10-receipt-v1-astra-20261027.md`): **may not proceed yet.**
+  - The Router still admits new `/1` receipts. The history rules require readback, not perpetual `/1` admission.
+  - Path: stop admitting new `/1` receipts while keeping readback, and declare that 2f uses a fresh store. That follow-up question goes to the operator.
+  - Corrected inventory: five fixtures, 22 helper calls.
+- **D2** (Sol `ce0452c3`) stopped correctly when its consumer closure needed Batch E's and F's files. It resumed after E merged; `raw_exchange` is deferred to Batch F's file.
+
