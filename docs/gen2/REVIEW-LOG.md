@@ -3745,3 +3745,52 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
     - **B5:** named debt-case witnesses through record → stored → decode, with an independent encoded shape.
   - Brief: `private/reviews/gen2-6b1-brief-20261027.md`. **PR 0** (B1) is dispatched; **PR 1** follows Batch A.
 
+
+## 2026-10-27: D2 complete (D2a-3, D2b); 6b1′ PR 0 merged; R2 merged; O-9 split and merged; stray COMPLETION.md removed
+- **Task-file history moved (R2):** the `docs/gen2/tasks/` history, except `2d.md` and `2c-4.md`, moved to the private dossier history on 2026-10-27. Task paths in older entries of this log are historical.
+- **D2a-3** (PR #64, `6b75a74`, Sol `ce0452c3`): moved the quote, capture and attention worlds into `router_fixtures.py`.
+  - 548 touched, +78 net (code −3).
+  - Collected ids 2,953 → 2,953; 6,730 assertions, AST-preserved; cross-test imports 65 → 59.
+  - Astra: no blocking findings. Verifier exit 0. Merged.
+- **D2b** (PR #66, `87c3984`, Sol `ce0452c3`): TO4–TO6 plus O-11.
+  - Durability, lock-wait and refusal doubles shared.
+  - `OwnCases` moved to `store_fixtures.py`.
+  - Three TO4 duplicate matrices, four TO5 redundant tests and four O-11 content pins removed.
+  - 802 touched, −82 net (tests −198); collected ids 2,953 → 2,942.
+  - Astra: no blocking findings. Verifier exit 0. Merged.
+  - **D2 is complete.** `raw_exchange` stays deferred to Batch F's file.
+- **Stray `COMPLETION.md`:** D2a-1 to D2a-3 and R2 committed coder evidence notes to the public repo root. Three reviews missed it. The notes held private paths but no secrets.
+  - D2b's head (`87c3984`) removed the file.
+  - Briefs now forbid committing evidence and progress files, and review tasks check the diff's file list.
+- **6b1′ PR 0** (PR #63, `bd7ab21`, Sonnet `7ecf6019`): design item B1.
+  - `dossiers.evidence_revision` and the receipt `effects.evidence_revision` removed atomically, with their classification and schema.
+  - Pre-change stores fail schema identity on writable open, as the witness shows.
+  - Astra: ACCEPTED, with non-blocking NB: `test_router_commit.py:251` "the replayed receipt" should read "the stored receipt". Verifier exit 0. Merged.
+  - **Open records item:** INVARIANTS C-4 still says "evidence revision". This is a frozen-text amendment, so it goes to the operator.
+- **R2** (PR #65, Sonnet `c3c28700`): INVARIANTS back to normative rules plus `enforced at` pointers.
+  - Generated `TRACEABILITY.md` from `traceability.toml`, with the `--check` in `gen2-locators`; the §13 G-4 row moved per S2-6; tasks history moved. INVARIANTS 121,113 → 116,875 bytes.
+  - **Round 1** shortening cut live normative text (G-12, C-12/G-4, H-1), which was restored.
+  - **Rounds 2–3** completed the mapping. Astra (`5ad3aab0`): ACCEPTED at `d69ee0b`.
+  - **Non-blocking pointer corrections, for a follow-up:**
+    - E-5 → `test_accounting.AccountingTest.test_deferred_remains_unassessed`;
+    - C-10 → the `test_supervisor_lifecycle` router-outage tests;
+    - H-3 → the `HoldTest` owner/deadline/clearing tests;
+    - G-9's owner → `common.schema.json`/`export-bundle.schema.json`/queue DDL;
+    - D-4/D-6: DEBT-010 is the wrong debt, so use the decision-layer §13 owner.
+  - **Jenkins pr-merge failed twice** at `d69ee0b`. The cause was a real merge-tree failure, not a transient one: D2b had moved `OwnCases`, which made one locator stale. The repoint (`9ca1502`) passed Astra's delta check. Verifier exit 0 in 717 s. Merged.
+  - The CI-DESIGN amendment proposals (D12) are with the operator.
+- **O-9** (Sol `ce0452c3`) was split at the 1,200-line cap (1,307 combined).
+  - **O-9a** (PR #67, `c50ed37`): the seven TO11 raw-DDL classes moved to `test_store_*` modules.
+    - AST-identical, with 37 assertion sites; ids 2,942 → 2,942.
+    - Nine guard-drop receipts.
+    - 749 touched, +27 net.
+    - Astra PASS. NB riders: a stale "control above" comment and an unused `json` import in two moved modules. Pre-existing: plain `pytest --collect-only` errors on the `tests` generator imported in `test_ci_runner.py`.
+    - Verifier exit 0 in 713 s. Merged.
+  - **O-9b** (PR #68): the six RAW twins replaced by direct named-guard tests.
+    - Classification: 102 rows (87 integrity, 7 value-domain, 8 Router-only).
+    - 93 twin ids → 28 direct tests.
+    - Size +96 net against the −100 to −200 planned, because D2 had already shrunk the twins to 200 lines.
+    - **Astra round 1 BLOCK**, with two coverage losses, each shown by a selective trigger defect that the new tests passed:
+      - B1: the same-identity, different-version `independent_extraction` refusal;
+      - B2: no non-NULL evidence positive control for the detailed-check artifact negatives.
+    - **Round 2** (Sonnet `f51b9686`, `83162f7`, 8 touched lines): both defects now fail by assertion. Astra: ACCEPTED pending the verifier.
