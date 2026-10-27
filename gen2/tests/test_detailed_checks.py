@@ -43,6 +43,7 @@ class CheckCase(AcquisitionCase):
             self.assertEqual(self.state(exclude=()), before)
         else:
             self.assert_audited_state(before, 1)
+        return out
 
 
 class RecordMatrix:
@@ -74,7 +75,9 @@ class RecordMatrix:
                     {'outcome': 'not_applicable', 'applicability_reason': ''},
                     {'outcome': 'not_applicable', 'applicability_reason': '\u200b\u00a0'}, {'cited_spans': []}):
                 with self.subTest(kind=kind, change=change):
-                    self.refuse(self.record(**{'kind': kind, **change}))
+                    out = self.refuse(self.record(**{'kind': kind, **change}))
+                    if not self.RAW:
+                        self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_missing_evidence(self):
         for kind in KINDS:

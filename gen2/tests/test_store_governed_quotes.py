@@ -2,7 +2,6 @@
 import json
 import sqlite3
 
-from gen2.tests.raw_population_fixtures import prepare, SPANS
 from gen2.tests.store_fixtures import TOPIC, T, StoreTestCase, h
 
 
@@ -10,8 +9,6 @@ class DDLTest(StoreTestCase):
     def setUp(self):
         super().setUp()
         self.populate_every_table()
-        if self.ATTRIBUTED_POPULATION:
-            prepare(self, spans=[*SPANS, dict(start=5, end=10, locator=dict(kind="page", value="3"))])
         self.receipt("op_verify0001", "inv_vvvvvvvv", lease="lease_vvvvvvvv", gen=2, before=50)
 
     def raw(self, status="match", **changes):
@@ -51,7 +48,6 @@ class DDLTest(StoreTestCase):
 
     def test_quarantine(self):
         self.raw("mismatch")
-        self.x("DROP TRIGGER verification_receipts_capture_binding")  # isolate DDL 11's independent guard
         with self.assertRaisesRegex(sqlite3.IntegrityError, "governed quarantined quote"):
             self.verify("ver_governed001", gateway="gw-call:1", quote=("mismatch", "qck_governed001"), verdict="partially_supports")
 

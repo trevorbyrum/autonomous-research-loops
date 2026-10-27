@@ -2,9 +2,14 @@
 import json
 import unittest
 
-from gen2.tests import test_store_exact_spans as raw
 from gen2.tests.test_table_availability import content, document, METHODS, PAGE, span_fixture
 from gen2.tests.router_fixtures import empty_outcome
+
+
+def numeric(name, numeral, late=False):
+    raw = json.dumps(PAGE).replace('"' + name + '": ' + str(PAGE[name]),
+        '"' + name + '": ' + numeral)
+    return '[' + (json.dumps(PAGE) + ',' if late else '') + raw + ']'
 
 
 class ExactSpanRouterTest(unittest.TestCase):
@@ -21,7 +26,7 @@ class ExactSpanRouterTest(unittest.TestCase):
         return case.router.commit_outcome(env)
 
     def test_pairs_at_payload_boundary(self):
-        cases = [(raw.numeric(k, n), lambda d: d, "not exactly representable")
+        cases = [(numeric(k, n), lambda d: d, "not exactly representable")
             for k in ("start", "end") for n in ("1.00000000000000001", "-1e-999")]
         cases += [(None, lambda d, k=k: d.replace('"' + k + '":', '"' + k + '\\u0000suffix":'), "NUL in object member name")
             for k in ("start", "end", "locator", "kind", "value", "extraction", "method", "checks", "status")]
@@ -36,7 +41,7 @@ class ExactSpanRouterTest(unittest.TestCase):
                     self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
                     self.assertIn(detail, out["detail"])
                     case.assert_audited_state(before, 1)
-                    self.assertEqual(self.stage(case, method, raw.numeric("start", "5.0"))["status"], "committed")
+                    self.assertEqual(self.stage(case, method, numeric("start", "5.0"))["status"], "committed")
                     retained = case.value("SELECT cited_spans FROM verification_receipts")
                     self.assertEqual(retained, '[{"end":9,"locator":{"kind":"page","value":"2"},"start":5}]')
 
@@ -44,6 +49,6 @@ class ExactSpanRouterTest(unittest.TestCase):
         for method in METHODS:
             with self.subTest(method=method), span_fixture({"identity": content.IDENTITY},
                     bindings=((PAGE,), ({**PAGE, 'start': 9007199254740991.0},))) as case:
-                self.assertEqual(self.stage(case, method, raw.numeric("start", "9.007199254740991e15"),
+                self.assertEqual(self.stage(case, method, numeric("start", "9.007199254740991e15"),
                     binding_spans=({**PAGE, 'start': 9007199254740991.0},))["status"], "committed")
                 self.assertIn('"start":9007199254740991', case.value("SELECT cited_spans FROM verification_receipts"))

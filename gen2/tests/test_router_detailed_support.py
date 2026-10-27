@@ -1,34 +1,41 @@
-"""Promotion reads actual records with all SQL support consumers isolated."""
+"""Promotion reads actual records through the sole Router support owner."""
 import copy
 import json
 import unittest
 from unittest.mock import patch
 
 from gen2.core import canonical
-from gen2.tests import test_store_detailed_support as raw
+from gen2.store import db
+from gen2.tests import store_fixtures as sf
+from gen2.tests.test_receipt_summary_domain import SummaryCases
+from gen2.tests.ddl_fixtures import restore_triggers, reverse_triggers
 from gen2.tests import test_detailed_check_receipts as refs
-from gen2.tests.detailed_receipt_fixtures import attach_checks, historical_receipt
-from gen2.tests.detailed_support_fixtures import history
+from gen2.tests.detailed_receipt_fixtures import attach_checks, seed_checks, historical_receipt
+from gen2.tests.detailed_support_fixtures import history, insert_receipt
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_receipt_summary_domain import METHODS
 
 
 class RouterDetailedSupportTest(unittest.TestCase):
-    RAW = True  # Receipt preparation is raw; the subject is public Router promotion.
 
     def opened(self, method='canonical_bytes', reverse=False, *, distinct=False):
-        case = raw.DetailedSupportDDLTest.opened(self, method, reverse, seed=True, distinct=distinct)
-        for name in ('claims_accepted_support_detailed_receipt', 'claims_accepted_support_detailed_extraction',
-                'claims_accepted_support_needs_capture'):
-            case.x('DROP TRIGGER IF EXISTS ' + name)
-        # An intentionally permissive SQL42 relation cannot grant Router authority.
-        case.x('DROP VIEW detailed_support_receipts')
-        case.x('CREATE VIEW detailed_support_receipts AS SELECT verification_receipt_id FROM verification_receipts')
+        ddl = reverse_triggers(sf.DDL_TEXT) if reverse else sf.DDL_TEXT
+        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
+            case = SummaryCases.opened(self, method)
+            if distinct:
+                case.record = refs.ReferenceCases.record.__get__(case)
+                refs.ReferenceCases.distinct_validated(case)
+                case.doc['checks'].update({k: 'checked_ok' for k in refs.KINDS})
+                case.doc['detailed_checks'] = {k: dict(outcome='succeeded', record_id='target-' + k) for k in refs.KINDS}
+                case.doc['receipt_version'] = 'verification-receipt/2'
+            else:
+                seed_checks(case, case.doc)
+        restore_triggers(case, ddl)
         return case
 
     def store(self, case):
         with history(case, unchecked=True):
-            self.assertEqual(refs.ReferenceCases.submit(case)['status'], 'committed')
+            self.assertEqual(insert_receipt(case, case.doc)['status'], 'committed')
 
     def promote(self, case, accepted=False):
         before = case.state()

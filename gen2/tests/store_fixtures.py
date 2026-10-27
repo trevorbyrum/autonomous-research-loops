@@ -17,6 +17,7 @@ import sqlite3
 import unittest
 from pathlib import Path
 
+from gen2.core.canonical import bytes_digest
 from gen2.store import db
 
 STORE_DIR = Path(__file__).resolve().parents[1] / "store"
@@ -94,6 +95,9 @@ def connect(apply_connection_contract: bool = True) -> sqlite3.Connection:
 QUESTION = {"question_id": "Q-screen", "version": 1, "text": "Does this work meet the pinned eligibility criteria?", "content_hash": h("9")}
 BUNDLE = {"bundle_version": "config-bundle/1", "version": 1, "questions": [QUESTION],
           "policy": {"router": {"reservations": {"protected_exploration": {"units": 2}, "auto_promotion": {"units": 2, "min_band": "critical"}}}}}
+
+
+SOURCE_HASH = bytes_digest(b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512))
 
 
 class StoreTestCase(unittest.TestCase):
@@ -435,9 +439,6 @@ class StoreTestCase(unittest.TestCase):
 
         from gen2.tests.extraction_receipt_fixtures import seed
         seed(self)
-        if self.ATTRIBUTED_POPULATION:
-            from gen2.tests.raw_population_fixtures import prepare
-            prepare(self, verifier=verifier)
 
     CHECKS_OK = {"numeric_units": "checked_ok", "denominators": "checked_ok", "negation": "checked_ok", "qualifications": "checked_ok"}
 
@@ -469,9 +470,6 @@ class StoreTestCase(unittest.TestCase):
             doc[key] = value
         from gen2.tests.extraction_receipt_fixtures import attach
         attach(self, doc)
-        if self.ATTRIBUTED_POPULATION and not historical:
-            from gen2.tests.raw_population_fixtures import attach as attach_population
-            attach_population(self, doc)
         for path in drop:  # delete a (dotted) key: probes the absent-key case of NULL-sensitive CHECKs
             *parents, last = path.split(".")
             node = doc
@@ -484,15 +482,7 @@ class StoreTestCase(unittest.TestCase):
                 "extraction_validation_ref": doc["extraction"]["validation_ref"] if method == "validated_extraction" else validation, "producer_invocation_id": producer, "verifier_invocation_id": verifier,
                 "quote_check_id": check_id, "verdict": verdict, "receipt": json.dumps(doc), "verified_at": T}
         cols.update(column_overrides or {})
-        if self.ATTRIBUTED_POPULATION and not historical:
-            from gen2.core import canonical
-            for key in ("receipt", "cited_spans", "acquisition"):
-                cols[key] = canonical.canonical_bytes(doc if key == "receipt" else json.loads(cols[key])).decode()
-        from contextlib import nullcontext
-        from gen2.tests.detailed_receipt_fixtures import historical_admission
-        historical_support = historical and cols["use"] == "load_bearing" and cols["verdict"] in ("supports", "partially_supports")
-        with historical_admission(self) if historical_support else nullcontext():
-            self.x(f"INSERT INTO verification_receipts ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())
+        self.x(f"INSERT INTO verification_receipts ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())
 
     def quote_check(self, check_id: str, *, claim: tuple = ("clm_00000001", 1), source: str | None = None, match: str = "matched",
                     nli: str = "not_run", quarantined: int | None = None) -> None:
@@ -634,7 +624,6 @@ class StoreTestCase(unittest.TestCase):
         and the population the history-rewrite sweep attacks. Keep one row in
         every table: test_every_table_is_populated fails if a table is added
         without extending this."""
-        from gen2.tests.raw_population_fixtures import SOURCE_HASH, prepare
         self.ATTRIBUTED_POPULATION = "detailed_check_records" in self.tables()
         self.source_hash = SOURCE_HASH if self.ATTRIBUTED_POPULATION else h("7")
         if self.ATTRIBUTED_POPULATION:
@@ -712,7 +701,15 @@ class StoreTestCase(unittest.TestCase):
             if "extraction_validations_v2" in self.tables():
                 self.x("INSERT INTO extraction_validations_v2 SELECT validation_id, target_extraction_id, validator_invocation_id, validator_extraction_id, method, 2, outcome, comparison, comparison_evidence_ref, recorded_by_operation_id, created_at FROM extraction_validations")
         if self.ATTRIBUTED_POPULATION:
-            prepare(self)
+            # One literal record for the retained-table rewrite/deletion sweep.
+            # Receipt semantic matrices no longer need attributed assessments here.
+            report = dict(claim_id='clm_00000001', claim_revision=1, work_id='wrk_00000001', source_version='v1',
+                source_artifact_hash=self.source_hash, examined_artifact_ref=json.loads(ref),
+                cited_spans=[dict(start=0, end=5, locator=dict(kind='page', value='3'))], context_spans=[],
+                kind='numeric_units', outcome='not_checked', method='attributed-assessment/1',
+                assessment='', context_examined='', applicability_reason='')
+            self.x("INSERT INTO detailed_check_records VALUES ('check-fixture',?,'inv_vvvvvvvv',?,NULL,'op_extractval',?)",
+                TOPIC, json.dumps(report), T)
         self.quote_check("qc-1")
         self.verify("ver_00000001", method="canonical_bytes", extraction="inv_pppppppp", gateway="gw-call:1")
         self.x("UPDATE claims SET status = 'accepted_support' WHERE claim_id = 'clm_00000001' AND revision = 1")
@@ -746,6 +743,8 @@ class StoreTestCase(unittest.TestCase):
         self.x("UPDATE intake_briefs SET status = 'superseded' WHERE topic_id = ? AND version = 1", TOPIC)
         self.x("INSERT INTO brief_replacements (topic_id, brief_id, version, replaced_by_decision_id, recorded_at) VALUES (?, 'brief-1', 1, ?, ?)",
                TOPIC, self.confirm_brief(TOPIC, version=2)[3], T)
+        if "store_generation" in self.tables():
+            self.x("INSERT INTO store_generation VALUES ('store', NULL, 0)")
 
     def delivery(self, *, receipt_overrides: dict | None = None, **row) -> None:
         """One export_delivery_receipts row: a delivered attempt of connector

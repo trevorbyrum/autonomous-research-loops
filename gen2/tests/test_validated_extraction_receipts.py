@@ -1,6 +1,5 @@
-"""Successful retained /2 bases bind receipts; SQL 17 still fences support."""
+"""Successful retained /2 bases bind receipts through the Router."""
 import json
-import sqlite3
 import unittest
 from unittest.mock import patch
 
@@ -15,7 +14,6 @@ from gen2.tests.independent_tier_fixtures import independent_basis
 
 
 class ValidatedCases:
-    RAW = False
     def clone(self, table, changes, where=''):
         if table == 'source_extractions' and changes.get('extraction_id') == 'foreign-basis':
             changes = {**changes, 'extracting_invocation_id': self.doc['extraction']['produced_by_invocation_id'],
@@ -34,8 +32,7 @@ class ValidatedCases:
         self.addCleanup(context.__exit__, None, None, None)
         self.validation = self.doc['extraction']['validation_ref']
         self.target, self.independent = self.case.rows('SELECT target_extraction_id, validator_extraction_id FROM extraction_validations_v2')[0]
-        restore_triggers(self.case, sf.DDL_TEXT,
-            omit=() if self.RAW else ('verification_receipts_validated_extraction',))
+        restore_triggers(self.case, sf.DDL_TEXT)
 
     def refuse(self):
         # Historical /1 operands isolate the existing validation predicate.
@@ -44,11 +41,9 @@ class ValidatedCases:
         with historical_admission(self.case):
             out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)
+        self.assertEqual(out.get('reason'), 'payload_invalid', out)
         self.assertIn('receipt needs its successful durable /2 validation', out['detail'])
-        if self.RAW:
-            self.assertEqual(self.case.state(exclude=()), before)
-        else:
-            self.case.assert_audited_state(before, 1)
+        self.case.assert_audited_state(before, 1)
         self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])
 
     def test_control(self):
@@ -82,10 +77,7 @@ class ValidatedCases:
         before = self.case.state(exclude=())
         with historical_admission(self.case):
             self.assertEqual(self.submit()['status'], 'rejected')
-        if self.RAW:
-            self.assertEqual(self.case.state(exclude=()), before)
-        else:
-            self.case.assert_audited_state(before, 1)
+        self.case.assert_audited_state(before, 1)
 
     def test_legacy(self):
         cur = self.case.db.execute('SELECT * FROM extraction_validations_v2')

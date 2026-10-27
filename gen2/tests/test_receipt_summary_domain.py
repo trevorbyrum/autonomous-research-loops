@@ -1,4 +1,4 @@
-"""Raw and Router admission agree before a summary can select record policy."""
+"""Router admission validates summaries before they can select record policy."""
 import copy
 import unittest
 from unittest.mock import patch
@@ -7,12 +7,11 @@ from gen2.store import db
 from gen2.tests import store_fixtures as sf
 from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt
-from gen2.tests.test_bound_extraction_support import historical
 from gen2.tests.test_canonical_receipt_admission import ReceiptCase
 from gen2.tests.test_detailed_check_receipts import KINDS, ReferenceCases
 from gen2.tests.test_extraction_acquisitions import extraction_document
 from gen2.tests.test_pending_extraction_support import load_claim
-from gen2.tests.test_store_fixture_order import reverse_triggers
+from gen2.tests.ddl_fixtures import reverse_triggers
 
 
 METHODS = ('canonical_bytes', 'verifier_extraction', 'validated_extraction')
@@ -20,7 +19,6 @@ BAD = ('succeeded', 'failed', 'invented', 1, True, {}, [], None, 'checked_ok\x00
 
 
 class SummaryCases:
-    RAW = False
 
     def opened(self, method='canonical_bytes', reverse=False):
         ddl = reverse_triggers(sf.DDL_TEXT) if reverse else sf.DDL_TEXT
@@ -32,7 +30,6 @@ class SummaryCases:
             self.addCleanup(case.tearDown)
             case.admit()
             load_claim(case, 'abstract')
-        case.RAW = self.RAW
         case.doc = (case.document() if method == 'canonical_bytes'
             else extraction_document(case, method, detailed=False))
         case.doc['claim']['claim_id'] = 'clm_loadbear1'
@@ -47,13 +44,9 @@ class SummaryCases:
         before = case.state(exclude=())
         out = ReferenceCases.submit(case)
         self.assertEqual(out['status'], 'rejected', out)
-        if self.RAW:
-            self.assertEqual(case.state(exclude=()), before)
-        else:
-            case.assert_audited_state(before, 1)
+        case.assert_audited_state(before, 1)
         self.assertEqual(case.store.select('verification_receipts'), [])
-        if not self.RAW:
-            self.assertEqual(out['reason'], 'payload_invalid', out)
+        self.assertEqual(out['reason'], 'payload_invalid', out)
         return out
 
     def test_b1(self):
@@ -143,28 +136,3 @@ class SummaryCases:
 
 class SummaryRouterTest(SummaryCases, unittest.TestCase):
     pass
-
-
-class ExtractionHistoryOrderTest(unittest.TestCase):
-    def test_exact_catalog_on_normal_and_exceptional_exit(self):
-        for reverse in (False, True):
-            with self.subTest(reverse=reverse):
-                case = SummaryRouterTest().opened('validated_extraction', reverse)
-                try:
-                    case.x('DROP TRIGGER verification_receipts_detailed_domain')
-                    definition = case.value("SELECT sql FROM sqlite_schema WHERE name='verification_receipts_detailed_binding'")
-                    case.x('DROP TRIGGER verification_receipts_detailed_binding')
-                    case.x(definition.replace('d.topic_id = NEW.topic_id', '1 = 1'))
-                    catalog = case.rows(TRIGGERS)
-                    historical_receipt(case.doc)
-                    for exceptional in (False, True):
-                        try:
-                            with historical(case):
-                                if exceptional:
-                                    raise RuntimeError('historical exception')
-                        except RuntimeError as exc:
-                            self.assertTrue(exceptional)
-                            self.assertEqual(str(exc), 'historical exception')
-                        self.assertEqual(case.rows(TRIGGERS), catalog)
-                finally:
-                    case.tearDown()

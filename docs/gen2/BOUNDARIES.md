@@ -30,7 +30,22 @@ reader. Replay/collision/rollback use the existing commit mechanism; later
 support never clears retained disagreement. No semantic judgment, clock,
 transaction, provider call or escalation scheduler is added. SQL protects
 existing hold shape/open creation/identity/clearance; verdict routing is a
-Router responsibility. Re-access and acquisition/content-tier admission are implemented by SQL 14–19 and their Router consumers. SQL 20 adds the same recorded-full-text minimum for table citations across all three receipt methods, including insertion through the Router, with truthful insufficient access retaining the existing hold. SQL 21 establishes unique decoded names, exact member sets in the receipt objects used by SQL 03, and the cited-span/locator domain before raw table admission. Offset integrality and minima are checked from preserved numeral text, including decimal/exponent spellings, without REAL rounding. This establishes unambiguous bindings and exact span semantics; raw SQL does not enforce the entire JCS/C-13 serialization contract, which remains enforced by the Store/Router writers. Structured rows alone confer no table availability. Durable table-locator binding and detailed check receipts remain later 2d-4 work; deadline escalation remains 2e2.
+Router responsibility.
+
+The Router owns receipt support and consumption rules: exact acquisition and
+capture binding, recorded-content ceilings and table availability, durable own
+or independently validated extraction bases, detailed-check references, and
+same-receipt promotion/refencing. `EvidenceWriter` and `DetailedChecks` enforce
+these rules inside the existing writer fence; schemas and strict normalization
+own value domains and exact span limits. The retained-store startup guard
+re-evaluates every accepted load-bearing claim under a snapshot on every open,
+including both Router constructors and station start, and refuses unsupported
+history before startup effects. The DDL keeps keys, FKs, immutability/delete
+guards, role separation, existence-level bindings and state transitions,
+including SQL 03's original promotion gates. By the S5 dependency ruling,
+SQL 22's extraction-tier guard and SQL 35's detailed-record domain guard also
+remain; their shared content/nonblank views move unchanged into SQL 22.
+
 
 `AcquisitionAdmission` in `acquisitions.py` (2d-4b2) admits fixture re-access
 through `Router.admit_reaccess`. Its narrow core protocol includes the existing
@@ -42,9 +57,8 @@ revalidates operands, verifier authority, live state, lease, pins and topic paus
 SQL 14 retains exact operands/lineage with verifier attribution; equal replay
 adds nothing and conflicts roll back. SQL binds recorded relationships and size;
 the Router authenticates and hashes bytes. This record supplies no tier, table,
-extraction-validation or support authority. Canonical-byte receipts consume it
-(SQL 15, task 2d-4b3 slice 1); durable table-locator binding remains subsequent 2d-4b3 work; trusted workflow capture execution
-remains 2e2.
+extraction-validation or support authority. Canonical-byte receipts consume it through the Router. Trusted workflow
+capture execution remains 2e2.
 
 `ExtractionRecords` in `extractions.py` (2d-4b3e1) authenticates retained
 output and comparison artifacts outside the writer lock, then writes through
@@ -59,8 +73,8 @@ extractor, with its own extraction of the same acquisition. Equal output hashes
 establish byte agreement; semantic agreement remains the validator's attributed
 assessment. Failed results and same-extractor integrity replay never satisfy
 method success. The /1 result view has no receipt or support consumer.
-SQL 34 consumes only the SQL 32/33 durable bases described below. The store binds
-records; it does not certify extraction execution or semantic correctness.
+The store binds records; it does not certify extraction execution or semantic
+correctness.
 SQL 28 and `ExtractorRegistry` in `extractor_registry.py` (2d-4b3e2 part 1)
 require every new extraction to pin an immutable operator-approved registry
 revision and exact canonical tool identity. The authenticated operator surface
@@ -90,46 +104,6 @@ retained evidence and byte-hash comparisons remain enforced in Router commits
 and raw DDL. The optional successor outcome array authenticates evidence outside
 the writer lock and derives attribution from the committing capability. SQL 30
 guards its new comparison JSON column under the closed member-name family.
-SQL 32 extends only the receipt domain's optional extraction_id member and
-requires new verifier_extraction receipts to consume their own non-NULL-pinned
-source_extractions row. Exact acquisition, work/version, verifier lineage,
-extracting invocation, canonical tool and sufficient output tier must bind.
-EvidenceWriter independently checks inside the writer transaction after receipt
-insertion, with rollback on refusal; SQL 18/19 retain their earlier diagnostics.
-SQL 33 requires validated_extraction receipts to consume a durable /2 validation
-with method_succeeded = 1 and the receipt's verifier. Its target must match the
-same acquisition, topic/work/version/verifier lineage, declared extracting
-invocation and canonical tool, non-NULL registry pin and sufficient output tier.
-EvidenceWriter independently checks these relationships and caps receipt access
-by the exact validator extraction output tier inside the same writer transaction. validation_ref is an exact durable /2 ID; free text alone, /1-only,
-failed, integrity-only/same-family, invented, foreign-lineage and NULL-pin bases
-refuse. New validations obey SQL 31 at their admission; receipt consumption
-preserves retained interpretation after later operator registry changes.
-Positive controls for both extraction methods retain durable bases.
-SQL 34 retires SQL 17's blanket fence and rechecks each receipt's durable
-basis through bound_extraction_receipts. A load-bearing supports receipt may
-authorize promotion through its verifier's own pinned extraction, or an exact
-successful independent /2 validation, with all SQL 32/33 relationships intact.
-That same receipt must meet the claim's required tier and performed V-8 checks,
-with no tier-0 alarm. Validated authority is capped by both the target and exact
-independent extraction output tiers and the acquired record content ceiling,
-including retained receipts. Own extraction keeps its own output/acquisition
-cap. A success label or adjudication cannot waive either operand ceiling;
-low-tier and failed extraction/validation records remain history.
-Historical unbound, free-text-only, /1, failed and integrity-only bases remain
-fenced with SQL 17's diagnostic. SQL 12 and EvidenceWriter's governed-capture
-checks remain canonical-only because extraction records supply no new governed
-quote/span binding. Verification attention reads SQL 34 through the Store
-read primitive after receipt insertion: supporting bound extraction receipts
-create no unbound-extraction hold; fenced declarations retain that remediation.
-Truthful insufficient access always creates missing-content remediation, even
-with a bound basis. Verdicts partially_supports and does_not_support create
-disagreement attention. Support
-never clears earlier disagreement or remediation. The immutable operation
-receipt plans hold IDs assuming successful SQL 32/33 and Router admission in
-the same transaction, including same-outcome bases; failed admission leaves
-no effects. Stored holds, operation effects and audit IDs agree, replay adds
-nothing, and failures roll back all writes. Promotion gates are unchanged.
 
 SQL 23 begins the store-wide JSON member-name domain: decoded names are unique
 within each actual object under binary equality and contain no U+0000. NUL
@@ -185,38 +159,8 @@ including contract confidence labels and every other admitted open map.
 Store admission is independent of installed trigger coverage. SQL 23 covers
 six columns, ordered additive SQL 26 covers eight more and SQL 27 covers the
 final 22 of that rollout; SQL 30 adds the successor comparison column under
-the same family. Every column has both INSERT and UPDATE guards. SQL 21's receipt
-uniqueness predicate is now redundant under the whole-receipt member-domain
-guard and remains unchanged; its span-shape and
-preserved-numeral guarantees remain necessary and unchanged.
+the same family. Every column has both INSERT and UPDATE guards.
 Retained provider/artifact/request BLOBs stay raw.
-
-SQL 16 and SQL 19 (2d-4b3c2) cap every receipt method/verdict at its
-consumed acquisition's recorded content: the selected record's nonblank abstract
-or full-text body, with `metadata_only` unable to certify full text. Links,
-record-kind labels and availability flags alone grant bibliographic access;
-recorded content supplies no reproduction evidence. Both consumers reuse
-SQL 16's `source_acquisition_content_tiers` selected-record rule. SQL 18 binds
-both extraction methods to admitted input, independently of extractor identity.
-This check runs in the
-existing receipt insert transaction, including raw inserts. Nonblank means
-`recorded-nonblank/1+ucd17.0.0`: a text field with a code point outside Unicode
-17.0.0 White_Space and Default_Ignorable_Code_Point (DOSSIER repair-1 cites
-the pinned standard). Whitespace/format-only bodies grant no content tier.
-SQL 34 replaces SQL 17's fence only for receipts consuming their own pinned
-extraction or a successful independent /2 validation with sufficient target
-and exact independent output tiers and recorded content, load-bearing use
-and all V-4/V-8 requirements. Historical
-unbound declarations remain non-authoritative; new ones refuse admission.
-SQL 12's capture consumer and EvidenceWriter remain canonical-only: an
-extraction basis cannot preserve support against a later governed capture
-without a matching canonical receipt. Verification creates unbound-extraction
-remediation only for supporting extraction receipts outside SQL 34's bound
-basis view, using the producer's owner/deadline. Bound support creates no new
-verification hold.
-Later support never clears existing disagreement or remediation holds. Truthful insufficient-access receipts
-remain admissible and create the missing-content hold; inflated declarations are
-refused. Durable table-locator binding remains subsequent 2d-4b3 work.
 
 ## Station supervisor
 
