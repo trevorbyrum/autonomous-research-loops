@@ -176,7 +176,7 @@ class CapabilityProbe:
             return _refusal("request_invalid", "a probe names provider and requested_by, each a string")
         runner = self._runners.get(request["provider"])
         if runner is None:
-            return _refusal("unknown_provider", f"no pinned runner here for {request['provider'][:80]!r}")
+            return {"status": "refused", "reason": "unknown_provider", "detail": f"no pinned runner here for {request['provider'][:80]!r}"}
         if self._auth_root is None:
             return _refusal("no_auth_homes", "this station has no auth homes mounted")
         started, home = self._clock(), self._auth_root / runner.name

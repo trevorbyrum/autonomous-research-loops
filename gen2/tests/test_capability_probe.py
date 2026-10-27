@@ -446,6 +446,12 @@ class ProbeRunTest(FakeRunnerCase):
                 self.assertEqual(probe.run({"provider": "codex", "requested_by": "x" * size})["reason"], reason)
         self.assertEqual((self.recorded, self.calls()), ([], []))
 
+    def test_an_unknown_provider_keeps_its_complete_escaped_name(self):
+        provider = chr(0xE0001) * 80
+        self.assertEqual(self.probe().run({"provider": provider, "requested_by": "a"}),
+                         {"status": "refused", "reason": "unknown_provider", "detail": "no pinned runner here for '" + "\\U000e0001" * 80 + "'"})
+        self.assertEqual((self.recorded, self.calls()), ([], []))
+
     def test_a_record_given_to_the_run_is_used_instead_of_the_probe_own(self):
         given = []
         reply = self.probe().run({"provider": "codex", "requested_by": "a"}, record=lambda obs: given.append(obs) or {"status": "given"})
