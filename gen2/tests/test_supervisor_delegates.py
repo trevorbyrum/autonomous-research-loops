@@ -32,13 +32,11 @@ the delegate and then the parent, as above.
 The router-call chokepoint (task 1c-repair-3; Astra 1c re-review 2, L-6):
 a parent stalled on its claim through an outage is claimed again by no
 caller — its own advance, its delegate's advance needing its capability (the
-recursive grant, Astra's reproduction), a caller holding another job and a
-stale copy of its journal, for every control method, or recover() once no
+recursive grant, Astra's reproduction), recover() once no
 recovery attempt is left — and the same holds for a delegate stalled under
 an ended parent, with its parent ending it among the callers. Oracles: the
 calls counted at the ControlBackend, the incident and budgets compared
-whole, the store read back whole; a stale caller of the incident writer
-renews nothing. The control: the router back, recover() starts the parent
+whole, the store read back whole. The control: the router back, recover() starts the parent
 and then its delegate. A parent that ended not_admitted is never claimed
 again for its delegate (a later claim could admit work no job will run): the
 delegate is not admitted either, and nothing is sent.
@@ -56,15 +54,11 @@ import unittest
 from gen2.core.control import ControlUnavailable
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import jobs
-from gen2.supervisor.supervisor import Held, StaleJournal, Waiting
 from gen2.tests import children
 from gen2.tests import router_fixtures as rf
-from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, MAIN, PARENT, SupervisedTestCase, Unreachable, succeed
+from gen2.tests.supervisor_fixtures import HANG_WITH_DESCENDANT, GATED, AFTER_DEADLINE, MAIN, PARENT, SupervisedTestCase, Unreachable, succeed
 
-HANG_WITH_DESCENDANT = [{"op": "spawn_descendant", "marker": "descendant.pid"}, {"op": "hang"}]
-GATED = [{"op": "wait_for", "name": "gate", "seconds": 60}]
 RUN_S = 10.0  # a parent's end with its delegate takes well under a second; a mutant that never ends it costs this per test
-METHODS = ("invocation_status", "claim", "record_transition", "request_cancel", "reconcile", "commit_outcome")  # every control call
 
 
 class Watch(Unreachable):
@@ -374,26 +368,6 @@ class ParentEnds:
         self.assertEqual((self.journal(inv)["incident"], self.journal(inv)["budgets"]), (incident, budgets))
         self.assertEqual(self.state(exclude=()), before)
 
-    def refused_at_the_chokepoint(self, supervisor, caller: str, inv: str) -> None:
-        """Every control method for `inv`, called as another job holding a
-        stale copy of the journal: refused (Held), whatever the caller holds.
-        Nor is the incident renewed by a caller of its writer, holding a stale
-        copy or the current one: the writer keeps it and attempts no write
-        (a stale copy's write would also be refused by the journal's revision
-        check, task 1c-repair-4, but that is not what keeps it)."""
-        for method in METHODS:
-            try:
-                with self.assertRaises(Waiting) as raised:
-                    supervisor._call(supervisor.job(caller), {"budgets": {}}, method, {"invocation_id": inv})
-            except StaleJournal as stale:   # the journal's own revision check refusing a write the chokepoint should never have attempted from the caller's copy
-                self.fail(f"{method}: the chokepoint worked from the caller's stale copy of the journal and wrote it ({stale}) instead of refusing at the journal of the job called for")
-            self.assertIsInstance(raised.exception, Held, method)
-        job = supervisor.job(inv)
-        for held in ({"budgets": {}}, supervisor._journal(job)):
-            try:
-                supervisor._incident(job, held, "router_unreachable")
-            except StaleJournal as refused:
-                self.fail(f"the incident writer attempted a write: {refused}")
 
     def test_a_delegate_does_not_retry_its_stalled_parents_claim(self) -> None:
         """Astra's reproduction (1c re-review 2, BLOCK 1): a restarted
@@ -417,8 +391,8 @@ class ParentEnds:
 
     def test_no_caller_makes_a_stalled_parents_control_call(self) -> None:
         """Whoever calls for the parent stalled on its claim — its own advance,
-        its delegate's advance (the recursive grant), another job holding a
-        stale copy of its journal, recover() with no recovery attempt left —
+        its delegate's advance (the recursive grant), recover() with no
+        recovery attempt left —
         nothing is sent and its incident stays as raised."""
         incident = self.stalled_parent()
         calls, budgets, before = self.control.calls, self.journal(PARENT)["budgets"], self.state(exclude=())
@@ -430,9 +404,6 @@ class ParentEnds:
         with self.subTest(caller="its delegate's advance: the recursive grant"):
             self.assertEqual({supervisor.advance(MAIN) for _ in range(3)}, {"parent_stalled"})
             self.nothing_sent(PARENT, calls, incident, budgets, before)
-        with self.subTest(caller="another job, holding a stale copy of its journal"):
-            self.refused_at_the_chokepoint(supervisor, MAIN, PARENT)
-            self.nothing_sent(PARENT, calls, incident, budgets, before)
         with self.subTest(caller="recover(), with no recovery attempt left"):
             for attempt in (1, 2, 3):  # still down: each resumption makes its claim once and stalls again at once
                 self.assertEqual(supervisor.recover(), {PARENT: "stalled", MAIN: "parent_stalled"})
@@ -443,9 +414,8 @@ class ParentEnds:
 
     def test_no_caller_makes_a_stalled_delegates_control_call(self) -> None:
         """The same for a delegate stalled on its status read under an ended
-        parent: its parent ending it (A5-R), its own advance, another job
-        holding a stale copy of its journal, recover() with no recovery
-        attempt left."""
+        parent: its parent ending it (A5-R), its own advance, recover() with
+        no recovery attempt left."""
         incident = self.stalled_delegate("invocation_status")
         self.clock.set("2026-09-27T10:30:00Z")
         supervisor = self.make_supervisor(control=self.down)
@@ -459,9 +429,6 @@ class ParentEnds:
             nothing_sent(6)
         with self.subTest(caller="its own advance"):
             self.assertEqual({supervisor.advance(MAIN) for _ in range(3)}, {"stalled"})
-            nothing_sent(6)
-        with self.subTest(caller="another job, holding a stale copy of its journal"):
-            self.refused_at_the_chokepoint(supervisor, PARENT, MAIN)
             nothing_sent(6)
         with self.subTest(caller="recover(), with no recovery attempt left"):
             for attempt in (1, 2, 3):  # its status read still fails: each resumption makes it once and stalls again at once

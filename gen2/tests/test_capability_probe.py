@@ -44,7 +44,7 @@ from pathlib import Path
 
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import probe
-from gen2.supervisor.probe import CapabilityProbe, Runner, claude_declared, codex_declared, codex_status, epoch_instant, jwt_exp
+from gen2.supervisor.probe import CapabilityProbe, Runner, codex_declared, codex_status, epoch_instant, jwt_exp
 from gen2.tests import operator_fixtures as of
 from gen2.tests import router_fixtures as rf
 
@@ -434,6 +434,18 @@ class ProbeRunTest(FakeRunnerCase):
         self.assertEqual(self.probe(auth_root=None).run({"provider": "codex", "requested_by": "a"})["reason"], "no_auth_homes")
         self.assertEqual((self.recorded, self.calls()), ([], []))
 
+    def test_request_strings_include_both_length_boundaries(self):
+        probe = self.probe(auth_root=None)
+        for size, reason in ((0, "request_invalid"), (1, "unknown_provider"), (500, "unknown_provider"), (501, "request_invalid")):
+            with self.subTest(field="provider", size=size):
+                self.assertEqual(probe.run({"provider": "x" * size, "requested_by": "a"})["reason"], reason)
+        self.assertEqual(probe.run({"provider": "x" * 500, "requested_by": "a"}),
+                         {"status": "refused", "reason": "unknown_provider", "detail": "no pinned runner here for '" + "x" * 80 + "'"})
+        for size, reason in ((0, "request_invalid"), (1, "no_auth_homes"), (500, "no_auth_homes"), (501, "request_invalid")):
+            with self.subTest(field="requested_by", size=size):
+                self.assertEqual(probe.run({"provider": "codex", "requested_by": "x" * size})["reason"], reason)
+        self.assertEqual((self.recorded, self.calls()), ([], []))
+
     def test_a_record_given_to_the_run_is_used_instead_of_the_probe_own(self):
         given = []
         reply = self.probe().run({"provider": "codex", "requested_by": "a"}, record=lambda obs: given.append(obs) or {"status": "given"})
@@ -540,22 +552,6 @@ class DeclaredExpiryTest(FakeRunnerCase):
                 obs = self.run_probe()
                 self.assertEqual((obs["outcome"], obs["declared_expiry"]), (outcome, None))  # a runner's rejection stands: never made merely degraded
 
-    def test_a_claude_format_is_read_for_its_expires_at(self):
-        claude = Runner("codex", "0.153.2", ("codex", "--version"), "codex-cli 0.153.2\n", ("codex", "login", "status"), "CODEX_HOME", codex_status,
-                        ".credentials.json", claude_declared)  # the fake runner, answering as codex; the file read the way a claude runner's is
-        self.credential({"claudeAiOauth": {"accessToken": "sk-ant-oat-ACCESSPART", "refreshToken": "sk-ant-ort-REFRESHPART",
-                                           "expiresAt": EXP_2001 * 1000}}, ".credentials.json")
-        obs = self.run_probe(runners={"codex": claude})
-        self.assertEqual((obs["outcome"], obs["declared_expiry"]),
-                         ("declared_expired", {"access_token": "2001-09-09T01:46:40Z", "id_token": None, "refresh_credential": True}))
-        self.assertNotIn("PART", json.dumps(obs))
-
-    def test_a_claude_credential_stating_no_expiry_declares_none(self):
-        claude = Runner("codex", "0.153.2", ("codex", "--version"), "codex-cli 0.153.2\n", ("codex", "login", "status"), "CODEX_HOME", codex_status,
-                        ".credentials.json", claude_declared)
-        self.credential({"claudeAiOauth": {"accessToken": "sk-ant-oat-ACCESSPART", "refreshToken": "sk-ant-ort-REFRESHPART"}}, ".credentials.json")
-        obs = self.run_probe(runners={"codex": claude})
-        self.assertEqual((obs["outcome"], obs["declared_expiry"]), ("usable", {"access_token": None, "id_token": None, "refresh_credential": True}))
 
     def reads(self, reader, *arguments):
         """What a reader of a declared credential returns: it answers None for what it cannot read and never raises, so a raise is a wrong answer and is reported as one (a mutant
@@ -577,11 +573,6 @@ class DeclaredExpiryTest(FakeRunnerCase):
         self.assertEqual(codex_declared([]), {"access_token": None, "id_token": None, "refresh_credential": False})
         self.assertEqual(codex_declared({"tokens": {"access_token": jwt({"exp": EXP_2001}), "refresh_token": "r"}}),
                          {"access_token": "2001-09-09T01:46:40Z", "id_token": None, "refresh_credential": True})
-        for ms, instant in ((EXP_2001 * 1000, "2001-09-09T01:46:40Z"), (EXP_2001 * 1000 + 1, "2001-09-09T01:46:41Z"), (True, None),
-                            ("1000000000000", None), (10**400, None), (float("inf"), None)):
-            with self.subTest(expires_at=ms):
-                self.assertEqual(self.reads(claude_declared, {"claudeAiOauth": {"expiresAt": ms, "refreshToken": ""}}),
-                                 {"access_token": instant, "id_token": None, "refresh_credential": False})
 
 
 class StationProbeTest(FakeRunnerCase):

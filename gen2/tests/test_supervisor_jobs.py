@@ -65,7 +65,7 @@ class JobTestCase(unittest.TestCase):
     def prepare(self, steps: list[dict]) -> None:
         script = self.root / "script.json"
         script.write_text(json.dumps({"steps": steps}))
-        self.job.prepare({"command": [sys.executable, str(children.path("gen2/supervisor/fake_executor.py")), str(script)], "env": {}})
+        self.job.prepare({"command": [sys.executable, str(children.path("gen2/tests/fake_executor.py")), str(script)], "env": {}})
 
     def start(self) -> None:
         self.popens.append(self.job.spawn([sys.executable, str(children.path("gen2/supervisor/jobshim.py"))]))
@@ -224,7 +224,6 @@ class TerminateTest(JobTestCase):
         self.wait(lambda: jobs.proc_stat(descendant) is None or jobs.proc_stat(descendant)[0] == "Z")
 
 
-
 class FakeExecutorMarkerTest(unittest.TestCase):
     """Task 1c-repair C2. Under load, the mutation baseline errored in
     test_timeout_terminates_the_whole_group with int(''): the test waits for
@@ -237,7 +236,7 @@ class FakeExecutorMarkerTest(unittest.TestCase):
     def test_the_descendant_marker_appears_only_whole(self) -> None:
         from unittest import mock
 
-        from gen2.supervisor import fake_executor
+        from gen2.tests import fake_executor
 
         class Stop(Exception):
             pass

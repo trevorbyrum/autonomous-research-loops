@@ -186,10 +186,7 @@ at its own size:
   `declared_expired`: a dated `degraded` fact and the typed hold, labeled
   "the credential's own claim, not the provider's answer" ((d2a)). The
   runner's rules are unchanged, and `usable` still means the runner reads a
-  credential whose access token does not declare itself expired. The probe
-  also carries a reader for claude's `expiresAt` (`claude_declared`), for a
-  claude runner once one is pinned; no claude runner is pinned in this
-  image, so that reader is shown only by the unit tests' fake runner.
+  credential whose access token does not declare itself expired.
 - **Refreshability.** Reading a claim is not authentication: these
   fixtures are unsigned, and the probe verifies nothing. ID-token and
   access-token expiry are different things: the access token is what is
