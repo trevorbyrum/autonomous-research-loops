@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 
 from gen2 import accounting as a
-from gen2.accounting.stopping import WindowPin
+from gen2.accounting.stopping import WindowPin, window_revisions
 from gen2.core.instants import utc_instant_ns
 
 
@@ -41,9 +41,7 @@ class CoverageView:
 def coverage_view(inventory: a.Inventory, pins: tuple[WindowPin, ...],
                   branch_links: tuple[BranchLink, ...] = ()) -> CoverageView:
     """Capture standing and G-1 shown independently; never infer branch links."""
-    revisions = {p.invocation_id: p.contract_revision for p in pins}
-    if len(revisions) != len(pins):
-        raise ValueError("duplicate window pins")
+    revisions = window_revisions(pins)
     roots = {p.invocation_id: p for p in inventory.passes}
     windows = tuple(CoverageWindow(w, revisions.get(w.invocation_id),
         a.label_standing(inventory, revisions[w.invocation_id]) if w.invocation_id in revisions else "unknown",
@@ -100,8 +98,7 @@ class DepthView:
 def depth_view(inventory: a.Inventory, as_of: str) -> DepthView:
     """Dated records with the supplied snapshot's G-1 standing, not a past contract."""
     instant = utc_instant_ns(as_of)
-    subjects = sorted({(r.work_id, r.source_version) for r in inventory.semantic_assessments})
-    semantic = tuple(o for work, version in subjects for o in a.semantic_accrual(inventory, work, version, as_of))
+    semantic = a.semantic_operands(inventory, as_of)
     lifecycle = tuple(a.LifecycleOperand(r, a.label_standing(inventory, r.contract_revision))
         for r in sorted(inventory.source_lifecycle, key=lambda r: (utc_instant_ns(r.created_at), r.disposition_id))
         if utc_instant_ns(r.created_at) <= instant)
@@ -121,7 +118,5 @@ def depth_view(inventory: a.Inventory, as_of: str) -> DepthView:
 def _registry_history(inventory: a.Inventory, records: tuple[a.RegistryDisposition, ...], kind: str, registry_id: str) -> RegistryHistory:
     history = tuple(sorted((r for r in records if (r.registry_kind, r.registry_id) == (kind, registry_id)),
                            key=lambda r: (utc_instant_ns(r.created_at), r.disposition_id)))
-    replaced = {r.supersedes_id for r in history if r.supersedes_id is not None}
-    active = tuple(RegistryOperand(r, a.label_standing(inventory, r.contract_revision))
-                   for r in history if r.disposition_id not in replaced)
+    active = tuple(RegistryOperand(r, a.label_standing(inventory, r.contract_revision)) for r in a.active_records(history))
     return RegistryHistory(kind, registry_id, history, active)

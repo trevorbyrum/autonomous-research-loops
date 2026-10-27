@@ -71,10 +71,10 @@ class CanonicalStorageTest(WriterTestCase):
         self.audit("aud_value", {"b": 1, "a": [1.0, "é", 1e21, -0.0], "c": {"z": None, "y": True}})
         self.audit("aud_text", '{ "b" : 1,\n "a" : 2 }')
         self.audit("aud_bytes", b'{"k":"\\u00e9","j":1E2}')
-        self.assertEqual(self.store.raw_text("audit_events", "detail", {"audit_event_id": "aud_value"}),
-                         ['{"a":[1,"é",1e+21,0],"b":1,"c":{"y":true,"z":null}}'])
-        self.assertEqual(self.store.raw_text("audit_events", "detail", {"audit_event_id": "aud_text"}), ['{"a":2,"b":1}'])
-        self.assertEqual(self.store.raw_text("audit_events", "detail", {"audit_event_id": "aud_bytes"}), ['{"j":100,"k":"é"}'])
+        stored = lambda aid: [r[0] for r in self.raw("SELECT detail FROM audit_events WHERE audit_event_id = ?", aid)]
+        self.assertEqual(stored("aud_value"), ['{"a":[1,"é",1e+21,0],"b":1,"c":{"y":true,"z":null}}'])
+        self.assertEqual(stored("aud_text"), ['{"a":2,"b":1}'])
+        self.assertEqual(stored("aud_bytes"), ['{"j":100,"k":"é"}'])
         self.assertEqual(self.store.select("audit_events", {"audit_event_id": "aud_text"})[0]["detail"], {"a": 2, "b": 1})
 
     def test_unhashable_json_is_refused_and_writes_nothing(self) -> None:
@@ -178,8 +178,8 @@ class IdentityBoundTest(WriterTestCase):
         classified name exists in the DDL."""
         sets = {"identity": api.IDENTITY_COLUMNS, "flag": api.FLAG_COLUMNS, "score": api.SCORE_COLUMNS, "measure": api.MEASURE_COLUMNS}
         seen = set()
-        for table, columns in api.integer_columns(self.store).items():
-            for column in columns:
+        for table, cols in self.store._columns.items():
+            for column in (c for c, kind in cols.items() if kind == "INTEGER"):
                 homes = [name for name, members in sets.items() if column in members]
                 self.assertEqual(len(homes), 1, f"{table}.{column} is classified as {homes}")
                 seen.add(column)
