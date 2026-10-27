@@ -56,7 +56,7 @@ class ExtractionRecords:
                     row["topic_id"] = inv["topic_id"]
                     acquired = self._core._store.select("source_acquisitions", {key: row[key] for key in
                         ("topic_id", "work_id", "source_version", "event_id", "verifier_invocation_id")})
-                    if not acquired or boundary.TIER[row["supported_tier"]] > DetailedChecks(self._core)._content_rank(acquired[0]):
+                    if not acquired or boundary.TIER[row["supported_tier"]] > DetailedChecks(self._core)._content_rank(next(iter(acquired))):
                         raise Refusal("payload_invalid", "extraction tier exceeds recorded content")
                 self._core._store.insert(table, row)
             if records:
