@@ -47,12 +47,11 @@ contract construction's drafts in amendments.py.
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
 
 from gen2 import accounting
-from gen2.core import canonical, instants, pagination
+from gen2.core import canonical, instants
 from gen2.router.accounting import Accounting, CoverageSnapshot, DossierInput
 from gen2.router.assessments import Assessments
 from gen2.router.acquisitions import ACQUISITION_COMMANDS, AcquisitionAdmission
@@ -60,6 +59,7 @@ from gen2.router import boundary
 from gen2.router.amendments import AMENDMENT_COMMANDS, COMPATIBLE, Amendments, brief_compatibility, contract_compatibility, stopping_defect
 from gen2.router.boundary import Refusal, instant
 from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
+from gen2.router.commands import COMMANDS, LIFECYCLE_FACTS
 from gen2.router.evidence_writer import EvidenceWriter
 from gen2.router.extractions import ExtractionRecords
 from gen2.router.detailed_checks import DetailedChecks
@@ -76,113 +76,8 @@ from gen2.store import api
 
 VALIDATOR_VERSION = "router-boundary/1"
 ENVELOPE_MAX_BYTES = 64 * 1024
-LIFECYCLE_FACTS = {  # target state -> the facts that record it (L-2, L-3, C-9; task 1c: L-4, L-5, L-7, L-9)
-    "launching": ("job_handle",),
-    "running": ("host_id", "container_id", "boot_id", "start_fingerprint"),
-    "result_ready": ("result_payload_digest",),
-    "failed": ("failure_class", "end_evidence_ref"),
-    "cancelled": ("end_evidence_ref",),
-    "outcome_unknown": ("unknown_episode",),
-}
 LIFECYCLE_CAUSE = {"launching": "launch_intent", "running": "identity_recorded", "result_ready": "result_staged", "failed": "failed",
                    "cancelled": "cancelled", "outcome_unknown": "outcome_unknown"}
-
-_ID = {"$ref": "common.schema.json#/$defs/short_text"}
-_OPT = {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/short_text"}]}
-_TS = {"$ref": "common.schema.json#/$defs/timestamp"}
-_CAP = {"$ref": "common.schema.json#/$defs/capability_id"}
-_INV = {"$ref": "common.schema.json#/$defs/invocation_id"}
-COMMANDS = {  # the router's own request shapes (commands, not stored documents), on the shared vocabulary
-    "$defs": {
-        "claim": {
-            "type": "object", "additionalProperties": False,
-            "required": ["invocation_id", "kind", "topic_id", "config_bundle_hash", "deadline_at"],
-            "properties": {
-                "invocation_id": _INV, "kind": {"$ref": "common.schema.json#/$defs/invocation_kind"},
-                "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"}, "station_id": _ID,
-                "config_bundle_hash": {"$ref": "common.schema.json#/$defs/sha256"}, "deadline_at": _TS, "lease_expires_at": _TS,
-                "parent_capability_id": _CAP, "requested_by_invocation_id": _INV, "retry_of": _INV,
-                "reservation": {"$ref": "router-commands#/$defs/draw"}},
-            "if": {"properties": {"kind": {"const": "delegate"}}},
-            "then": {"required": ["parent_capability_id"], "not": {"anyOf": [{"required": k} for k in (["lease_expires_at"], ["station_id"], ["retry_of"], ["reservation"])]}},
-            "else": {"required": ["lease_expires_at", "station_id"], "not": {"required": ["parent_capability_id"]}}},
-        "transition": {
-            "type": "object", "additionalProperties": False, "required": ["capability_id", "invocation_id", "to_state"],
-            "properties": {
-                "capability_id": _CAP, "invocation_id": _INV, "to_state": {"enum": sorted(LIFECYCLE_FACTS)},
-                "job_handle": _ID, "host_id": _ID, "container_id": _OPT, "boot_id": _ID, "start_fingerprint": _ID,
-                "result_payload_digest": {"$ref": "common.schema.json#/$defs/sha256"},
-                "failure_class": {"$ref": "execution-record.schema.json#/properties/findings/items"},
-                "end_evidence_ref": {"$ref": "common.schema.json#/$defs/sha256"},
-                "unknown_episode": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
-                "unknown_cause": {"enum": ["spawn_uncertain", "contact_lost", "termination_unconfirmed"]}}},
-        "observation": {
-            "type": "object", "additionalProperties": False, "required": ["capability_id", "invocation_id", "observation", "retrieval_events"],
-            "properties": {
-                "capability_id": _CAP, "invocation_id": _INV,
-                "observation": {
-                    "type": "object", "additionalProperties": False,
-                    "required": ["observation_id", "request", "request_identity", "attempt", "lane", "obligation_ids", "started_at", "ended_at",
-                                 "coverage_state", "result_count", "completeness", "error_class", "capability_fact_id", "policy_version",
-                                 "cost_units", "gateway_call_ref", "page_outcome", "continuation"],
-                    "properties": {
-                        "observation_id": {"type": "string", "pattern": "^obs_[A-Za-z0-9_-]{8,64}$"},
-                        "request": {"type": ["object", "string"]}, "request_identity": {"$ref": "common.schema.json#/$defs/sha256"},
-                        "attempt": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}, "lane": _ID,
-                        "obligation_ids": {"type": "array", "maxItems": 100, "uniqueItems": True, "items": {"$ref": "common.schema.json#/$defs/local_id"}},
-                        "started_at": _TS, "ended_at": {"oneOf": [{"type": "null"}, _TS]},
-                        "coverage_state": {"$ref": "common.schema.json#/$defs/coverage_state"},
-                        "result_count": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 9007199254740991}]},
-                        "completeness": {"enum": ["complete", "partial", "unobserved"]},
-                        "error_class": {"enum": [None, "payload_invalid", "timeout", "rate_limited", "breaker_open", "budget_refused", "provider_outage",
-                                                 "credentials_rejected", "credentials_not_configured", "secrets_backend_failing", "transport_failure",
-                                                 "telemetry_missing", "partial_pagination"]},
-                        "capability_fact_id": _OPT, "policy_version": _ID,
-                        "cost_units": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 9007199254740991}]},
-                        "gateway_call_ref": _OPT,
-                        "page_outcome": {"enum": list(pagination.PAGE_OUTCOMES)},
-                        "continuation": {"oneOf": [{"type": "null"}, {
-                            "type": "object", "additionalProperties": False, "required": ["cursor"],
-                            "properties": {"cursor": {"type": ["integer", "string"]}}}]}}},   # the shape; the cursor domain is boundary.check_page_outcome's
-                "retrieval_events": {
-                    "type": "array", "maxItems": 10000,
-                    "items": {"type": "object", "additionalProperties": False, "required": ["event_id", "provider_record_id", "rank", "captured_at"],
-                              "properties": {"event_id": {"type": "string", "pattern": "^rev_[A-Za-z0-9_-]{8,64}$"}, "provider_record_id": _ID,
-                                             "rank": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1, "maximum": 9007199254740991}]},
-                                             "captured_at": _TS}}}}},
-        "works": {  # task 2a
-            "type": "object", "additionalProperties": False, "required": ["capability_id", "invocation_id", "dedup_method_version", "works"],
-            "properties": {
-                "capability_id": _CAP, "invocation_id": _INV, "dedup_method_version": _ID,
-                "works": {"type": "array", "minItems": 1, "maxItems": 1000, "items": {
-                    "type": "object", "additionalProperties": False, "required": ["identity_scheme", "identity_value", "event_ids"],
-                    "properties": {"identity_scheme": {"enum": ["doi", "arxiv", "pmid", "isbn", "url", "gateway_record"]}, "identity_value": _ID,
-                                   "event_ids": {"type": "array", "minItems": 1, "maxItems": 10000, "uniqueItems": True,
-                                                 "items": {"type": "string", "pattern": "^rev_[A-Za-z0-9_-]{8,64}$"}}}}}}},
-        "operator_decision": {
-            "type": "object", "additionalProperties": False,
-            "required": ["decision_id", "topic_id", "kind", "disposition", "subject", "operator_id", "decided_at", "notes", "payload"],
-            "properties": {
-                "decision_id": {"$ref": "common.schema.json#/$defs/operator_decision_id"},
-                "topic_id": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/topic_id"}]},
-                "kind": {"enum": ["brief_confirmation", "scope_approval", "rating_approval", "contract_approval", "amendment_approval", "reframe_approval",
-                                  "completion_approval", "retirement", "hold_clearance", "publication_approval", "blind_initial_disposition", "advised_feedback",
-                                  "source_approval"]},
-                "disposition": {"enum": ["approved", "rejected", "deferred", "recorded"]},
-                "subject": {"type": "object", "additionalProperties": False, "required": ["kind", "ref", "revision", "hash"],
-                            "properties": {"kind": {"enum": ["intake_brief", "scoping_report", "contract_revision", "dossier", "topic", "hold",
-                                                             "publication_source", "decision_receipt", "source_proposal"]},
-                                           "ref": _ID, "revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/state_revision"}]},
-                                           "hash": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/sha256"}]}}},
-                "operator_id": _ID, "decided_at": _TS,
-                "notes": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/long_text"}]},
-                "payload": {"type": ["object", "null"]}}},
-    },
-}
-
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def random_id(prefix: str) -> str:
@@ -212,7 +107,7 @@ class Router:
     (registries.py): there is no registry to inject, and none recorded means
     none qualified (INVARIANTS §13)."""
 
-    def __init__(self, store: api.Store, spool, *, clock: Callable[[], str] = utc_now, new_id: Callable[[str], str] = random_id,
+    def __init__(self, store: api.Store, spool, *, clock: Callable[[], str] = instants.utc_now, new_id: Callable[[str], str] = random_id,
                  extensions=None, fault: Callable[[str], None] | None = None, schemas: SchemaSet | None = None, gateway_captures=None) -> None:
         self._store = store
         with self._snapshot():
@@ -781,33 +676,6 @@ class Router:
     def record_observation(self, request: Mapping) -> dict:
         return self._observations.record_observation(request)
 
-    def _observation_in_transaction(self, req: dict, now: str) -> dict:
-        obs, events = req["observation"], req["retrieval_events"]
-        existing = self._one("search_observations", {"observation_id": obs["observation_id"]})
-        if existing is not None:
-            stored_events = self._store.select("retrieval_events", {"observation_id": obs["observation_id"]})
-            same = (existing["invocation_id"] == req["invocation_id"] and all(existing[k] == v for k, v in obs.items())
-                    and sorted((e["event_id"], e["provider_record_id"], e["rank"], e["captured_at"]) for e in stored_events)
-                    == sorted((e["event_id"], e["provider_record_id"], e["rank"], e["captured_at"]) for e in events))
-            if not same:
-                raise Refusal("observation_id_conflict", f"{obs['observation_id']} was recorded with different content")
-            return {"status": "replayed", "observation_id": obs["observation_id"], "retrieval_events": len(stored_events)}
-        inv = self._capability(req["capability_id"], req["invocation_id"])
-        if inv["state"] != "running":
-            raise Refusal("invocation_state_invalid", f"observations are recorded while running, not {inv['state']}")
-        if inv["cancel_requested_at"] is not None:
-            raise Refusal("invocation_state_invalid", f"cancellation was requested at {inv['cancel_requested_at']}")
-        self._require_current_lease(inv, now)
-        topic = self._one("queue_entries", {"topic_id": inv["topic_id"]})
-        if topic["paused_at"] is not None:
-            raise Refusal("topic_paused", f"paused at {topic['paused_at']}")
-        self._store.insert("search_observations", {**obs, "invocation_id": inv["invocation_id"], "topic_id": inv["topic_id"]})
-        for event in events:
-            self._store.insert("retrieval_events", {**event, "observation_id": obs["observation_id"], "topic_id": inv["topic_id"]})
-        self._audit("observation", now, {"observation_id": obs["observation_id"], "retrieval_events": len(events)},
-                    topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
-        return {"status": "recorded", "observation_id": obs["observation_id"], "retrieval_events": len(events)}
-
     # -- works (task 2a) -------------------------------------------------------------
     def register_works(self, request: Mapping) -> dict:
         """Unit 2 (E-3): link retrieved records of the invocation's topic to
@@ -988,61 +856,15 @@ class Router:
         self._extractions.authenticate(payload, inv, bind)
         self._detailed_checks.authenticate(payload, inv, bind)
         quote_checks = self._evidence_writer.check_quotes(payload, inv, bind)
-        for report in payload["scoping_reports"]:  # task 2a: flow S2's hand-off, by the work whose admission it names (C-12)
-            if report["topic_id"] != inv["topic_id"]:
-                raise Refusal("cross_topic", f"{report['report_id']} is about topic {report['topic_id']}")
-            if canonical.content_hash(report) != report["content_hash"]:
-                raise Refusal("payload_invalid", f"{report['report_id']} v{report['version']} does not hash to its content hash (C-13)")
-            if report["brief"] != {"brief_id": inv["brief_ref"], "version": inv["brief_version"], "content_hash": inv["brief_hash"]}:
-                raise Refusal("payload_invalid", f"{report['report_id']} names brief {report['brief']['brief_id']} v{report['brief']['version']}, not its work's admission pin (C-12)")
-            if not {c["facet_id"] for c in report["gap_map"]} <= {f["facet_id"] for f in report["candidate_facets"]}:
-                raise Refusal("payload_invalid", f"{report['report_id']}: its gap map names a facet it does not propose")
-        for proposal in payload["source_proposals"]:  # task 2a: proposed by the committing invocation, never a document's say-so
-            if proposal["topic_id"] != inv["topic_id"]:
-                raise Refusal("cross_topic", f"{proposal['proposal_id']} is about topic {proposal['topic_id']}")
-            if proposal["proposed_by"] != {"invocation_id": inv["invocation_id"], "invocation_kind": inv["kind"]}:
-                raise Refusal("capability_invocation_mismatch", f"{proposal['proposal_id']} names proposer {proposal['proposed_by']['invocation_id']}: a proposal is its committer's")
+        self._evidence_writer.validate_proposals(payload, inv)
         for doc in payload["verification_receipts"]:
             boundary.check_verification_receipt(doc, inv["invocation_id"], env["capability_id"], inv["topic_id"])
             if doc["extraction"]["method"] == "canonical_bytes" and not available(doc["obtained_content_hash"]):
                 raise Refusal("payload_missing", f"{doc['verification_receipt_id']}: its canonical bytes are not staged (V-3)")
-        receipts = {}
-        specs = {}
-        hold_ids = {hold["hold_id"] for hold in payload["holds"]}
         bundle = self._bundle(inv["config_bundle_hash"])  # immutable: the question registry the invocation was admitted under (D-1)
-        questions = {(q["question_id"], q["version"], q["content_hash"]) for q in bundle["questions"]}
-        for doc in payload["decision_receipts"]:
-            spec = self._one("decision_specs", {"spec_hash": doc["spec"]["spec_hash"]})
-            specs[doc["decision_receipt_id"]] = None if spec is None else spec["document"]
-            boundary.check_decision_receipt(doc, specs[doc["decision_receipt_id"]], invocation_id=inv["invocation_id"], topic_id=inv["topic_id"],
-                                            operation_id=env["operation_id"], qualifications=self, questions=questions)
-            response = doc["provider_response"]
-            if response["raw_response_artifact"] is not None:  # D-1: response bytes are retained, and the reference is to them
-                if response["raw_response_digest"] != response["raw_response_artifact"]["content_hash"]:
-                    raise Refusal("payload_invalid", f"{doc['decision_receipt_id']}: its raw response digest is not its raw response artifact's hash")
-                bind(response["raw_response_artifact"], f"{doc['decision_receipt_id']}: its raw response")
-            hold = doc["outcome"]["hold_id"]
-            if hold is not None and hold not in hold_ids and self._one("holds", {"hold_id": hold}) is None:
-                raise Refusal("payload_invalid", f"{doc['decision_receipt_id']}: its hold {hold} is neither created here nor recorded")
-            receipts[doc["decision_receipt_id"]] = doc
-        protocol = None
-        if payload["screening_assessments"]:
-            contract = self._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
-            protocol = contract["document"]["eligibility_protocol"]
-            admitted = {"topic_id": inv["topic_id"], "contract": {"revision": inv["contract_revision"], "content_hash": contract["content_hash"]}}
-            for assessment in payload["screening_assessments"]:
-                rid = assessment["decision_receipt_id"]
-                boundary.check_screening(assessment, protocol, receipts.get(rid), specs.get(rid), admitted)
-        manifests = []
-        for manifest in payload["exports"]:
-            bundle_hash = manifest["bundle"]["content_hash"]
-            if bundle_hash not in staged:
-                raise Refusal("payload_missing", f"{manifest['manifest_id']}: its bundle {bundle_hash} is not staged with this commit")
-            manifests.append((manifest, boundary.check_manifest(manifest, inv["topic_id"], self._extensions, staged[bundle_hash], self._schemas)))
-        for hold in payload["holds"]:
-            fact = hold["capability_fact_id"]
-            if fact is not None and self._one("capability_facts", {"fact_id": fact}) is None:
-                raise Refusal("payload_invalid", f"{hold['hold_id']}: capability fact {fact} is not recorded")
+        protocol = self._evidence_writer.validate_decisions(payload, inv, env, bind, bundle)
+        manifests = self._evidence_writer.validate_exports(payload, inv, staged)
+        self._evidence_writer.validate_holds(payload)
         validated = list(dict.fromkeys([env["payload_digest"], *(ref["content_hash"] for ref in env["result_refs"])]))
         return {"invocation": inv, "payload": payload, "artifacts": artifacts, "manifests": manifests, "protocol": protocol, "quote_checks": quote_checks,
                 "validation": {"validator_version": VALIDATOR_VERSION, "policy_version": f"config-bundle/{bundle['version']}", "validated_hashes": validated}}

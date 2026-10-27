@@ -19,7 +19,7 @@ years included; any year 0001-9999) and the time must be a real time of day
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 # ASCII digits only ([0-9], not \d, which matches every Unicode decimal digit
 # and so would admit what the schema's ASCII pattern refuses — Astra
@@ -54,3 +54,8 @@ def utc_instant_ns(value: object) -> int:
     fraction = value[20:-1] if value[19] == "." else ""
     days = (date(year, month, day) - date(1970, 1, 1)).days
     return (days * 86400 + hour * 3600 + minute * 60 + second) * 10**9 + int(fraction.ljust(9, "0"))
+
+
+def utc_now() -> str:
+    """The current instant in the accepted form (microsecond fraction)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")

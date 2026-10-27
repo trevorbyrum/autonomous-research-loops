@@ -85,10 +85,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
 from typing import Callable, NamedTuple, Sequence
 
 from gen2.core import canonical, pagination
+from gen2.core.instants import utc_now
 from gen2.gateway_client import observe
 
 REQUEST_TYPES = pagination.REQUEST_TYPES
@@ -97,10 +97,6 @@ DEFAULT_PORTS = {"http": 80, "https": 443}
 _ORIGIN = re.compile(r"(https?)://(?:\[([0-9a-f:.]+)\]|([a-z0-9.-]+))(?::([0-9]{1,32}))?/?", re.ASCII | re.IGNORECASE)   # scheme, host and port: nothing urlsplit or urllib could read otherwise. The port is a run of at most 32 ASCII digits (H-6: RFC 3986 `port = *DIGIT`, so `:000080` is 80), whose VALUE `_origin` checks
 _LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", re.ASCII | re.IGNORECASE)   # one LDH label of a DNS name (RFC 1123)
 _NUMBER = re.compile(r"[0-9]+|0x[0-9a-f]*", re.ASCII | re.IGNORECASE)   # a last label inet_aton reads as a number: `2130706433`, `0x7f.1`, `0177.0.0.1`, `127.1` are addresses, whatever they look like
-
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 class _Deadline:
