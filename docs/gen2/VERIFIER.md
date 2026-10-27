@@ -29,7 +29,7 @@ When CI meets the CI design's §4 qualification, CI replaces this role.
    - write each target's full log to `<evidence>/<target>.log`;
    - write `{"target", "exit", "seconds", "sha"}` to `<evidence>/<target>.exit.json`.
 4. **Report** the SHA, the clone path, each target's exit code and duration, and the last 20 lines of each log. Also report any environment problem.
-   - Record the base SHA and `git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema`; report whether trigger-order actually ran and why (non-empty DDL diff, unavailable comparison, or successfully empty diff). If acceptance stopped before that decision, report it as not reached.
+   - Record the base SHA. Trigger-order is retired (operator ruling S2-2, 2026-10-27): `gen2-accept` is gen2-check (sharded units) followed by changed-line mutation. Report the shard count, the unit test count, and the mutation report's status and counts.
    - Report only what you observed. Don't interpret failures or propose fixes.
 5. **Remove the clone** after reporting, unless a target failed. A failed clone is kept for the reviewer.
 
