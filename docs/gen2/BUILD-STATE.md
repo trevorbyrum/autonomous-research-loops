@@ -9,11 +9,13 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
   - **S4 is complete** (PR #35 merged at `90d5070`, 2026-10-26). It took four rounds: B1/B2 hold semantics, then two mutation-found missing tests, then equivalent-mutant removal through membership tests. Net +194 against +140 planned (production +36, tests +158).
   - **S5 is complete** (PR #40 merged at `2085e10`, −4,492). **S2d is complete** (PR #39 merged: parallel test shards; acceptance about 900 s against about 4,100 s).
   - **S6 is complete** (PR #46): the DDL is integrity-only, with 242 triggers. **Gateway hand-written mutants retired** (PR #48).
+  - **Batch C complete** (PR #50, supervisor plus O-1; follow-up C-fu due before 2f). **Batch D1 complete** (PR #51, store fixtures plus O-8).
   - **In flight:**
-    - Batch B (`service.py` headroom, worktree `gen2-wt-3`, Sonnet);
-    - Batch C (supervisor plus O-1, worktree `gen2-wt-4`, Sol).
+    - Batch E (accounting, store, config, plus O-3/O-4; Sonnet, worktree `gen2-wt-5`);
+    - Batch F (operator tokens, O-2; Sol, shared tree).
+    - **Held:** Batch B (worktree `gen2-wt-3`) pending the operator's mutation-scope decision for refactors.
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`. That is S6 → B → A → O-5 → the 6b1′ design (13 inputs) in the shared tree. The second coder takes the gateway mutants, trigger-order retirement (after S6), C, E, F and D2. D1 and O-9 come after S6.
-- **Last verifier result:** gateway-mutants `07adf65`: gen2-accept exit 0 in 791 s (8 shards) and gen2-gateway exit 0 in 436 s. S6 `ed21d5a`: exit 0 in 3,422 s, with trigger-order at 242 triggers.
+- **Last verifier result:** Batch D1 `4641ccc`, gen2-accept exit 0 in 750 s (8 shards, 2,969 tests). Batch C `f250716`, exit 0 in 1,753 s.
 - **Gate S watch item:** a stage-1 survivor costs a full serial suite (about 70 min) in stage 2. Candidate: run stage 2 sharded or in parallel.
 - **Blockers:** none. **Open operator decisions:** none.
 - **Gate S:** last run **#2 at `b3ffd23`** (2026-10-27; `private/reviews/gen2-gate-s2-fable-20261027.md`). Engine side 109,026 lines; production 13,100. Operator decisions S2-1 to S2-7 are pending.
