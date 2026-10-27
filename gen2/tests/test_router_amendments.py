@@ -42,8 +42,6 @@ from pathlib import Path
 
 from gen2.core import canonical
 from gen2.store import api
-from gen2.store import db as store_db
-from gen2.tests.ddl_fixtures import restore_triggers
 from gen2.tests.detailed_receipt_fixtures import seed_checks
 from gen2.tests import router_fixtures as rf, store_fixtures
 from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, find_request, h, jcs
@@ -203,13 +201,8 @@ class ContractWorld(RouterTestCase):
             from gen2.tests.extraction_receipt_fixtures import seed, attach
             seed(self, verifier, acquisition_producer)
             attach(self, doc)
-        # Authenticate retained assessments before the receipt transaction;
-        # the subject still runs with the complete requested trigger catalog.
-        restore_triggers(self, store_db.schema_text())
-        try:
-            seed_checks(self, doc)
-        finally:
-            restore_triggers(self, store_fixtures.DDL_TEXT)
+        # Authenticate retained assessments before the receipt transaction.
+        seed_checks(self, doc)
         own = {**empty_outcome("inv_verify01", "interim_transition"), "verification_receipts": [doc]}
         assert self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own))["status"] == "committed"
         return verifier

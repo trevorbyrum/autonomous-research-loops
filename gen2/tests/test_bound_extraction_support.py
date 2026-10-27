@@ -1,11 +1,7 @@
 """Promotion consumes one durable basis; historical declarations stay fenced."""
 import json
 import unittest
-from unittest.mock import patch
 
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
-from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 from gen2.tests.detailed_support_fixtures import insert_receipt
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
 
@@ -17,20 +13,16 @@ from gen2.tests.test_validated_extraction_receipts import ValidatedCases
 from gen2.tests.independent_tier_fixtures import independent_basis
 
 
-
-
 class PromotionCases:
 
     def context(self, method, tier='full_text'):
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            context = fixture({**FULL, 'abstract': 'Recorded abstract'})
-            self.case = context.__enter__()
-            load_claim(self.case, tier)
-            self.doc = support_document(self.case, method, tier)
-            seed_checks(self.case, self.doc)
+        context = fixture({**FULL, 'abstract': 'Recorded abstract'})
+        self.case = context.__enter__()
+        load_claim(self.case, tier)
+        self.doc = support_document(self.case, method, tier)
+        seed_checks(self.case, self.doc)
         self.addCleanup(context.__exit__, None, None, None)
         self.target, self.independent = self.case.rows('SELECT target_extraction_id, validator_extraction_id FROM extraction_validations_v2')[0]
-        restore_triggers(self.case, sf.DDL_TEXT)
 
     def clone(self, table, changes, where=''):
         if table == 'source_acquisitions' and changes.get('provider_record_id') == 'other-record':

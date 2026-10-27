@@ -150,7 +150,7 @@ class AdmissionTest(World):
         catalog = self.rows(TRIGGERS)
         self.x("DROP TRIGGER branch_windows_branch")
         self.raw(registry_id="B-2")
-        restore_triggers(self, "", catalog=catalog)
+        restore_triggers(self, catalog=catalog)
         self.assertEqual(self.snapshot().branch_links, ())
 
     def test_unverified_commit(self):
@@ -158,7 +158,7 @@ class AdmissionTest(World):
         catalog = self.rows(TRIGGERS)
         self.x("DROP TRIGGER branch_windows_commit")
         self.raw(recorded_by_operation_id="op_otherbranch")
-        restore_triggers(self, "", catalog=catalog)
+        restore_triggers(self, catalog=catalog)
         self.assertEqual(self.snapshot().branch_links, ())
 
     def test_unverified_contract(self):

@@ -1,12 +1,8 @@
 """Optional /2 references bind recorded relationships, never semantic truth."""
 import copy
 import json
-from unittest.mock import patch
 
 from gen2.core import canonical
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
-from gen2.tests.ddl_fixtures import restore_triggers
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_canonical_receipt_admission import ReceiptCase
 from gen2.tests.test_detailed_checks import CheckCase, KINDS, OUTCOMES
@@ -16,17 +12,15 @@ class ReferenceCases:
     record = CheckCase.record
 
     def setUp(self):
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            super().setUp()
-            self.admit()
-            self.doc = self.document()
-            self.doc['receipt_version'] = 'verification-receipt/2'
-            self.doc['detailed_checks'] = {k: dict(outcome='succeeded', record_id=k) for k in KINDS}
-            for k in KINDS:
-                self.doc['checks'][k] = 'checked_ok'
-            self.records = [self.make_record(k) for k in KINDS]
-            self.assertEqual(self.commit_records(self.records)['status'], 'committed')
-        restore_triggers(self, sf.DDL_TEXT)
+        super().setUp()
+        self.admit()
+        self.doc = self.document()
+        self.doc['receipt_version'] = 'verification-receipt/2'
+        self.doc['detailed_checks'] = {k: dict(outcome='succeeded', record_id=k) for k in KINDS}
+        for k in KINDS:
+            self.doc['checks'][k] = 'checked_ok'
+        self.records = [self.make_record(k) for k in KINDS]
+        self.assertEqual(self.commit_records(self.records)['status'], 'committed')
 
     def make_record(self, kind, outcome='succeeded'):
         r = self.record(kind=kind, outcome=outcome, **self.doc['claim'], cited_spans=self.doc['cited_spans'],

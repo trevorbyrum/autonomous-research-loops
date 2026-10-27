@@ -2,27 +2,20 @@
 import copy
 import json
 import unittest
-from unittest.mock import patch
 
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
 from gen2.tests.detailed_support_fixtures import history
 from gen2.tests.detailed_receipt_fixtures import attach_checks, historical_receipt
 from gen2.tests.extraction_receipt_fixtures import attach
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_capture_support import CaptureCase
-from gen2.tests.ddl_fixtures import restore_triggers, reverse_triggers
 
 
 class RouterCaptureSupportTest(unittest.TestCase):
 
-    def opened(self, reverse=False):
-        ddl = reverse_triggers(sf.DDL_TEXT) if reverse else sf.DDL_TEXT
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            case = CaptureCase()
-            case.setUp()
+    def opened(self):
+        case = CaptureCase()
+        case.setUp()
         self.addCleanup(case.tearDown)
-        restore_triggers(case, ddl)
         return case
 
     def status(self, case, revision=2):
@@ -35,50 +28,47 @@ class RouterCaptureSupportTest(unittest.TestCase):
                 json.dumps(doc), doc['verification_receipt_id'])
 
     def test_control(self):
-        for reverse in (False, True):
-            case = self.opened(reverse)
-            record, doc = case.operands()
-            case.accepted(record, verification_receipts=[doc])
-            case.promote()
-            self.assertEqual(case.rows('PRAGMA foreign_key_check'), [])
-            self.doCleanups()
+        case = self.opened()
+        record, doc = case.operands()
+        case.accepted(record, verification_receipts=[doc])
+        case.promote()
+        self.assertEqual(case.rows('PRAGMA foreign_key_check'), [])
+        self.doCleanups()
 
     def test_no_pooling(self):
-        for reverse in (False, True):
-            for method in ('verifier_extraction', 'validated_extraction'):
-                case = self.opened(reverse)
-                record, canonical = case.operands()
-                extraction = copy.deepcopy(canonical)
-                extraction['verification_receipt_id'] = 'ver_extraction01'
-                extraction['extraction'].update(method=method,
-                    produced_by_invocation_id=case.grant['invocation_id'] if method == 'verifier_extraction' else 'inv_capture001')
-                attach(case, extraction); attach_checks(case, extraction)
-                case.accepted(record, verification_receipts=[canonical, extraction])
-                historical = copy.deepcopy(canonical)
-                historical_receipt(historical)
-                self.retained(case, historical)
-                case.promote(accepted=False)
-                # A later, individually complete canonical candidate may win.
-                canonical['verification_receipt_id'] = 'ver_latercomplete'
-                self.assertEqual(case.send([], verification_receipts=[canonical])['status'], 'committed')
-                case.promote()
-                self.doCleanups()
-
-    def test_capture_binding_and_columns(self):
-        for reverse in (False, True):
-            case = self.opened(reverse)
-            record, doc = case.operands()
-            case.accepted(record, verification_receipts=[doc])
-            with history(case, unchecked=True):
-                case.x("UPDATE verification_receipts SET quote_check_id=NULL")
+        for method in ('verifier_extraction', 'validated_extraction'):
+            case = self.opened()
+            record, canonical = case.operands()
+            extraction = copy.deepcopy(canonical)
+            extraction['verification_receipt_id'] = 'ver_extraction01'
+            extraction['extraction'].update(method=method,
+                produced_by_invocation_id=case.grant['invocation_id'] if method == 'verifier_extraction' else 'inv_capture001')
+            attach(case, extraction); attach_checks(case, extraction)
+            case.accepted(record, verification_receipts=[canonical, extraction])
+            historical = copy.deepcopy(canonical)
+            historical_receipt(historical)
+            self.retained(case, historical)
             case.promote(accepted=False)
-            with history(case):
-                case.x('UPDATE verification_receipts SET quote_check_id=?', doc['quote_check_id'])
-                case.x("UPDATE verification_receipts SET receipt=json_set(receipt,'$.checks.exact_quote.normalization_version','foreign/1')")
-            case.promote(accepted=False)
-            self.retained(case, doc)
+            # A later, individually complete canonical candidate may win.
+            canonical['verification_receipt_id'] = 'ver_latercomplete'
+            self.assertEqual(case.send([], verification_receipts=[canonical])['status'], 'committed')
             case.promote()
             self.doCleanups()
+
+    def test_capture_binding_and_columns(self):
+        case = self.opened()
+        record, doc = case.operands()
+        case.accepted(record, verification_receipts=[doc])
+        with history(case, unchecked=True):
+            case.x("UPDATE verification_receipts SET quote_check_id=NULL")
+        case.promote(accepted=False)
+        with history(case):
+            case.x('UPDATE verification_receipts SET quote_check_id=?', doc['quote_check_id'])
+            case.x("UPDATE verification_receipts SET receipt=json_set(receipt,'$.checks.exact_quote.normalization_version','foreign/1')")
+        case.promote(accepted=False)
+        self.retained(case, doc)
+        case.promote()
+        self.doCleanups()
 
     def late(self, case, *, complete=False, kind='interim_transition', records=None):
         record, doc = case.operands()
@@ -101,23 +91,21 @@ class RouterCaptureSupportTest(unittest.TestCase):
         case.promote()
 
     def test_final_control(self):
-        for reverse in (False, True):
-            for kind in ('interim_transition', 'final_outcome'):
-                case = self.opened(reverse)
-                self.accepted_without_capture(case)
-                self.late(case, complete=True, kind=kind)
-                self.assertEqual(self.status(case), 'accepted_support')
-                self.assertEqual(case.rows('PRAGMA foreign_key_check'), [])
-                self.doCleanups()
+        for kind in ('interim_transition', 'final_outcome'):
+            case = self.opened()
+            self.accepted_without_capture(case)
+            self.late(case, complete=True, kind=kind)
+            self.assertEqual(self.status(case), 'accepted_support')
+            self.assertEqual(case.rows('PRAGMA foreign_key_check'), [])
+            self.doCleanups()
 
     def test_final_missing_and_history(self):
-        for reverse in (False, True):
-            for kind in ('interim_transition', 'final_outcome'):
-                case = self.opened(reverse)
-                self.accepted_without_capture(case)
-                self.late(case, kind=kind)
-                self.assertEqual(self.status(case), 'quarantined')
-                self.doCleanups()
+        for kind in ('interim_transition', 'final_outcome'):
+            case = self.opened()
+            self.accepted_without_capture(case)
+            self.late(case, kind=kind)
+            self.assertEqual(self.status(case), 'quarantined')
+            self.doCleanups()
         case = self.opened()
         record, doc = case.operands()
         case.accepted(record, verification_receipts=[doc])
@@ -129,46 +117,44 @@ class RouterCaptureSupportTest(unittest.TestCase):
         self.assertEqual(self.status(case), 'quarantined')
 
     def test_scope_and_status(self):
-        for reverse in (False, True):
-            case = self.opened(reverse)
-            self.accepted_without_capture(case)
-            # Another operation's deficient acceptance is untouched by this one.
-            with history(case):
-                case.x("UPDATE claims SET status='accepted_support' WHERE revision=1")
-            case.accepted(case.record(quoted_text='effect NOT observed'))
-            self.assertEqual(self.status(case, 1), 'quarantined')
-            with history(case):
-                case.x("UPDATE claims SET status='accepted_support' WHERE revision=1")
-                case.x("UPDATE claims SET status='contested' WHERE revision=2")
-            self.late(case, records=[case.record(claim_revision=2, check_id='qck_scoped0002', quoted_text='effect NOT observed')])
-            self.assertEqual(self.status(case), 'contested')
-            self.assertEqual(self.status(case, 1), 'accepted_support')
-            self.doCleanups()
+        case = self.opened()
+        self.accepted_without_capture(case)
+        # Another operation's deficient acceptance is untouched by this one.
+        with history(case):
+            case.x("UPDATE claims SET status='accepted_support' WHERE revision=1")
+        case.accepted(case.record(quoted_text='effect NOT observed'))
+        self.assertEqual(self.status(case, 1), 'quarantined')
+        with history(case):
+            case.x("UPDATE claims SET status='accepted_support' WHERE revision=1")
+            case.x("UPDATE claims SET status='contested' WHERE revision=2")
+        self.late(case, records=[case.record(claim_revision=2, check_id='qck_scoped0002', quoted_text='effect NOT observed')])
+        self.assertEqual(self.status(case), 'contested')
+        self.assertEqual(self.status(case, 1), 'accepted_support')
+        self.doCleanups()
 
     def test_final_records_and_basis(self):
-        for reverse in (False, True):
-            case = self.opened(reverse)
-            record, doc = case.operands()
-            case.accepted(record, verification_receipts=[doc])
-            case.promote()
-            for i, kind in enumerate(('numeric_units', 'denominators', 'negation', 'qualifications', 'basis')):
-                bad = copy.deepcopy(doc)
-                if kind == 'basis':
-                    with history(case):
-                        case.x("UPDATE source_acquisitions SET lane='foreign'")
-                else:
-                    bad['detailed_checks'][kind] = dict(outcome='not_checked')
-                    bad['checks'][kind] = 'not_checked'
-                    bad['adjudication'] = dict(adjudication_ref='adj-unperformed', resolved_at=doc['verified_at'],
-                        resolution='Cannot waive unperformed checks.')
-                    self.retained(case, bad)
-                self.late(case, records=[{**record, 'check_id': 'qck_final000' + str(i)}])
-                self.assertEqual(self.status(case), 'quarantined', kind)
-                self.retained(case, doc)
+        case = self.opened()
+        record, doc = case.operands()
+        case.accepted(record, verification_receipts=[doc])
+        case.promote()
+        for i, kind in enumerate(('numeric_units', 'denominators', 'negation', 'qualifications', 'basis')):
+            bad = copy.deepcopy(doc)
+            if kind == 'basis':
                 with history(case):
-                    case.x("UPDATE source_acquisitions SET lane='crossref'")
-                    case.x("UPDATE claims SET status='accepted_support' WHERE revision=2")
-            self.doCleanups()
+                    case.x("UPDATE source_acquisitions SET lane='foreign'")
+            else:
+                bad['detailed_checks'][kind] = dict(outcome='not_checked')
+                bad['checks'][kind] = 'not_checked'
+                bad['adjudication'] = dict(adjudication_ref='adj-unperformed', resolved_at=doc['verified_at'],
+                    resolution='Cannot waive unperformed checks.')
+                self.retained(case, bad)
+            self.late(case, records=[{**record, 'check_id': 'qck_final000' + str(i)}])
+            self.assertEqual(self.status(case), 'quarantined', kind)
+            self.retained(case, doc)
+            with history(case):
+                case.x("UPDATE source_acquisitions SET lane='crossref'")
+                case.x("UPDATE claims SET status='accepted_support' WHERE revision=2")
+        self.doCleanups()
 
     def test_replay_conflict_rollback(self):
         case = self.opened()

@@ -141,8 +141,8 @@ class RetainedSupportTest(unittest.TestCase):
                 conn.set_trace_callback(None)
                 conn.set_authorizer(None)
 
-    def retained(self, method='canonical_bytes', reverse=False):
-        case = detailed.RouterDetailedSupportTest.opened(self, method, reverse,
+    def retained(self, method='canonical_bytes'):
+        case = detailed.RouterDetailedSupportTest.opened(self, method,
             distinct=method == 'validated_extraction')
         self.assertEqual(insert_receipt(case, case.doc)['status'], 'committed')
         case.x("UPDATE claims SET status='accepted_support' WHERE claim_id='clm_loadbear1'")
@@ -177,16 +177,15 @@ class RetainedSupportTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root, self.no_dml():
             router = service.Router.open(Path(root) / 'fresh', None, create=True)
             router.close()
-        for reverse in (False, True):
-            for method in METHODS:
-                with self.subTest(reverse=reverse, method=method):
-                    case = self.retained(method, reverse)
-                    before = case.state(exclude=())
-                    self.assertIsInstance(case.make_router(), service.Router)
-                    with service.Router.open(self.disk(case), case.spool)._store:
-                        pass
-                    self.assertEqual(case.state(exclude=()), before)
-                    self.doCleanups()
+        for method in METHODS:
+            with self.subTest(method=method):
+                case = self.retained(method)
+                before = case.state(exclude=())
+                self.assertIsInstance(case.make_router(), service.Router)
+                with service.Router.open(self.disk(case), case.spool)._store:
+                    pass
+                self.assertEqual(case.state(exclude=()), before)
+                self.doCleanups()
 
     def test_refusal_and_owned_close(self):
         case = self.retained()

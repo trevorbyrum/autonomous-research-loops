@@ -1,11 +1,8 @@
 """Raw SQL 35 integrity bindings and conflict immutability."""
 import json
 import sqlite3
-from unittest.mock import patch
 
-from gen2.tests.ddl_fixtures import restore_triggers
 
-from gen2.store import db
 from gen2.tests import store_fixtures as fx
 
 from gen2.tests.test_detailed_checks import CheckCase, KINDS, RecordMatrix
@@ -16,16 +13,14 @@ class DDLCheckTest(RecordMatrix, CheckCase):
     test_domain = test_missing_evidence = test_spans = None
 
     def setUp(self):
-        # Preserve mutated/reversed target objects while setup uses an admitted schema.
+        # Install raw target objects over admitted fixture operands.
         with sqlite3.connect(':memory:') as reference:
             reference.executescript(fx.DDL_TEXT)
             objects = reference.execute("SELECT sql FROM sqlite_schema WHERE tbl_name='detailed_check_records' AND sql IS NOT NULL ORDER BY rowid").fetchall()
-        with patch.object(fx, 'DDL_TEXT', db.schema_text()):
-            CheckCase.setUp(self)
+        CheckCase.setUp(self)
         self.x('DROP TABLE detailed_check_records')
         for sql, in objects:
             self.x(sql)
-        restore_triggers(self, fx.DDL_TEXT)
 
     def send(self, record, grant=None, op='op_detailcheck1'):
         self.x('SAVEPOINT detailed_record')
@@ -46,7 +41,6 @@ class DDLCheckTest(RecordMatrix, CheckCase):
             return {'status': 'rejected'}
         finally:
             self.x('RELEASE detailed_record')
-
 
 
     def test_immutable(self):

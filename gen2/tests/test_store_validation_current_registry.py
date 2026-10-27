@@ -1,4 +1,4 @@
-"""Raw current-revision INSERT guard under normal and reversed trigger order."""
+"""Raw current-revision INSERT guard under the declared trigger catalog."""
 from gen2.tests import test_validation_current_registry as current
 from gen2.tests import test_extraction_records as records, test_store_extraction_validations_v2 as raw
 

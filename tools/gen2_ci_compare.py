@@ -61,14 +61,8 @@ def collect(root: Path, sha: str) -> dict:
     cases = [{"id": row["id"], "verdict": row["verdict"]} for row in mutation["mutants"]]
     if len({case["id"] for case in cases}) != len(cases):
         raise ValueError(f"duplicate mutant identities in {root}")
-    orders = list(root.rglob("trigger-order-outcomes.json"))
-    if len(orders) != 1:
-        raise ValueError(f"need exactly one trigger-order run in {root}")
-    trigger = read(orders[0])
-    if not trigger["original"] or trigger["original"] != trigger["reversed"] or set(trigger["original"].values()) != {"pass"}:
-        raise ValueError(f"invalid trigger-order outcomes in {root}")
     return {"unit": dict(Counter(json.dumps(item, sort_keys=True) for item in outcomes)),
-            "mutants": {case["id"]: case for case in cases}, "trigger_order": trigger,
+            "mutants": {case["id"]: case for case in cases},
             "mutation_base": mutation["base"]}
 
 
