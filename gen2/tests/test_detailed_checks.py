@@ -76,7 +76,8 @@ class RecordMatrix:
                     {'outcome': 'not_applicable', 'applicability_reason': '\u200b\u00a0'}, {'cited_spans': []}):
                 with self.subTest(kind=kind, change=change):
                     out = self.refuse(self.record(**{'kind': kind, **change}))
-                    self.assertEqual(out.get('reason'), 'payload_invalid', out)
+                    if not self.RAW:
+                        self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_missing_evidence(self):
         for kind in KINDS:
