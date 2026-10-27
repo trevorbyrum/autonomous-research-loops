@@ -42,9 +42,9 @@ re-evaluates every accepted load-bearing claim under a snapshot on every open,
 including both Router constructors and station start, and refuses unsupported
 history before startup effects. The DDL keeps keys, FKs, immutability/delete
 guards, role separation, existence-level bindings and state transitions,
-including SQL 03's original promotion gates. By the S5 dependency ruling,
-SQL 22's extraction-tier guard and SQL 35's detailed-record domain guard also
-remain; their shared content/nonblank views move unchanged into SQL 22.
+including SQL 03's original promotion gates. `ExtractionRecords.write` checks
+extraction tiers against `DetailedChecks._content_rank`; detailed-record schemas
+and `DetailedChecks.authenticate` own report and span domains.
 
 
 `AcquisitionAdmission` in `acquisitions.py` (2d-4b2) admits fixture re-access
@@ -102,17 +102,13 @@ Same-family replay permits byte equality or disagreement and remains integrity o
 identities/versions. Exact acquisition, independent validator/producer lineage,
 retained evidence and byte-hash comparisons remain enforced in Router commits
 and raw DDL. The optional successor outcome array authenticates evidence outside
-the writer lock and derives attribution from the committing capability. SQL 30
-guards its new comparison JSON column under the closed member-name family.
+the writer lock and derives attribution from the committing capability.
 
-SQL 23 begins the store-wide JSON member-name domain: decoded names are unique
-within each actual object under binary equality and contain no U+0000. NUL
-in string values remains allowed. This first repair part covers extraction
-output/comparison references and `quote_checks.match_result`, with INSERT and
-UPDATE guards generated from one checked template. Router outcome admission
-and Store preparation refuse these names before logical serialization/writes;
-the matcher emits fixed result names. JSON2 part 1 adds both guards on the
-three search_observations JSON columns. Its Observations collaborator in
+Router outcome admission and `Store._prepare` enforce the store-wide JSON
+member-name domain before logical serialization/writes: decoded names are
+unique within each actual object under binary equality and contain no U+0000.
+NUL in string values remains allowed; the matcher emits fixed result names.
+The Observations collaborator in
 observations.py admits logical names before hashing, through the same Router
 transaction and existing capability/lease fences; service.py supplies only
 construction and public delegation. ObservationCore declares the schema,

@@ -41,6 +41,8 @@ class ExtractionRecords:
                     topic_id=inv["topic_id"], media_type=ref["media_type"])
 
     def write(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
+        from gen2.router.detailed_checks import DetailedChecks
+
         written = {}
         for table, identity, attribution in (("source_extractions", "extraction_id", "extracting_invocation_id"),
                 ("extraction_validations", "validation_id", "validator_invocation_id"),
@@ -52,6 +54,10 @@ class ExtractionRecords:
                 row = {**record, attribution: inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now}
                 if table == "source_extractions":
                     row["topic_id"] = inv["topic_id"]
+                    acquired = self._core._store.select("source_acquisitions", {key: row[key] for key in
+                        ("topic_id", "work_id", "source_version", "event_id", "verifier_invocation_id")})
+                    if not acquired or boundary.TIER[row["supported_tier"]] > DetailedChecks(self._core)._content_rank(acquired[0]):
+                        raise Refusal("payload_invalid", "extraction tier exceeds recorded content")
                 self._core._store.insert(table, row)
             if records:
                 written[table] = [r[identity] for r in records]

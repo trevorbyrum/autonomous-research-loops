@@ -1,5 +1,8 @@
 """Isolated SQL 22 / Router guards; fixture execution only, no receipt changes."""
 import sqlite3
+from unittest.mock import patch
+
+from gen2.router.boundary import Refusal
 
 from gen2.tests.router_fixtures import OTHER, empty_outcome
 from gen2.tests.test_reaccess_admission import AcquisitionCase, RAW, STAMP, raw_acquisition
@@ -82,7 +85,20 @@ class RecordTest(RecordCase):
     def test_tier(self):
         record = self.extraction()
         record["supported_tier"] = "full_text"
-        self.refuse(source_extractions=[record])
+        before, refused = self.state(), []
+        original = self.router._extractions.write
+        def write(*args):
+            try:
+                return original(*args)
+            except Refusal as exc:
+                refused.append((exc.reason, exc.detail))
+                raise
+        with patch.object(self.router._extractions, "write", side_effect=write):
+            out = self.send(source_extractions=[record])
+        self.assertEqual((out["status"], out.get("reason"), out.get("detail")),
+            ("rejected", "payload_invalid", "extraction tier exceeds recorded content"))
+        self.assertEqual(refused, [("payload_invalid", "extraction tier exceeds recorded content")])
+        self.assert_audited_state(before, 1)
 
     def test_extractor(self):
         self.basis(target_grant=self.verifier)

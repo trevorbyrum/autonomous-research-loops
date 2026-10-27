@@ -61,7 +61,7 @@ class RouterInsertionRulesTest(unittest.TestCase):
                         case.admit()
                         tables.seed_spans(case)
                         self.assertEqual(case.router.admit_reaccess(case.request(event_id='rev_other0001'))['status'], 'admitted')
-                        self.assertEqual(sorted(case.rows('SELECT recorded_tier_rank FROM source_acquisition_content_tiers')), [(2,), (3,)])
+                        self.assertEqual(sorted((case.router._detailed_checks._content_rank(a),) for a in case.store.select('source_acquisitions')), [(2,), (3,)])
                         label = 'canonical' if method == 'canonical_bytes' else 'extraction'
                         self.refuse(case, tables.document(case, method, 'full_text', spans=(tables.PAGE,)),
                             label + ' receipt tier exceeds recorded content')

@@ -1,15 +1,25 @@
 """Recorded fixture outputs for receipt controls; no extractor execution claim."""
 import json
+from types import SimpleNamespace
+
+from gen2.router.detailed_checks import DetailedChecks
 
 from gen2.core import canonical
 from gen2.tests import store_fixtures as sf
 
 
 def seed(case, verifier=None, producer=None):
-    rows = case.db.execute("SELECT * FROM source_acquisition_content_tiers").fetchall()
-    names = [d[0] for d in case.db.execute("SELECT * FROM source_acquisition_content_tiers LIMIT 0").description]
+    cursor = case.db.execute("SELECT * FROM source_acquisitions")
+    names = [d[0] for d in cursor.description]
+    rows = cursor.fetchall()
     for values in rows:
         a = dict(zip(names, values))
+        # Raw fixtures can be inside a savepoint, so supply just the existing
+        # owner's observation read rather than adopting another Store.
+        observations = [{'coverage_state': state} for state, in case.rows(
+            "SELECT coverage_state FROM search_observations WHERE observation_id=?", a['observation_id'])]
+        core = SimpleNamespace(_store=SimpleNamespace(select=lambda *args: observations))
+        tier = DetailedChecks(core)._content_rank(a)
         key = {k: a[k] for k in ("topic_id", "work_id", "source_version", "event_id", "verifier_invocation_id")}
         eid = "receipt-" + canonical.logical_hash(key)[7:]
         if case.rows("SELECT 1 FROM source_extractions WHERE extraction_id = ?", eid):
@@ -34,7 +44,7 @@ def seed(case, verifier=None, producer=None):
         size, media = case.rows("SELECT size_bytes, media_type FROM artifacts WHERE content_hash = ?", a['content_hash'])[0]
         ref = dict(content_hash=a['content_hash'], size_bytes=size, media_type=media)
         row = dict(extraction_id=eid, **key, extractor_identity=tool, extractor_version='fixture/1', extracting_invocation_id=inv,
-            output_ref=json.dumps(ref), supported_tier=('bibliographic', 'abstract', 'full_text')[min(a['recorded_tier_rank'], 3)-1],
+            output_ref=json.dumps(ref), supported_tier=('bibliographic', 'abstract', 'full_text')[tier-1],
             recorded_by_operation_id=op, created_at=sf.T, extractor_registry_version=revision)
         if routed:
             from gen2.tests.router_fixtures import empty_outcome

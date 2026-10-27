@@ -136,7 +136,7 @@ class TableRouterTest(unittest.TestCase):
                         seed_spans(case)
                         self.assertEqual(case.router.admit_reaccess(case.request(work_id=work, source_version=version,
                             event_id="rev_other0001"))["status"], "admitted")
-                        self.assertEqual(sorted(case.rows("SELECT recorded_tier_rank FROM source_acquisition_content_tiers")), [(1,), (3,)])
+                        self.assertEqual(sorted((case.router._detailed_checks._content_rank(a),) for a in case.store.select('source_acquisitions')), [(1,), (3,)])
                         self.refuse(case, document(case, method, "bibliographic"))
                     finally:
                         case.tearDown()

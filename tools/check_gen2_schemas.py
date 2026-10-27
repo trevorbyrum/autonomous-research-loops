@@ -377,8 +377,6 @@ def check_ddl(root: Path) -> tuple[list[str], int]:
                             break
             if not ok:
                 failures.append(f"{rel}: {table} foreign key -> {parent}({', '.join(parent_cols)}) does not target a primary key or full unique index")
-    from tools.gen2_json_member_domain import check as check_member_domain
-    failures += check_member_domain(root, conn, text)
     conn.close()
     return failures, len(tables)
 

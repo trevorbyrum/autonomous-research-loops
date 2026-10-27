@@ -19,15 +19,10 @@
 13-quote-adjudication.sql
 14-source-acquisitions.sql
 22-extraction-records.sql
-23-json-member-domain.sql
 24-attempted-request-bytes.sql
 25-retained-request-representation.sql
-26-json-member-rollout.sql
-27-json-member-completion.sql
 28-extractor-registry.sql
 29-extraction-validations-v2.sql
-30-extraction-v2-member-domain.sql
 31-validation-current-registry.sql
 35-detailed-check-records.sql
-36-detailed-check-member-domain.sql
 43-store-generation.sql

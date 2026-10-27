@@ -84,7 +84,9 @@ class RecordMatrix:
             for outcome in OUTCOMES[:3]:
                 record = self.record(kind=kind, outcome=outcome, applicability_reason='Explicit scope rationale')
                 record['evidence_ref'] = None
-                self.refuse(record)
+                out = self.refuse(record)
+                if not self.RAW:
+                    self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_bindings(self):
         for kind in KINDS:
@@ -104,7 +106,9 @@ class RecordMatrix:
             for span in ({'start': 0.5, 'end': 1}, {'start': -1, 'end': 2}, {'start': 0, 'end': 0},
                     {'start': 0, 'end': 2, 'locator': {'kind': 'invented', 'value': '1'}}):
                 for kind in KINDS:
-                    self.refuse(self.record(kind=kind, **{field: [span]}))
+                    out = self.refuse(self.record(kind=kind, **{field: [span]}))
+                    if not self.RAW:
+                        self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_topic_artifact(self):
         self.x("DROP TRIGGER artifact_topics_immutable_d")
