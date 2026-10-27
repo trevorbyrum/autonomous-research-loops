@@ -1,7 +1,7 @@
 # Traceability mapping source (R2, ruling 5): one entry per invariant of docs/gen2/INVARIANTS.md.
 # `enforced_at` is "<kind>: <locator>" (kind: router, ddl, schema, module, tool, gateway, doc); `tests` is a list of test locators.
 # tools/gen2_traceability.py renders docs/gen2/TRACEABILITY.md from this file; tools/check_gen2_locators.py checks every locator here.
-# Built from the retired INVARIANTS "Enforced at" narratives, verified against the code of 2026-10-27; what no longer exists is not listed.
+# Built from the INVARIANTS "Enforced at" text and the current S5/S6 owners, verified against the code of 2026-10-27; what no longer exists is not listed.
 
 [invariant.RG-1a]
 enforced_at = [
@@ -178,8 +178,14 @@ enforced_at = [
   "module: gen2/store/api.py",
   "module: gen2/store/api.py::open_store",
   "tool: tools/gen2_import_dry_run.py",
+  "module: gen2/store/api.py::Store._prepare",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_json_global_admission.py::GlobalAdmissionTest.test_store_names",
+  "gen2/tests/test_json_global_admission.py::GlobalAdmissionTest.test_store_all_columns_control",
+  "gen2/tests/test_json_member_admission.py::ColumnCoverageTest.test_json_columns_are_prepared",
+  "gen2/tests/test_json_member_admission.py::AdmissionTest.test_store_nul",
+]
 
 [invariant.L-1]
 enforced_at = [
@@ -193,8 +199,13 @@ enforced_at = []
 tests = []
 
 [invariant.L-3]
-enforced_at = []
-tests = []
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
+]
+tests = [
+  "gen2/tests/test_store_ddl_invocations.py::InvocationLifecycleTest.test_running_requires_process_identity_not_a_pid",
+  "gen2/tests/test_store_ddl_invocations.py::InvocationLifecycleTest.test_process_identity_is_write_once",
+]
 
 [invariant.L-4]
 enforced_at = [
@@ -294,24 +305,54 @@ tests = []
 enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::claims",
   "router: gen2/router/verification.py::Verification.write_holds",
+  "router: gen2/router/detailed_checks.py::DetailedChecks",
+  "router: gen2/router/evidence_writer.py::EvidenceWriter",
+  "router: gen2/router/evidence_writer.py::EvidenceWriter._require_acquired_content",
+  "router: gen2/router/detailed_checks.py::DetailedChecks.require_support",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_insertion_rules.py::RouterInsertionRulesTest.test_canonical_content_ceiling",
+  "gen2/tests/test_router_insertion_rules.py::RouterInsertionRulesTest.test_extraction_content_ceiling",
+  "gen2/tests/test_router_insertion_rules.py::RouterInsertionRulesTest.test_table_availability",
+]
 
 [invariant.V-3]
 enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
-  "module: gen2/core/canonical.py::canonical_bytes",
   "ddl: gen2/store/schema/14-source-acquisitions.sql::source_acquisitions",
   "router: gen2/router/extractor_registry.py",
+  "router: gen2/router/detailed_checks.py::DetailedChecks",
+  "router: gen2/router/evidence_writer.py::EvidenceWriter",
+  "ddl: gen2/store/schema/22-extraction-records.sql::source_extractions",
+  "router: gen2/router/detailed_checks.py::DetailedChecks.require_support",
+  "router: gen2/router/detailed_checks.py::DetailedChecks._basis_member",
+  "router: gen2/router/detailed_checks.py::DetailedChecks._extraction_basis",
+  "router: gen2/router/evidence_writer.py::EvidenceWriter._require_acquired_content",
+  "router: gen2/router/evidence_writer.py::EvidenceWriter._require_own_extraction",
+  "router: gen2/router/evidence_writer.py::EvidenceWriter._require_validated_extraction",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_support_basis.py::RouterSupportBasisTest.test_extraction",
+  "gen2/tests/test_router_support_basis.py::RouterSupportBasisTest.test_validation",
+  "gen2/tests/test_router_support_basis.py::RouterSupportBasisTest.test_no_pooling",
+  "gen2/tests/router_fixtures.py::OwnCases.test_missing",
+  "gen2/tests/test_validated_extraction_receipts.py::ValidatedReceiptRouterTest.test_independent_tier",
+]
 
 [invariant.V-4]
 enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::claims_accepted_support_needs_receipt",
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts_use_matches_claim",
+  "router: gen2/router/detailed_checks.py::DetailedChecks",
+  "router: gen2/router/evidence_writer.py::EvidenceWriter",
+  "router: gen2/router/detailed_checks.py::DetailedChecks.require_support",
+  "router: gen2/router/detailed_checks.py::DetailedChecks._has_basis",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_detailed_support.py::RouterDetailedSupportTest.test_claim_owned_gates",
+  "gen2/tests/test_router_detailed_support.py::RouterDetailedSupportTest.test_no_receipt_pooling",
+  "gen2/tests/test_router_support_basis.py::RouterSupportBasisTest.test_no_pooling",
+]
 
 [invariant.V-5]
 enforced_at = []
@@ -332,8 +373,16 @@ tests = []
 enforced_at = [
   "schema: gen2/schema/verification-receipt.schema.json",
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
+  "router: gen2/router/detailed_checks.py::DetailedChecks",
+  "router: gen2/router/evidence_writer.py::EvidenceWriter",
+  "router: gen2/router/detailed_checks.py::DetailedChecks.require_receipt",
+  "router: gen2/router/detailed_checks.py::DetailedChecks._require_performed_references",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_detailed_check_receipts.py::ReferenceCases.test_domain",
+  "gen2/tests/test_mandatory_detailed_receipts.py::MandatoryCases.test_missing",
+  "gen2/tests/test_router_detailed_support.py::RouterDetailedSupportTest.test_claim_owned_gates",
+]
 
 [invariant.V-9]
 enforced_at = [
@@ -476,8 +525,12 @@ enforced_at = []
 tests = []
 
 [invariant.G-8]
-enforced_at = []
-tests = []
+enforced_at = [
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::queue_completion_needs_current_dossier_approval",
+]
+tests = [
+  "gen2/tests/test_store_ddl_contracts.py::ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",
+]
 
 [invariant.G-13]
 enforced_at = [
@@ -518,9 +571,12 @@ enforced_at = [
   "router: gen2/router/scheduling.py",
   "ddl: gen2/store/schema/02-invocations-and-records.sql::review_triggers",
   "router: gen2/router/service.py",
+  "router: gen2/router/evidence_writer.py::EvidenceWriter._close_review_episodes",
+  "router: gen2/router/scheduling.py::Scheduling.raise_signal",
 ]
 tests = [
   "gen2/tests/test_router_workflow.py",
+  "gen2/tests/test_router_workflow.py::ReviewClosureTest.test_an_episode_opened_after_admission_is_not_closed_whatever_the_clock_read",
 ]
 
 [invariant.P-1]
@@ -577,6 +633,8 @@ tests = []
 enforced_at = [
   "gateway: gateway/research_gateway/registry/schema.sql::calls",
   "gateway: gateway/research_gateway/registry/schema.sql",
+  "gateway: gateway/research_gateway/app.py::INVOCATION_HEADER",
+  "module: gen2/gateway_client/client.py",
 ]
 tests = [
   "gateway/tests/test_correlation.py",
