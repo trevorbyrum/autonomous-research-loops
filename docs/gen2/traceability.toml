@@ -488,7 +488,7 @@ tests = [
   "gen2/tests/test_router_support_basis.py::RouterSupportBasisTest.test_extraction",
   "gen2/tests/test_router_support_basis.py::RouterSupportBasisTest.test_validation",
   "gen2/tests/test_router_support_basis.py::RouterSupportBasisTest.test_no_pooling",
-  "gen2/tests/router_fixtures.py::OwnCases.test_missing",
+  "gen2/tests/store_fixtures.py::OwnCases.test_missing",
   "gen2/tests/test_validated_extraction_receipts.py::ValidatedReceiptRouterTest.test_independent_tier",
 ]
 
