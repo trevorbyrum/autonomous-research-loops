@@ -86,6 +86,11 @@ Both are re-indexed from the reviewed commit before every Gate D and are availab
 - **Coder pre-check.** For mutation-sensitive changes, the coder runs `make gen2-accept` on a disposable copy before pushing, and batches all survivors into one push. The independent verifier still runs afterwards.
 - **Two coders** on independent tasks, as in Authorities.
 
+## Checking-pipeline rules (operator ruling S2-7, 2026-10-27)
+- **Harness changes.** After S2d, the mutation and acceptance pipeline changes only when a real campaign produced a wrong verdict: a survivor later shown killed, or a kill later shown false on clean code. A reviewer-constructed harness adversary is recorded as non-blocking unless the suite can produce the condition.
+- **Cost before review.** A tooling repair states its cost budget in the brief and measures it before review (the S2b-C1 lesson).
+- **Trigger-order** is retired after S6's final DDL baseline run (S2-2).
+
 ## Review throughput (the user, 2026-10-05)
 Adopted after asking what research suggests for speeding up the build. The research: repair loops get most of their achievable gain within 3–4 rounds (arXiv 2607.05197). Review rounds and turnaround grow with change size (Google's modern code review study; Greptile's analysis). Expensive suites belong once at the gate, not on every iteration (Google's diff-based mutation testing; merge-queue practice). These rules apply from the next dispatch onward. They do not change a review already running.
 

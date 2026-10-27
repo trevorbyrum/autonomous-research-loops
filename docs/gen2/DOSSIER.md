@@ -151,6 +151,15 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
   1. **Parallel test execution.** The acceptance unit run and the stage-2 full-suite mutation runs execute as parallel shards, with merged coverage. The tests and verdict rules don't change.
   2. **Design review before code** for new slices, 6b1 onward: Astra reviews the slice design against the existing code before the coder starts.
   3. **Up to two coders at once** on independent tasks, each in its own worktree with its own PR, verifier and Astra review.
+- **2026-10-27, Gate S #2 (Trevor: "I'm fine with all those recommendations"; report `private/reviews/gen2-gate-s2-fable-20261027.md`):**
+  - **S2-1:** slice 7 is absorbed. 6b1′ = the `dossier/2` codec, persistence and hash truth. 6b2′ = typed completion records, including the fresh review, plus the gate evaluator with the approval prerequisite, landed as two parts.
+  - **S2-2:** retire trigger-order after S6's final baseline run. This amends ruling 3 bullet 1.
+  - **S2-3:** limit stage 2 to the child-spawning test modules, but only once at least 10 sharded campaigns show stage 2 never flips a verdict.
+  - **S2-4:** 2e1 defers the subscription-window snapshot reader to Phase 3 (DEBT-015).
+  - **S2-5:** 2e2-minimum scope per Gate S #2 §6.3. The deferred S5/S6 items go to Phase 3 (DEBT-044–048).
+  - **S2-6 (option A):** INVARIANTS §13 changes so the live S1–S3 intake conversation is Phase 3. 2f runs under an operator-authored contract (DEBT-049). The INVARIANTS text changes in R2.
+  - **S2-7:** charter rules on harness changes and on measuring cost before review.
+  - **Also approved:** S6 widened to the value-domain DDL retained by S5 (SQL 22 `source_extractions_tier`, SQL 35 `detailed_check_records_domain`/`_spans`, their helper views), and deletion of the unused `.github/workflows/gen2-check.yml`.
 
 ## Current contract
 

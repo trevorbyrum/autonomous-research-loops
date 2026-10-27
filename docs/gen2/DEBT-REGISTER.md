@@ -159,7 +159,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: phase 3
-- what: Given a topic profile and a cadence, estimate the API cost and the subscription-plan share (for example, the percent of a weekly window) that the cadence brings. It is calibrated from the Phase 2+ usage records (task 2e1 captures them per invocation and attempt: tokens, model, provider-reported cost when there is one, wall time, correlated gateway calls and credits, kind, topic and cadence), by fitting tokens per percent-of-window from quiet-account windows, and it reports RANGES with the calibration's uncertainty, never a bare point; an unreported value is `unknown`, not zero. A provider's subscription window is account-wide, shared by everything that uses the account, so the before and after readings 2e1 stores are context and never per-run attribution: the estimator may use them only through the quiet-account calibration and must not present a per-run (or per-agent) share read from them. One Phase 2 run cannot calibrate it, which is why it waits for Phase 3.
+- what: Given a topic profile and a cadence, estimate the API cost and the subscription-plan share (for example, the percent of a weekly window) that the cadence brings. It is calibrated from the Phase 2+ usage records (task 2e1 captures them per invocation and attempt; under operator ruling S2-4, 2026-10-27, the per-provider subscription-window snapshot reader is deferred to Phase 3 with this entry: tokens, model, provider-reported cost when there is one, wall time, correlated gateway calls and credits, kind, topic and cadence), by fitting tokens per percent-of-window from quiet-account windows, and it reports RANGES with the calibration's uncertainty, never a bare point; an unreported value is `unknown`, not zero. A provider's subscription window is account-wide, shared by everything that uses the account, so the before and after readings 2e1 stores are context and never per-run attribution: the estimator may use them only through the quiet-account calibration and must not present a per-run (or per-agent) share read from them. One Phase 2 run cannot calibrate it, which is why it waits for Phase 3.
 - source: operator request 2026-09-29, "OPERATOR REQUEST: per-run usage metrics sufficient to estimate cadence cost (API and subscription share)" (REVIEW-LOG.md; BUILD-STATE.md "Carried to Phase 3 - usage estimator"); recorded by Astra's 2q-a review F3 (private/reviews/gen2-2q-a-astra-review-20261003.md)
 - removal: Phase 3 delivers the estimator with its calibration method, reporting ranges and the uncertainty of the fit, and with account-wide readings never attributed to a run; the Phase 3 review confirms it before Phase 3 closes.
 
@@ -494,3 +494,50 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - source: operator ruling 2026-10-24; plan-audit F10; INVARIANTS P-3, P-4
 - removal: the envelope is produced from local state with newer-unapproved disclosure, the three facts are computed independently, and the 2g review confirms.
 
+### DEBT-044 - method-fit review (Phase 3)
+- kind: obligation
+- status: open
+- owner: phase 3
+- what: The S5(b) method-fit review is deferred out of 2e2-minimum. Phase 2 runs without it, and nothing presents a run as method-fit reviewed.
+- source: operator ruling S2-5/S2-6, 2026-10-27 (Gate S #2, private/reviews/gen2-gate-s2-fable-20261027.md §6.3/§6.5)
+- removal: Phase 3 delivers the method-fit review in the S5 flow, and its review confirms it.
+
+### DEBT-045 - signal-queue detectors beyond the two cheap deterministic ones (Phase 3)
+- kind: obligation
+- status: open
+- owner: phase 3
+- what: Only the two cheap deterministic signal detectors ship in 2e2-minimum. The rest of the S5(b) detector set is deferred.
+- source: operator ruling S2-5/S2-6, 2026-10-27 (Gate S #2, private/reviews/gen2-gate-s2-fable-20261027.md §6.3/§6.5)
+- removal: Phase 3 delivers the remaining detectors with qualification evidence.
+
+### DEBT-046 - facet audit (Phase 3)
+- kind: obligation
+- status: open
+- owner: phase 3
+- what: The S5(c) facet audit is deferred. It is not a conjunctive completion gate, so Phase 2 completion does not depend on it.
+- source: operator ruling S2-5/S2-6, 2026-10-27 (Gate S #2, private/reviews/gen2-gate-s2-fable-20261027.md §6.3/§6.5)
+- removal: Phase 3 delivers the facet audit and its review confirms it.
+
+### DEBT-047 - protected exploration budget, bridge and reframing probes (Phase 3)
+- kind: obligation
+- status: open
+- owner: phase 3
+- what: The first half of S6 (protected exploration budget, bridge and reframing probes) is deferred as qualified automation.
+- source: operator ruling S2-5/S2-6, 2026-10-27 (Gate S #2, private/reviews/gen2-gate-s2-fable-20261027.md §6.3/§6.5)
+- removal: Phase 3 delivers them under the decision-layer qualification rules.
+
+### DEBT-048 - operational-measurement set (Phase 3)
+- kind: obligation
+- status: open
+- owner: phase 3
+- what: The §4 operational-measurement set is deferred out of 2e2-minimum.
+- source: operator ruling S2-5/S2-6, 2026-10-27 (Gate S #2, private/reviews/gen2-gate-s2-fable-20261027.md §6.3/§6.5)
+- removal: Phase 3 delivers the measurement set, and its review confirms it.
+
+### DEBT-049 - live S1–S3 intake and scoping conversation (Phase 3)
+- kind: obligation
+- status: open
+- owner: phase 3
+- what: INVARIANTS §13 originally placed the real intake conversation and scoping workflow (S1–S3 live) in Phase 2. Under S2-6 option A it moves to Phase 3. Phase 2 (2f) runs under an operator-authored contract, which the operator confirms through G-4's durable machinery.
+- source: operator ruling S2-5/S2-6, 2026-10-27 (Gate S #2, private/reviews/gen2-gate-s2-fable-20261027.md §6.3/§6.5)
+- removal: Phase 3 delivers live S1–S3 executors, and INVARIANTS §13 records the move (R2).
