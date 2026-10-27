@@ -88,8 +88,9 @@ class DDLTest(StoreTestCase):
         self.raw_approval_admission("amendment_approval")
 
     def test_raw_reframe_admission(self):
-        # Raw DDL checks authority binding; the Router control above performs
-        # the actual framework/version change required by G-6/G-7.
+        # Raw DDL checks authority binding; the Router control
+        # test_obligation_admission.py::AdmissionTest.test_reframe_approval_admission
+        # performs the framework/version change required by G-6/G-7.
         self.raw_approval_admission("reframe_approval")
 
     def test_ddl_guards(self):

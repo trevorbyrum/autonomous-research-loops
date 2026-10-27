@@ -28,7 +28,7 @@ def tool(name):
 
 
 EVIDENCE, WORKERS = tool("gen2_ci_evidence"), tool("gen2_workers")
-Outcomes, in_shard, partition, shard_spec, tests = (getattr(EVIDENCE, name) for name in
+Outcomes, in_shard, partition, shard_spec, ci_tests = (getattr(EVIDENCE, name) for name in
                                                  ("Outcomes", "in_shard", "partition", "shard_spec", "tests"))
 cpu_budget = WORKERS.cpu_budget
 with mock.patch.dict(sys.modules, {"gen2_ci_evidence": EVIDENCE, "gen2_workers": WORKERS}):
@@ -110,8 +110,8 @@ class ExhaustivePartitionTest(unittest.TestCase):
                     unittest.TestSuite([Repeated("test_occurrence"), Other("test_a")]),
                     unittest.TestSuite([unittest.TestSuite([Repeated("test_occurrence"), Third("test_a")]),
                                         Other("test_b"), Repeated("test_occurrence"), Other("test_a")])])
-                original = list(tests(suite))
-                parts = [list(tests(partition(suite, (i, total)))) for i in range(1, total + 1)]
+                original = list(ci_tests(suite))
+                parts = [list(ci_tests(partition(suite, (i, total)))) for i in range(1, total + 1)]
                 # A multiset is essential: set equality misses lost reexports.
                 self.assertEqual(Counter(t.id() for p in parts for t in p), Counter(t.id() for t in original))
                 locations = {}
@@ -145,9 +145,9 @@ class ExhaustivePartitionTest(unittest.TestCase):
             def test_a(self): pass
             def test_b(self): pass
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(Case)
-        partitions = [list(tests(partition(suite, (i, 4)))) for i in range(1, 5)]
+        partitions = [list(ci_tests(partition(suite, (i, 4)))) for i in range(1, 5)]
         self.assertEqual(sorted(map(len, partitions)), [0, 0, 0, 2])
-        self.assertEqual([t.id() for part in partitions for t in part], [t.id() for t in tests(suite)])
+        self.assertEqual([t.id() for part in partitions for t in part], [t.id() for t in ci_tests(suite)])
 
     def test_invalid_shards_are_refused(self):
         for value in ("0/4", "5/4", "1/0", "1/65", "bad"):
@@ -173,7 +173,7 @@ class ExhaustivePartitionTest(unittest.TestCase):
                 with self.subTest(case="same identity"):
                     self.assertEqual(type(self).calls, 1)
         suite = unittest.TestSuite([Case("test_reexported"), Case("test_reexported")])
-        self.assertEqual(len(list(tests(partition(suite, (1, 1))))), 2)
+        self.assertEqual(len(list(ci_tests(partition(suite, (1, 1))))), 2)
         result = unittest.TextTestRunner(stream=io.StringIO(), resultclass=Outcomes).run(suite)
         self.assertEqual(result.testsRun, 2)
         self.assertFalse(result.wasSuccessful())
