@@ -41,6 +41,7 @@ class ValidatedCases:
         with historical_admission(self.case):
             out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)
+        self.assertEqual(out.get('reason'), 'payload_invalid', out)
         self.assertIn('receipt needs its successful durable /2 validation', out['detail'])
         self.case.assert_audited_state(before, 1)
         self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])

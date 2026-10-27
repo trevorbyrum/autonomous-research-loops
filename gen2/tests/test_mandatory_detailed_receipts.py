@@ -30,6 +30,7 @@ class MandatoryCases:
         before = case.state(exclude=())
         out = case.submit()
         self.assertEqual(out['status'], 'rejected', out)
+        self.assertEqual(out.get('reason'), 'payload_invalid', out)
         if detail: self.assertIn(detail, out['detail'])
         case.assert_audited_state(before, 1)
 

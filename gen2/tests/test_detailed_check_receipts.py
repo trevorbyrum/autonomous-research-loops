@@ -45,6 +45,7 @@ class ReferenceCases:
         before = self.state(exclude=())
         result = self.submit()
         self.assertEqual(result['status'], 'rejected', result)
+        self.assertEqual(result.get('reason'), 'payload_invalid', result)
         self.assertIn('receipt detailed check binding', result['detail'])
         self.assert_audited_state(before, 1)
 
@@ -213,7 +214,8 @@ class ReferenceCases:
             if change == 'version': self.doc['receipt_version'] = 'verification-receipt/99'
             if change == 'v1': self.doc['receipt_version'] = 'verification-receipt/1'
             before = self.state(exclude=())
-            self.assertEqual(self.submit()['status'], 'rejected', change)
+            out = self.submit()
+            self.assertEqual((out['status'], out.get('reason')), ('rejected', 'payload_invalid'), change)
             self.assert_audited_state(before, 1)
             self.doc = original
 
