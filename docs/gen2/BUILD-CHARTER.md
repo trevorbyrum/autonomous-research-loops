@@ -128,6 +128,17 @@ Adopted after asking what research suggests for speeding up the build. The resea
 
   Then, before writing the next brief or recommending debt, the orchestrator researches how the problem is best solved: the GraphRAG corpora, primary literature, and how established tools solve it. The result is written to `docs/gen2/research/`. The brief or recommendation cites it and says why the chosen approach is the best supported. The coder implements the researched design; it doesn't devise its own fix for a recurring family, and the reviewer judges against the cited research too.
 
+## Separation practices (Trevor, 2026-10-27)
+These are the reasons teams use separate repositories, adopted as process inside the one repository. **There's no code or repository restructuring; the repository-layout question is Trevor's to research.**
+- **Each brief declares its component and file ownership:** the paths the coder may change, the paths it must not touch, and the components it may only read. One component per brief where possible. A brief spanning components says why.
+- **Interfaces are changed contract-first.** A change to an interface between components (a BOUNDARIES.md entry, a schema, a Router or Store member another component calls, the gateway-client contract) is named in the brief. Where consumers in another component must change too, the interface change lands as its own small PR before or with them, never hidden inside unrelated work.
+- **Briefs scope the agent's reading set** to its component, the contracts it touches and the binding documents. Agents don't roam the repository.
+- **Already in place and unchanged:**
+  - one worktree per coder, with disjoint file sets (2026-10-26);
+  - small task PRs that land independently, each with its own verifier and review;
+  - BOUNDARIES.md as the component contract;
+  - size estimates with stop thresholds.
+
 ## Standing rules
 - Build follows the adjudicated phase order (flow doc + Astra review §10): Phase 0 invariants/migration contract → 1 mechanical vertical slice (fake executors; crash/replay/cancel proven before model authority) → 2 one complete research workflow → 3 qualified automation/projections → 4 migration+canary. Phase transitions are operator-gates.
 - Size rules (the user, 2026-09-29; replaces the earlier 10,000/12,000 total, which had been copied from the design review's *proposed* planning allocation without operator approval):
