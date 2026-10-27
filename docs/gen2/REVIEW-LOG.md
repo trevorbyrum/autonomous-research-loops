@@ -3662,3 +3662,19 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **O-12 was a false alarm:** S2-1 to S2-7 had merged in records PR #42 at 00:48; the reviewers read stale copies.
 - **S6 brief amended** (tests-store item 1): it previously missed three test families, one of which would have broken an import.
 
+## 2026-10-27: S6 merged (value-domain DDL); gateway hand-written mutants retired
+- **S6** (PR #46, `ed21d5a`, Sol `eaec591c`): net −2,829 (SQL −1,355, tools −717, tests −734, production +11, docs −4, config −30).
+  - **Round 1, Astra BLOCK B1:** NUL-only nonblank. Repaired by reusing `DetailedChecks._nonblank` at admission, with 184 literal routed cases.
+  - Sol audited the semantics of every S5 and S6 rule-table row (116 screened, 27 compared): only B1 differed.
+  - **Astra round 2:** A, B and C PASS, ROOT-CAUSE. Astra re-ran the audit independently and spot-checked five S5 rows.
+  - Verifier exit 0 in 3,422 s (the branch predated S2d). Final trigger-order baseline: 242 triggers, 1,868 outcomes identical. Merged.
+  - **The DDL is now integrity-only** (346 triggers at the start of 2026-10-27, now 242).
+  - Approved scope additions recorded in the S6 COMPLETION: six consumer repairs, eight catalogue-family tests retired, and the INVARIANTS B-3 marker `code: .github/`.
+- **Gateway mutants retired** (PR #48, `07adf65`, Sol `4092b96c`), Gate S #2 item 3 and ruling 3: −2,433 (tooling −2,471).
+  - Gateway production now enters changed-line Cosmic Ray.
+  - INVARIANTS H-5 locator only, orchestrator-approved.
+  - Astra (`55f5459a`): A and C PASS, ROOT-CAUSE.
+  - Verifier: gen2-accept exit 0 in 791 s (8 shards), and gen2-gateway exit 0 in 436 s (1,540 no-DB plus 1,540 DB). Merged.
+  - Stale CI-DESIGN sentences are listed for R2 (D12).
+- **In flight:** Batch B (Sonnet, sharded acceptance rerun after merging gen2) and Batch C (Sol, supervisor plus O-1).
+
