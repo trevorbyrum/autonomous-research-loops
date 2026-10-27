@@ -2,7 +2,7 @@
 """Run one explicit CI workload. Scheduling and status aggregation belong to Jenkins.
 
 The default is T0 only. Full acceptance requires every engine test shard and
-the changed-line mutation campaign, trigger-order when DDL changed, and all three gateway modes; no subset
+the changed-line mutation campaign, trigger-order when DDL changed, and both gateway modes; no subset
 implies acceptance.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from gen2_ci_evidence import junit, shard_spec, write_json
 from gen2_workers import cpu_budget
 
 ROOT = Path(__file__).resolve().parent.parent
-MODES = ("push", "engine-unit", "engine-trigger-order", "engine-mutation", "gateway-no-db", "gateway-db", "gateway-mutants")
+MODES = ("push", "engine-unit", "engine-trigger-order", "engine-mutation", "gateway-no-db", "gateway-db")
 PARTIAL_BANNER = "PARTIAL ACCEPTANCE — NOT FULL ACCEPTANCE"
 DEFAULT_WORK = (("push", (1, 1)), ("engine-unit", (1, 8)))
 
@@ -85,7 +85,7 @@ def command(mode: str, shard: tuple[int, int]) -> list[str]:
         raise ValueError(f"{mode} does not support sharding")
     if mode == "engine-mutation":
         return ["make", "gen2-mutation"]
-    if mode.startswith("gateway-"):
+    if mode in ("gateway-no-db", "gateway-db"):
         return ["make", "gen2-gateway", "GEN2_GATEWAY_MODE=" + mode.removeprefix("gateway-")]
     return ["make", "gen2-push" if mode == "push" else "gen2-trigger-order"]
 

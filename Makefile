@@ -49,7 +49,7 @@ gen2-accept: gen2-check
 	$(MAKE) gen2-mutation
 	@echo "gen2-accept: all checks passed"
 
-.PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-trigger-order gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db gen2-ci-gateway-mutants
+.PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-trigger-order gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db
 # T0 is deliberately separate from full acceptance. No acceptance verdict is
 # inferred from this target. Full acceptance uses gen2-accept.
 gen2-push: gen2-sqlite gen2-boundaries gen2-size gen2-schemas gen2-ddl gen2-catalog-check gen2-complexity gen2-debt gen2-locators
@@ -77,9 +77,6 @@ gen2-ci-gateway-no-db:
 
 gen2-ci-gateway-db:
 	$(MAKE) gen2-ci GEN2_CI_MODE=gateway-db GEN2_CI_SHARD=1/1
-
-gen2-ci-gateway-mutants:
-	$(MAKE) gen2-ci GEN2_CI_MODE=gateway-mutants GEN2_CI_SHARD=1/1
 
 # (Re)built when either lock changes; `venv --clear` starts from an empty
 # environment, and `--no-deps` means the locks must list every transitive
@@ -189,7 +186,7 @@ gen2-auth-demo: gen2-venv
 
 # The gateway repairs of task 2b (tools/gen2_gateway_check.py): the gateway's own
 # suite, again on a throwaway PostgreSQL cluster (a temporary directory, a Unix socket,
-# no TCP port; never an existing database), then the gateway mutants. The gateway is a
+# no TCP port; never an existing database). The gateway is a
 # separate package with its own dependency (psycopg), so this runs on the gateway's
 # interpreter ($(PYTHON_BOOTSTRAP)), not the gen-2 venv, and needs PostgreSQL server
 # binaries; not part of gen2-check. Exit status is the checks' own: no pipe.

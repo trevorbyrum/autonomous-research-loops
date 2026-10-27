@@ -21,6 +21,43 @@ EvidenceResult, MARKER, normalize = runner.EvidenceResult, runner.MARKER, runner
 
 
 class AutomaticMutationTest(unittest.TestCase):
+    def test_gateway_changed_line_enters_scope_and_engine_only_scope_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel in ("tools", "gen2/tests", "gateway/research_gateway"):
+                (root / rel).mkdir(parents=True)
+            shutil.copy(ROOT / ".gitignore", root / ".gitignore")
+            for name in ("gen2_mutation_scope.py", "gen2_mutation_runner.py", "gen2_coverage.py",
+                         "gen2_test.py", "gen2_ci_evidence.py"):
+                shutil.copy(ROOT / "tools" / name, root / "tools" / name)
+            paths = ("gateway/research_gateway/probe.py", "gen2/probe.py")
+            for path in paths:
+                (root / path).write_text("def answer(): return 0\n")
+            def git(*args):
+                subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+            git("init", "-q")
+            git("add", ".")
+            git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "base")
+            for index, changed in enumerate(paths):
+                with self.subTest(changed=changed):
+                    for path in paths:
+                        (root / path).write_text(f"def answer(): return {int(path == changed)}\n")
+                    (root / "gen2/tests/test_probe.py").write_text(
+                        "import unittest\nfrom gateway.research_gateway.probe import answer as gateway_answer\n"
+                        "from gen2.probe import answer as engine_answer\nclass Case(unittest.TestCase):\n"
+                        f" def test_gateway(self): self.assertEqual(gateway_answer(), {int(changed == paths[0])})\n"
+                        f" def test_engine(self): self.assertEqual(engine_answer(), {int(changed == paths[1])})\n")
+                    out = root / f"campaign-{index}"
+                    result = subprocess.run([sys.executable, "tools/gen2_mutation_scope.py", "--base", "HEAD",
+                        "--out", str(out), "--coverage", str(root / f"coverage-{index}.sqlite")],
+                        cwd=root, capture_output=True, text=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    report, = out.glob("*/mutation-report.json")
+                    data = json.loads(report.read_text())
+                    self.assertEqual(data["targets"], [changed])
+                    self.assertGreater(data["counts"].get("ASSERTION_KILL", 0), 0)
+                    self.assertEqual({row["mutation"]["module_path"] for row in data["mutants"]}, {changed})
+
     def test_cached_execution_configuration(self):
         coverage_tool = sys.modules["gen2_coverage"]
         with tempfile.TemporaryDirectory() as tmp:
