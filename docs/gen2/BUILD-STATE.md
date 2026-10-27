@@ -5,27 +5,22 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 ## Current
 *(This section is current state only; history is in REVIEW-LOG.md. Contract and rulings: DOSSIER.md.)*
 - **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
-- **Open task:** 2d, slice 6. **6a is complete** (parts 1–4; PR #28 merged 2026-10-26). The checks cut-back S1–S3, S2b and **S2c** (PR #33: the coverage is reused through `make gen2-accept`, confirmed live in the S4 run) are complete.
-  - **S4 is complete** (PR #35 merged at `90d5070`, 2026-10-26). It took four rounds: B1/B2 hold semantics, then two mutation-found missing tests, then equivalent-mutant removal through membership tests. Net +194 against +140 planned (production +36, tests +158).
-  - **S5 is complete** (PR #40 merged at `2085e10`, −4,492). **S2d is complete** (PR #39 merged: parallel test shards; acceptance about 900 s against about 4,100 s).
-  - **S6 is complete** (PR #46): the DDL is integrity-only, with 242 triggers. **Gateway hand-written mutants retired** (PR #48).
-  - **Batch C complete** (PR #50, supervisor plus O-1; follow-up C-fu due before 2f). **Batch D1 complete** (PR #51, store fixtures plus O-8).
-  - **Trigger-order retired** (PR #55).
-  - **C-fu and Batch E complete** (PRs #57 and #58).
-  - **D2a-1 and D2a-2 complete** (PRs #60 and #61; cross-test imports 143 → 65).
-  - **6b1′ design accepted with changes B1–B5** (first pre-code design review).
-  - **In flight:**
-    - 6b1′ PR 0 (`evidence_revision` removal; Sonnet, `gen2-wt-6`);
-    - D2's remaining parts (Sol, `gen2-wt-4`).
+- **Open task:** 2d, slice 6. 6a is complete. The checks cut-back S1–S6, S2b–S2d and the gateway-mutant and trigger-order retirements are complete.
+  - **Complete:** the Gate S full-pass batches C, C-fu, D1, D2 (a1–a3, b), E, O-9 (a, b); R2 (INVARIANTS rules plus generated traceability); 6b1′ PR 0.
+  - **In flight:** none; both coders idle pending the operator decisions below.
   - **Held for operator decisions:**
     - Batch F (PR #54, Astra F1: tokens can form inside JSON escapes);
-    - Batch B (`gen2-wt-3`), Batch A and O-5 (mutation scope for refactors).
-  - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`. That is S6 → B → A → O-5 → the 6b1′ design (13 inputs) in the shared tree. The second coder takes the gateway mutants, trigger-order retirement (after S6), C, E, F and D2. D1 and O-9 come after S6.
-- **Last verifier result:** D2a-2 `b9f08ba`, gen2-accept exit 0 in 681 s (8 shards, 2,953 tests).
-- **Gate S watch item:** stage 2 is now sharded (S2d). Remaining cost driver: changed-line mutation of pure-move refactors (moved lines count as changed; stage 1 runs serially per mutant). This is the pending operator decision below.
-- **Blockers:** none. **Open operator decisions:** (1) the mutation scope for refactors (move-aware scope, parallel stage-1 workers), which Batch B, A and O-5 wait on; (2) the Batch F redaction design after Astra F1 (recommended: check the final wire bytes).
-- **Gate S:** last run **#2 at `b3ffd23`** (2026-10-27; `private/reviews/gen2-gate-s2-fable-20261027.md`). Engine side 109,026 lines; production 13,100. Operator decisions S2-1 to S2-7 are pending.
-- **What's next:** Batch B, Batch A, O-5, then 6b1′; second coder: trigger-order retirement, C, E, F, D2; after S6: D1, O-9; R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
+    - Batch B (`gen2-wt-3`), and behind it Batch A, O-5 and 6b1′ PR 1 (mutation scope for refactors).
+  - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`.
+- **Last verifier result:** O-9b `83162f7`, gen2-accept exit 0 in 700 s (8 shards).
+- **Blockers:** none. **Open operator decisions:**
+  1. the mutation scope for refactors (move-aware scope, parallel stage-1 workers), which Batch B, A, O-5 and 6b1′ PR 1 wait on;
+  2. the Batch F redaction design after Astra F1 (recommended: check the final wire bytes);
+  3. the CI-DESIGN amendment proposals from R2 (D12);
+  4. the INVARIANTS C-4 wording after `evidence_revision`'s removal (frozen-text amendment);
+  5. O-10: stop admitting new `/1` receipts while keeping readback, and run 2f on a fresh store.
+- **Gate S:** last run was the **full pass at `3a579af`** (2026-10-27; rulings O-1 to O-11 approved). Gate S #2's rulings S2-1 to S2-7 were approved 2026-10-27.
+- **What's next:** after the operator decisions, Batch B → A → O-5 → 6b1′ PR 1 → 6b2′ → 2e1-minimum → 2e2-minimum → 2f. Batch F, then `raw_exchange`, on the second coder. Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 
