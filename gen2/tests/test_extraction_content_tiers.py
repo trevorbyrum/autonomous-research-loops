@@ -2,11 +2,11 @@
 import json
 import unittest
 
-from gen2.tests import test_canonical_content_tiers as content
-from gen2.tests.test_canonical_receipt_admission import AttributedReceiptCase
-from gen2.tests.test_extraction_acquisitions import extraction_document, send
-from gen2.tests.test_pending_extraction_support import METHODS
-from gen2.tests.test_reaccess_admission import RAW, STAMP
+from gen2.tests import router_fixtures as content
+from gen2.tests.router_fixtures import AttributedReceiptCase
+from gen2.tests.router_fixtures import extraction_document, send
+from gen2.tests.router_fixtures import EXTRACTION_METHODS as METHODS
+from gen2.tests.router_fixtures import RAW, STAMP
 from gen2.tests.router_fixtures import TOPIC, empty_outcome
 
 

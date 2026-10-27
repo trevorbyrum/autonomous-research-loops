@@ -1,3 +1,44 @@
+# Batch D2a-2 completion
+
+This capped TO1 slice moves `AcquisitionCase`, `ReceiptCase`,
+`AttributedReceiptCase`, `RecordCase`, `CheckCase`, `OwnCases`, and their
+shared acquisition, receipt, content and span builders into
+`gen2/tests/router_fixtures.py`, with the complete moved-name consumer
+closure. `content_document` and `EXTRACTION_METHODS` distinguish formerly
+module-local names. No re-export shims or production changes.
+
+Still pending: capture/quote, branch/attention, accounting/window,
+remaining Router/gateway/other helpers, and `Spy`/`Refusing`. D2b has not
+begun; subsequent slices must branch fresh after this PR merges.
+`raw_exchange`: **deferred: owned by Batch F's file**. PR #54 was open at scope check;
+its two test files and all exclusions listed in the prior record below
+remain untouched. Its diff was checked against `origin/gen2`.
+
+Base: `d7ccd2d028335182a70dce74f6ef1a8d599b19fc` (D2a-1 #60 merged).
+Evidence: `~/work/research-loops-public/private/evidence/batch-d2/d2a2/`.
+
+- AST preservation: 30 moved nodes, 3,619 retained functions and 6,730
+  assertion expressions preserved. No test method or assertion deleted.
+  Only imports and exact fixture references are normalized in the audit.
+- Collected IDs: 2,953 → 2,953; delta 0, no additions, removals or duplicate
+  collections. The moved `OwnCases` mixin keeps its existing test owners.
+- Cross-test import statements: 118 → 65; strict
+  `from gen2.tests.test_X` statements: 81 → 35. Remaining imports belong
+  to pending families and explicit exclusions.
+- Focused verification: 70 tests passed, including the patched span-fixture
+  consumer and the receipt/acquisition/record suites.
+- Full disposable-copy sharded `gen2-accept`: **passed**, 2,953 tests / 8 shards; `accept/accept.log`.
+- Mutation scope: **empty**, no applicable production files or mutants.
+- Tested code: `815d4622de6d63dde85d9a112003119acaa39ea0`; final evidence amendment changes only this file.
+- Size: 1190 touched / +76 net, including this completion update.
+  `router_fixtures.py`: 1,278 lines; `test_router_workflow.py`: 1,360.
+
+The evidence directory contains the move map, complete AST comparisons,
+collected inventories/delta, cross-import inventories and scope/closure
+checks. Full acceptance uses eight shards and the base above.
+
+---
+
 # Batch D2a-1 completion
 
 This is the first standalone TO1 family from Batch D2: `Workflow`,

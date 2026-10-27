@@ -1,50 +1,7 @@
 """V-8 durable admission only; literal fixture bytes, no provider execution."""
 import json
 
-from gen2.tests.router_fixtures import TOPIC, empty_outcome
-from gen2.tests.test_reaccess_admission import AcquisitionCase
-
-KINDS = ('numeric_units', 'denominators', 'negation', 'qualifications')
-OUTCOMES = ('succeeded', 'failed', 'not_applicable', 'not_checked', 'unavailable')
-
-
-class CheckCase(AcquisitionCase):
-    RAW = False
-
-    def setUp(self):
-        super().setUp()
-        self.assertEqual(self.capture(self.producer, 'op_claimcheck1')['status'], 'committed')
-        self.assertEqual(self.capture(self.verifier, 'op_setupcheck1', claim=None)['status'], 'committed')
-
-    def record(self, **changes):
-        span = {'start': 0, 'end': 10, 'locator': {'kind': 'paragraph', 'value': '1'}}
-        report = dict(claim_id='clm_00000001', claim_revision=1, work_id=self.work, source_version='v1',
-            source_artifact_hash=self.source['content_hash'], examined_artifact_ref=self.source,
-            cited_spans=[span], context_spans=[{**span, 'end': 20}], kind='numeric_units', outcome='succeeded',
-            method='attributed-assessment/1', assessment='Verifier assessment of this claim and source.',
-            context_examined='No quantities; units interpreted in the retained surrounding text.', applicability_reason='')
-        report.update(changes)
-        ref = self.artifact(json.dumps(report).encode(), 'application/json')
-        return dict(check_id='check-1', assessment=report, evidence_ref=ref)
-
-    def env(self, record, grant=None, op='op_detailcheck1'):
-        grant = grant or self.verifier
-        payload = {**empty_outcome(grant['invocation_id'], 'interim_transition'), 'detailed_check_records': [record]}
-        return self.envelope(grant, op, payload, refs=[record['evidence_ref']] if record['evidence_ref'] else [])
-
-    def send(self, record, grant=None, op='op_detailcheck1'):
-        return self.router.commit_outcome(self.env(record, grant, op))
-
-    def refuse(self, record):
-        before = self.state(exclude=())
-        out = self.send(record)
-        self.assertEqual(out['status'], 'rejected', out)
-        if self.RAW:
-            self.assertEqual(self.state(exclude=()), before)
-        else:
-            self.assert_audited_state(before, 1)
-        return out
-
+from gen2.tests.router_fixtures import CheckCase, KINDS, OUTCOMES
 
 class RecordMatrix:
     def test_control(self):

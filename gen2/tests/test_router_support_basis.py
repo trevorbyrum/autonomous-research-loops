@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 from gen2.tests import test_router_detailed_support as detailed
 from gen2.tests.detailed_support_fixtures import history
-from gen2.tests.test_canonical_receipt_admission import ReceiptCase
-from gen2.tests.test_canonical_content_tiers import FULL
-from gen2.tests.test_reaccess_admission import RAW
+from gen2.tests.router_fixtures import ReceiptCase
+from gen2.tests.router_fixtures import FULL
+from gen2.tests.router_fixtures import RAW
 from gen2.tests.test_receipt_summary_domain import METHODS
 
 

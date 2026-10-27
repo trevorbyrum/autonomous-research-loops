@@ -3,9 +3,9 @@ import json
 import unittest
 
 from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt, historical_admission
-from gen2.tests.test_canonical_content_tiers import FULL, fixture
-from gen2.tests.test_extraction_acquisitions import extraction_document
-from gen2.tests.test_own_extraction_receipts import OwnCases
+from gen2.tests.router_fixtures import FULL, fixture
+from gen2.tests.router_fixtures import extraction_document
+from gen2.tests.router_fixtures import OwnCases
 from gen2.tests.independent_tier_fixtures import independent_basis
 
 

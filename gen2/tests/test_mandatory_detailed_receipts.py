@@ -5,7 +5,8 @@ import unittest
 from gen2.tests import test_detailed_check_receipts as references
 from gen2.tests.ddl_fixtures import TRIGGERS
 from gen2.tests.detailed_receipt_fixtures import OUTCOME, attach_checks, seed_checks, historical_receipt, historical_admission
-from gen2.tests.test_pending_extraction_support import load_claim
+from gen2.tests.router_fixtures import load_claim
+from gen2.tests import router_fixtures as rf
 
 
 class MandatoryCases:
@@ -38,7 +39,7 @@ class MandatoryCases:
         case = self.opened()
         original = copy.deepcopy(case.doc)
         for verdict in ('supports', 'partially_supports'):
-            for kind in references.KINDS:
+            for kind in rf.KINDS:
                 with self.subTest(verdict=verdict, kind=kind):
                     case.doc = copy.deepcopy(original)
                     case.doc['verdict'] = verdict
@@ -56,7 +57,7 @@ class MandatoryCases:
     def test_bindings(self):
         case = self.opened()
         original = copy.deepcopy(case.doc)
-        for kind in references.KINDS:
+        for kind in rf.KINDS:
             with self.subTest(kind=kind):
                 # All other references match; only this reference names the
                 # independently admitted record for the other claim revision.
@@ -70,7 +71,7 @@ class MandatoryCases:
     def test_outcomes(self):
         case = self.opened()
         original = copy.deepcopy(case.doc)
-        for kind in references.KINDS:
+        for kind in rf.KINDS:
             for summary, outcome in OUTCOME.items():
                 with self.subTest(kind=kind, outcome=outcome):
                     case.doc = copy.deepcopy(original)
@@ -91,7 +92,7 @@ class MandatoryCases:
 
     def test_failed_without_record(self):
         case = self.opened()
-        for kind in references.KINDS:
+        for kind in rf.KINDS:
             case.doc['checks'][kind] = 'checked_problem'
         attach_checks(case, case.doc)
         case.doc['adjudication'] = dict(adjudication_ref='adj-unperformed',
@@ -100,7 +101,7 @@ class MandatoryCases:
 
     def test_exemption_without_record(self):
         case = self.opened()
-        for kind in references.KINDS:
+        for kind in rf.KINDS:
             case.doc['checks'][kind] = 'not_applicable'
         attach_checks(case, case.doc)
         self.missing_entries(case)
@@ -127,7 +128,7 @@ class MandatoryCases:
         self.refused(case, 'requires detailed check records')
 
     def missing_entries(self, case):
-        for kind in references.KINDS:
+        for kind in rf.KINDS:
             entry = case.doc['detailed_checks'][kind]
             identity = entry.pop('record_id')
             self.refused(case, 'requires detailed check records')

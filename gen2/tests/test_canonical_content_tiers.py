@@ -4,40 +4,7 @@ import unittest
 from contextlib import contextmanager
 from functools import partial
 
-from gen2.tests.test_canonical_receipt_admission import ReceiptCase, AttributedReceiptCase
-from gen2.tests.test_reaccess_admission import RAW
-
-IDENTITY = "doi:10.1/fixture"
-FULL = {"identity": IDENTITY, "kind": "full_text", "text": "Complete fixture text"}
-
-
-@contextmanager
-def fixture(record, coverage="searched_ok", others=(), *, detailed=False):
-    case = AttributedReceiptCase() if detailed else ReceiptCase()
-    response = json.loads(RAW)
-    response["records"] = [record, *others]
-    response["lanes"][0]["coverage"] = coverage
-    case.RESPONSE = json.dumps(response).encode()
-    case.COVERAGE = coverage
-    case.setUp()
-    try:
-        case.admit()
-        yield case
-    finally:
-        case.tearDown()
-
-
-# Current positive owners opt into admitted assessments; base fixtures isolate probes.
-attributed_fixture = partial(fixture, detailed=True)
-
-
-def document(case, tier, verdict="supports"):
-    doc = case.document()
-    doc["access_tier"] = tier
-    doc["requested_for"]["required_access_tier"] = tier
-    doc["verdict"] = verdict
-    return doc
-
+from gen2.tests.router_fixtures import IDENTITY, FULL, attributed_fixture, content_document as document
 
 class ContentRouterTest(unittest.TestCase):
     def test_controls(self):

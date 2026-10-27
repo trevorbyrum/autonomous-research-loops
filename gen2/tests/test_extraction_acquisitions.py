@@ -2,32 +2,11 @@
 import json
 import unittest
 
-from gen2.tests.test_canonical_content_tiers import FULL, attributed_fixture as fixture
-from gen2.tests.test_canonical_receipt_admission import ReceiptCase, AttributedReceiptCase
+from gen2.tests.router_fixtures import FULL, attributed_fixture as fixture
+from gen2.tests.router_fixtures import AttributedReceiptCase
 from gen2.tests.detailed_receipt_fixtures import attach_checks, historical_receipt
-from gen2.tests.test_pending_extraction_support import METHODS
-from gen2.tests.router_fixtures import empty_outcome
-
-
-def send(case, doc):
-    case.env = case.envelope(case.verifier, "op_verify001",
-        {**empty_outcome(case.verifier["invocation_id"], "interim_transition"), "verification_receipts": [doc]})
-    return case.router.commit_outcome(case.env)
-
-
-def extraction_document(case, method, *, detailed=True):
-    doc = ReceiptCase.document(case)
-    doc['access_tier'] = doc['requested_for']['required_access_tier'] = 'bibliographic'
-    doc["extraction"].update(method=method,
-        produced_by_invocation_id=case.verifier["invocation_id"] if method == "verifier_extraction" else case.ACQUIRER,
-        validation_ref="validation_unrecorded" if method == "validated_extraction" else None)
-    doc["verifier_invocation_id"] = case.verifier["invocation_id"]
-    doc["verifier_capability_id"] = case.verifier["capability_id"]
-    from gen2.tests.extraction_receipt_fixtures import attach
-    attach(case, doc)
-    if detailed and isinstance(case, AttributedReceiptCase):
-        attach_checks(case, doc)
-    return doc
+from gen2.tests.router_fixtures import EXTRACTION_METHODS as METHODS
+from gen2.tests.router_fixtures import send, extraction_document
 
 
 class ExtractionRouterTest(unittest.TestCase):

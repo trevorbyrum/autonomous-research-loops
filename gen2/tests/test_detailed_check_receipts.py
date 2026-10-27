@@ -4,8 +4,8 @@ import json
 
 from gen2.core import canonical
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.test_canonical_receipt_admission import ReceiptCase
-from gen2.tests.test_detailed_checks import CheckCase, KINDS, OUTCOMES
+from gen2.tests.router_fixtures import ReceiptCase
+from gen2.tests.router_fixtures import CheckCase, KINDS, OUTCOMES
 
 
 class ReferenceCases:
@@ -90,7 +90,7 @@ class ReferenceCases:
             self.corrupt('cited_spans', spans)
 
     def test_extraction_control(self):
-        from gen2.tests.test_extraction_acquisitions import extraction_document
+        from gen2.tests.router_fixtures import extraction_document
         for method in ('verifier_extraction', 'validated_extraction'):
             basis = extraction_document(self, method)['extraction']
             self.doc['extraction'] = basis
@@ -98,7 +98,7 @@ class ReferenceCases:
             self.assertEqual(self.submit()['status'], 'committed')
 
     def test_validated_equal_control(self):
-        from gen2.tests.test_extraction_acquisitions import extraction_document
+        from gen2.tests.router_fixtures import extraction_document
         self.doc['extraction'] = extraction_document(self, 'validated_extraction')['extraction']
         self.test_control()
 
@@ -158,7 +158,7 @@ class ReferenceCases:
                     self.rejected_reference()
 
     def test_extraction_artifact(self):
-        from gen2.tests.test_extraction_acquisitions import extraction_document
+        from gen2.tests.router_fixtures import extraction_document
         for method in ('verifier_extraction', 'validated_extraction'):
             self.doc['extraction'] = extraction_document(self, method)['extraction']
             self.doc['verification_receipt_id'] = 'ver_' + method

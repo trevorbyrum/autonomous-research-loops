@@ -12,14 +12,11 @@ from dataclasses import FrozenInstanceError, asdict
 from pathlib import Path
 
 from gen2.router import reaccess
+from gen2.tests.router_fixtures import digest
 
 RAW = b'{"request_type":"resolve","observation":{"captured":true,"call_ref":101,"invocation_id":"inv_producer01","attempt":1},"lanes":[{"source":"crossref","coverage":"searched_ok","completeness":"complete","retrieved":["doi:10.1/test"]}],"records":[{"identity":"doi:10.1/test","kind":"article","source_id":"crossref","title":"A fixture","abstract":"An abstract"}]}'
 REQUEST = {"lane": "crossref", "page": 1, "request": {"request_type": "resolve", "identity": "doi:10.1/test"}}
 REQUEST_BYTES = b'{"lane":"crossref","page":1,"request":{"identity":"doi:10.1/test","request_type":"resolve"}}'
-
-
-def digest(raw):
-    return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
 class ReaccessTest(unittest.TestCase):

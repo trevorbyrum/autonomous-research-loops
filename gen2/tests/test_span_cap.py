@@ -7,8 +7,7 @@ from gen2.core import canonical
 from gen2.router import boundary
 from gen2.router.schemas import SchemaSet
 from gen2.tests.span_cap_cases import LIMIT, NUMERALS, admitted, literal, exact_value
-from gen2.tests import test_table_availability as tables
-from gen2.tests import test_detailed_checks as checks
+from gen2.tests import router_fixtures as tables
 from gen2.tests import test_router_workflow as workflow
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.detailed_receipt_fixtures import attach_checks
@@ -182,7 +181,7 @@ class SpanCapTest(unittest.TestCase):
             exact_value(literal(key, n)) for column, key in enumerate(('start', 'end'), 1)
             for n, start, end in ROUTER_CASES if (start, end)[column - 1] == 'committed'}
         for method in tables.METHODS:
-            with tables.span_fixture({'identity': tables.content.IDENTITY}, bindings=bindings.values()) as case:
+            with tables.span_fixture({'identity': tables.IDENTITY}, bindings=bindings.values()) as case:
                 for column, key in enumerate(('start', 'end'), 1):
                     for i, row in enumerate(ROUTER_CASES):
                         n, expected = row[0], row[column]
@@ -210,7 +209,7 @@ class SpanCapTest(unittest.TestCase):
                                     self.assertIn(f'/cited_spans/0/{key}: maximum 9007199254740991 violated', out['detail'])
 
     def test_record_router_matrix(self):
-        case = checks.CheckCase()
+        case = tables.CheckCase()
         case.setUp()
         try:
             for field in ('cited_spans', 'context_spans'):

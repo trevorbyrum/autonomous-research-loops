@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from gen2.store import api, capture, compat, db
 from gen2.tests.router_fixtures import TOPIC
-from gen2.tests.test_extraction_records import RecordCase
+from gen2.tests.router_fixtures import RecordCase
 from gen2.tests.test_topic_capture import group
 
 

@@ -4,6 +4,7 @@ import sqlite3
 
 
 from gen2.tests import store_fixtures, test_extraction_records as records
+from gen2.tests import router_fixtures as rf
 
 
 class DDLTest(records.RecordTest):
@@ -17,7 +18,7 @@ class DDLTest(records.RecordTest):
             reference.executescript(store_fixtures.DDL_TEXT)
             query = "SELECT type, name, sql FROM sqlite_schema WHERE sql IS NOT NULL AND (tbl_name IN ('source_extractions', 'extraction_validations') OR name = 'extraction_validation_results') ORDER BY rowid"
             objects = reference.execute(query).fetchall()
-        records.RecordCase.setUp(self)
+        rf.RecordCase.setUp(self)
         self.db.executescript("DROP VIEW extraction_validation_results; DROP TABLE extraction_validations; DROP TABLE source_extractions;")
         for _, _, sql in objects:
             self.db.execute(sql)
@@ -29,7 +30,7 @@ class DDLTest(records.RecordTest):
         try:
             for table, attr in (("source_extractions", "extracting_invocation_id"), ("extraction_validations", "validator_invocation_id")):
                 for record in sections.get(table, []):
-                    row = {**record, attr: grant["invocation_id"], "recorded_by_operation_id": "op_setup_" + grant["invocation_id"], "created_at": records.STAMP}
+                    row = {**record, attr: grant["invocation_id"], "recorded_by_operation_id": "op_setup_" + grant["invocation_id"], "created_at": rf.STAMP}
                     if table == "source_extractions":
                         row["topic_id"] = grant["topic_id"]
                     values = [json.dumps(v) if isinstance(v, dict) else v for v in row.values()]
