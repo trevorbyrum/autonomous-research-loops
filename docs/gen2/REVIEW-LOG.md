@@ -3662,3 +3662,37 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **O-12 was a false alarm:** S2-1 to S2-7 had merged in records PR #42 at 00:48; the reviewers read stale copies.
 - **S6 brief amended** (tests-store item 1): it previously missed three test families, one of which would have broken an import.
 
+## 2026-10-27: S6 merged (value-domain DDL); gateway hand-written mutants retired
+- **S6** (PR #46, `ed21d5a`, Sol `eaec591c`): net −2,829 (SQL −1,355, tools −717, tests −734, production +11, docs −4, config −30).
+  - **Round 1, Astra BLOCK B1:** NUL-only nonblank. Repaired by reusing `DetailedChecks._nonblank` at admission, with 184 literal routed cases.
+  - Sol audited the semantics of every S5 and S6 rule-table row (116 screened, 27 compared): only B1 differed.
+  - **Astra round 2:** A, B and C PASS, ROOT-CAUSE. Astra re-ran the audit independently and spot-checked five S5 rows.
+  - Verifier exit 0 in 3,422 s (the branch predated S2d). Final trigger-order baseline: 242 triggers, 1,868 outcomes identical. Merged.
+  - **The DDL is now integrity-only** (346 triggers at the start of 2026-10-27, now 242).
+  - Approved scope additions recorded in the S6 COMPLETION: six consumer repairs, eight catalogue-family tests retired, and the INVARIANTS B-3 marker `code: .github/`.
+- **Gateway mutants retired** (PR #48, `07adf65`, Sol `4092b96c`), Gate S #2 item 3 and ruling 3: −2,433 (tooling −2,471).
+  - Gateway production now enters changed-line Cosmic Ray.
+  - INVARIANTS H-5 locator only, orchestrator-approved.
+  - Astra (`55f5459a`): A and C PASS, ROOT-CAUSE.
+  - Verifier: gen2-accept exit 0 in 791 s (8 shards), and gen2-gateway exit 0 in 436 s (1,540 no-DB plus 1,540 DB). Merged.
+  - Stale CI-DESIGN sentences are listed for R2 (D12).
+- **In flight:** Batch B (Sonnet, sharded acceptance rerun after merging gen2) and Batch C (Sol, supervisor plus O-1).
+
+## 2026-10-27: Batch C merged (supervisor plus O-1); Batch D1 merged (store fixtures plus O-8); Batch B held on mutation scope
+- **Batch C** (PR #50, `f250716`, Sol `cde8fac7`): production −374, tests +38, docs −4.
+  - O-1: one concurrency backstop. With the `_save` guard removed, the test fails with `StaleJournal not raised`.
+  - **Astra** (`e7a9a9fe`, `private/reviews/gen2-batch-c-astra-review-20261027.md`): A, B and C PASS, ROOT-CAUSE. Every `_call`/`_incident` site was read.
+  - NB1: the probe `unknown_provider` detail is now truncated at 500 characters for escaped Unicode.
+  - NB2: six `test_station_config` waits went from 60 s to 20 s.
+  - Both NBs are a follow-up PR before 2f (C-fu).
+  - Verifier exit 0 in 1,753 s (8 shards, 3,377 tests; 25 mutants killed). Merged.
+- **Batch D1** (PR #51, `4641ccc`, Sol `75f88f28`): net −350. Collected 3,102 → 2,969: 75 duplicate collections plus 58 O-8 counterfactual methods.
+  - TS6 (lifecycle kinds 5 → 2) is justified: the transition DDL depends on state only.
+  - O-8: `test_schema_counterfactuals` deleted. Its two probes are now example fixtures, and the checker asserts the exact error multiset.
+  - **Astra** (`b0d34e37`): PASS, no findings.
+  - Verifier exit 0 in 750 s. Merged.
+- **Batch B** (Sonnet `3468c51e`, not yet pushed): its changed-line campaign on a pure-move refactor reached only 3 of 258 mutants in about 1.5 h. Moved lines count as changed, and stage 1 runs serially per mutant.
+  - Stopped. The worthwhile fixes were made regardless: reuse the existing `Rows` protocol instead of new stubs, and a literal test for the untested `retrieval_events.items.additionalProperties`.
+  - **Operator decision pending:** (1) move-aware changed-line scope, and (2) parallel stage-1 workers.
+- **Dispatched:** Batch E (Sonnet `95e7ea69`: accounting, store `api.py`, config, plus O-3 and O-4) and Batch F (Sol `6dc32759`: operator tokens, O-2).
+
