@@ -24,3 +24,20 @@ kept verbatim in `~/work/research-loops-public/private/evidence/dossier-history/
 - Deleted: 165 `docs/gen2/tasks/*` files.
 
 Evidence: `~/work/research-loops-public/private/evidence/r2/`.
+
+## Follow-up commit: retired-SQL references -> current owners (rulings 1/A, D4; no rule meaning change)
+Owners from `private/evidence/s5/RULE-TABLE.md` and `s6/RULE-TABLE.md`. Four sentences changed (C-13 amendment block: three; V-4: one). Everything else byte-identical. V-2, V-3 and V-8 statements contained no retired SQL reference (only their Enforced-at lines did, fixed in the first commit); the E-2 trust-model paragraph names no retired object and is unchanged. SQL 03, 24 and 25 still exist and stay.
+
+1. C-13 amendment, line 104.
+   - Before: "...Store preparation on the three SQL 23 guarded columns:"
+   - After: "...Store preparation on the three columns (until 2026-10-27, S6, guarded by SQL 23; now by Store preparation alone):"
+2. C-13 amendment, lines 125-127.
+   - Before: "Ordered additive SQL 23, 26, 27 and 30 cover all 37 logical JSON columns with both INSERT and UPDATE guards; the static-check manifest has no pending columns. SQL 30 adds `extraction_validations_v2.comparison_evidence_ref` under the same closed member-name family."
+   - After: "Until 2026-10-27 (S6) ordered additive SQL 23, 26, 27 and 30 covered all 37 logical JSON columns with both INSERT and UPDATE guards, and the static-check manifest had no pending columns; SQL 30 added `extraction_validations_v2.comparison_evidence_ref` under the same closed member-name family. Since S6, Store preparation alone enforces the member domain on those 37 columns."
+3. C-13 amendment, lines 128-130.
+   - Before: "SQL 21's receipt uniqueness predicate is now redundant under the whole-receipt member-domain guard and is retained unchanged. Its span-shape and preserved-numeral guarantees remain unchanged."
+   - After: "Until 2026-10-27 (S5) SQL 21's receipt uniqueness predicate was redundant under the whole-receipt member-domain guard and was retained unchanged, and its span-shape and preserved-numeral guarantees remained unchanged; since S5 the Router's receipt and span checks (`boundary`, schema validation) and Store preparation own those guarantees, unchanged."
+4. V-4 statement.
+   - Before: "SQL 34 permits extraction support only through the verifier's own pinned extraction or a successful independent /2 validation bound by SQL 32/33."
+   - After: "The Router (`DetailedChecks`, `EvidenceWriter`) permits extraction support only through the verifier's own pinned extraction or a successful independent /2 validation bound by the receipt's own durable basis."
+Left and listed: none. Checks: `make gen2-locators` and `make gen2-push` green.
