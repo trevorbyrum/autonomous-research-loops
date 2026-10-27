@@ -12,12 +12,16 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
   - **Batch C complete** (PR #50, supervisor plus O-1; follow-up C-fu due before 2f). **Batch D1 complete** (PR #51, store fixtures plus O-8).
   - **Trigger-order retired** (PR #55).
   - **C-fu and Batch E complete** (PRs #57 and #58).
-  - **In flight:** Batch D2 (fixtures as fixtures, Sol, `gen2-wt-4`).
+  - **D2a-1 and D2a-2 complete** (PRs #60 and #61; cross-test imports 143 → 65).
+  - **6b1′ design accepted with changes B1–B5** (first pre-code design review).
+  - **In flight:**
+    - 6b1′ PR 0 (`evidence_revision` removal; Sonnet, `gen2-wt-6`);
+    - D2's remaining parts (Sol, `gen2-wt-4`).
   - **Held for operator decisions:**
     - Batch F (PR #54, Astra F1: tokens can form inside JSON escapes);
     - Batch B (`gen2-wt-3`), Batch A and O-5 (mutation scope for refactors).
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`. That is S6 → B → A → O-5 → the 6b1′ design (13 inputs) in the shared tree. The second coder takes the gateway mutants, trigger-order retirement (after S6), C, E, F and D2. D1 and O-9 come after S6.
-- **Last verifier result:** Batch E `515d2f8`, gen2-accept exit 0 in 765 s (8 shards, 3,100 tests).
+- **Last verifier result:** D2a-2 `b9f08ba`, gen2-accept exit 0 in 681 s (8 shards, 2,953 tests).
 - **Gate S watch item:** stage 2 is now sharded (S2d). Remaining cost driver: changed-line mutation of pure-move refactors (moved lines count as changed; stage 1 runs serially per mutant). This is the pending operator decision below.
 - **Blockers:** none. **Open operator decisions:** (1) the mutation scope for refactors (move-aware scope, parallel stage-1 workers), which Batch B, A and O-5 wait on; (2) the Batch F redaction design after Astra F1 (recommended: check the final wire bytes).
 - **Gate S:** last run **#2 at `b3ffd23`** (2026-10-27; `private/reviews/gen2-gate-s2-fable-20261027.md`). Engine side 109,026 lines; production 13,100. Operator decisions S2-1 to S2-7 are pending.
