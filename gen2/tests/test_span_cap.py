@@ -12,6 +12,7 @@ from gen2.tests import test_detailed_checks as checks
 from gen2.tests import test_router_workflow as workflow
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.detailed_receipt_fixtures import attach_checks
+from gen2.tests import router_fixtures as workflow_fixtures
 
 
 RECEIPT_SCHEMA = Path(__file__).resolve().parents[1] / 'schema/verification-receipt.schema.json'
@@ -73,7 +74,7 @@ class SpanCapTest(unittest.TestCase):
                     raw_spans = literal('start', '0').replace('"value": "2"', '"value": ' + n)
                     target = 'outcome-document.schema.json#/properties/claim_source_links/items/properties/spans'
                     self.assertEqual(not schemas.errors(exact_value(raw_spans), target), expected == 'committed')
-                    entry = workflow.link()
+                    entry = workflow_fixtures.link()
                     entry['spans'] = '__SPAN__'
                     payload = {**empty_outcome(case.grant['invocation_id'], 'interim_transition'), 'claim_source_links': [entry]}
                     env = case.envelope(case.grant, f'op_locator_{i:04}', empty_outcome(case.grant['invocation_id'], 'interim_transition'))
@@ -105,7 +106,7 @@ class SpanCapTest(unittest.TestCase):
                         ('9.007199254740992e15', 'rejected'),
                         ('9007199254740991', 'committed'))):
                     with self.subTest(key=key, n=n):
-                        entry = workflow.link()
+                        entry = workflow_fixtures.link()
                         entry['spans'] = '__SPAN__'
                         payload = {**empty_outcome(case.grant['invocation_id'], 'interim_transition'),
                             'claim_source_links': [entry]}

@@ -13,7 +13,7 @@ from gen2.store import capture
 from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 from gen2.tests.router_fixtures import TOPIC, OTHER, empty_outcome, find_request
 from gen2.tests.test_registry_dispositions import example_disposition
-from gen2.tests.test_router_workflow import Workflow, contract
+from gen2.tests.router_fixtures import Workflow, contract
 from gen2.tests.store_fixtures import StoreTestCase
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schema/branch-window.schema.json"

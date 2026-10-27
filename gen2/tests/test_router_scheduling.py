@@ -32,7 +32,7 @@ from gen2.store import api
 from gen2.tests import router_fixtures as rf, store_fixtures
 from gen2.core.instants import utc_instant_ns
 from gen2.tests.router_fixtures import TOPIC, RouterTestCase, empty_outcome
-from gen2.tests.test_router_amendments import ContractWorld, compatible, reframed
+from gen2.tests.router_fixtures import ContractWorld, compatible, reframed
 
 KINDS = ("research_pass", "discovery", "verification", "checkpoint")
 POLICY = {"bundle_version": "config-bundle/1", "version": 2, "questions": [], "templates": rf.TEMPLATES,  # task 2a: amendments are drafted in them

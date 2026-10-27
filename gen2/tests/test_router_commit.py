@@ -326,7 +326,7 @@ class AuthorityTest(CommitCase):
         receipt = self.verification_receipt(verifier)
         # Recorded input for this authority test; trusted transport has separate
         # Router tests. Keep identity refusals independent of acquisition refusal.
-        from gen2.tests.test_router_workflow import Workflow
+        from gen2.tests.router_fixtures import Workflow
         event = Workflow.observe(self, self.grant, "obs_authority01", ("rec-1",))[0]
         self.x("INSERT INTO record_work_links VALUES (?, 'wrk_00000001', 'dedup-1', '2026-09-27T10:00:00Z')", event)
         source = self.artifact(b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}', "application/json")
@@ -416,19 +416,6 @@ class AuthorityTest(CommitCase):
             self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired])),
                                 "payload_invalid", before, audits, "must consume its admitted acquisition")
         self.assertEqual(self.rows("SELECT topic_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", acquired["content_hash"]), [(OTHER,)])
-
-    def verification_receipt(self, verifier: dict) -> dict:
-        return {"receipt_version": "verification-receipt/1", "verification_receipt_id": "ver_000000000001", "topic_id": TOPIC,
-                "claim": {"claim_id": "clm_00000001", "claim_revision": 1}, "source": {"work_id": "wrk_00000001", "source_version": "v1"},
-                "cited_spans": [{"start": 0, "end": 5, "locator": {"kind": "page", "value": "3"}}], "obtained_content_hash": h("7"),
-                "access_tier": "full_text", "requested_for": {"use": "load_bearing", "required_access_tier": "full_text"},
-                "acquisition": {"route": "gateway:crossref", "retrieved_at": "2026-09-27T10:00:00Z", "gateway_call_ref": "call-1", "cache_reuse": False},
-                "extraction": {"method": "verifier_extraction", "extractor": "x-1", "produced_by_invocation_id": verifier["invocation_id"], "validation_ref": None},
-                "producer_invocation_id": "inv_research01", "verifier_invocation_id": verifier["invocation_id"],
-                "verifier_capability_id": verifier["capability_id"], "quote_check_id": None,
-                "checks": {"exact_quote": {"status": "not_applicable", "normalization_version": "n1", "source_artifact_hash": h("7")},
-                           "numeric_units": "checked_ok", "denominators": "checked_ok", "negation": "not_applicable", "qualifications": "checked_ok"},
-                "adjudication": None, "verdict": "supports", "verified_at": "2026-09-27T10:05:00Z"}
 
     def setUp(self) -> None:
         super().setUp()

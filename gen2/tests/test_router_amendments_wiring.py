@@ -18,7 +18,7 @@ have their own suites); the clock check shows when the clock is read, not the lo
 from __future__ import annotations
 
 from gen2.router import service
-from gen2.tests import test_router_amendments as amend
+from gen2.tests import router_fixtures as amend
 from gen2.tests.router_fixtures import OTHER, TOPIC
 from gen2.tests.test_router_lifecycle_wiring import Refusing, Spy
 

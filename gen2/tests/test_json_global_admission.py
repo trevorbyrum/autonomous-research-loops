@@ -10,7 +10,7 @@ from gen2.core import canonical
 from gen2.router import boundary
 from gen2.router.service import MalformedRequest
 from gen2.store import api
-from gen2.tests import router_fixtures as rf, test_router_workflow as workflow
+from gen2.tests import router_fixtures as rf, router_fixtures as workflow
 
 # Literal inventory, independently reviewed against Router's public surface.
 ROUTES = ('status', 'record_capability_probe', 'record_gateway_facts', 'admit_reaccess',

@@ -6,7 +6,7 @@ from gen2 import accounting as a
 from gen2.accounting import views as v
 from gen2.tests import children
 from gen2.tests.router_fixtures import TOPIC, OTHER
-from gen2.tests.test_router_amendments import ContractWorld, compatible, reframed
+from gen2.tests.router_fixtures import ContractWorld, compatible, reframed
 
 DATE = "2026-10-09T00:00:00Z"
 LATER = "2026-10-09T00:00:01Z"

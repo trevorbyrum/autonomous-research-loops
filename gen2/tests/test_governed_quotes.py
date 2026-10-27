@@ -9,7 +9,7 @@ from pathlib import Path
 from gen2.core.canonical import bytes_digest
 from gen2.router.schemas import SchemaSet
 from gen2.tests.router_fixtures import OTHER, TOPIC, empty_outcome
-from gen2.tests.test_router_workflow import Workflow
+from gen2.tests.router_fixtures import Workflow
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schema/quote-check.schema.json"
 

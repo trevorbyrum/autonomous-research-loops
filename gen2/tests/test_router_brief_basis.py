@@ -34,7 +34,7 @@ whether the contract fits the brief; no concurrent interleavings.
 from __future__ import annotations
 
 from gen2.tests.router_fixtures import BUNDLE, TOPIC
-from gen2.tests.test_router_workflow import REVIEW_BY, Workflow, contract
+from gen2.tests.router_fixtures import REVIEW_BY, Workflow, contract
 
 OTHER_OWNER = {"owner": "other-owner", "deadline": "2026-10-02T00:00:00Z"}
 THIRD_OWNER = {"owner": "third-owner", "deadline": "2026-10-03T00:00:00Z"}

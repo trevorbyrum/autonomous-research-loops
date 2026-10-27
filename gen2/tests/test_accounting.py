@@ -12,7 +12,7 @@ from gen2 import accounting as a
 from gen2.core import canonical
 from gen2.tests import children
 from gen2.tests.router_fixtures import TOPIC, empty_outcome, find_request
-from gen2.tests.test_router_workflow import Workflow
+from gen2.tests.router_fixtures import Workflow
 
 
 def complete() -> a.Inventory:
