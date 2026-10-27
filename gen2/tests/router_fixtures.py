@@ -928,8 +928,6 @@ class AttributedReceiptCase(ReceiptCase):
 
 
 class RecordCase(AcquisitionCase):
-    RAW = False
-
     def setUp(self):
         super().setUp()
         self.assertEqual(self.router.register_extractor_registry({"registry_version": 1, "operator_id": "fixture-operator",
@@ -977,10 +975,7 @@ class RecordCase(AcquisitionCase):
         grant = self.verifier if "extraction_validations" in sections else self.extractor
         out = self.send(grant, "op_refused001", **sections)
         self.assertEqual(out["status"], "rejected", out)
-        if self.RAW:
-            self.assertEqual(self.state(exclude=()), before)
-        else:
-            self.assert_audited_state(before, 1)
+        self.assert_audited_state(before, 1)
 
 
 IDENTITY = "doi:10.1/fixture"
@@ -1119,8 +1114,6 @@ def document(case, method, tier, verdict="supports", spans=(TABLE,), *, detailed
 
 
 class CheckCase(AcquisitionCase):
-    RAW = False
-
     def setUp(self):
         super().setUp()
         self.assertEqual(self.capture(self.producer, 'op_claimcheck1')['status'], 'committed')
@@ -1149,10 +1142,7 @@ class CheckCase(AcquisitionCase):
         before = self.state(exclude=())
         out = self.send(record)
         self.assertEqual(out['status'], 'rejected', out)
-        if self.RAW:
-            self.assertEqual(self.state(exclude=()), before)
-        else:
-            self.assert_audited_state(before, 1)
+        self.assert_audited_state(before, 1)
         return out
 
 

@@ -1,85 +1,128 @@
-"""Isolated SQL 29 predicates, over admitted operands in memory."""
+"""Direct SQL 29/31 binding, registry and retained-comparison witnesses."""
 import json
 import sqlite3
 
-
-from gen2.tests import store_fixtures as fx
-from gen2.tests import test_extraction_validations_v2 as v2
-from gen2.tests import test_store_extraction_records as raw
+from gen2.tests import store_fixtures as sf
 
 
-class DDLV2Test(v2.V2Case):
-    RAW = True
-    def setUp(self):
-        self.query = "SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND (tbl_name='extraction_validations_v2' OR name='extraction_validation_results_v2') ORDER BY rowid"
-        with sqlite3.connect(":memory:") as reference:
-            reference.executescript(fx.DDL_TEXT)
-            objects = reference.execute(self.query).fetchall()
-        v2.V2Case.setUp(self)
-        self.x("DROP VIEW extraction_validation_results_v2")
-        self.x("DROP TABLE extraction_validations_v2")
-        for _, _, sql in objects:
-            self.x(sql)
-        self.assertEqual(self.rows(self.query), objects)
+class ValidationV2IntegrityTest(sf.RecordIntegrityCase):
+    def test_controls(self):
+        for identity, changes, expected in (('failed', dict(outcome='failed', comparison='disagreement'), 0),
+                ('semantic', dict(comparison='semantic_agreement'), 1), ('ordinary', {}, 1)):
+            self.insert_record('extraction_validations_v2', validation_id=identity, **changes)
+            self.assertEqual(self.rows('SELECT method_succeeded FROM extraction_validation_results_v2 WHERE validation_id=?', identity), [(expected,)])
+            self.assertEqual(self.rows('SELECT validator_invocation_id,policy_version FROM extraction_validations_v2 WHERE validation_id=?', identity), [('inv_vvvvvvvv', 2)])
+        with self.corrupt('source_extractions', "extraction_id='ext-independent'", extractor_identity='tool-a', extractor_version='2'):
+            self.insert_record('extraction_validations_v2', validation_id='replay', method='same_family_replay')
+            self.assertEqual(self.rows("SELECT method_succeeded FROM extraction_validation_results_v2 WHERE validation_id='replay'"), [(0,)])
 
-    def send(self, grant=None, op="op_record0001", **sections):
-        if "extraction_validations" not in sections:
-            return raw.DDLTest.send(self, grant, op, **sections)
-        grant = grant or self.verifier
-        self.x("SAVEPOINT successor_write")
-        try:
-            for record in sections["extraction_validations"]:
-                row = {**record, "validator_invocation_id": grant["invocation_id"],
-                    "recorded_by_operation_id": "op_setup_" + grant["invocation_id"], "created_at": "2026-10-14T00:00:00Z"}
-                self.x(f"INSERT INTO extraction_validations_v2 ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
-                    *[json.dumps(v) if isinstance(v, dict) else v for v in row.values()])
-            return {"status": "committed"}
-        except sqlite3.IntegrityError:
-            self.x("ROLLBACK TO successor_write")
-            return {"status": "rejected"}
-        finally:
-            self.x("RELEASE successor_write")
+    def test_registered(self):
+        for guard in ('comparison_registry', 'current_registry', 'artifact', 'binding'):
+            self.x('DROP TRIGGER extraction_validations_v2_' + guard)  # isolate historical membership
+        for identity in ('ext-target', 'ext-independent'):
+            with self.subTest(identity=identity), self.corrupt('source_extractions', f"extraction_id='{identity}'", extractor_registry_version=None):
+                with self.assertRaisesRegex(sqlite3.IntegrityError, 'validation /2 needs both pinned registered tools'):
+                    self.insert_record('extraction_validations_v2')
+        for field in ('target_extraction_id', 'validator_extraction_id'):
+            with self.subTest(field=field), self.assertRaisesRegex(sqlite3.IntegrityError, 'validation /2 needs both pinned registered tools'):
+                self.insert_record('extraction_validations_v2', **{field:'absent'})
+
+    def test_comparison_registry(self):
+        self.registry(2, [('tool-b','family-b')])
+        with self.corrupt('source_extractions', "extraction_id='ext-independent'", extractor_registry_version=2):
+            for method in ('independent_extraction', 'same_family_replay'):
+                with self.subTest(method=method), self.assertRaisesRegex(sqlite3.IntegrityError, 'validation /2 needs both tools in the comparison registry'):
+                    self.insert_record('extraction_validations_v2', method=method)
+
+    def test_method(self):
+        with self.assertRaisesRegex(sqlite3.IntegrityError, 'validation method or byte comparison disagrees with extraction records'):
+            self.insert_record('extraction_validations_v2', method='same_family_replay')
+        with self.corrupt('source_extractions', "extraction_id='ext-independent'", output_ref=json.dumps(self.other_ref)):
+            with self.assertRaisesRegex(sqlite3.IntegrityError, 'validation method or byte comparison disagrees with extraction records'):
+                self.insert_record('extraction_validations_v2')
+            self.insert_record('extraction_validations_v2', comparison='semantic_agreement')
+            self.assertEqual(self.rows("SELECT method_succeeded FROM extraction_validation_results_v2 WHERE validation_id='raw-candidate'"), [(1,)])
+
+    def test_registry_controls(self):
+        self.registry(2, [('tool-a','family-a'),('tool-b','family-b'),('tool-c','family-a')])
+        self.registry(3, [('tool-a','family-c'),('tool-b','family-b'),('tool-c','family-c')])
+        for target_pin, identity, independent in ((2,'tool-c',True), (1,'tool-a',True), (1,'tool-b',False)):
+            with self.subTest(target_pin=target_pin,identity=identity), self.corrupt('source_extractions', "extraction_id='ext-target'", extractor_registry_version=target_pin):
+                with self.corrupt('source_extractions', "extraction_id='ext-independent'", extractor_registry_version=3, extractor_identity=identity):
+                    if independent:
+                        with self.assertRaisesRegex(sqlite3.IntegrityError, 'validation method or byte comparison disagrees with extraction records'):
+                            self.insert_record('extraction_validations_v2')
+                        self.insert_record('extraction_validations_v2', method='same_family_replay')
+                        self.assertEqual(self.rows("SELECT method_succeeded FROM extraction_validation_results_v2 WHERE validation_id='raw-candidate'"), [(0,)])
+                    else:
+                        self.insert_record('extraction_validations_v2')
+                        self.assertEqual(self.rows("SELECT method_succeeded FROM extraction_validation_results_v2 WHERE validation_id='raw-candidate'"), [(1,)])
+        self.registry(7, [('tool-a','family-a'),('tool-b','family-a'),('tool-c','family-c')])
+        for identity, method, expected in (('tool-b','same_family_replay',0), ('tool-c','independent_extraction',1)):
+            with self.subTest(identity=identity), self.corrupt('source_extractions', "extraction_id='ext-independent'", extractor_registry_version=7, extractor_identity=identity):
+                if identity=='tool-b':
+                    with self.assertRaisesRegex(sqlite3.IntegrityError, 'validation method or byte comparison disagrees with extraction records'):
+                        self.insert_record('extraction_validations_v2')
+                self.insert_record('extraction_validations_v2', method=method)
+                self.assertEqual(self.rows("SELECT method_succeeded FROM extraction_validation_results_v2 WHERE validation_id='raw-candidate'"), [(expected,)])
+                self.assertEqual(self.rows("SELECT extractor_registry_version FROM source_extractions WHERE extraction_id='ext-target'"), [(1,)])
+
+    def test_current_registry(self):
+        before = self.snapshot('extraction_validations_v2')
+        self.registry(7, [('tool-a','family-a'),('tool-b','family-a'),('tool-c','family-c')])
+        self.insert_record('source_extractions', extraction_id='unrelated', extractor_identity='tool-c', extractor_registry_version=7)
+        for change in ({}, {'outcome':'failed','comparison':'disagreement'}, {'method':'same_family_replay'}):
+            with self.subTest(change=change), self.assertRaisesRegex(sqlite3.IntegrityError, 'validation /2 needs the current extractor registry revision'):
+                self.insert_record('extraction_validations_v2', **change)
+        with self.corrupt('source_extractions', "extraction_id='ext-target'", extractor_registry_version=7):
+            with self.assertRaisesRegex(sqlite3.IntegrityError, 'validation /2 needs the current extractor registry revision'):
+                self.insert_record('extraction_validations_v2')
+        self.assertEqual(self.snapshot('extraction_validations_v2'), before)
+        self.assertEqual(self.rows("SELECT method_succeeded FROM extraction_validation_results_v2 WHERE validation_id='val-fixture'"), [(1,)])
+
+    def test_consistency(self):
+        for changes, fragment in (({'method':'same_extractor_replay'}, 'method IN'), ({'method':'invented'}, 'method IN'),
+                ({'policy_version':1}, 'policy_version = 2'), ({'outcome':'invented','comparison':'disagreement'}, 'outcome IN'),
+                ({'comparison':'invented','outcome':'failed'}, 'comparison IN'),
+                ({'outcome':'succeeded','comparison':'disagreement'}, "outcome = 'succeeded'")):
+            with self.subTest(changes=changes), self.assertRaisesRegex(sqlite3.IntegrityError, fragment):
+                self.insert_record('extraction_validations_v2', **changes)
+
+        with self.corrupt('source_extractions', "extraction_id='ext-independent'", extractor_identity='tool-a'):
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "method <> 'same_family_replay'"):
+                self.insert_record('extraction_validations_v2', method='same_family_replay', comparison='semantic_agreement')
+
+    def test_evidence(self):
+        ref = json.loads(self.record_row('extraction_validations_v2')['comparison_evidence_ref'])
+        for changes in ({'content_hash':sf.h('0')}, {'content_hash':sf.h('6')}, {'size_bytes':999}, {'media_type':'text/plain'}):
+            with self.subTest(changes=changes), self.assertRaisesRegex(sqlite3.IntegrityError, 'validation needs topic-authorized comparison evidence'):
+                self.insert_record('extraction_validations_v2', comparison_evidence_ref=json.dumps({**ref, **changes}))
+        with self.corrupt('artifact_topics', '1=1', topic_id=sf.OTHER):
+            with self.assertRaisesRegex(sqlite3.IntegrityError, 'validation needs topic-authorized comparison evidence'):
+                self.insert_record('extraction_validations_v2')
+
+    def test_immutable(self):
+        before = self.snapshot('extraction_validations_v2')
+        for sql, message in (("UPDATE extraction_validations_v2 SET created_at=created_at", 'validations are immutable'),
+                ("DELETE FROM extraction_validations_v2", 'validations are retained'),
+                ("INSERT OR REPLACE INTO extraction_validations_v2 SELECT * FROM extraction_validations_v2", 'validations are retained'),
+                ("INSERT INTO extraction_validations_v2 SELECT * FROM extraction_validations_v2 WHERE true ON CONFLICT DO UPDATE SET created_at=excluded.created_at", 'validations are immutable')):
+            self.rejects(message, sql)
+            self.assertEqual(self.snapshot('extraction_validations_v2'), before)
 
     def test_bindings(self):
-        self.basis()
-        # Synthetic upstream corruption isolates each downstream binding, including
-        # relations that upstream admission already fences. Only in this memory DB.
-        self.x("PRAGMA foreign_keys=OFF")
-        for table, key, identity, field, value in (
-                *(("source_extractions", "extraction_id", "independent", f, "foreign") for f in
-                    ("topic_id", "work_id", "source_version", "event_id", "verifier_invocation_id", "extracting_invocation_id")),
-                ("source_extractions", "extraction_id", "target", "verifier_invocation_id", self.extractor["invocation_id"]),
-                ("source_extractions", "extraction_id", "target", "extracting_invocation_id", self.verifier["invocation_id"]),
-                ("source_artifacts", "work_id", self.work, "invocation_id", self.verifier["invocation_id"]),
-                *(("invocations", "invocation_id", self.verifier["invocation_id"], f, v) for f, v in
-                    (("topic_id", "foreign"), ("kind", "checkpoint"), ("admission_context", "scoping/1"), ("parent_invocation_id", self.extractor["invocation_id"]))),
-                *(("operation_receipts", "operation_id", "op_setup_" + self.verifier["invocation_id"], f, v) for f, v in
-                    (("invocation_id", self.extractor["invocation_id"]), ("topic_id", "foreign"), ("contract_revision", 999)))):
-            with self.subTest(table=table, field=field, identity=identity):
-                self.x("SAVEPOINT binding_probe")
-                self.x("PRAGMA ignore_check_constraints=ON")
-                for name, sql in self.rows("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=?", table):
-                    if "BEFORE UPDATE" in sql:
-                        self.x(f'DROP TRIGGER "{name}"')
-                self.x(f"UPDATE {table} SET {field}=? WHERE {key}=?", value, identity)
-                if table == "source_extractions" and identity == "target" and field == "verifier_invocation_id":
-                    self.x("UPDATE source_extractions SET verifier_invocation_id=? WHERE extraction_id='independent'", value)
-                self.x("PRAGMA ignore_check_constraints=OFF")
-                self.refuse(extraction_validations=[self.validation()])
-                self.x("ROLLBACK TO binding_probe")
-                self.x("RELEASE binding_probe")
-        self.x("PRAGMA foreign_keys=ON")
-
-    def test_evidence_hash(self):
-        self.basis()
-        self.refuse(extraction_validations=[self.validation(comparison_evidence_ref={**self.evidence, "content_hash": self.output["content_hash"]})])
-
-    def test_registered_validator_pin(self):
-        # Isolate historical membership from the common/current registry guards'
-        # overlapping NULL refusals, only in this disposable in-memory store.
-        self.x("DROP TRIGGER extraction_validations_v2_comparison_registry")
-        self.x("DROP TRIGGER extraction_validations_v2_current_registry")
-        self.basis()
-        self.x("DROP TRIGGER source_extractions_immutable_u")
-        self.x("UPDATE source_extractions SET extractor_registry_version=NULL WHERE extraction_id='independent'")
-        self.refuse(extraction_validations=[self.validation()])
+        for guard in ('registered', 'comparison_registry', 'current_registry', 'artifact'):
+            self.x('DROP TRIGGER extraction_validations_v2_' + guard)  # isolate lineage
+        for field in ('target_extraction_id', 'validator_extraction_id'):
+            with self.subTest(field=field), self.assertRaisesRegex(sqlite3.IntegrityError, 'validation needs independent validator and exact acquisition lineage'):
+                self.insert_record('extraction_validations_v2', **{field: 'absent'})
+        for table, where, field, value in (
+                *(('source_extractions', "extraction_id='ext-independent'", f, 'foreign') for f in ('topic_id','work_id','source_version','event_id','verifier_invocation_id','extracting_invocation_id')),
+                ('source_extractions', "extraction_id='ext-target'", 'extracting_invocation_id', 'inv_vvvvvvvv'),
+                ('source_extractions', "extraction_id IN ('ext-target','ext-independent')", 'verifier_invocation_id', 'inv_pppppppp'),
+                ('source_artifacts', '1=1', 'invocation_id', 'inv_vvvvvvvv'),
+                *(('invocations', "invocation_id='inv_vvvvvvvv'", f, v) for f, v in (('topic_id',sf.OTHER),('kind','checkpoint'),('admission_context','scoping/1'),('parent_invocation_id','inv_pppppppp'))),
+                *(('operation_receipts', "operation_id='op_extractval'", f, v) for f, v in (('invocation_id','inv_pppppppp'),('topic_id',sf.OTHER),('contract_revision',999)))):
+            with self.subTest(table=table, field=field), self.corrupt(table, where, **{field:value}):
+                with self.assertRaisesRegex(sqlite3.IntegrityError, 'validation needs independent validator and exact acquisition lineage'):
+                    self.insert_record('extraction_validations_v2')
