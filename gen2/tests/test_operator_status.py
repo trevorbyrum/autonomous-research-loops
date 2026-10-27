@@ -47,7 +47,7 @@ COLLECTED_END = "the collected end's descendants are not confirmed ended"
 class StatusWorld(of.OperatorTestCase):
     def setUp(self) -> None:
         super().setUp()
-        from gen2.tests import test_router_amendments as amend  # the module, so its tests are not collected here
+        from gen2.tests import router_fixtures as amend
         self.amend = amend
         assert self.router.activate_config_bundle(POLICY_BUNDLE)["status"] == "activated"
         for tid in (T3, T4, T5):

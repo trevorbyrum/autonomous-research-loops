@@ -6,8 +6,8 @@ from dataclasses import replace
 from gen2.core.gateway_capture import RetainedExchange
 from gen2.tests.router_fixtures import TOPIC, OTHER, empty_outcome
 from gen2.tests.test_reaccess import digest
-from gen2.tests.test_router_workflow import Workflow, contract
-from gen2.tests.test_router_amendments import protocol_changed
+from gen2.tests.router_fixtures import Workflow, contract
+from gen2.tests.router_fixtures import protocol_changed
 
 REQUEST = b'{"lane":"crossref","page":1,"request":{"query":"fixture","request_type":"find"}}'
 RAW = b'{"request_type":"find","observation":{"captured":true,"call_ref":101,"invocation_id":"inv_capture001","attempt":1},"lanes":[{"source":"crossref","coverage":"searched_ok","completeness":"complete","retrieved":["doi:10.1/fixture"]}],"records":[{"identity":"doi:10.1/fixture","kind":"article","title":"Fixture","abstract":"An abstract"}]}'

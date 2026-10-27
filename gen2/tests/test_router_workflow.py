@@ -50,36 +50,10 @@ import json
 from gen2.core import canonical
 from gen2.tests import router_fixtures as rf
 from gen2.tests import supervisor_fixtures as sf
-from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, h, jcs
-from gen2.tests.test_router_amendments import contract_doc  # the schema-valid example contract, as a topic's revision
+from gen2.tests.router_fixtures import OTHER, TOPIC, empty_outcome, h, jcs
+from gen2.tests.router_fixtures import REVIEW_BY, UNAVAILABLE, Workflow, contract, jcs_hash, link, proposal, signal, work_of
 
-REVIEW_BY = "2026-10-01T00:00:00Z"
 NEW = "fleet-b:t9"
-
-
-def jcs_hash(text: str) -> str:
-    """SHA-256 over JCS bytes written out by hand in the test (keys sorted, no whitespace)."""
-    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def work_of(scheme: str, value: str) -> str:
-    return "wrk_" + jcs_hash(f'{{"identity_scheme":"{scheme}","identity_value":"{value}"}}').split(":", 1)[1]
-
-
-def contract(revision: int, parent: int | None, *, topic: str = TOPIC, rated: bool = True, edit=None) -> dict:
-    """The example contract as `topic`'s revision, its ratings citing opd_rate0001 (the example's), its hash true."""
-    def change(doc: dict) -> None:
-        doc["topic_id"] = topic
-        doc["decision_record"]["objective"]["confirmed_brief"] = {"brief_id": "brief-1", "version": 1, "confirmed_by": f"opd_brief{topic[-2:]}01"}
-        if edit is not None:
-            edit(doc)
-    return contract_doc(revision, parent, rated=rated, edit=change)
-
-
-def ratings(doc: dict) -> dict:
-    """A rating_approval's payload: exactly the ratings `doc` carries."""
-    rating = lambda entry: {"band": entry["importance"]["operator_rating"]["band"], "score": entry["importance"]["operator_rating"].get("score")}  # noqa: E731
-    return {"facets": {f["facet_id"]: rating(f) for f in doc["facet_map"]["facets"]}, "obligations": {o["obligation_id"]: rating(o) for o in doc["obligations"]}}
 
 
 def uncover_effect(doc: dict) -> None:
@@ -92,98 +66,6 @@ def uncover_effect(doc: dict) -> None:
         if cell["facet_id"] == "F-effect" and cell["question_type"] == "effect":
             cell.clear()
             cell.update(facet_id="F-effect", question_type="effect", state="gap", rationale="O-1 withdrawn")
-
-
-def link(claim: str = "clm_00000001", revision: int = 1, work: str | None = None, obligation: str = "O-1") -> dict:
-    return {"claim_id": claim, "claim_revision": revision, "work_id": work or work_of("doi", "10.1/x"), "source_version": "v1", "obligation_id": obligation,
-            "spans": [{"start": 10, "end": 42, "locator": {"kind": "page", "value": "3"}}], "contribution": "answer",
-            "evidence_origin_lineage": "study-1", "analytical_method": None}
-
-
-class Workflow(RouterTestCase):
-    """Router paths for S1-S3, and the capture helpers of S4-S5."""
-
-    def open_brief(self, tid: str = TOPIC, version: int = 1, deadline: str = REVIEW_BY, **changes) -> dict:
-        return self.router.open_brief({"document": self.brief_document(tid, version, **changes), "owner_operator_id": "user", "review_deadline": deadline})
-
-    def confirm(self, tid: str = TOPIC, version: int = 1, doc: dict | None = None) -> None:
-        doc = doc or self.brief_document(tid, version)
-        out = self.decide(f"opd_brief{tid[-2:]}{version:02d}", "brief_confirmation", {"kind": "intake_brief", "ref": "brief-1", "revision": version,
-                                                                                     "hash": doc["content_hash"]}, tid)
-        assert out["status"] == "applied", out
-
-    def draft(self, doc: dict) -> dict:
-        return self.router.draft_contract({"document": doc})
-
-    def rate(self, rated: dict, tid: str = TOPIC) -> dict:
-        """The operator rates draft 1 of `tid`, as `rated` states the ratings."""
-        r1 = self.value("SELECT content_hash FROM contract_revisions WHERE topic_id = ? AND revision = 1", tid)
-        return self.decide("opd_rate0001", "rating_approval", {"kind": "contract_revision", "revision": 1, "hash": r1}, tid, payload=ratings(rated))
-
-    def rated_drafts(self, tid: str = TOPIC) -> dict:
-        """S1 and S3's drafts through the router: the brief opened and
-        confirmed, draft 1 unrated, the operator's rating of it, draft 2
-        carrying the ratings."""
-        if not self.rows("SELECT 1 FROM intake_briefs WHERE topic_id = ?", tid):
-            assert self.open_brief(tid)["status"] == "recorded"
-            self.confirm(tid)
-        r2 = contract(2, 1, topic=tid)
-        assert self.draft(contract(1, None, topic=tid, rated=False))["status"] == "recorded"
-        assert self.rate(r2, tid)["status"] == "applied"
-        assert self.draft(r2)["status"] == "recorded"
-        return r2
-
-    def scope_approved(self, tid: str = TOPIC) -> dict:
-        """S2 through the router: a pre-contract pass commits the scoping report, the operator approves exactly it (router_fixtures.scoped)."""
-        return self.scoped(tid)
-
-    def approve(self, doc: dict, tid: str = TOPIC, did: str | None = None) -> dict:
-        return self.decide(did or f"opd_cntr{tid[-2:]}{doc['revision']:02d}", "contract_approval",
-                           {"kind": "contract_revision", "revision": doc["revision"], "hash": doc["content_hash"]}, tid)
-
-    def approved(self, tid: str = TOPIC) -> dict:
-        r2 = self.rated_drafts(tid)
-        self.scope_approved(tid)
-        out = self.approve(r2, tid)
-        assert out["status"] == "applied", out
-        return r2
-
-    # -- S4 capture ------------------------------------------------------------------
-    def observe(self, grant: dict, observation_id: str, records: tuple[str, ...]) -> list[str]:
-        """A successful search of the grant's topic capturing `records`; returns the retrieval event ids."""
-        request = rf.find_request(observation_id)
-        events = [{"event_id": f"rev_{observation_id[4:]}{n:02d}", "provider_record_id": record, "rank": n, "captured_at": "2026-09-27T10:00:00Z"}
-                  for n, record in enumerate(records, 1)]
-        observation = {"observation_id": observation_id, "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1, "lane": "crossref",
-                       "obligation_ids": ["O-1"], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z", "coverage_state": "searched_ok",
-                       "result_count": len(events), "completeness": "complete", "error_class": None, "capability_fact_id": None, "policy_version": "pol-1",
-                       "cost_units": None, "gateway_call_ref": "call-1", "page_outcome": "end_unknown", "continuation": None}
-        out = self.router.record_observation({"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "observation": observation,
-                                              "retrieval_events": events})
-        assert out["status"] == "recorded", out
-        return [e["event_id"] for e in events]
-
-    def register(self, grant: dict, works: list[tuple[str, str, list[str]]], version: str = "dedup-1") -> dict:
-        return self.router.register_works({"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "dedup_method_version": version,
-                                           "works": [{"identity_scheme": s, "identity_value": v, "event_ids": list(e)} for s, v, e in works]})
-
-    def capture(self, grant: dict, op: str, claim: str = "clm_00000001", revision: int = 1, **sections) -> dict:
-        """An interim commit under `grant` capturing a claim (unless claim is None), with any other sections."""
-        outcome = empty_outcome(grant["invocation_id"], "interim_transition", topic=grant["topic_id"])
-        refs = []
-        if claim is not None:
-            text = self.artifact(f"{claim} r{revision}".encode())
-            outcome["claims"] = [{"claim_id": claim, "revision": revision, "text_ref": text, "load_bearing": False, "required_access_tier": None}]
-            refs = [text]
-        outcome.update(sections)
-        return self.router.commit_outcome(self.envelope(grant, op, outcome, refs=refs))
-
-    def refused_commit(self, grant: dict, op: str, reason: str, detail: str, **sections) -> None:
-        before = self.state()
-        out = self.capture(grant, op, claim=None, **sections)
-        self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
-        self.assertIn(detail, out.get("detail", ""))
-        self.assert_audited_state(before, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -813,11 +695,6 @@ class ScopingClaimLinkTest(Workflow):
 # ---------------------------------------------------------------------------
 # review closure and code-policy signals
 # ---------------------------------------------------------------------------
-def signal(cause: str = "retraction-notice-7", *, reason: str = "retraction", source: str = "deterministic", revision: int = 1,
-           observed: str = "2026-09-27T09:50:00Z", tid: str = TOPIC) -> dict:
-    return {"topic_id": tid, "reason_code": reason, "signal_source": source, "cause_ref": cause, "source_revision": revision, "observed_at": observed}
-
-
 class SignalTest(Workflow):
     def setUp(self) -> None:
         super().setUp()
@@ -938,12 +815,6 @@ class ReviewClosureTest(Workflow):
 # ---------------------------------------------------------------------------
 # the scoping report and the scope decision (Astra's Phase 2 plan audit, finding 4)
 # ---------------------------------------------------------------------------
-UNAVAILABLE = {"observation_id": "obs_t1scope002", "request": rf.find_request("cost"), "request_identity": canonical.logical_hash(rf.find_request("cost")), "attempt": 1,
-               "lane": "semantic_scholar", "obligation_ids": [], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z",
-               "coverage_state": "provider_unavailable", "result_count": None, "completeness": "unobserved", "error_class": "provider_outage",
-               "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None, "gateway_call_ref": None, "page_outcome": "failed", "continuation": None}
-
-
 class ScopingReportTest(Workflow):
     """A pre-contract research pass of TOPIC (scoping) has searched crossref
     (one record) and found semantic_scholar unavailable; its report cites both."""
@@ -1134,17 +1005,6 @@ class ScopeDecisionTest(Workflow):
 # ---------------------------------------------------------------------------
 # source proposals (Astra's Phase 2 plan audit, finding 8; SOURCE-GOVERNANCE.md steps 1-2)
 # ---------------------------------------------------------------------------
-PROPOSAL_EXAMPLE = json.loads((rf.EXAMPLES / "source-proposal" / "valid-domain-lane-with-a-key.json").read_text())["instance"]
-
-
-def proposal(grant: dict, pid: str = "srcp_00000001", **changes) -> dict:
-    doc = {**PROPOSAL_EXAMPLE, "proposal_id": pid, "topic_id": grant["topic_id"],
-           "proposed_by": {"invocation_id": grant["invocation_id"], "invocation_kind": grant["kind"]}, **changes}
-    doc["motivation"] = {**doc["motivation"], "blocked_obligation_ids": changes.get("blocked", [])}
-    doc.pop("blocked", None)
-    return doc
-
-
 class SourceProposalTest(Workflow):
     """TOPIC is scoping; a pre-contract research pass proposes a provider."""
 

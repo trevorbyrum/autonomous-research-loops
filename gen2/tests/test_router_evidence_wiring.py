@@ -17,7 +17,7 @@ import json
 
 from gen2.store import api
 from gen2.tests import test_router_evidence as ev
-from gen2.tests import test_router_workflow as wf
+from gen2.tests import router_fixtures as wf
 from gen2.tests.router_fixtures import TOPIC, empty_outcome
 
 

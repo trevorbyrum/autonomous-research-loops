@@ -5,7 +5,7 @@ from dataclasses import replace
 
 from gen2.accounting import stopping as s
 from gen2.core import canonical
-from gen2.tests import test_router_amendments as am, test_stopping as st
+from gen2.tests import router_fixtures as am, test_stopping as st
 from gen2.tests.router_fixtures import RouterTestCase
 
 REF = {"content_hash": "sha256:" + "b" * 64, "size_bytes": 2048, "media_type": "application/json"}

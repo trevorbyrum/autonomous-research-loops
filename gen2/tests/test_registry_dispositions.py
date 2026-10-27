@@ -6,7 +6,7 @@ from gen2 import accounting as a
 from gen2.tests import children
 from gen2.tests.router_fixtures import TOPIC, OTHER, empty_outcome
 from gen2.tests.store_fixtures import StoreTestCase
-from gen2.tests.test_router_workflow import Workflow
+from gen2.tests.router_fixtures import Workflow
 
 
 def example_disposition(ref, index=0, **changes):

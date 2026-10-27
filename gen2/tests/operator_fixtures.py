@@ -249,7 +249,7 @@ RUNNING, FAILED, CHECKPOINT = "inv_running0001", "inv_discfail01", "inv_checkpt0
 
 
 class CommandWorld(OperatorTestCase):
-    """TOPIC under an approved contract (revision 2, test_router_amendments'
+    """TOPIC under an approved contract (revision 2, router_fixtures'
     ContractWorld) with a running research pass, a failed discovery and a
     running checkpoint that committed export manifest man_gen00000001; OTHER
     at intake with brief-1 v1 awaiting confirmation and brief-2 v1 past its
@@ -258,7 +258,7 @@ class CommandWorld(OperatorTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        from gen2.tests import test_router_amendments as amend  # the module, so its tests are not collected here
+        from gen2.tests import router_fixtures as amend
         self.amend = amend
         amend.ContractWorld.build_world(self)
         self.run_grant = self.started(RUNNING)

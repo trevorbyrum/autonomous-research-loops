@@ -13,7 +13,7 @@ from gen2.store import api, capture, db
 from gen2.tests.router_fixtures import TOPIC, OTHER, Spool
 from gen2.tests.test_extraction_records import RecordCase
 from gen2.tests import test_semantic_assessments as semantic, test_governed_quotes as quotes
-from gen2.tests.test_router_workflow import contract
+from gen2.tests.router_fixtures import contract
 
 
 def group(snapshot, name):

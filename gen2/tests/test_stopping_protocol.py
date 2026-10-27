@@ -3,7 +3,7 @@ import unittest
 from dataclasses import replace
 
 from gen2.accounting import stopping as s
-from gen2.tests import test_accounting as at, test_router_amendments as am, test_stopping as st
+from gen2.tests import test_accounting as at, router_fixtures as am, test_stopping as st
 from gen2.tests import test_stopping_bindings as sb
 from gen2.tests.router_fixtures import TOPIC, find_request
 

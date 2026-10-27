@@ -33,7 +33,7 @@ def request_type(request: object) -> str | None:
 def retained_request(observation: dict) -> bool:
     """Recognize only a same-row, failed retained representation (C-13).
 
-    Hash truth is established at Router/Store admission. Readers bind the
+    Hash truth is established at Router admission. Readers bind the
     labels and shape; a stray marker or byte column is never a decoded page.
     """
     request = observation["request"]
