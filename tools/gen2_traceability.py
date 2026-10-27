@@ -4,7 +4,7 @@
 docs/gen2/traceability.toml maps each invariant of docs/gen2/INVARIANTS.md to where it is
 enforced (`enforced_at`, "<kind>: <locator>") and the tests that show it (`tests`).
 This writes docs/gen2/TRACEABILITY.md from it; `--check` exits 1 when that file is stale
-or when the mapping and INVARIANTS name different invariants (same pattern as
+when the mapping and INVARIANTS name different invariants, or when an empty `enforced_at` or `tests` list has no `deferred`/`process` note (same pattern as
 tools/gen_source_catalog.py --check). tools/check_gen2_locators.py checks every locator in
 both files against the code. Standard library only.
 
@@ -38,7 +38,9 @@ def render(mapping: dict) -> str:
              "`make gen2-traceability` rewrites it and `make gen2-check` fails when it is stale. Edit the mapping, never this file.", "",
              "| Invariant | Enforced at | Tests |", "|---|---|---|"]
     for ident, entry in mapping["invariant"].items():
-        lines.append(f"| {ident} | {cell(entry.get('enforced_at', []), True)} | {cell(entry.get('tests', []), False)} |")
+        note = [f"{key}: {entry[key]}" for key in ("deferred", "process") if key in entry]
+        owners = "<br>".join([cell(entry.get("enforced_at", []), True)] * (not note or bool(entry.get("enforced_at"))) + note)
+        lines.append(f"| {ident} | {owners} | {cell(entry.get('tests', []), False)} |")
     return "\n".join(lines) + "\n"
 
 
@@ -46,6 +48,12 @@ def id_problems(mapping: dict, invariants: str) -> list[str]:
     named, mapped = set(ID_HEAD.findall(invariants)), set(mapping["invariant"])
     return [f"{i} is an invariant with no entry in {MAPPING}" for i in sorted(named - mapped)] + \
            [f"{i} has an entry in {MAPPING} but is no invariant of {INVARIANTS}" for i in sorted(mapped - named)]
+
+
+def silent_gaps(mapping: dict) -> list[str]:
+    return [f"{i} has no {key} and no `deferred` or `process` note: say why in {MAPPING}"
+            for i, e in mapping["invariant"].items() for key in ("enforced_at", "tests")
+            if not e.get(key) and not (e.get("deferred") or e.get("process"))]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -63,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     expected = render(mapping)
     table = root / TABLE
     if args.check:
-        problems = id_problems(mapping, invariants)
+        problems = id_problems(mapping, invariants) + silent_gaps(mapping)
         if not table.exists() or table.read_text(encoding="utf-8") != expected:
             problems.append(f"{TABLE} is stale or missing against {MAPPING}")
         if problems:

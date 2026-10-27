@@ -1,5 +1,5 @@
 # Traceability mapping source (R2, ruling 5): one entry per invariant of docs/gen2/INVARIANTS.md.
-# `enforced_at` is "<kind>: <locator>" (kind: router, ddl, schema, module, tool, gateway, doc); `tests` is a list of test locators.
+# `enforced_at` is "<kind>: <locator>"; `tests` lists test locators (a class locator names its whole class); `deferred`/`process` explain what is not (yet) code-enforced.
 # tools/gen2_traceability.py renders docs/gen2/TRACEABILITY.md from this file; tools/check_gen2_locators.py checks every locator here.
 # Built from the INVARIANTS "Enforced at" text and the current S5/S6 owners, verified against the code of 2026-10-27; what no longer exists is not listed.
 
@@ -10,7 +10,9 @@ enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::leases",
   "ddl: gen2/store/schema/02-invocations-and-records.sql::review_triggers",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_crash.py::CrashMatrixTest.test_every_boundary_for_every_finalizing_kind",
+]
 
 [invariant.RG-1b]
 enforced_at = [
@@ -18,19 +20,30 @@ enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::operation_receipts",
   "ddl: gen2/store/schema/02-invocations-and-records.sql::review_triggers",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_commit.py::ReplayAndIdentityTest",
+  "gen2/tests/test_router_evidence.py::TriggerAndOrdinalTest.test_a_replayed_trigger_opens_nothing_new",
+  "gen2/tests/test_router_workflow.py::ReviewClosureTest.test_a_handled_signal_reported_again_opens_nothing",
+]
 
 [invariant.RG-2]
 enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_ops.py::TransitionTest.test_the_lifecycle_moves_along_l1_only",
+  "gen2/tests/test_supervisor_crash.py::CrashFaults",
+]
 
 [invariant.RG-3]
 enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::holds",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_supervisor_budgets.py::BudgetFaults",
+  "gen2/tests/test_router_scheduling.py::RequeueTest",
+  "gen2/tests/test_supervisor_lifecycle.py::LifecycleFaults",
+]
 
 [invariant.RG-4]
 enforced_at = [
@@ -51,19 +64,38 @@ enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_commit.py::AuthorityTest.test_a_producer_cannot_verify_its_own_work",
+  "gen2/tests/test_router_commit.py::FencingTest.test_a_cross_topic_write_is_refused",
+  "gen2/tests/test_router_commit.py::TopicAuthorizationTest",
+]
 
 [invariant.RG-6]
-enforced_at = []
-tests = []
+enforced_at = [
+  "module: gen2/accounting/__init__.py::novelty",
+  "module: gen2/accounting/__init__.py::saturation_passes",
+  "module: gen2/accounting/__init__.py::window_standings",
+]
+tests = [
+  "gen2/tests/test_accounting.py::AccountingTest",
+  "gen2/tests/test_accounting.py::WindowTest",
+]
 
 [invariant.RG-7]
-enforced_at = []
+enforced_at = [
+  "gateway: gateway/research_gateway/app.py::Gateway",
+]
 tests = []
+deferred = "partial: gateway admission and drain exist; full restart, multi-owner and export recovery remain (DEBT-041 export delivery; Phase 2/3 gateway repairs)"
 
 [invariant.RG-8]
-enforced_at = []
-tests = []
+enforced_at = [
+  "tool: tools/gen2_import_dry_run.py",
+]
+tests = [
+  "gen2/tests/test_importer.py",
+]
+deferred = "DEBT-006 and DEBT-007 (Phase 4 reconciliation and single-writer canary); the dry-run importer is preparatory only"
 
 [invariant.RG-9]
 enforced_at = [
@@ -82,60 +114,114 @@ tests = [
 enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::search_observations",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_accounting.py::AccountingTest.test_zero_denominator",
+  "gen2/tests/test_router_commit.py::BoundaryValidationTest.test_an_unknown_topic_reports_no_state_revision",
+]
 
 [invariant.C-1]
-enforced_at = []
-tests = []
+enforced_at = [
+  "tool: tools/check_boundaries.py",
+]
+tests = [
+  "gen2/tests/test_check_boundaries.py::BoundaryCheckerTest.test_store_writes_are_the_routers_under_the_real_graph",
+]
 
 [invariant.C-2]
 enforced_at = [
   "schema: gen2/schema/commit-outcome.schema.json",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_commit.py::BoundaryValidationTest",
+]
 
 [invariant.C-3]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/service.py::Router._validate_commit",
+]
+tests = [
+  "gen2/tests/test_router_commit.py::AtomicityTest.test_staged_bytes_are_read_only_outside_transactions",
+  "gen2/tests/test_router_commit.py::AtomicityTest.test_the_commit_binds_the_bytes_it_validated",
+]
 
 [invariant.C-4]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/service.py::Router.commit_outcome",
+  "router: gen2/router/service.py::Router._commit_in_transaction",
+]
+tests = [
+  "gen2/tests/test_router_commit.py::ReplayAndIdentityTest",
+  "gen2/tests/test_router_commit.py::FencingTest",
+  "gen2/tests/test_router_crash.py::CrashMatrixTest.test_every_boundary_for_every_finalizing_kind",
+]
 
 [invariant.C-5]
 enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::operation_receipts",
   "ddl: gen2/store/schema/02-invocations-and-records.sql::operation_receipts_admission_references",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_restart.py::RestartTest.test_a_committed_result_replays_without_its_staged_bytes",
+  "gen2/tests/test_router_commit.py::ReplayAndIdentityTest",
+]
 
 [invariant.C-6]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/service.py::Router.commit_outcome",
+  "module: gen2/operator/service.py",
+]
+tests = [
+  "gen2/tests/test_store_ddl_contracts.py::ContractGovernanceTest.test_completion_needs_approval_of_current_dossier",
+]
 
 [invariant.C-7]
 enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::research_ordinals",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_evidence.py::TriggerAndOrdinalTest.test_only_contract_research_passes_earn_ordinals",
+  "gen2/tests/test_store_ddl_invocations.py::AdmissionAndLeaseTest.test_pre_contract_research_pass_earns_no_ordinal",
+]
 
 [invariant.C-8]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/service.py::Router._validate_commit",
+]
+tests = [
+  "gen2/tests/test_router_commit.py::AtomicityTest.test_staged_bytes_are_read_only_outside_transactions",
+]
 
 [invariant.C-9]
-enforced_at = []
-tests = []
+enforced_at = [
+  "module: gen2/supervisor/spool.py::Spool.stage",
+  "module: gen2/supervisor/spool.py::Spool.collect",
+  "router: gen2/router/boundary.py::staged",
+]
+tests = [
+  "gen2/tests/test_supervisor_spool.py::StageTest.test_a_symlinked_topic_directory_is_not_followed",
+  "gen2/tests/test_supervisor_spool.py::CollectTest.test_what_is_not_the_jobs_own_regular_file_is_refused_unread",
+  "gen2/tests/test_router_commit.py::BoundaryValidationTest.test_an_artifact_recorded_meanwhile_is_held_to_what_was_validated",
+]
 
 [invariant.C-10]
-enforced_at = []
-tests = []
+enforced_at = [
+  "module: gen2/core/control.py::ControlUnavailable",
+  "router: gen2/router/lifecycle.py::Lifecycle",
+  "router: gen2/router/amendments.py::Amendments._require_current_pins",
+]
+tests = [
+  "gen2/tests/test_router_lifecycle.py::CancellationTest.test_once_requested_no_result_observation_or_commit_is_accepted",
+  "gen2/tests/test_supervisor_crash.py::CrashFaults",
+]
 
 [invariant.C-11]
 enforced_at = [
   "tool: tools/check_gen2_schemas.py",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_check_boundaries.py::BoundaryCheckerTest",
+  "gen2/tests/test_store_history.py",
+]
 
 [invariant.C-12]
 enforced_at = [
@@ -192,11 +278,17 @@ enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
   "schema: gen2/schema/invocation.schema.json",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_store_ddl_invocations.py::InvocationLifecycleTest.test_terminal_states_are_final",
+]
 
 [invariant.L-2]
-enforced_at = []
-tests = []
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
+]
+tests = [
+  "gen2/tests/test_store_ddl_invocations.py::InvocationLifecycleTest.test_launching_requires_launch_intent",
+]
 
 [invariant.L-3]
 enforced_at = [
@@ -214,40 +306,75 @@ enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations_unknown_needs_reconciliation",
   "schema: gen2/schema/invocation.schema.json",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_lifecycle.py::UnknownTest.test_a_terminal_resolution_needs_confirmed_descendants_and_a_finding",
+  "gen2/tests/test_supervisor_crash.py::CrashFaults",
+]
 
 [invariant.L-5]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/lifecycle.py::Lifecycle._bind_evidence",
+  "module: gen2/supervisor/supervisor.py::Supervisor._agent_text",
+]
+tests = [
+  "gen2/tests/test_router_lifecycle.py::FailureTest.test_the_evidence_must_be_this_jobs_record_and_support_the_class",
+  "gen2/tests/test_supervisor_lifecycle.py::LifecycleFaults",
+]
 
 [invariant.L-6]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/scheduling.py::Scheduling._requeue_in_transaction",
+]
+tests = [
+  "gen2/tests/test_router_scheduling.py::RequeueTest.test_policy_requeues_only_transient_ends",
+  "gen2/tests/test_store_registries.py::RetryTest",
+]
 
 [invariant.L-7]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/lifecycle.py::Lifecycle._require_delegates_ended",
+  "router: gen2/router/lifecycle.py::Lifecycle._cancel_in_transaction",
+]
+tests = [
+  "gen2/tests/test_router_lifecycle.py::CancellationTest.test_launched_work_is_cancelled_by_the_supervisor_with_confirmed_descendants",
+  "gen2/tests/test_supervisor_lifecycle.py::LifecycleFaults.test_pause_holds_launch_within_its_budget_then_cancels",
+]
 
 [invariant.L-8]
 enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
   "ddl: gen2/store/schema/02-invocations-and-records.sql::operation_receipts_fenced",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_lifecycle.py::FailureTest.test_a_parents_lease_is_not_released_while_a_delegate_is_live",
+  "gen2/tests/test_supervisor_delegates.py::ParentEnds",
+]
 
 [invariant.L-9]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/lifecycle.py::Lifecycle._bind_evidence",
+  "module: gen2/supervisor/supervisor.py::Supervisor",
+]
+tests = [
+  "gen2/tests/test_supervisor_lifecycle.py::LifecycleFaults",
+]
 
 [invariant.E-1]
-enforced_at = []
-tests = []
+enforced_at = [
+  "module: gen2/accounting/__init__.py::novelty",
+]
+tests = [
+  "gen2/tests/test_accounting.py::AccountingTest.test_zero_denominator",
+]
 
 [invariant.E-2]
 enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::retrieval_events",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_ops.py::ObservationTest",
+  "gen2/tests/test_admission.py::TheTrustModel.test_a_relabelled_outcome_is_not_detected_here",
+]
 
 [invariant.E-3]
 enforced_at = [
@@ -265,41 +392,67 @@ tests = [
 ]
 
 [invariant.E-4]
-enforced_at = []
-tests = []
+enforced_at = [
+  "module: gen2/accounting/__init__.py::saturation_passes",
+  "module: gen2/accounting/__init__.py::window_standings",
+]
+tests = [
+  "gen2/tests/test_accounting.py::AccountingTest.test_partial_pass",
+  "gen2/tests/test_accounting.py::AccountingTest.test_repeating_search_earns_no_window",
+]
 
 [invariant.E-5]
 enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::screening_assessments",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_stopping.py",
+]
 
 [invariant.E-6]
 enforced_at = [
   "schema: gen2/schema/contract-v2.schema.json",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_stopping.py::StoppingTest.test_gates_override_any_and_unknown",
+  "gen2/tests/test_stopping.py::StoppingTest.test_stale_unknown_and_empty_labels",
+]
 
 [invariant.E-7]
-enforced_at = []
-tests = []
+enforced_at = [
+  "module: gen2/accounting/__init__.py::novelty",
+  "module: gen2/accounting/stopping.py",
+  "router: gen2/router/assessments.py",
+]
+tests = [
+  "gen2/tests/test_semantic_assessments.py",
+]
+deferred = "partial: accounting arithmetic and attributed assessments exist; dossier integration is DEBT-035/DEBT-033 (task 2d)"
 
 [invariant.E-8]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/service.py::Router.candidate_units",
+]
+tests = [
+  "gen2/tests/test_accounting.py::AccountingTest.test_legacy_history",
+]
 
 [invariant.E-9]
 enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::screening_assessments",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_store_ddl_evidence.py::ScreeningAndDecisionTest.test_exclusion_requires_reason_code",
+]
 
 [invariant.V-1]
 enforced_at = [
   "schema: gen2/schema/verification-receipt.schema.json",
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
 ]
-tests = []
+tests = [
+  "tools/check_gen2_schemas.py",
+]
 
 [invariant.V-2]
 enforced_at = [
@@ -355,19 +508,28 @@ tests = [
 ]
 
 [invariant.V-5]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/verification.py::Verification.write_holds",
+]
+tests = [
+  "gen2/tests/test_verification_attention.py::AttentionTest.test_disagreement",
+  "gen2/tests/test_verification_attention.py::AttentionTest.test_partial_disagreement",
+]
 
 [invariant.V-6]
 enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::quote_checks",
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_capture_support.py",
+  "gen2/tests/test_quote_attention.py",
+]
 
 [invariant.V-7]
 enforced_at = []
 tests = []
+deferred = "DEBT-037 (tier-0 checker disabled by operator choice; Phase 3)"
 
 [invariant.V-8]
 enforced_at = [
@@ -389,7 +551,9 @@ enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::claim_source_links",
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_store_ddl_evidence.py::VerificationTest",
+]
 
 [invariant.V-10]
 enforced_at = [
@@ -410,7 +574,10 @@ enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::decision_specs",
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::decision_receipts",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_registries.py::QuestionPinTest",
+  "gen2/tests/test_store_registries.py::QuestionRegistryTest",
+]
 
 [invariant.D-2]
 enforced_at = [
@@ -418,18 +585,29 @@ enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::decision_receipts",
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::screening_assessments_bound",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_evidence.py::ProviderScreeningTest",
+]
 
 [invariant.D-3]
 enforced_at = [
   "schema: gen2/schema/decision-receipt.schema.json",
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::decision_receipts",
 ]
-tests = []
+tests = [
+  "tools/check_gen2_schemas.py",
+]
 
 [invariant.D-4]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/registries.py::Registries._qualify_in_transaction",
+  "router: gen2/router/registries.py::Registries.is_qualified",
+]
+tests = [
+  "gen2/tests/test_router_registries.py::QualificationRecordTest",
+  "gen2/tests/test_store_registries.py::QualificationTest",
+]
+deferred = "partial: registry and qualification record constraints exist; live provider qualification is DEBT-010 (Phase 4)"
 
 [invariant.D-5]
 enforced_at = [
@@ -440,35 +618,62 @@ enforced_at = [
   "ddl: gen2/store/schema/04-registries-and-export.sql::qualifications_created_live_for_their_spec",
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::decision_receipts_match_spec",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_registries.py::QualificationRecordTest",
+  "gen2/tests/test_store_registries.py::QualificationTest",
+]
 
 [invariant.D-6]
-enforced_at = []
+enforced_at = [
+  "router: gen2/router/boundary.py::check_decision_receipt",
+]
 tests = []
+deferred = "partial: decision-receipt admission exists; provider input policy lands with live providers (INVARIANTS §13, Phase 3 qualification row; DEBT-010)"
 
 [invariant.D-7]
-enforced_at = []
-tests = []
+enforced_at = [
+  "tool: tools/check_boundaries.py",
+]
+tests = [
+  "gen2/tests/test_check_boundaries.py::BoundaryCheckerTest",
+]
 
 [invariant.D-8]
-enforced_at = []
-tests = []
+enforced_at = [
+  "schema: gen2/schema/decision-spec.schema.json",
+  "schema: gen2/schema/decision-receipt.schema.json",
+]
+tests = [
+  "tools/check_gen2_schemas.py",
+]
+deferred = "partial: spec/receipt shape only; provider option and fetch workflow is Phase 3 (§13 question registry row)"
 
 [invariant.D-9]
-enforced_at = []
+enforced_at = [
+  "schema: gen2/schema/decision-receipt.schema.json",
+]
 tests = []
+deferred = "partial: receipt shape only; blind-sample workflow is Phase 3 (§13 qualification/evaluation/blind-label row)"
 
 [invariant.D-10]
 enforced_at = []
 tests = []
+deferred = "Phase 3 (§13 qualification/evaluation/blind-label row): scheduled deterministic replay audit"
 
 [invariant.D-11]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/registries.py::Registries.is_qualified",
+  "router: gen2/router/service.py::Router._fence_changes_since_validation",
+]
+tests = [
+  "gen2/tests/test_router_registries.py::QualificationRecordTest",
+]
+deferred = "partial: qualification fencing exists; adversarial evaluation cases are Phase 3 (§13)"
 
 [invariant.D-12]
 enforced_at = []
 tests = []
+deferred = "Phase 3 (§13 qualification/evaluation/blind-label row): calibration data workflow"
 
 [invariant.G-1]
 enforced_at = [
@@ -476,7 +681,10 @@ enforced_at = [
   "ddl: gen2/store/schema/01-queue-and-contracts.sql::contract_revisions",
   "ddl: gen2/store/schema/01-queue-and-contracts.sql::obligations",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_store_ddl_contracts.py::ContractGovernanceTest",
+  "gen2/tests/test_router_amendments.py::AmendmentApprovalTest",
+]
 
 [invariant.G-2]
 enforced_at = [
@@ -484,13 +692,20 @@ enforced_at = [
   "ddl: gen2/store/schema/01-queue-and-contracts.sql::facets",
   "ddl: gen2/store/schema/01-queue-and-contracts.sql::obligations",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_workflow.py::ContractDraftTest.test_a_rating_is_exactly_what_the_operator_rated",
+  "gen2/tests/test_router_workflow.py::ContractDraftTest.test_an_unrated_draft_is_not_approved",
+  "gen2/tests/test_store_ddl_contracts.py::FacetImportanceTest",
+]
 
 [invariant.G-3]
 enforced_at = [
   "ddl: gen2/store/schema/01-queue-and-contracts.sql::uncovered_critical_facets",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_workflow.py::ContractDraftTest.test_an_uncovered_critical_facet_blocks_approval_and_covering_it_lifts_the_block",
+  "gen2/tests/test_store_ddl_contracts.py::FacetImportanceTest",
+]
 
 [invariant.G-4]
 enforced_at = [
@@ -513,16 +728,35 @@ tests = [
 ]
 
 [invariant.G-5]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/scheduling.py::Scheduling._reserve_in_transaction",
+  "router: gen2/router/scheduling.py::Scheduling._draw",
+]
+tests = [
+  "gen2/tests/test_router_scheduling.py::ReservationTest",
+  "gen2/tests/test_store_registries.py::ReservationTest",
+]
+deferred = "partial: reservation, draw and rating-threshold checks exist; auto-promotion consumers are DEBT-050 (Phase 3)"
 
 [invariant.G-6]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/amendments.py::contract_compatibility",
+  "router: gen2/router/amendments.py::Amendments._amendment_in_transaction",
+]
+tests = [
+  "gen2/tests/test_router_amendments.py::CompatibilityRuleTest",
+  "gen2/tests/test_router_amendments.py::AmendmentApprovalTest",
+]
 
 [invariant.G-7]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/amendments.py::contract_compatibility",
+  "router: gen2/router/service.py::Router._approve_contract",
+]
+tests = [
+  "gen2/tests/test_router_amendments.py::CompatibilityRuleTest",
+  "gen2/tests/test_router_amendments.py::AmendmentApprovalTest",
+]
 
 [invariant.G-8]
 enforced_at = [
@@ -549,12 +783,21 @@ tests = [
 ]
 
 [invariant.G-9]
-enforced_at = []
-tests = []
+enforced_at = [
+  "schema: gen2/schema/outcome-document.schema.json",
+]
+tests = [
+  "tools/check_gen2_schemas.py",
+]
 
 [invariant.G-10]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/registries.py::Registries._router_policy",
+  "schema: gen2/schema/config-bundle.schema.json",
+]
+tests = [
+  "gen2/tests/test_router_registries.py::ConfigBundleTest",
+]
 
 [invariant.G-11]
 enforced_at = [
@@ -563,7 +806,9 @@ enforced_at = [
   "router: gen2/router/amendments.py",
   "router: gen2/router/service.py",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_stopping_bindings.py",
+]
 
 [invariant.G-12]
 enforced_at = [
@@ -584,7 +829,9 @@ enforced_at = [
   "schema: gen2/schema/export-manifest.schema.json",
   "ddl: gen2/store/schema/04-registries-and-export.sql::outbox_events",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_store_ddl_export.py::ExportOutboxTest",
+]
 
 [invariant.P-2]
 enforced_at = [
@@ -597,37 +844,54 @@ enforced_at = [
   "schema: gen2/schema/common.schema.json",
   "doc: docs/gen2/EXPORT-API.md",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_store_ddl_export.py::ExportOutboxTest",
+  "gen2/tests/test_router_ops.py::AckDeliveryTest",
+]
 
 [invariant.P-3]
 enforced_at = [
   "schema: gen2/schema/freshness-envelope.schema.json",
   "schema: gen2/schema/export-delivery-receipt.schema.json",
 ]
-tests = []
+tests = [
+  "tools/check_gen2_schemas.py",
+]
 
 [invariant.P-4]
-enforced_at = []
-tests = []
+enforced_at = [
+  "schema: gen2/schema/export-delivery-receipt.schema.json",
+]
+tests = [
+  "gen2/tests/test_store_ddl_export.py::ExportOutboxTest.test_receipt_status_rules",
+]
+deferred = "partial: delivery is separate from completion in schema/DDL; independent currency computation is DEBT-043"
 
 [invariant.P-5]
 enforced_at = [
   "ddl: gen2/store/schema/04-registries-and-export.sql::outbox_events",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_evidence.py::ExportTest.test_unapproved_or_foreign_material_is_not_exported",
+  "gen2/tests/test_store_ddl_export.py::ExportOutboxTest",
+]
 
 [invariant.P-6]
 enforced_at = [
   "schema: gen2/schema/freshness-envelope.schema.json",
 ]
 tests = []
+deferred = "DEBT-042 (durable feed facts; after 2f)"
 
 [invariant.P-7]
 enforced_at = [
   "schema: gen2/schema/export-delivery-receipt.schema.json",
   "ddl: gen2/store/schema/04-registries-and-export.sql::export_delivery_receipts",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_store_ddl_export.py::ExportOutboxTest.test_receipt_status_rules",
+  "gen2/tests/test_router_ops.py::AckDeliveryTest.test_failures_raise_capability_facts_on_transitions",
+]
 
 [invariant.H-1]
 enforced_at = [
@@ -642,14 +906,22 @@ tests = [
 ]
 
 [invariant.H-2]
-enforced_at = []
-tests = []
+enforced_at = [
+  "router: gen2/router/capabilities.py",
+  "router: gen2/router/registries.py",
+]
+tests = [
+  "gen2/tests/test_router_registries.py::ConfigBundleTest.test_a_refusal_is_a_dated_fact_raised_on_the_transition_only",
+  "gen2/tests/test_capability_probe.py",
+]
 
 [invariant.H-3]
 enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::holds",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_router_ops.py::AckDeliveryTest.test_a_named_hold_is_one_of_the_manifests_topic",
+]
 
 [invariant.H-4]
 enforced_at = [
@@ -695,15 +967,29 @@ enforced_at = [
   "module: gen2/gateway_client/client.py",
   "module: gen2/gateway_client/client.py::_Endpoint",
 ]
-tests = []
+tests = [
+  "gen2/tests/test_gateway_ownership.py",
+  "gen2/tests/test_gateway_routes.py",
+]
 
 [invariant.B-1]
-enforced_at = []
-tests = []
+enforced_at = [
+  "tool: tools/check_boundaries.py",
+  "module: gen2/boundaries.toml",
+]
+tests = [
+  "gen2/tests/test_check_boundaries.py::BoundaryCheckerTest.test_review_ra7_reproductions_under_the_real_graph",
+]
 
 [invariant.B-2]
-enforced_at = []
-tests = []
+enforced_at = [
+  "tool: tools/check_boundaries.py",
+  "module: gen2/boundaries.toml",
+]
+tests = [
+  "gen2/tests/test_check_boundaries.py::BoundaryCheckerTest.test_gen1_engine_import_forbidden_even_for_tests",
+  "gen2/tests/test_check_boundaries.py::BoundaryCheckerTest.test_gateway_internals_import_forbidden",
+]
 
 [invariant.B-3]
 enforced_at = [
@@ -716,3 +1002,4 @@ tests = [
 [invariant.B-4]
 enforced_at = []
 tests = []
+process = "Gate C verdict per test (BUILD-CHARTER); a review obligation, enforced by the review process, not by code"
