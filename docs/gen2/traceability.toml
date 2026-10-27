@@ -210,8 +210,9 @@ enforced_at = [
   "router: gen2/router/amendments.py::Amendments._require_current_pins",
 ]
 tests = [
-  "gen2/tests/test_router_lifecycle.py::CancellationTest.test_once_requested_no_result_observation_or_commit_is_accepted",
-  "gen2/tests/test_supervisor_crash.py::CrashFaults",
+  "gen2/tests/test_supervisor_lifecycle.py::LifecycleFaults.test_an_unreachable_router_stalls_within_budget_and_delivery_resumes_by_replay",
+  "gen2/tests/test_supervisor_lifecycle.py::LifecycleFaults.test_the_deadline_still_ends_work_while_the_router_is_away",
+  "gen2/tests/test_supervisor_lifecycle.py::LifecycleFaults.test_the_deadline_ends_a_group_whose_launcher_vanished_while_the_router_is_away",
 ]
 
 [invariant.C-11]
@@ -406,7 +407,7 @@ enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::screening_assessments",
 ]
 tests = [
-  "gen2/tests/test_stopping.py",
+  "gen2/tests/test_accounting.py::AccountingTest.test_deferred_remains_unassessed",
 ]
 
 [invariant.E-6]
@@ -607,7 +608,7 @@ tests = [
   "gen2/tests/test_router_registries.py::QualificationRecordTest",
   "gen2/tests/test_store_registries.py::QualificationTest",
 ]
-deferred = "partial: registry and qualification record constraints exist; live provider qualification is DEBT-010 (Phase 4)"
+deferred = "partial: registry and qualification record constraints exist; live provider qualification is Phase 3 (§13 qualification/evaluation/blind-label row)"
 
 [invariant.D-5]
 enforced_at = [
@@ -628,7 +629,7 @@ enforced_at = [
   "router: gen2/router/boundary.py::check_decision_receipt",
 ]
 tests = []
-deferred = "partial: decision-receipt admission exists; provider input policy lands with live providers (INVARIANTS §13, Phase 3 qualification row; DEBT-010)"
+deferred = "partial: decision-receipt admission exists; provider input policy is Phase 3 (§13 qualification/evaluation/blind-label row)"
 
 [invariant.D-7]
 enforced_at = [
@@ -784,7 +785,9 @@ tests = [
 
 [invariant.G-9]
 enforced_at = [
-  "schema: gen2/schema/outcome-document.schema.json",
+  "schema: gen2/schema/common.schema.json",
+  "schema: gen2/schema/export-bundle.schema.json",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::queue_entries",
 ]
 tests = [
   "tools/check_gen2_schemas.py",
@@ -920,7 +923,10 @@ enforced_at = [
   "ddl: gen2/store/schema/02-invocations-and-records.sql::holds",
 ]
 tests = [
-  "gen2/tests/test_router_ops.py::AckDeliveryTest.test_a_named_hold_is_one_of_the_manifests_topic",
+  "gen2/tests/test_store_ddl_evidence.py::HoldTest.test_hold_needs_owner_deadline_and_clearing_condition",
+  "gen2/tests/test_store_ddl_evidence.py::HoldTest.test_operator_hold_cleared_only_by_operator_decision",
+  "gen2/tests/test_verification_attention.py::AttentionTest.test_failed_hold_write_rolls_back",
+  "gen2/tests/test_store_verification_attention.py::HoldDDLTest",
 ]
 
 [invariant.H-4]

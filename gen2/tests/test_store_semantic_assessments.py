@@ -1,5 +1,4 @@
 """Raw integrity guards for semantic assessments; in-memory fixtures only."""
-import json
 import sqlite3
 
 from gen2.tests.store_fixtures import StoreTestCase

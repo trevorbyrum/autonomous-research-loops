@@ -248,7 +248,7 @@ class FencingTest(CommitCase):
         receipt = self.router.commit_outcome(env)["receipt"]
         self.assertEqual((receipt["effects"]["queue_transition"], receipt["effects"]["lease_release"]["rest_state"]), (None, "held"))
         self.assertNotIn("evidence_revision", receipt["effects"])
-        self.assertNotIn("evidence_revision", self.router.receipt(env["operation_id"])["effects"])  # the replayed receipt
+        self.assertNotIn("evidence_revision", self.router.receipt(env["operation_id"])["effects"])  # the stored receipt
         self.assertEqual(self.status(), "held")
 
     def test_one_final_outcome_per_invocation(self) -> None:
