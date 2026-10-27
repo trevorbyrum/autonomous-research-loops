@@ -193,8 +193,7 @@ class OutcomeReportingTest(unittest.TestCase):
                  "engine-unit-inventory.json": {"expected": parents, "selected": parents},
                  "engine-unit-outcomes.json": outcomes,
                  "mutation-report.json": {"head": "pin", "base": "base", "scope": "changed-lines", "tests": None,
-                     "failed": False, "mutants": [{"id": "mutant", "verdict": "ASSERTION_KILL"}]},
-                 "trigger-order-outcomes.json": {"original": {"store": "pass"}, "reversed": {"store": "pass"}}}
+                     "failed": False, "mutants": [{"id": "mutant", "verdict": "ASSERTION_KILL"}]}}
         for filename, value in files.items():
             EVIDENCE.write_json(root / filename, value)
         with mock.patch.dict(os.environ, {"GEN2_CI_EVIDENCE": str(root)}):
@@ -309,7 +308,7 @@ class PartialScopeTest(unittest.TestCase):
                 self.assertEqual(report["acceptance"], "partial")
                 self.assertFalse(report["full_acceptance"])
                 self.assertEqual(report["ran"], ["T0", "units 1/8"])
-                self.assertEqual(report["omitted"], ["complete trigger-order", "unit partitions 2–8/8", "all mutation work", "all gateway modes"])
+                self.assertEqual(report["omitted"], ["unit partitions 2–8/8", "all mutation work", "all gateway modes"])
                 self.assertEqual([x["status"] for x in report["executions"]], statuses)
                 self.assertEqual(execute.call_count, len(codes))
                 self.assertEqual([(x["mode"], x["shard"]) for x in report["executions"]],

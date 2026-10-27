@@ -1,11 +1,7 @@
 """Durable own-extraction receipt bindings through the Router."""
 import json
 import unittest
-from unittest.mock import patch
 
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
-from gen2.tests.ddl_fixtures import restore_triggers
 from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt, historical_admission
 from gen2.tests.test_canonical_content_tiers import FULL, fixture
 from gen2.tests.test_extraction_acquisitions import extraction_document, send
@@ -14,15 +10,12 @@ from gen2.tests.test_extraction_acquisitions import extraction_document, send
 class OwnCases:
 
     def setUp(self):
-        # Seed under production DDL, then install the requested raw predicate.
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            context = fixture(FULL)
-            self.case = context.__enter__()
-            self.doc = extraction_document(self.case, 'verifier_extraction')
-            seed_checks(self.case, self.doc)
+        context = fixture(FULL)
+        self.case = context.__enter__()
+        self.doc = extraction_document(self.case, 'verifier_extraction')
+        seed_checks(self.case, self.doc)
         self.addCleanup(context.__exit__, None, None, None)
         self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'bibliographic'
-        restore_triggers(self.case, sf.DDL_TEXT)
 
     def submit(self):
         return send(self.case, self.doc)

@@ -2,9 +2,7 @@
 import json
 from unittest.mock import patch
 
-from gen2.store import db
 from gen2.tests.canonical_quotes_fixtures import CanonicalQuotesCase
-from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt, historical_admission
 
 
@@ -18,20 +16,12 @@ class CaptureCase(CanonicalQuotesCase):
         out = self.send([], grant=self.capture_grant, refs=[ref], claims=[{"claim_id": "clm_quote00001", "revision": revision,
             "text_ref": ref, "load_bearing": True, "required_access_tier": "full_text"}])
         self.assertEqual(out["status"], "committed", out)
-        # Retain subject-local drops as well as the requested mutations/order.
-        requested = self.rows(TRIGGERS)
-        restore_triggers(self, db.schema_text())
-        try:
-            doc = self.receipt_document(detailed=False)
-            doc['claim']['claim_revision'] = revision
-            single = doc['cited_spans']
-            for spans in (single, [*single, dict(start=0, end=1, locator=dict(kind='section', value='Results'))]):
-                doc['cited_spans'] = spans
-                seed_checks(self, doc)
-        finally:
-            ddl = db.schema_text() + '\n' + '\n'.join('DROP TRIGGER "' + n + '";' for n, _ in self.rows(TRIGGERS))
-            ddl += '\n' + '\n'.join(sql + ';' for _, sql in requested)
-            restore_triggers(self, ddl)
+        doc = self.receipt_document(detailed=False)
+        doc['claim']['claim_revision'] = revision
+        single = doc['cited_spans']
+        for spans in (single, [*single, dict(start=0, end=1, locator=dict(kind='section', value='Results'))]):
+            doc['cited_spans'] = spans
+            seed_checks(self, doc)
 
     def operands(self, revision=2):
         doc = self.receipt_document()

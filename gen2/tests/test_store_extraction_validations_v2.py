@@ -1,11 +1,8 @@
-"""Isolated SQL 29 predicates, retaining mutated/reversed objects in memory."""
+"""Isolated SQL 29 predicates, over admitted operands in memory."""
 import json
 import sqlite3
-from unittest.mock import patch
 
-from gen2.tests.ddl_fixtures import restore_triggers
 
-from gen2.store import db
 from gen2.tests import store_fixtures as fx
 from gen2.tests import test_extraction_validations_v2 as v2
 from gen2.tests import test_store_extraction_records as raw
@@ -18,14 +15,12 @@ class DDLV2Test(v2.V2Case):
         with sqlite3.connect(":memory:") as reference:
             reference.executescript(fx.DDL_TEXT)
             objects = reference.execute(self.query).fetchall()
-        with patch.object(fx, "DDL_TEXT", db.schema_text()):
-            v2.V2Case.setUp(self)
+        v2.V2Case.setUp(self)
         self.x("DROP VIEW extraction_validation_results_v2")
         self.x("DROP TABLE extraction_validations_v2")
         for _, _, sql in objects:
             self.x(sql)
         self.assertEqual(self.rows(self.query), objects)
-        restore_triggers(self, fx.DDL_TEXT)
 
     def send(self, grant=None, op="op_record0001", **sections):
         if "extraction_validations" not in sections:

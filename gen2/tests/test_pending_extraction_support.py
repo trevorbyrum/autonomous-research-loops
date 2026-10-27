@@ -6,9 +6,6 @@ from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_canonical_content_tiers import IDENTITY, FULL, attributed_fixture, document
 from gen2.tests.test_canonical_receipt_admission import AttributedReceiptCase, ReceiptCase
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
-from gen2.tests.ddl_fixtures import restore_triggers
-from gen2.tests import store_fixtures as sf
-from gen2.store import db
 
 METHODS = ("verifier_extraction", "validated_extraction")
 
@@ -40,16 +37,12 @@ def support_document(case, method, tier):
 @contextmanager
 def bound_fixture(record, tier='full_text'):
     with attributed_fixture(record) as case:
-        restore_triggers(case, db.schema_text())
-        try:
-            load_claim(case, tier)
-            doc = ReceiptCase.document(case)
-            doc['claim']['claim_id'] = 'clm_loadbear1'
-            # Ordinary extraction outputs equal these canonical bytes. The
-            # distinct-output regression separately checks artifact selection.
-            seed_checks(case, doc)
-        finally:
-            restore_triggers(case, sf.DDL_TEXT)
+        load_claim(case, tier)
+        doc = ReceiptCase.document(case)
+        doc['claim']['claim_id'] = 'clm_loadbear1'
+        # Ordinary extraction outputs equal these canonical bytes. The
+        # distinct-output regression separately checks artifact selection.
+        seed_checks(case, doc)
         yield case
 
 

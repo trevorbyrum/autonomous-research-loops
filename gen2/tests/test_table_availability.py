@@ -6,9 +6,6 @@ from contextlib import contextmanager
 from gen2.tests import test_canonical_content_tiers as content
 from gen2.tests.test_canonical_receipt_admission import AttributedReceiptCase, ReceiptCase
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
-from gen2.tests.ddl_fixtures import restore_triggers
-from gen2.tests import store_fixtures as sf
-from gen2.store import db
 from gen2.tests.test_extraction_acquisitions import extraction_document
 from gen2.tests.test_reaccess_admission import RAW, STAMP
 from gen2.tests.router_fixtures import TOPIC, empty_outcome
@@ -20,16 +17,12 @@ METHODS = ("canonical_bytes", "verifier_extraction", "validated_extraction")
 
 
 def seed_spans(case, bindings=((TABLE,), (PAGE,), (PAGE, TABLE))):
-    restore_triggers(case, db.schema_text())
-    try:
-        for spans in bindings:
-            doc = ReceiptCase.document(case)
-            doc['cited_spans'] = list(spans)
-            # Byte-equal ordinary outputs share this exact binding; no
-            # source/target/validator discrimination is claimed here.
-            seed_checks(case, doc)
-    finally:
-        restore_triggers(case, sf.DDL_TEXT)
+    for spans in bindings:
+        doc = ReceiptCase.document(case)
+        doc['cited_spans'] = list(spans)
+        # Byte-equal ordinary outputs share this exact binding; no
+        # source/target/validator discrimination is claimed here.
+        seed_checks(case, doc)
 
 
 @contextmanager

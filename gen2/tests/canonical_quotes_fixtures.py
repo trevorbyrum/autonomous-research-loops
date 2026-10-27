@@ -1,12 +1,8 @@
 """Admitted canonical content for existing capture/promotion/attention controls."""
 import json
-from unittest.mock import patch
 
 from gen2.core import canonical
 from gen2.core.gateway_capture import RetainedExchange
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
-from gen2.tests.ddl_fixtures import restore_triggers
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
 from gen2.tests.router_fixtures import find_request
 from gen2.tests.test_governed_quotes import QuotesCase
@@ -39,17 +35,15 @@ class CanonicalQuotesCase(QuotesCase):
         return RetainedExchange(self.grant["topic_id"], "inv_capture001", 1, "gw-call:1", canonical.canonical_bytes(request), self.SOURCE_BYTES)
 
     def setUp(self):
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            super().setUp()
-            self.router = self.make_router(gateway_captures=self)
-            out = self.router.admit_reaccess({**{k: self.grant[k] for k in ("capability_id", "invocation_id")},
-                "work_id": self.work, "source_version": "v1", "event_id": "rev_quote0000101"})
-            self.assertEqual(out["status"], "admitted", out)
-            from gen2.tests.extraction_receipt_fixtures import seed
-            seed(self)
-            self.verifier = self.grant
-            seed_checks(self, self.receipt_document(detailed=False))
-        restore_triggers(self, sf.DDL_TEXT)
+        super().setUp()
+        self.router = self.make_router(gateway_captures=self)
+        out = self.router.admit_reaccess({**{k: self.grant[k] for k in ("capability_id", "invocation_id")},
+            "work_id": self.work, "source_version": "v1", "event_id": "rev_quote0000101"})
+        self.assertEqual(out["status"], "admitted", out)
+        from gen2.tests.extraction_receipt_fixtures import seed
+        seed(self)
+        self.verifier = self.grant
+        seed_checks(self, self.receipt_document(detailed=False))
 
     def receipt_document(self, *args, detailed=True, **kwargs):
         doc = super().receipt_document(*args, **kwargs)

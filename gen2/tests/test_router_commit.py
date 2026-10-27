@@ -357,16 +357,9 @@ class AuthorityTest(CommitCase):
         own = empty_outcome("inv_verify01", "interim_transition")
         # NB1: the accepted support is a current positive; refusals above retain
         # their explicit /1 authority-isolation operands.
-        from gen2.store import db
-        from gen2.tests import store_fixtures as sf
-        from gen2.tests.ddl_fixtures import restore_triggers
         from gen2.tests.detailed_receipt_fixtures import seed_checks
         self.verifier = verifier
-        restore_triggers(self, db.schema_text())
-        try:
-            seed_checks(self, receipt)
-        finally:
-            restore_triggers(self, sf.DDL_TEXT)
+        seed_checks(self, receipt)
         own["verification_receipts"] = [receipt]
         self.assertEqual(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own))["status"], "committed")
         self.assertEqual(self.rows("SELECT verifier_invocation_id, producer_invocation_id FROM verification_receipts"), [("inv_verify01", "inv_research01")])

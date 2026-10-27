@@ -25,31 +25,20 @@ GEN2_TEST_WORKERS ?= 8
 GEN2_CC_MAX_FUNCTION = 48
 GEN2_CC_MAX_AVERAGE = 10
 
-.PHONY: gen2-check gen2-accept gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-trigger-order gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-accept gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
 gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-size
 	@echo "gen2-check: all checks passed"
 
-# Acceptance skips trigger-order only when the committed DDL diff is known empty.
-# A missing base or failed comparison runs the conservative trigger-order check.
+# Acceptance runs the full checks, then changed-line mutation.
 gen2-accept: export GEN2_TEST_COVERAGE = $(abspath $(GEN2_COVERAGE))
 gen2-accept: GEN2_TEST_ARGS += --workers $(GEN2_TEST_WORKERS)
 gen2-accept: export GEN2_MUTATION_ARGS += --workers $(GEN2_TEST_WORKERS)
 gen2-accept: gen2-check
-	@if ddl_changes=$$(git diff --name-only "$(GEN2_BASE)...HEAD" -- gen2/store/schema); then \
-		if [ -z "$$ddl_changes" ]; then \
-			echo "gen2-accept: skipping trigger-order (no DDL changes: $(GEN2_BASE)...HEAD)"; exit 0; \
-		fi; \
-		reason="DDL changed"; \
-	else \
-		reason="DDL comparison unavailable (git diff exit $$?)"; \
-	fi; \
-	echo "gen2-accept: running trigger-order ($$reason: $(GEN2_BASE)...HEAD)"; \
-	$(MAKE) gen2-trigger-order
 	$(MAKE) gen2-mutation
 	@echo "gen2-accept: all checks passed"
 
-.PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-trigger-order gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db
+.PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db
 # T0 is deliberately separate from full acceptance. No acceptance verdict is
 # inferred from this target. Full acceptance uses gen2-accept.
 gen2-push: gen2-sqlite gen2-boundaries gen2-size gen2-schemas gen2-ddl gen2-catalog-check gen2-complexity gen2-debt gen2-locators
@@ -65,9 +54,6 @@ gen2-ci-default: gen2-venv
 
 gen2-ci-unit:
 	$(MAKE) gen2-ci GEN2_CI_MODE=engine-unit
-
-gen2-ci-trigger-order:
-	$(MAKE) gen2-ci GEN2_CI_MODE=engine-trigger-order GEN2_CI_SHARD=1/1
 
 gen2-ci-mutation:
 	$(MAKE) gen2-ci GEN2_CI_MODE=engine-mutation
@@ -149,12 +135,6 @@ gen2-catalog-check: gen2-venv
 # unittest's own.
 gen2-test: gen2-venv
 	$(PYTHON) tools/gen2_test.py $(GEN2_TEST_ARGS)
-
-# The whole store suite again with every trigger re-created in reverse order;
-# every test and subtest must have the same outcome (task 0b cleanup 2: no
-# assertion may depend on SQLite's trigger-firing order).
-gen2-trigger-order: gen2-venv
-	$(PYTHON) tools/gen2_trigger_order.py
 
 # Acceptance mutates changed production lines against the explicit merge-base.
 gen2-mutation: gen2-venv

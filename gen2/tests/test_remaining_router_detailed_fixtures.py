@@ -8,12 +8,10 @@ from unittest.mock import patch
 
 from gen2.core import canonical
 from gen2.store import db
-from gen2.tests import store_fixtures as sf
 from gen2.tests import test_router_amendments as amendments
 from gen2.tests import test_span_cap as cap
-from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
+from gen2.tests.ddl_fixtures import TRIGGERS
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.ddl_fixtures import reverse_triggers
 
 
 class RemainingRouterFixtureTest(unittest.TestCase):
@@ -47,10 +45,8 @@ class RemainingRouterFixtureTest(unittest.TestCase):
 
     def opened(self):
         case = amendments.ImpactTest()
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            case.setUp()
+        case.setUp()
         self.addCleanup(case.tearDown)
-        restore_triggers(case, sf.DDL_TEXT)
         return case
 
     def observe(self, case, seen):
@@ -128,11 +124,11 @@ class RemainingRouterFixtureTest(unittest.TestCase):
                 self.assertEqual(case.rows('SELECT * FROM detailed_check_records'), records)
 
     def test_amendment_reseed_restores_exact_requested_catalog(self):
-        ddl = reverse_triggers(sf.DDL_TEXT)
+        ddl = db.schema_text()
         with sqlite3.connect(':memory:') as reference:
             reference.executescript(ddl); expected = list(reference.execute(TRIGGERS))
         for method in ('canonical_producer', 'acquisition_producer'):
-            with self.subTest(method=method), patch.object(sf, 'DDL_TEXT', ddl):
+            with self.subTest(method=method):
                 case = self.opened(); grant = case.research()
                 case.verify(**{method: grant})
                 self.assertEqual(case.rows(TRIGGERS), expected)

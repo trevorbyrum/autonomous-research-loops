@@ -1,6 +1,6 @@
 """Admitted attributed fixture assessments; never inferred from lexical output.
 
-Seed before restoring counterfactual DDL. Attaching references only reads rows,
+Attaching references only reads rows,
 so receipt rollback/replay snapshots include all previously admitted evidence.
 """
 import copy
@@ -92,4 +92,4 @@ def historical_admission(case):
         try:
             yield
         finally:
-            restore_triggers(case, None, catalog=catalog)
+            restore_triggers(case, catalog=catalog)
