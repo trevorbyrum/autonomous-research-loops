@@ -11,7 +11,7 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 - **Last verifier result:** S4 `90d5070`, gen2-accept exit 0 in 4,729 s: 3,937 tests; 34 executable changed-line mutants (22 assertion, 12 error kills), 0 survivors; baseline reused (0.08 s); mutation step 457 s.
 - **Gate S watch item:** a stage-1 survivor costs a full serial suite (about 70 min) in stage 2. Candidate: run stage 2 sharded or in parallel.
 - **Blockers:** none. **Open operator decisions:** none.
-- **Gate S:** last run #1 at `65fb30e`. Since then, the batches have been net-negative (S1 −2,447; S3 −22,845).
+- **Gate S:** last run **#2 at `b3ffd23`** (2026-10-27; `private/reviews/gen2-gate-s2-fable-20261027.md`). Engine side 109,026 lines; production 13,100. Operator decisions S2-1 to S2-7 are pending.
 - **What's next:** S5, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
