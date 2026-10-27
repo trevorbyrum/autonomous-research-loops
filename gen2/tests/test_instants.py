@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timezone
-
-import time_machine
+from unittest import mock
 
 from gen2.app import engine
 from gen2.core.instants import is_utc_instant, utc_instant_ns, utc_now
@@ -23,7 +22,12 @@ from gen2.store import compat
 class UtcNowFormatTest(unittest.TestCase):
     """P4 moved four clocks onto utc_now; each consumer's literal output format is pinned (Z suffix, six-digit fraction except the SQLite gate's seconds)."""
     def test_each_consumers_format_is_the_one_it_had(self):
-        with time_machine.travel(datetime(2026, 10, 27, 1, 2, 3, 40506, tzinfo=timezone.utc), tick=False):
+        class Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 10, 27, 1, 2, 3, 40506, tzinfo=tz)
+
+        with mock.patch("gen2.core.instants.datetime", Frozen):
             self.assertEqual(utc_now(), "2026-10-27T01:02:03.040506Z")
             self.assertEqual(Router.__init__.__kwdefaults__["clock"](), "2026-10-27T01:02:03.040506Z")
             self.assertEqual(GatewayClient.__init__.__kwdefaults__["clock"](), "2026-10-27T01:02:03.040506Z")
