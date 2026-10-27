@@ -4,7 +4,7 @@ from copy import deepcopy
 from fractions import Fraction
 from typing import Literal
 
-from gen2.accounting import CandidateUnits, Count, EvidenceReference, Inventory, NoveltyJudgment, SemanticOperand, Standing, WindowStanding, WindowState, candidate_units, label_standing, novelty, semantic_accrual, window_search_knowledge, window_standings
+from gen2.accounting import CandidateUnits, Count, EvidenceReference, Inventory, NoveltyJudgment, SemanticOperand, Standing, WindowStanding, WindowState, candidate_units, label_standing, novelty, semantic_operands, window_search_knowledge, window_standings
 
 State = Literal["satisfied", "not_satisfied", "unknown"]
 Operator = Literal["all", "any"]
@@ -29,6 +29,15 @@ class DescriptiveOperands:
 class WindowPin:
     invocation_id: str
     contract_revision: int
+
+
+def window_revisions(pins: tuple[WindowPin, ...]) -> dict[str, int]:
+    revisions: dict[str, int] = {}
+    for p in pins:
+        if p.invocation_id in revisions:
+            raise ValueError("duplicate window pins")
+        revisions[p.invocation_id] = p.contract_revision
+    return revisions
 
 
 @dataclass(frozen=True)
@@ -78,8 +87,7 @@ class RuleResult:
 
 
 def descriptive(context: Context, rule_id: str, inventory: Inventory, as_of: str) -> RuleResult:
-    subjects = sorted({(r.work_id, r.source_version) for r in inventory.semantic_assessments})
-    labels = tuple(o for work, version in subjects for o in semantic_accrual(inventory, work, version, as_of))
+    labels = semantic_operands(inventory, as_of)
     judgments = tuple(NoveltyJudgment(o.assessment.work_id, {"novel": True, "not_novel": False, "unknown": None}[o.labels[0]]) for o in labels)
     units = candidate_units(inventory)
     fraction = novelty(units.assessed_candidates, judgments) if inventory.current_contract_revision == context.contract_revision else None
@@ -140,9 +148,7 @@ def coverage(context: Context, rule_id: str, inventory: Inventory, pins: tuple[W
     """A declared window-count prerequisite only; no recall/meaning guarantee."""
     if minimum_windows < 1:
         raise ValueError("minimum_windows must be positive")
-    revisions = {p.invocation_id: p.contract_revision for p in pins}
-    if len(revisions) != len(pins):
-        raise ValueError("duplicate window pins")
+    revisions = window_revisions(pins)
     standings = window_standings(inventory)
     global_operands = {w.invocation_id: _window_operand(w, inventory, revisions) for w in standings}
     windows = tuple(global_operands[w.invocation_id] for w in standings
