@@ -11,15 +11,11 @@ from typing import Mapping, Protocol
 from gen2.core import canonical
 from gen2.router import boundary
 from gen2.router.boundary import Refusal
+from gen2.router.evidence_writer import Rows
 
 
 class Schemas(Protocol):
     def errors(self, instance: object, target: str) -> list[str]: ...
-
-
-class Rows(Protocol):
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
 
 
 class ObservationCore(Protocol):
