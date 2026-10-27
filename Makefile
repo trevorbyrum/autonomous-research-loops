@@ -25,7 +25,7 @@ GEN2_TEST_WORKERS ?= 8
 GEN2_CC_MAX_FUNCTION = 48
 GEN2_CC_MAX_AVERAGE = 10
 
-.PHONY: gen2-check gen2-accept gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-accept gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-traceability gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
 gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-size
 	@echo "gen2-check: all checks passed"
@@ -109,6 +109,12 @@ gen2-debt: gen2-venv
 # may drift, names may not.
 gen2-locators: gen2-venv
 	$(PYTHON) tools/check_gen2_locators.py
+	$(PYTHON) tools/gen2_traceability.py --check
+
+# docs/gen2/TRACEABILITY.md is generated from docs/gen2/traceability.toml (R2); the --check in gen2-locators
+# fails when it is stale or the mapping and INVARIANTS name different invariants.
+gen2-traceability: gen2-venv
+	$(PYTHON) tools/gen2_traceability.py
 
 # Needs the hash-locked runtime deps (rfc8785, used by gen2/core/canonical.py)
 # and the dev-only validator (jsonschema) — both in $(GEN2_VENV); each check

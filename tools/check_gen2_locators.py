@@ -9,7 +9,8 @@ NAMES may not drift: a locator that names a file or a function that is not
 there fails.
 
 What counts as a locator, in the documents named below (default
-docs/gen2/INVARIANTS.md and docs/gen2/DEBT-REGISTER.md), always inside inline
+docs/gen2/INVARIANTS.md, docs/gen2/DEBT-REGISTER.md, the traceability mapping docs/gen2/traceability.toml,
+whose list elements are read as locators, and its rendered table TRACEABILITY.md), always inside inline
 backticks (fenced blocks are skipped). Every backticked span is classified by
 its SHAPE alone, never by whether what it names still exists (task
 2q-a-repair F4: a citation whose module or class was deleted used to stop
@@ -80,7 +81,7 @@ from collections import Counter
 from pathlib import Path
 
 EXIT_OK, EXIT_FAIL, EXIT_TOOL = 0, 1, 2
-DEFAULT_DOCS = ("docs/gen2/INVARIANTS.md", "docs/gen2/DEBT-REGISTER.md")
+DEFAULT_DOCS = ("docs/gen2/INVARIANTS.md", "docs/gen2/DEBT-REGISTER.md", "docs/gen2/traceability.toml", "docs/gen2/TRACEABILITY.md")
 FILE_SUFFIXES = (".py", ".sql", ".json", ".toml", ".md", ".yaml", ".yml", ".sh", ".js", ".txt", ".csv", ".example")
 SURFACE = ("gen2/", "gateway/", "tools/")
 PACKAGES = ("gen2", "research_gateway")  # first-party packages: a dotted name that starts with one is a module path
@@ -234,6 +235,8 @@ def check_document(sources: Sources, doc: str, files: list[str], modules: dict[s
         text = (sources.root / doc).read_text(encoding="utf-8")
     except OSError as exc:
         raise ToolError(f"{doc} cannot be read: {exc}") from exc
+    if doc.endswith(".toml"):  # the mapping's list elements are bare locators ("<kind>: <locator>" or "<locator>"): read each as a backticked span
+        text = re.sub(r'^(\s+")((?:[a-z]+: )?)([^"`]+)(",)$', r"\1\2`\3`\4", text, flags=re.M)
     cleaned = prose(text)
     spans = [(m.start(), m.end(), m.group(1)) for m in SPAN.finditer(cleaned)]
     line_of = lambda offset: cleaned.count("\n", 0, offset) + 1

@@ -1,0 +1,660 @@
+# Traceability mapping source (R2, ruling 5): one entry per invariant of docs/gen2/INVARIANTS.md.
+# `enforced_at` is "<kind>: <locator>" (kind: router, ddl, schema, module, tool, gateway, doc); `tests` is a list of test locators.
+# tools/gen2_traceability.py renders docs/gen2/TRACEABILITY.md from this file; tools/check_gen2_locators.py checks every locator here.
+# Built from the retired INVARIANTS "Enforced at" narratives, verified against the code of 2026-10-27; what no longer exists is not listed.
+
+[invariant.RG-1a]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::operation_receipts",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::research_ordinals",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::leases",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::review_triggers",
+]
+tests = []
+
+[invariant.RG-1b]
+enforced_at = [
+  "schema: gen2/schema/commit-outcome.schema.json",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::operation_receipts",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::review_triggers",
+]
+tests = []
+
+[invariant.RG-2]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
+]
+tests = []
+
+[invariant.RG-3]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::holds",
+]
+tests = []
+
+[invariant.RG-4]
+enforced_at = [
+  "router: gen2/router/boundary.py::check_page_outcome",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::search_observations",
+  "module: gen2/gateway_client/observe.py::page_end",
+  "schema: gen2/schema/common.schema.json",
+]
+tests = [
+  "gen2/tests/test_admission.py",
+  "gen2/tests/test_gateway_client.py::PageOutcomes",
+  "gen2/tests/test_router_ops.py::ObservationTest",
+  "gen2/tests/test_store_ddl_evidence.py::ObservationTest",
+]
+
+[invariant.RG-5]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
+]
+tests = []
+
+[invariant.RG-6]
+enforced_at = []
+tests = []
+
+[invariant.RG-7]
+enforced_at = []
+tests = []
+
+[invariant.RG-8]
+enforced_at = []
+tests = []
+
+[invariant.RG-9]
+enforced_at = [
+  "module: gen2/app/station.py",
+  "module: gen2/operator/auth.py",
+  "router: gen2/router/status.py",
+  "module: gen2/operator/status.py",
+  "doc: docs/gen2/AUTH-DEMO.md",
+  "doc: docs/gen2/DEBT-REGISTER.md",
+]
+tests = [
+  "gen2/tests/test_operator_restart.py",
+]
+
+[invariant.RG-U]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::search_observations",
+]
+tests = []
+
+[invariant.C-1]
+enforced_at = []
+tests = []
+
+[invariant.C-2]
+enforced_at = [
+  "schema: gen2/schema/commit-outcome.schema.json",
+]
+tests = []
+
+[invariant.C-3]
+enforced_at = []
+tests = []
+
+[invariant.C-4]
+enforced_at = []
+tests = []
+
+[invariant.C-5]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::operation_receipts",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::operation_receipts_admission_references",
+]
+tests = []
+
+[invariant.C-6]
+enforced_at = []
+tests = []
+
+[invariant.C-7]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::research_ordinals",
+]
+tests = []
+
+[invariant.C-8]
+enforced_at = []
+tests = []
+
+[invariant.C-9]
+enforced_at = []
+tests = []
+
+[invariant.C-10]
+enforced_at = []
+tests = []
+
+[invariant.C-11]
+enforced_at = [
+  "tool: tools/check_gen2_schemas.py",
+]
+tests = []
+
+[invariant.C-12]
+enforced_at = [
+  "schema: gen2/schema/common.schema.json",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::intake_briefs",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::operation_receipts_admission_pinned",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::research_ordinals",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::screening_assessments_under_approved_protocol",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::claim_source_links_under_approved_protocol",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::dossiers_under_approved_protocol",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::contract_approval_pointer_set_by_approval",
+  "router: gen2/router/amendments.py",
+  "router: gen2/router/amendments.py::contract_compatibility",
+  "router: gen2/router/amendments.py::brief_compatibility",
+  "router: gen2/router/amendments.py::_fence",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::amendment_impacts",
+  "router: gen2/router/amendments.py::_amendment_in_transaction",
+  "router: gen2/router/service.py",
+  "router: gen2/router/boundary.py",
+  "router: gen2/router/boundary.py::PRE_CONTRACT_ONLY",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::scoping_reports_by_pre_contract_work",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::brief_replacements",
+  "router: gen2/router/amendments.py::_record_replacements",
+]
+tests = [
+  "gen2/tests/test_router_amendments.py",
+  "gen2/tests/test_router_commit.py",
+  "gen2/tests/test_router_workflow.py",
+  "gen2/tests/test_router_brief_basis.py",
+  "gen2/tests/test_store_workflow.py",
+  "gen2/tests/test_store_intake.py",
+]
+
+[invariant.C-13]
+enforced_at = [
+  "module: gen2/core/canonical.py",
+  "module: gen2/core/canonical.py::identity_integer",
+  "schema: gen2/schema/common.schema.json",
+  "module: gen2/store/api.py",
+  "module: gen2/store/api.py::open_store",
+  "tool: tools/gen2_import_dry_run.py",
+]
+tests = []
+
+[invariant.L-1]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
+  "schema: gen2/schema/invocation.schema.json",
+]
+tests = []
+
+[invariant.L-2]
+enforced_at = []
+tests = []
+
+[invariant.L-3]
+enforced_at = []
+tests = []
+
+[invariant.L-4]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::invocation_reconciliations",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations_unknown_episode_is_fresh",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations_unknown_needs_reconciliation",
+  "schema: gen2/schema/invocation.schema.json",
+]
+tests = []
+
+[invariant.L-5]
+enforced_at = []
+tests = []
+
+[invariant.L-6]
+enforced_at = []
+tests = []
+
+[invariant.L-7]
+enforced_at = []
+tests = []
+
+[invariant.L-8]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::invocations",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::operation_receipts_fenced",
+]
+tests = []
+
+[invariant.L-9]
+enforced_at = []
+tests = []
+
+[invariant.E-1]
+enforced_at = []
+tests = []
+
+[invariant.E-2]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::retrieval_events",
+]
+tests = []
+
+[invariant.E-3]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::retrieval_events",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::works",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::screening_assessments",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::claims",
+  "schema: gen2/schema/common.schema.json",
+  "router: gen2/router/service.py::register_works",
+  "router: gen2/router/service.py",
+  "router: gen2/router/boundary.py::work_id",
+]
+tests = [
+  "gen2/tests/test_router_workflow.py",
+]
+
+[invariant.E-4]
+enforced_at = []
+tests = []
+
+[invariant.E-5]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::screening_assessments",
+]
+tests = []
+
+[invariant.E-6]
+enforced_at = [
+  "schema: gen2/schema/contract-v2.schema.json",
+]
+tests = []
+
+[invariant.E-7]
+enforced_at = []
+tests = []
+
+[invariant.E-8]
+enforced_at = []
+tests = []
+
+[invariant.E-9]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::screening_assessments",
+]
+tests = []
+
+[invariant.V-1]
+enforced_at = [
+  "schema: gen2/schema/verification-receipt.schema.json",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
+]
+tests = []
+
+[invariant.V-2]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::claims",
+  "router: gen2/router/verification.py::Verification.write_holds",
+]
+tests = []
+
+[invariant.V-3]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
+  "module: gen2/core/canonical.py::canonical_bytes",
+  "ddl: gen2/store/schema/14-source-acquisitions.sql::source_acquisitions",
+  "router: gen2/router/extractor_registry.py",
+]
+tests = []
+
+[invariant.V-4]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::claims_accepted_support_needs_receipt",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts_use_matches_claim",
+]
+tests = []
+
+[invariant.V-5]
+enforced_at = []
+tests = []
+
+[invariant.V-6]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::quote_checks",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
+]
+tests = []
+
+[invariant.V-7]
+enforced_at = []
+tests = []
+
+[invariant.V-8]
+enforced_at = [
+  "schema: gen2/schema/verification-receipt.schema.json",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
+]
+tests = []
+
+[invariant.V-9]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::claim_source_links",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
+]
+tests = []
+
+[invariant.V-10]
+enforced_at = [
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::claims_accepted_support_needs_contract_admission",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::claims_accepted_support_needs_receipt",
+  "router: gen2/router/evidence_writer.py::_promote_and_link_claims",
+  "router: gen2/router/amendments.py::_pin_status",
+  "tool: tools/gen2_import_dry_run.py",
+]
+tests = [
+  "gen2/tests/test_router_amendments.py",
+]
+
+[invariant.D-1]
+enforced_at = [
+  "schema: gen2/schema/decision-spec.schema.json",
+  "schema: gen2/schema/decision-receipt.schema.json",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::decision_specs",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::decision_receipts",
+]
+tests = []
+
+[invariant.D-2]
+enforced_at = [
+  "schema: gen2/schema/decision-receipt.schema.json",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::decision_receipts",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::screening_assessments_bound",
+]
+tests = []
+
+[invariant.D-3]
+enforced_at = [
+  "schema: gen2/schema/decision-receipt.schema.json",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::decision_receipts",
+]
+tests = []
+
+[invariant.D-4]
+enforced_at = []
+tests = []
+
+[invariant.D-5]
+enforced_at = [
+  "router: gen2/router/boundary.py",
+  "router: gen2/router/registries.py::Registries.is_qualified",
+  "router: gen2/router/service.py",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::decision_receipts_qualification_live",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::qualifications_created_live_for_their_spec",
+  "ddl: gen2/store/schema/03-evidence-and-decisions.sql::decision_receipts_match_spec",
+]
+tests = []
+
+[invariant.D-6]
+enforced_at = []
+tests = []
+
+[invariant.D-7]
+enforced_at = []
+tests = []
+
+[invariant.D-8]
+enforced_at = []
+tests = []
+
+[invariant.D-9]
+enforced_at = []
+tests = []
+
+[invariant.D-10]
+enforced_at = []
+tests = []
+
+[invariant.D-11]
+enforced_at = []
+tests = []
+
+[invariant.D-12]
+enforced_at = []
+tests = []
+
+[invariant.G-1]
+enforced_at = [
+  "schema: gen2/schema/contract-v2.schema.json",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::contract_revisions",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::obligations",
+]
+tests = []
+
+[invariant.G-2]
+enforced_at = [
+  "schema: gen2/schema/contract-v2.schema.json",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::facets",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::obligations",
+]
+tests = []
+
+[invariant.G-3]
+enforced_at = [
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::uncovered_critical_facets",
+]
+tests = []
+
+[invariant.G-4]
+enforced_at = [
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::intake_briefs",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::queue_scoping_needs_confirmed_brief",
+  "schema: gen2/schema/intake-brief.schema.json",
+  "router: gen2/router/amendments.py",
+  "module: gen2/core/instants.py",
+  "router: gen2/router/amendments.py::_brief_standing",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::brief_replacements",
+  "module: gen2/operator/service.py",
+  "module: gen2/operator/auth.py",
+]
+tests = [
+  "gen2/tests/test_router_workflow.py",
+  "gen2/tests/test_router_brief_basis.py",
+  "gen2/tests/test_store_intake.py",
+  "gen2/tests/test_operator_commands.py",
+  "gen2/tests/test_operator_auth.py",
+]
+
+[invariant.G-5]
+enforced_at = []
+tests = []
+
+[invariant.G-6]
+enforced_at = []
+tests = []
+
+[invariant.G-7]
+enforced_at = []
+tests = []
+
+[invariant.G-8]
+enforced_at = []
+tests = []
+
+[invariant.G-13]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::operator_decisions",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::contract_revisions",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::obligations",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::holds",
+  "ddl: gen2/store/schema/01-queue-and-contracts.sql::queue_entries",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::outbox_events",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::operator_decisions_subject_exists",
+  "router: gen2/router/service.py::_require_subject_hash_truth",
+]
+tests = [
+  "gen2/tests/test_router_workflow.py",
+  "gen2/tests/test_store_workflow.py",
+]
+
+[invariant.G-9]
+enforced_at = []
+tests = []
+
+[invariant.G-10]
+enforced_at = []
+tests = []
+
+[invariant.G-11]
+enforced_at = [
+  "schema: gen2/schema/contract-v2.schema.json",
+  "module: gen2/accounting/stopping.py",
+  "router: gen2/router/amendments.py",
+  "router: gen2/router/service.py",
+]
+tests = []
+
+[invariant.G-12]
+enforced_at = [
+  "schema: gen2/schema/contract-v2.schema.json",
+  "router: gen2/router/scheduling.py",
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::review_triggers",
+  "router: gen2/router/service.py",
+]
+tests = [
+  "gen2/tests/test_router_workflow.py",
+]
+
+[invariant.P-1]
+enforced_at = [
+  "schema: gen2/schema/export-manifest.schema.json",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::outbox_events",
+]
+tests = []
+
+[invariant.P-2]
+enforced_at = [
+  "ddl: gen2/store/schema/04-registries-and-export.sql::outbox_events_pair_increases",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::outbox_events_generation_is_one_approved_revision",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::outbox_events_connectors_declared",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::connector_watermarks",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::export_delivery_receipts",
+  "schema: gen2/schema/export-manifest.schema.json",
+  "schema: gen2/schema/common.schema.json",
+  "doc: docs/gen2/EXPORT-API.md",
+]
+tests = []
+
+[invariant.P-3]
+enforced_at = [
+  "schema: gen2/schema/freshness-envelope.schema.json",
+  "schema: gen2/schema/export-delivery-receipt.schema.json",
+]
+tests = []
+
+[invariant.P-4]
+enforced_at = []
+tests = []
+
+[invariant.P-5]
+enforced_at = [
+  "ddl: gen2/store/schema/04-registries-and-export.sql::outbox_events",
+]
+tests = []
+
+[invariant.P-6]
+enforced_at = [
+  "schema: gen2/schema/freshness-envelope.schema.json",
+]
+tests = []
+
+[invariant.P-7]
+enforced_at = [
+  "schema: gen2/schema/export-delivery-receipt.schema.json",
+  "ddl: gen2/store/schema/04-registries-and-export.sql::export_delivery_receipts",
+]
+tests = []
+
+[invariant.H-1]
+enforced_at = [
+  "gateway: gateway/research_gateway/registry/schema.sql::calls",
+  "gateway: gateway/research_gateway/registry/schema.sql",
+]
+tests = [
+  "gateway/tests/test_correlation.py",
+  "gen2/tests/test_gateway_client.py",
+]
+
+[invariant.H-2]
+enforced_at = []
+tests = []
+
+[invariant.H-3]
+enforced_at = [
+  "ddl: gen2/store/schema/02-invocations-and-records.sql::holds",
+]
+tests = []
+
+[invariant.H-4]
+enforced_at = [
+  "module: gen2/operator/status.py",
+  "router: gen2/router/status.py",
+  "module: gen2/supervisor/supervisor.py::Supervisor.incidents",
+]
+tests = [
+  "gen2/tests/test_operator_status.py",
+  "gen2/tests/test_operator_recovery.py",
+]
+
+[invariant.H-5]
+enforced_at = [
+  "gateway: gateway/research_gateway/adapters/_transport.py::_read_body",
+  "gateway: gateway/research_gateway/core/wire.py",
+  "gateway: gateway/research_gateway/core/schema.py",
+  "gateway: gateway/research_gateway/core/payload.py",
+  "gateway: gateway/research_gateway/adapters/_links.py::next_link",
+  "gateway: gateway/research_gateway/core/router.py",
+  "gateway: gateway/research_gateway/core/request_identity.py",
+  "module: gen2/gateway_client/observe.py",
+  "module: gen2/gateway_client/client.py",
+  "tool: tools/gen2_mutation_scope.py",
+]
+tests = [
+  "gateway/tests/inventory.py",
+  "gateway/tests/test_invariants.py",
+  "gateway/tests/test_payload_shapes.py",
+  "gateway/tests/test_lane_outcomes.py",
+  "gateway/tests/test_correlation.py",
+  "gateway/tests/test_member_isolation.py",
+  "gateway/tests/test_member_decoding.py",
+  "gateway/tests/test_link_header.py",
+  "gateway/tests/test_transport_framing.py",
+  "gateway/tests/test_xml_interpretation.py",
+  "gateway/tests/test_snapshot_lines.py",
+  "gateway/tests/test_inventory.py",
+]
+
+[invariant.H-6]
+enforced_at = [
+  "module: gen2/gateway_client/client.py",
+  "module: gen2/gateway_client/client.py::_Endpoint",
+]
+tests = []
+
+[invariant.B-1]
+enforced_at = []
+tests = []
+
+[invariant.B-2]
+enforced_at = []
+tests = []
+
+[invariant.B-3]
+enforced_at = [
+  "tool: tools/gen2_linecount.py",
+]
+tests = [
+  "gen2/tests/test_size_rules.py",
+]
+
+[invariant.B-4]
+enforced_at = []
+tests = []
