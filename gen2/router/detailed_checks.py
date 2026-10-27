@@ -159,6 +159,11 @@ class DetailedChecks:
             raise Refusal("kind_not_permitted", "detailed checks require independent contract verification")
         for record in records:
             report = record["assessment"]
+            if report["outcome"] in ("succeeded", "failed", "not_applicable") and not all(
+                    self._nonblank(report[field]) for field in ("assessment", "context_examined")):
+                raise Refusal("payload_invalid", "performed detailed check needs nonblank assessment and context")
+            if report["outcome"] in ("not_applicable",) and not self._nonblank(report["applicability_reason"]):
+                raise Refusal("payload_invalid", "detailed check exemption needs nonblank applicability reason")
             boundary.check_span_offsets(report["cited_spans"] + report["context_spans"])
             for ref in (report["examined_artifact_ref"], record["evidence_ref"]):
                 if ref is None:
