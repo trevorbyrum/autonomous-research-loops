@@ -23,7 +23,6 @@ the authority for the executed checkout and branch head versus PR merge.
 | `engine-mutation` | Cosmic Ray changed-line campaign against the merge-base of `GEN2_BASE` (default `origin/gen2`), native git/pragma filters, shared full-suite coverage; line/module selections before full-suite escalation | One serial execution |
 | `gateway-no-db` | Existing full gateway discovery without a DSN | One execution; requires psycopg even without PostgreSQL |
 | `gateway-db` | Schema/seed plus full gateway discovery on a disposable Unix-socket PostgreSQL cluster | One DB owner in this invocation |
-| `gateway-mutants` | Schema/seed and every gateway mutant on a disposable cluster | One DB owner in this invocation |
 
 Unit partitioning is exhaustive: every index must finish before acceptance.
 Mutation is unsharded and records every generated identity, filtered outcome,
@@ -48,9 +47,12 @@ trigger-order when `git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema
 is non-empty or unavailable, followed by changed-line mutation;
 `GEN2_BASE` defaults to `origin/gen2`. Local acceptance uses `GEN2_TEST_WORKERS` concurrent unit and stage-2
 shards (default 8; set 1 for serial comparison). Standalone CI partitions
-retain their explicit selection and allocation contract. `make gen2-gateway` still runs no-DB, DB and all mutants by default,
-on its existing bootstrap interpreter. Its new `GEN2_GATEWAY_MODE` only selects
-an explicit invocation; the full default is unchanged.
+retain their explicit selection and allocation contract. `make gen2-gateway` runs
+no-DB and DB suites by default, on its existing bootstrap interpreter.
+`GEN2_GATEWAY_MODE` selects `all`, `no-db` or `db`; `mutants` and the
+`gen2-ci-gateway-mutants` target have been retired. The `gateway-mutants` CI mode
+has also been removed. Cosmic Ray changed-line mutation covers `gen2/**`
+production Python and `gateway/research_gateway/**` production Python.
 
 ## Allocation
 
@@ -188,7 +190,6 @@ unmerged std v1.2 PRs #13–#15 do not establish deployed capability.
 | `engine-mutation` | `make gen2-ci-mutation` | Changed lines only; serial, measured per change (no universal time bound) |
 | `gateway-no-db` | `make gen2-ci-gateway-no-db` | 50 minutes; blocked on gateway interpreter dependency |
 | `gateway-db` | `make gen2-ci-gateway-db` | 50 minutes; disabled pending image :2 and locked interpreter selection |
-| `gateway-mutants` | `make gen2-ci-gateway-mutants` | 50 minutes; disabled pending image :2 and locked interpreter selection |
 
 For an explicitly configured repository partition, append
 `GEN2_CI_SHARD=INDEX/TOTAL` to `gen2-ci-unit` or `gen2-ci-mutation`. The complete
@@ -199,7 +200,9 @@ headroom. Do not combine long modes under one shared timeout.
 
 `make gen2-mutation-report` runs all production Python files as report-only
 evidence at phase gates and Gate S. It never participates in acceptance or blocks.
-The gateway retains its existing 413-mutant PostgreSQL step pending separate adoption.
+The hand-written 413-mutant gateway inventory and PostgreSQL mutation step have
+been retired under operator ruling 3 (2026-10-24); future gateway production
+changes use the same Cosmic Ray changed-line filter as engine production changes.
 The wrapper observes the test-runner boundary: an outer assertion following a
 nested child crash can still look like an assertion failure. Astra reviews intent.
 

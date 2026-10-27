@@ -67,7 +67,8 @@ def main():
     try:
         report.update(head=git("rev-parse", "HEAD"), base=git("merge-base", args.base, "HEAD"),
                       source_dirty=bool(git("status", "--porcelain", "--untracked-files=no")))
-        names = git("ls-files", "gen2") if args.full else git("diff", "--name-only", "--diff-filter=ACMR", report["base"], "--", "gen2")
+        paths = ("gen2", "gateway/research_gateway")
+        names = git("ls-files", *paths) if args.full else git("diff", "--name-only", "--diff-filter=ACMR", report["base"], "--", *paths)
         targets = sorted(name for name in names.splitlines() if name.endswith(".py") and not name.startswith("gen2/tests/"))
         report["targets"] = targets
         def runner(config, name="baseline"):
