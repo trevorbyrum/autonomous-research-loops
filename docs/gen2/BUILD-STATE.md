@@ -7,12 +7,16 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 - **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
 - **Open task:** 2d, slice 6. **6a is complete** (parts 1–4; PR #28 merged 2026-10-26). The checks cut-back S1–S3, S2b and **S2c** (PR #33: the coverage is reused through `make gen2-accept`, confirmed live in the S4 run) are complete.
   - **S4 is complete** (PR #35 merged at `90d5070`, 2026-10-26). It took four rounds: B1/B2 hold semantics, then two mutation-found missing tests, then equivalent-mutant removal through membership tests. Net +194 against +140 planned (production +36, tests +158).
-  - **S5** (delete the semantic DDL and raw matrices, about −4,300; brief `private/reviews/gen2-s5-brief-20261026.md`) dispatched to Sol `2ab2c299`.
-- **Last verifier result:** S4 `90d5070`, gen2-accept exit 0 in 4,729 s: 3,937 tests; 34 executable changed-line mutants (22 assertion, 12 error kills), 0 survivors; baseline reused (0.08 s); mutation step 457 s.
+  - **S5 is complete** (PR #40 merged at `2085e10`, −4,492). **S2d is complete** (PR #39 merged: parallel test shards; acceptance about 900 s against about 4,100 s).
+  - **In flight:**
+    - S6 (PR #46, value-domain DDL, −2,878): repairing Astra B1 (NUL nonblank).
+    - Batch B (`service.py` headroom, worktree `gen2-wt-3`, Sonnet): acceptance rerunning.
+  - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`. That is S6 → B → A → O-5 → the 6b1′ design (13 inputs) in the shared tree. The second coder takes the gateway mutants, trigger-order retirement (after S6), C, E, F and D2. D1 and O-9 come after S6.
+- **Last verifier result:** S2d `d873982`, gen2-accept exit 0 in **874 s** (8 shards, 3,939 tests). Earlier, S5 `2085e10`, exit 0 in 3,443 s, with trigger-order 323/2,562 identical.
 - **Gate S watch item:** a stage-1 survivor costs a full serial suite (about 70 min) in stage 2. Candidate: run stage 2 sharded or in parallel.
 - **Blockers:** none. **Open operator decisions:** none.
 - **Gate S:** last run **#2 at `b3ffd23`** (2026-10-27; `private/reviews/gen2-gate-s2-fable-20261027.md`). Engine side 109,026 lines; production 13,100. Operator decisions S2-1 to S2-7 are pending.
-- **What's next:** S5, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
+- **What's next:** S6, Batch B, Batch A, O-5, then 6b1′, R2 (INVARIANTS plus the CI-DESIGN amendment for operator approval, D12), S6, then 6b1, 6b2 and slice 7; then 2e1, a minimum 2e2, and 2f. Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 
