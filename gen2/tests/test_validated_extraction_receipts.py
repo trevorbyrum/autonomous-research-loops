@@ -155,7 +155,7 @@ class ValidatedReceiptRouterTest(ValidatedCases, unittest.TestCase):
                 self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = required
                 independent_basis(self.case, self.doc, independent, 'low' + str(n))
                 self.assertEqual(self.case.value('SELECT supported_tier FROM source_extractions WHERE extraction_id=?', self.target), 'full_text')
-                self.assertEqual(self.case.value('SELECT recorded_tier_rank FROM source_acquisition_content_tiers'), 3)
+                self.assertEqual(self.case.router._detailed_checks._content_rank(self.case.store.select('source_acquisitions')[0]), 3)
                 self.refuse()
 
     def test_independent_tier_control(self):

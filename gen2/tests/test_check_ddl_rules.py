@@ -14,9 +14,6 @@ fixture-rule test does the same with a literal one-file schema tree and
 from __future__ import annotations
 
 import json
-import shutil
-import hashlib
-import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -44,17 +41,6 @@ END;
 """
 
 
-def classification(schema, scalar):
-    """Literal fixture decisions, bound independently to SQLite's catalog."""
-    with sqlite3.connect(':memory:') as conn:
-        conn.executescript(schema)
-        rows = conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_schema "
-                            "WHERE name NOT GLOB 'sqlite_*' ORDER BY type, name").fetchall()
-    digest = hashlib.sha256(json.dumps(rows, ensure_ascii=True, separators=(',', ':')).encode()).hexdigest()
-    return {'covered': [], 'pending': {}, 'scalar': scalar, 'schema_sha256': digest,
-            'ddl_sha256': hashlib.sha256(textwrap.dedent(schema).encode()).hexdigest()}
-
-
 class DdlRuleTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -69,10 +55,6 @@ class DdlRuleTest(unittest.TestCase):
         (store / "schema" / "order.txt").write_text(ORDER, encoding="utf-8")
         (store / "schema" / "fixture.sql").write_text(textwrap.dedent(schema), encoding="utf-8")
         (store / "connection.sql").write_text(connection, encoding="utf-8")
-        (self.root / 'tools').mkdir(exist_ok=True)
-        manifest = self.root / 'tools/gen2_json_member_domain.json'
-        if not manifest.exists():
-            manifest.write_text(json.dumps(classification(GUARDED, ['t.id', 't.v'])))
         return subprocess.run([sys.executable, str(CHECKER), "--root", str(self.root), "--part", "ddl"], capture_output=True, text=True, timeout=60, env=children.env())
 
     def test_refused_sqlite_fails_the_ddl_check(self) -> None:
@@ -95,60 +77,6 @@ class DdlRuleTest(unittest.TestCase):
         result = self.run_check(GUARDED)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
 
-    def test_json_column_uncovered(self):
-        result = self.run_check(GUARDED.replace('v TEXT', 'v TEXT CHECK (json_valid(v))'))
-        self.assertEqual(result.returncode, 1)
-        self.assertIn('JSON member domain uncovered column: t.v', result.stderr)
-
-    def test_json_operand_uncovered(self):
-        result = self.run_check(GUARDED + "CREATE VIEW operand AS SELECT json_extract(v, '$.a') FROM t;\n")
-        self.assertEqual(result.returncode, 1)
-        self.assertIn('JSON member domain uncovered column: t.v', result.stderr)
-
-    def domain_check(self, edit=None, part='23-json-member-domain.sql'):
-        shutil.copytree(REPO / 'gen2/store', self.root / 'gen2/store', dirs_exist_ok=True)
-        (self.root / 'tools').mkdir(exist_ok=True)
-        shutil.copy(REPO / 'tools/gen2_json_member_domain.json', self.root / 'tools')
-        path = self.root / 'gen2/store/schema' / part
-        if edit:
-            path.write_text(edit(path.read_text()))
-        return subprocess.run([sys.executable, str(CHECKER), '--root', str(self.root), '--part', 'ddl'],
-            capture_output=True, text=True, timeout=60, env=children.env())
-
-    def test_domain_control(self):
-        result = self.domain_check()
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_domain_pending_disclosed(self):
-        result = self.domain_check()
-        self.assertEqual(result.stdout.count('JSON member domain PENDING:'), 0)
-
-    def test_completion_generated_drift(self):
-        result = self.domain_check(lambda text: text + '\n-- unreviewed change\n', '27-json-member-completion.sql')
-        self.assertEqual(result.returncode, 1, result.stdout)
-        self.assertIn('JSON member domain generated output differs', result.stderr)
-
-    def test_rollout_generated_drift(self):
-        result = self.domain_check(lambda text: text + '\n-- unreviewed change\n', '26-json-member-rollout.sql')
-        self.assertEqual(result.returncode, 1, result.stdout)
-        self.assertIn('JSON member domain generated output differs', result.stderr)
-
-    def test_stored_value_not_excluded_as_derived(self):
-        result = self.run_check(GUARDED.replace('v TEXT', 'value TEXT') +
-            "CREATE VIEW operand AS SELECT json_extract(r.value, '$.a') FROM t r;\n")
-        self.assertEqual(result.returncode, 1, result.stdout)
-        self.assertIn('JSON member domain uncovered column: t.value', result.stderr)
-
-    def test_domain_guard_drift(self):
-        for edit in (lambda text: text.replace('HAVING count(*) > 1', 'HAVING count(*) > 2', 1),
-                     lambda text: text.replace("x'00'", "x'01'", 1),
-                     lambda text: text.replace('BEFORE INSERT', 'AFTER INSERT', 1),
-                     lambda text: text.replace('BEFORE UPDATE', 'AFTER UPDATE', 1)):
-            with self.subTest(edit=edit.__code__.co_firstlineno):
-                result = self.domain_check(edit)
-                self.assertEqual(result.returncode, 1, result.stdout)
-                self.assertIn('JSON member domain generated output differs', result.stderr)
-                self.assertIn('JSON member domain missing/changed', result.stderr)
 
     def test_table_without_delete_guard_fails(self) -> None:
         result = self.run_check(GUARDED + "-- trace: fixture\nCREATE TABLE u (id TEXT PRIMARY KEY) STRICT;\n")

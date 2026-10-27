@@ -11,7 +11,7 @@ from gen2.tests import store_fixtures, test_extraction_records as records
 
 class DDLTest(records.RecordTest):
     RAW = True
-    test_authentication = test_authentication_control = None
+    test_authentication = test_authentication_control = test_tier = None
 
     def setUp(self):
         # Seed admitted operands under declared DDL, then install raw guards

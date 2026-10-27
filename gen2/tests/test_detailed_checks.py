@@ -84,7 +84,9 @@ class RecordMatrix:
             for outcome in OUTCOMES[:3]:
                 record = self.record(kind=kind, outcome=outcome, applicability_reason='Explicit scope rationale')
                 record['evidence_ref'] = None
-                self.refuse(record)
+                out = self.refuse(record)
+                if not self.RAW:
+                    self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_bindings(self):
         for kind in KINDS:
@@ -104,7 +106,9 @@ class RecordMatrix:
             for span in ({'start': 0.5, 'end': 1}, {'start': -1, 'end': 2}, {'start': 0, 'end': 0},
                     {'start': 0, 'end': 2, 'locator': {'kind': 'invented', 'value': '1'}}):
                 for kind in KINDS:
-                    self.refuse(self.record(kind=kind, **{field: [span]}))
+                    out = self.refuse(self.record(kind=kind, **{field: [span]}))
+                    if not self.RAW:
+                        self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_topic_artifact(self):
         self.x("DROP TRIGGER artifact_topics_immutable_d")
@@ -123,6 +127,50 @@ class RecordMatrix:
 
 
 class RouterCheckTest(RecordMatrix, CheckCase):
+    def test_required_nonblank_nul(self):
+        for kind in KINDS:
+            for field, outcome in (('assessment', 'succeeded'), ('assessment', 'failed'),
+                    ('assessment', 'not_applicable'), ('context_examined', 'succeeded'),
+                    ('context_examined', 'failed'), ('context_examined', 'not_applicable'),
+                    ('applicability_reason', 'not_applicable')):
+                for index, (value, expected) in enumerate((
+                        ('\0', ('rejected', 'payload_invalid')),
+                        ('Valid text', ('committed', None)),
+                        ('Valid text\0', ('committed', None)),
+                        ('\0Valid text', ('rejected', 'payload_invalid')),
+                        (' \u00a0\u200b\0Valid text', ('rejected', 'payload_invalid')),
+                        (' \u00a0\u200bValid text\0', ('committed', None)))):
+                    with self.subTest(kind=kind, field=field, outcome=outcome, value=value):
+                        report = dict(kind=kind, outcome=outcome, applicability_reason='Explicit scope rationale')
+                        report[field] = value
+                        record = self.record(**report)
+                        record['check_id'] = f'{kind}-{field}-{outcome}-{index}'
+                        before = self.state(exclude=())
+                        out = self.send(record, op='op_' + record['check_id'])
+                        self.assertEqual((out['status'], out.get('reason')), expected, out)
+                        rows = self.store.select('detailed_check_records', {'check_id': record['check_id']})
+                        if expected == ('rejected', 'payload_invalid'):
+                            self.assertEqual(rows, [])
+                            self.assert_audited_state(before, 1)
+                        else:
+                            self.assertEqual(len(rows), 1)
+                            self.assertEqual(rows[0]['assessment'], record['assessment'])
+
+    def test_optional_nonblank_nul(self):
+        for kind in KINDS:
+            for outcome in ('succeeded', 'failed', 'not_checked', 'unavailable'):
+                with self.subTest(kind=kind, outcome=outcome):
+                    report = dict(kind=kind, outcome=outcome, applicability_reason='\0')
+                    if outcome in ('not_checked', 'unavailable'):
+                        report.update(assessment='\0', context_examined='\0')
+                    record = self.record(**report)
+                    record['check_id'] = kind + '-' + outcome
+                    out = self.send(record, op='op_' + record['check_id'])
+                    self.assertEqual((out['status'], out.get('reason')), ('committed', None), out)
+                    rows = self.store.select('detailed_check_records', {'check_id': record['check_id']})
+                    self.assertEqual(len(rows), 1)
+                    self.assertEqual(rows[0]['assessment'], record['assessment'])
+
     def test_router_bindings(self):
         self.x("DROP TRIGGER detailed_check_records_binding")
         self.test_bindings()

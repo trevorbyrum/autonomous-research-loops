@@ -1,10 +1,13 @@
 """C-13 staged admission happens before serialization/writes; no providers."""
 import json
+import re
+import unittest
 from unittest.mock import patch
 
 from gen2.core import canonical
 from gen2.router import boundary
 from gen2.store import api
+from gen2.tests import store_fixtures
 from gen2.tests import test_extraction_records as records
 
 
@@ -39,3 +42,20 @@ class AdmissionTest(records.RecordCase):
         out = self.send(source_extractions=[record])
         self.assertEqual(out['status'], 'rejected', out)
         self.assertIn('NUL in object member name', out['detail'])
+
+
+class ColumnCoverageTest(unittest.TestCase):
+    def test_json_columns_are_prepared(self):
+        # Independently read live table CHECKs, not Store's _json_columns helper
+        # or the retired generated-guard catalogue.
+        conn = store_fixtures.connect()
+        self.addCleanup(conn.close)
+        store = api.adopt_in_memory(conn)
+        expected = set()
+        for table, sql in conn.execute("SELECT name,sql FROM sqlite_schema WHERE type='table'"):
+            sql = re.sub(r'/\*.*?\*/|--[^\n]*', '', sql, flags=re.S)
+            columns = re.findall(r'\bjson_valid\s*\(\s*["`\[]?(\w+)', sql, re.I)
+            expected.update((table, column) for column in columns)
+        self.assertTrue(expected)
+        self.assertEqual({(table, column) for table, columns in store._json.items()
+            for column in columns}, expected)

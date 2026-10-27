@@ -1,4 +1,4 @@
-"""Raw SQL 35/36 parity, including member guards and conflict immutability."""
+"""Raw SQL 35 integrity bindings and conflict immutability."""
 import json
 import sqlite3
 from unittest.mock import patch
@@ -13,6 +13,7 @@ from gen2.tests.test_detailed_checks import CheckCase, KINDS, RecordMatrix
 
 class DDLCheckTest(RecordMatrix, CheckCase):
     RAW = True
+    test_domain = test_missing_evidence = test_spans = None
 
     def setUp(self):
         # Preserve mutated/reversed target objects while setup uses an admitted schema.
@@ -47,12 +48,6 @@ class DDLCheckTest(RecordMatrix, CheckCase):
             self.x('RELEASE detailed_record')
 
 
-    def test_cap_control(self):
-        from gen2.tests.span_cap_cases import LIMIT
-        span = dict(start=LIMIT, end=LIMIT, locator=dict(kind='line', value='limit'))
-        record = self.record(cited_spans=[span], context_spans=[span])
-        self.assertEqual(self.send(record)['status'], 'committed')
-        self.assertEqual(self.store.select('detailed_check_records')[0]['assessment'], record['assessment'])
 
     def test_immutable(self):
         self.test_control()
@@ -82,55 +77,3 @@ class DDLCheckTest(RecordMatrix, CheckCase):
                 self.refuse(self.record(kind=kind))
             self.x('ROLLBACK TO corrupt_operand')
             self.x('RELEASE corrupt_operand')
-
-    def test_exact_offsets_control(self):
-        record = self.record()
-        record['assessment'] = json.dumps(record['assessment']).replace('"start": 0', '"start": 0e999').replace('"end": 10', '"end": 10.00e0')
-        self.assertEqual(self.send(record)['status'], 'committed')
-
-    def member_setup(self, column, event):
-        # Isolate the closed member family from shape and unconditional update guards.
-        for trigger in ('domain', 'artifacts', 'spans_v2', 'immutable_u'):
-            self.x('DROP TRIGGER IF EXISTS detailed_check_records_' + trigger)
-        record = self.record()
-        if event == 'u':
-            self.assertEqual(self.send(record)['status'], 'committed')
-        return record
-
-    def member_write(self, record, column, event, predicate=None):
-        value = json.dumps(record[column])
-        if predicate == 'duplicate':
-            value = value[:-1] + ',"aux":{"x":1,"x":1}}'
-        if predicate == 'nul':
-            value = value[:-1] + ',"aux":{"x\\u0000":1}}'
-        if event == 'i':
-            record[column] = value
-            return self.send(record)['status']
-        try:
-            self.x(f'UPDATE detailed_check_records SET {column}=?', value)
-            return 'committed'
-        except sqlite3.IntegrityError:
-            return 'rejected'
-
-    def member_matrix(self, predicate=None):
-        for column in ('assessment', 'evidence_ref'):
-            for event in ('i', 'u'):
-                self.x('SAVEPOINT member_case')
-                record = self.member_setup(column, event)
-                before = self.state(exclude=())
-                self.assertEqual(self.member_write(record, column, event, predicate), 'rejected' if predicate else 'committed')
-                if predicate:
-                    self.assertEqual(self.state(exclude=()), before)
-                else:
-                    self.assertIsInstance(self.store.select('detailed_check_records')[0][column], dict)
-                self.x('ROLLBACK TO member_case')
-                self.x('RELEASE member_case')
-
-    def test_member_control(self):
-        self.member_matrix()
-
-    def test_member_duplicate(self):
-        self.member_matrix('duplicate')
-
-    def test_member_nul(self):
-        self.member_matrix('nul')

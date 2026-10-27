@@ -88,32 +88,3 @@ class DDLV2Test(V2Case):
         self.x("DROP TRIGGER source_extractions_immutable_u")
         self.x("UPDATE source_extractions SET extractor_registry_version=NULL WHERE extraction_id='independent'")
         self.refuse(extraction_validations=[self.validation()])
-
-
-class V2DomainTest(DDLV2Test):
-    # Reuse the accepted member-domain fixture; UPDATE removes only immutability.
-    from gen2.tests.test_store_json_member_domain import DomainPairs
-    attempt, pairs = DomainPairs.attempt, DomainPairs.pairs
-    test_control_i, test_control_u = DomainPairs.test_control_i, DomainPairs.test_control_u
-    table, column, identity, row_id = "extraction_validations_v2", "comparison_evidence_ref", "validation_id", "validation-1"
-    members = ("content_hash", "size_bytes", "media_type")
-
-    def setUp(self):
-        super().setUp()
-        self.basis()
-        self.document, self.reader = self.evidence, self.store
-
-    def insert_raw(self, text):
-        if self.send(self.verifier, extraction_validations=[self.validation(comparison_evidence_ref=text)])["status"] != "committed":
-            raise sqlite3.IntegrityError("successor domain refused")
-
-
-for predicate in ("duplicate", "nul"):
-    for event in ("i", "u"):
-        def test(self, event=event, predicate=predicate):
-            self.pairs(event, predicate)
-        setattr(V2DomainTest, "test_" + predicate + "_" + event, test)
-# Domain controls have their own basis; record tests retain their independent setup.
-for name in dir(DDLV2Test):
-    if name.startswith("test_"):
-        setattr(V2DomainTest, name, None)
