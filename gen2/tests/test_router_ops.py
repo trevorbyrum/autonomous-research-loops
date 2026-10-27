@@ -483,8 +483,8 @@ class OperatorDecisionTest(RouterTestCase):
         self.assertIn("existing subject", missing.get("detail", ""))
         self.assertEqual(self.state(exclude=()), before)
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), "2026-09-27T09:00:00Z")
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) "
-               "VALUES (?, 1, 1, 1, 'eval-1', ?, ?, '2026-09-27T09:00:00Z')", TOPIC, h("3"), h("7"))  # dossier assembly is Phase 2
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evaluator_version, content_hash, document_ref, created_at) "
+               "VALUES (?, 1, 1, 'eval-1', ?, ?, '2026-09-27T09:00:00Z')", TOPIC, h("3"), h("7"))  # dossier assembly is Phase 2
         out = self.decide("opd_complete01", "completion_approval", {"kind": "dossier", "revision": 1, "hash": h("3")})
         self.assertEqual(out["effects"]["queue_transition"], {"from": "active", "to": "completed_with_qualified_conclusions"})
         self.assertEqual(self.rows("SELECT status, status_decision_id FROM queue_entries WHERE topic_id = ?", TOPIC),

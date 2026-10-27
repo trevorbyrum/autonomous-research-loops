@@ -115,7 +115,6 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "evidence_revision",
             "research_ordinal",
             "queue_transition",
             "lease_release",
@@ -127,7 +126,6 @@
             "audit_event_id"
           ],
           "properties": {
-            "evidence_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},
             "research_ordinal": {
               "description": "Only an accepted research_pass final outcome can receive one (invariant C-7).",
               "oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/generation", "minimum": 1}]

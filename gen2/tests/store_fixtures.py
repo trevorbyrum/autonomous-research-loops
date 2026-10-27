@@ -155,7 +155,7 @@ class StoreTestCase(unittest.TestCase):
         return content
 
     def dossier(self, tid: str, rev: int, contract_rev: int, ch: str) -> None:
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, ?, ?, 1, 'eval-1', ?, ?, ?)", tid, rev, contract_rev, ch, h("7"), T)
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, ?, ?, 'eval-1', ?, ?, ?)", tid, rev, contract_rev, ch, h("7"), T)
 
     def contract_cycle(self, tid: str, a: int, b: int, facets: tuple = (), obligations: tuple = ()) -> None:
         """Revisions a and b of `tid`, each naming the other as its parent,
@@ -400,7 +400,7 @@ class StoreTestCase(unittest.TestCase):
                 "hash_contract": {"canonicalization": "jcs-rfc8785/1", "fingerprint": "commit-fingerprint/1"},
                 "admission": adm, "committed_at": T, "state_revision_before": before, "state_revision_after": before + 1,
                 "validation": {"validator_version": "v1", "policy_version": policy, "validated_hashes": [digest]},
-                "effects": {"evidence_revision": None, "research_ordinal": None, "queue_transition": None, "lease_release": None,
+                "effects": {"research_ordinal": None, "queue_transition": None, "lease_release": None,
                             "holds_created": [], "retry_intent": None, "trigger_identities": [], "outbox_event_ids": [],
                             "decision_receipt_ids": [], "audit_event_id": "aud_" + op[3:]}}
 
