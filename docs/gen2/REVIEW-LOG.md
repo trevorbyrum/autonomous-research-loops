@@ -3794,3 +3794,17 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
       - B1: the same-identity, different-version `independent_extraction` refusal;
       - B2: no non-NULL evidence positive control for the detailed-check artifact negatives.
     - **Round 2** (Sonnet `f51b9686`, `83162f7`, 8 touched lines): both defects now fail by assertion. Astra ACCEPTED. Verifier exit 0 in 700 s. Merged (PR #68). **O-9 is complete.**
+
+## 2026-10-28: Riders-1 merged; nightly test-portfolio review set up (Trevor's ruling)
+- **Riders-1** (PR #70, `97bcda3`, Sol `ce0452c3`).
+  - Contents: R2's five pointer corrections (E-5, C-10, H-3, G-9, D-4/D-6), O-9a's two move residues, 6b1′ PR 0's "stored receipt" comment, and the `test_ci_runner` generator alias, so plain pytest collection no longer errors.
+  - 52 touched, +6 net; ids unchanged at 2,883.
+  - Astra PASS. Non-blocking NB: console pytest still needs `PYTHONPATH=.`, as before.
+  - Verifier exit 0 in 706 s.
+  - Jenkins errored once at 20 s. The local merged-tree `--mode default` passed, and a retrigger (`d6ecc8d`) passed.
+  - Merged at `738f9d9`.
+- **Nightly test-portfolio review** (Trevor, 2026-10-28): charter section added.
+  - Sol reviews: a baseline now (`cb137570`), then nightly through paseo schedule `3c43a612`.
+  - A fresh Fable session approves, through schedule `38c22433`.
+  - The approval classes are as in the charter.
+
