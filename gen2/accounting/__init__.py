@@ -1,7 +1,7 @@
 """Pure durable-inventory arithmetic (2c-1); see docs/gen2/ACCOUNTING.md."""
 from dataclasses import dataclass, replace
 from fractions import Fraction
-from typing import Literal
+from typing import Literal, TypeVar
 
 from gen2.core.instants import utc_instant_ns
 
@@ -141,6 +141,15 @@ class SourceDisposition:
     created_at: str
 
 
+R = TypeVar("R", "SourceDisposition", "RegistryDisposition")
+
+
+def active_records(records: tuple[R, ...]) -> tuple[R, ...]:
+    """The records no other record in `records` explicitly replaces, in order."""
+    replaced = {r.supersedes_id for r in records if r.supersedes_id is not None}
+    return tuple(r for r in records if r.disposition_id not in replaced)
+
+
 def lifecycle_view(records: tuple[SourceDisposition, ...], as_of: str) -> tuple[SourceDisposition, ...]:
     """Active dated records; explicit replacement only, competing judgments retained.
 
@@ -149,8 +158,7 @@ def lifecycle_view(records: tuple[SourceDisposition, ...], as_of: str) -> tuple[
     """
     instant = utc_instant_ns(as_of)
     dated = tuple(r for r in records if utc_instant_ns(r.created_at) <= instant)
-    replaced = {r.supersedes_id for r in dated if r.supersedes_id is not None}
-    return tuple(sorted((r for r in dated if r.disposition_id not in replaced), key=lambda r: r.disposition_id))
+    return tuple(sorted(active_records(dated), key=lambda r: r.disposition_id))
 
 
 @dataclass(frozen=True)
@@ -275,36 +283,6 @@ def semantic_accrual(inventory: Inventory, work_id: str, source_version: str, as
                  if (r.work_id, r.source_version) == (work_id, source_version) and utc_instant_ns(r.created_at) <= instant)
 
 
-@dataclass(frozen=True)
-class BranchOperand:
-    record: RegistryDisposition
-    standing: Standing
-
-
-@dataclass(frozen=True)
-class BranchAccrual:
-    history: tuple[RegistryDisposition, ...]
-    active: tuple[BranchOperand, ...]
-
-    @property
-    def dispositions(self) -> tuple[str, ...] | None:
-        if not self.active or any(r.standing not in ("current", "compatible") for r in self.active):
-            return None
-        return tuple(r.record.disposition for r in self.active)
-
-
-def branch_accrual(inventory: Inventory, registry_id: str, as_of: str) -> BranchAccrual:
-    """Recorded proposals only, retaining reversals and competing judgments."""
-    instant = utc_instant_ns(as_of)
-    history = tuple(sorted((r for r in inventory.registry_dispositions
-                            if r.registry_kind == "branch" and r.registry_id == registry_id and utc_instant_ns(r.created_at) <= instant),
-                           key=lambda r: (utc_instant_ns(r.created_at), r.disposition_id)))
-    replaced = {r.supersedes_id for r in history if r.supersedes_id is not None}
-    active = tuple(BranchOperand(record, label_standing(inventory, record.contract_revision))
-                   for record in history if record.disposition_id not in replaced)
-    return BranchAccrual(history, active)
-
-
 def rescreening_view(inventory: Inventory) -> tuple[ScreeningAssessment, ...]:
     """E-9: retain reason-coded old assessments; consume recorded reopenings."""
     reopened = {assessment_id for impact in inventory.amendment_impacts for assessment_id in impact.reopened_exclusions}
@@ -365,6 +343,12 @@ def _descendants(root: Pass, inventory: Inventory) -> list[Pass]:
     return descendants
 
 
+def _search_key(o: Observation) -> tuple[str, SearchIdentity]:
+    """Each observation covers one lane: automatic/explicit lane selection and
+    the other lanes' pagination do not change this lane's population."""
+    return o.lane, replace(o.page.search, lanes=(o.lane,))
+
+
 def _complete_chain(observations: list[Observation]) -> bool:
     pages = sorted(observations, key=lambda o: o.page.number)
     number, cursor = 1, None  # Full window bounds: page 1 / no cursor through exhaustion.
@@ -393,10 +377,7 @@ def _window_searches(root: Pass, inventory: Inventory) -> set[tuple[str, SearchI
             continue  # Non-paging success adds no window; its failures were checked above.
         if o.page is None:
             return set()
-        # Each observation covers one lane: automatic/explicit lane selection
-        # and the other lanes' pagination do not change this lane's population.
-        search = replace(o.page.search, lanes=(o.lane,))
-        chains.setdefault((o.lane, search), []).append(o)
+        chains.setdefault(_search_key(o), []).append(o)
     if any(not _complete_chain(chain) for chain in chains.values()):
         return set()
     return set(chains)
@@ -439,7 +420,7 @@ def window_search_knowledge(root: Pass, inventory: Inventory) -> frozenset[tuple
     finds = tuple(o for o in observations if o.request_type in ("find",))
     if any(o.page is None for o in finds):
         return None
-    return frozenset((o.lane, replace(o.page.search, lanes=(o.lane,))) for o in finds)
+    return frozenset(_search_key(o) for o in finds)
 
 
 ChainState = Literal["invalid", "recoverable", "complete"]
@@ -504,7 +485,7 @@ def _search_completion(finds: tuple[Observation, ...]) -> tuple[WindowState, str
         return "indeterminate", "search page metadata missing"
     chains: dict[tuple[str, SearchIdentity], list[Observation]] = {}
     for o in finds:
-        chains.setdefault((o.lane, replace(o.page.search, lanes=(o.lane,))), []).append(o)
+        chains.setdefault(_search_key(o), []).append(o)
     classes = tuple(_chain_knowledge(chain) for chain in chains.values())
     if "invalid" in classes:
         return "ineligible", "no complete distinct search"
@@ -545,16 +526,15 @@ def candidate_units(inventory: Inventory) -> CandidateUnits:
                           Count(accepted, historical), saturation_passes(inventory))
 
 
+def semantic_operands(inventory: Inventory, as_of: str) -> tuple[SemanticOperand, ...]:
+    subjects = sorted({(r.work_id, r.source_version) for r in inventory.semantic_assessments})
+    return tuple(o for work, version in subjects for o in semantic_accrual(inventory, work, version, as_of))
+
+
 @dataclass(frozen=True)
 class NoveltyJudgment:
     work_id: str
     novel: bool | None
-
-
-def novelty_judgments(records: tuple[SemanticAssessment, ...]) -> tuple[NoveltyJudgment, ...]:
-    """Translate retained labels only; callers select context, duplicates stay."""
-    labels = {"novel": True, "not_novel": False, "unknown": None}
-    return tuple(NoveltyJudgment(r.work_id, labels[r.novelty]) for r in records)
 
 
 def novelty(assessed: Count, judgments: tuple[NoveltyJudgment, ...]) -> Fraction | None:

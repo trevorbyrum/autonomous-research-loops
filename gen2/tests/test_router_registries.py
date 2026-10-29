@@ -22,9 +22,6 @@ from __future__ import annotations
 
 import copy
 import json
-import sqlite3
-import tempfile
-from pathlib import Path
 
 from gen2.core import canonical, instants
 from gen2.router import service
@@ -338,30 +335,9 @@ class QualificationRecordTest(ScreeningBase):
         self.assertEqual(self.state(exclude=()), before)
 
 
-class RegistryRestartTest(RouterTestCase):
+class RegistryRestartTest(rf.DurableRouterTestCase):
     """RG-9: bundles, questions and qualification records are store state: a
     reopened store resolves every pin and keeps every revocation."""
-
-    def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.directory = Path(self._tmp.name)
-        api.open_store(self.directory / "store.sqlite3", create=True).close()
-        self.db = sqlite3.connect(self.directory / "store.sqlite3", isolation_level=None)
-        self.db.executescript(store_fixtures.CONNECTION_TEXT)
-        self.store = api.open_store(self.directory / "store.sqlite3")
-        self.spool, self.clock, self.ids, self.faults = rf.Spool(), rf.Clock(), rf.Ids(), {}
-        self.router = self.make_router()
-        self.seed()
-
-    def tearDown(self) -> None:
-        self.router.close()
-        self.db.close()
-        self._tmp.cleanup()
-
-    def reopen(self) -> None:
-        self.router.close()
-        self.store = api.open_store(self.directory / "store.sqlite3")
-        self.router = self.make_router()
 
     def test_pins_and_registries_survive_a_restart(self) -> None:
         self.to_queued()

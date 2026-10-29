@@ -75,7 +75,8 @@ class AttemptTest(RouterTestCase):
         command = self.command()
         command['observation']['request_identity'] = 'sha256:' + '0' * 64
         before = self.state(exclude=())
-        self.assertEqual(self.send(command)['reason'], 'payload_invalid')
+        out = self.send(command)
+        self.assertEqual((out['reason'], out['detail'].endswith('request_identity is not the hash of its request (H-5)')), ('payload_invalid', True), out)
         self.assertEqual(self.state(exclude=()), before)
 
     def test_failed_only(self):
@@ -121,25 +122,6 @@ class AttemptTest(RouterTestCase):
             with self.assertRaisesRegex(RuntimeError, 'audit failed'):
                 self.send()
         self.assertEqual(self.state(exclude=()), before)
-
-    def test_store_hash(self):
-        self.assertEqual(self.send()['status'], 'recorded')
-        row = self.row()
-        row['observation_id'], row['attempt'] = 'obs_storehash01', 2
-        row['request_bytes'] += b' '
-        current = api.adopt_in_memory(self.db)  # include the API module's mutant
-        with self.assertRaisesRegex(api.StoreWriteError, 'byte hash mismatch'), current.transaction():
-            current.insert('search_observations', row)
-        self.assertEqual(len(self.store.select('search_observations')), 1)
-
-    def test_store_hash_control(self):
-        self.assertEqual(self.send()['status'], 'recorded')
-        row = self.row()
-        row['observation_id'], row['attempt'] = 'obs_storehash01', 2
-        current = api.adopt_in_memory(self.db)
-        with current.transaction():
-            current.insert('search_observations', row)
-        self.assertEqual(current.select('search_observations')[-1]['request_bytes'], RAW.encode())
 
     def test_client_retention(self):
         request = json.loads(RAW)

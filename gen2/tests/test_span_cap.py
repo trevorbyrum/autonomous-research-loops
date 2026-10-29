@@ -7,11 +7,11 @@ from gen2.core import canonical
 from gen2.router import boundary
 from gen2.router.schemas import SchemaSet
 from gen2.tests.span_cap_cases import LIMIT, NUMERALS, admitted, literal, exact_value
-from gen2.tests import test_table_availability as tables
-from gen2.tests import test_detailed_checks as checks
+from gen2.tests import router_fixtures as tables
 from gen2.tests import test_router_workflow as workflow
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.detailed_receipt_fixtures import attach_checks
+from gen2.tests import router_fixtures as workflow_fixtures
 
 
 RECEIPT_SCHEMA = Path(__file__).resolve().parents[1] / 'schema/verification-receipt.schema.json'
@@ -73,7 +73,7 @@ class SpanCapTest(unittest.TestCase):
                     raw_spans = literal('start', '0').replace('"value": "2"', '"value": ' + n)
                     target = 'outcome-document.schema.json#/properties/claim_source_links/items/properties/spans'
                     self.assertEqual(not schemas.errors(exact_value(raw_spans), target), expected == 'committed')
-                    entry = workflow.link()
+                    entry = workflow_fixtures.link()
                     entry['spans'] = '__SPAN__'
                     payload = {**empty_outcome(case.grant['invocation_id'], 'interim_transition'), 'claim_source_links': [entry]}
                     env = case.envelope(case.grant, f'op_locator_{i:04}', empty_outcome(case.grant['invocation_id'], 'interim_transition'))
@@ -105,7 +105,7 @@ class SpanCapTest(unittest.TestCase):
                         ('9.007199254740992e15', 'rejected'),
                         ('9007199254740991', 'committed'))):
                     with self.subTest(key=key, n=n):
-                        entry = workflow.link()
+                        entry = workflow_fixtures.link()
                         entry['spans'] = '__SPAN__'
                         payload = {**empty_outcome(case.grant['invocation_id'], 'interim_transition'),
                             'claim_source_links': [entry]}
@@ -128,7 +128,7 @@ class SpanCapTest(unittest.TestCase):
                 case.tearDown()
 
     def test_quote_router_cap(self):
-        from gen2.tests.test_governed_quotes import QuotesCase
+        from gen2.tests.router_fixtures import QuotesCase
         case = QuotesCase()
         case.setUp()
         self.addCleanup(case.tearDown)
@@ -181,7 +181,7 @@ class SpanCapTest(unittest.TestCase):
             exact_value(literal(key, n)) for column, key in enumerate(('start', 'end'), 1)
             for n, start, end in ROUTER_CASES if (start, end)[column - 1] == 'committed'}
         for method in tables.METHODS:
-            with tables.span_fixture({'identity': tables.content.IDENTITY}, bindings=bindings.values()) as case:
+            with tables.span_fixture({'identity': tables.IDENTITY}, bindings=bindings.values()) as case:
                 for column, key in enumerate(('start', 'end'), 1):
                     for i, row in enumerate(ROUTER_CASES):
                         n, expected = row[0], row[column]
@@ -209,7 +209,7 @@ class SpanCapTest(unittest.TestCase):
                                     self.assertIn(f'/cited_spans/0/{key}: maximum 9007199254740991 violated', out['detail'])
 
     def test_record_router_matrix(self):
-        case = checks.CheckCase()
+        case = tables.CheckCase()
         case.setUp()
         try:
             for field in ('cited_spans', 'context_spans'):

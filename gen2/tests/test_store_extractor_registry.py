@@ -4,7 +4,6 @@ import sqlite3
 
 from gen2.tests import store_fixtures as sf
 from gen2.tests.test_extractor_registry import approval
-from gen2.tests.test_store_extraction_records import DDLTest
 
 
 class RegistryDDLTest(sf.StoreTestCase):
@@ -98,15 +97,3 @@ class RegistryDDLTest(sf.StoreTestCase):
                 with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
                     self.x(sql)
                 self.assertEqual(self.snapshot(table), before)
-
-
-class RegistryExtractionDDLTest(DDLTest):
-    def test_registry_membership(self):
-        for name in ("unknown", "alias-a", "Tool-a", " tool-a", "tool-a ", "tool-a\x00alias"):
-            with self.subTest(name=name):
-                self.refuse(source_extractions=[self.extraction(extractor_identity=name)])
-
-    def test_registry_revision(self):
-        for version in (None, 2):
-            with self.subTest(version=version):
-                self.refuse(source_extractions=[self.extraction(extractor_registry_version=version)])

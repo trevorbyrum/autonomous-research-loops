@@ -552,7 +552,6 @@ CREATE TABLE dossiers (
   topic_id TEXT NOT NULL REFERENCES queue_entries (topic_id),
   dossier_revision INTEGER NOT NULL CHECK (dossier_revision >= 1),
   contract_revision INTEGER NOT NULL,
-  evidence_revision INTEGER NOT NULL CHECK (evidence_revision >= 1),
   evaluator_version TEXT NOT NULL,
   content_hash TEXT NOT NULL UNIQUE,
   document_ref TEXT NOT NULL REFERENCES artifacts (content_hash),

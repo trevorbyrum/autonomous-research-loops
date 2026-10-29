@@ -2,8 +2,8 @@
 """Run one explicit CI workload. Scheduling and status aggregation belong to Jenkins.
 
 The default is T0 only. Full acceptance requires every engine test shard and
-the changed-line mutation campaign, trigger-order when DDL changed, and both gateway modes; no subset
-implies acceptance.
+the changed-line mutation campaign and both gateway modes; no subset implies
+acceptance.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from gen2_ci_evidence import junit, shard_spec, write_json
 from gen2_workers import cpu_budget
 
 ROOT = Path(__file__).resolve().parent.parent
-MODES = ("push", "engine-unit", "engine-trigger-order", "engine-mutation", "gateway-no-db", "gateway-db")
+MODES = ("push", "engine-unit", "engine-mutation", "gateway-no-db", "gateway-db")
 PARTIAL_BANNER = "PARTIAL ACCEPTANCE — NOT FULL ACCEPTANCE"
 DEFAULT_WORK = (("push", (1, 1)), ("engine-unit", (1, 8)))
 
@@ -35,7 +35,7 @@ def default_run(out: Path) -> int:
              "checkout_sha": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}"),
              "source_dirty": bool(git("status", "--porcelain", "--untracked-files=no")),
              "ran": ["T0", "units 1/8"],
-             "omitted": ["complete trigger-order", "unit partitions 2–8/8", "all mutation work", "all gateway modes"],
+             "omitted": ["unit partitions 2–8/8", "all mutation work", "all gateway modes"],
              "executions": [{"mode": mode, "shard": shard, "status": "not_run"}
                             for mode, shard in DEFAULT_WORK], "status": "running"}
     def publish():
@@ -87,7 +87,7 @@ def command(mode: str, shard: tuple[int, int]) -> list[str]:
         return ["make", "gen2-mutation"]
     if mode in ("gateway-no-db", "gateway-db"):
         return ["make", "gen2-gateway", "GEN2_GATEWAY_MODE=" + mode.removeprefix("gateway-")]
-    return ["make", "gen2-push" if mode == "push" else "gen2-trigger-order"]
+    return ["make", "gen2-push"]
 
 
 def git(*args: str) -> str:

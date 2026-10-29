@@ -1,113 +1,5 @@
-"""The station supervisor: the one lifecycle implementation for every
-invocation kind — research pass, discovery, delegate, verification and
-checkpoint (task 1c). Nothing below branches on the kind except the claim
-request a delegate makes under its parent (L-8).
-
-Trace: BOUNDARIES.md Station supervisor (owns launch intent before spawn,
-process identity, deadlines, cancellation, descendant handling, result
-retention and durable delivery; must never trust agent self-reported
-completion, let an agent write authoritative state or the spool destination,
-or treat outcome_unknown as anything without reconciliation); design review
-§5 ("Artifacts and the sole-writer promise", "Router outage", "Crash
-fencing"), §6; INVARIANTS L-1..L-9, C-8, C-9, C-10, RG-2, RG-3;
-gen2/core/control.py (the only way it reaches the router: it imports neither
-router nor store, gen2/boundaries.toml).
-
-One job per invocation, under its stable handle "job-<invocation id>"
-(jobs.py). What the supervisor knows lives in three places, each durable:
-the job directory (the order, what the launcher recorded, the journal of
-what the supervisor observed, retained and sent), the spool (the result and
-every execution record, content-addressed), and the router (the
-authoritative lifecycle). advance() rebuilds its view from all three every
-time, so a supervisor that restarts (recover()) continues each job from its
-handle: nothing it needs is only in memory.
-
-Each advance first observes the job locally, needing no router (C-10): an
-exit is collected (descendants handled, the output checked structurally and
-staged, the execution record written); a job past its deadline has its
-execution group terminated. Then it drives the router one step along L-1:
-  admitted          launch intent first (the router's final launch-admission
-                    check, L-2, L-7); a refusal for a paused topic is retried
-                    within the launch budget, then the admitted work is
-                    cancelled (supervisor); a lapsed lease or deadline cancels it
-  launching         start the launcher (spawn budget); record its identity
-                    once it has recorded it (L-3). A start this process did
-                    not see through — a crash between spawn and identity —
-                    enters outcome_unknown and is reconciled (L-4)
-  running           a collected end is delivered: a structural finding is a
-                    failure with its class and record (L-5, L-9); a clean end
-                    stages result_ready; a cancellation request terminates
-                    the group, then records cancelled once descendants are
-                    confirmed (L-7); a launcher gone without an exit record
-                    is outcome_unknown
-  result_ready      commit_outcome with the retained result and its execution
-                    record; a stale state revision is re-sent within the
-                    commit budget; any other refusal is a failure
-                    (result_rejected), the result staying retained (C-10)
-  outcome_unknown   look the job up by its handle, or terminate its group,
-                    and reconcile the episode with the resolution the record
-                    supports; what cannot be established stays unknown under
-                    the episode's hold (owner, deadline)
-Every retry path draws on a declared budget kept in the journal, so a
-restart does not refill it (L-6): an outage (attempts and time, from its first
-failed call until a write the router answers — a read refunds nothing), a
-failing durable write, a lifecycle write the router refused (an end, a
-reconciliation, entering outcome_unknown, a cancellation — until that write
-is accepted; a refusal no retry can change, such as a conflict, stops at
-once), an outcome_unknown episode that cannot be reconciled yet (attempts,
-and time from its first unresolved look, per episode), recover()
-resumptions, launch refusals, launcher starts and commit re-sends. Past the
-router, write, refusal or unknown budget the job stalls with an owned,
-deadlined incident naming the budget and what it last met, which only
-recover() or recover_incident() — the operator's, for one job — closes, each
-drawing on the job's recovery budget and refilling nothing. An unresolved
-episode keeps its hold, since only its reconciliation clears it (L-4); where
-the retained end's descendants were never confirmed ended, recover() alone
-finds the same unconfirmed end again, and recover_incident() is the route:
-the group ended afresh, the episode reconciled from that (task 1e-repair),
-the recovery recorded unfinished until that is done and carried on by the
-next caller holding the job's lock (task 1e-repair-2). An
-exhausted launch, spawn or commit budget is recorded as an incident beside
-the job's end; a journal that cannot be written raises ControlFailure out of
-band (RG-3).
-Every router call goes through one chokepoint, _call(), which makes none for
-a job stalled on an open incident or settled — as that job's own durable
-journal says, whoever asks: its own advance, its parent ending it, its
-delegate needing its capability, a recover() with no recovery attempt left.
-So a stalled job's spent budget stays spent until recover() closes its
-incident, and a settled job is never claimed again. An open incident is
-write-once: nothing renews its kind, since or deadline (L-6, RG-3; Astra 1c
-re-review 2, L-6).
-One caller at a time per job (task 1c-repair-4; Astra 1c re-review 3,
-BLOCK 1): advance() and each job's step of recover() hold the job's lock
-(jobs.Job.hold) from the read of its journal to its last write; a
-delegate's advance takes its parent's lock first, as its grant claims the
-parent's; a parent ending its delegates takes each one's under its own. One
-order for every caller, parent before delegate, so no two wait on each
-other. So no caller reads a journal another is changing, nor writes an older
-copy over a newer one, and what is said here of budgets and incidents holds
-for overlapping callers — threads sharing a supervisor, supervisors sharing
-the jobs directory — as for sequential ones. Waiting for a lock spends no
-budget and is bounded (Policy.lock_wait_s; then "busy"). A write resting on
-an older copy of the journal is refused (StaleJournal, out of band): a
-backstop, not a lock. The lock is per job, across the processes and threads
-of one host; nothing is claimed across hosts.
-Each advance is one step, and run() is bounded by its timeout. A parent
-waiting on its delegates retries nothing of its own: each advance reads its
-status and advances each delegate, whose own budgets apply, so a stalled
-delegate holds its parent at that delegate's incident. Before a parent's
-capacity is released its delegate jobs are ended (L-7, L-8).
-
-Structural limits: faults are what these processes can do to each other on
-one host (kills, exits, hangs, lost replies), not power loss or disk
-corruption; fencing protects commits and does not undo an orphan's external
-effects (L-7); a descendant that leaves the job's session is not seen, and a
-listed pid can be reused before it is signalled (jobs.py); supervisors on
-different hosts sharing a jobs directory are not known to be excluded by the
-job's lock (it may not be seen there; then only the StaleJournal backstop
-stands between them, and it does not stop a call). The supervisor trusts its own observations: the router binds
-the execution record to what it supports, not to whether it is true. The
-README states what is proven.
+"""Trace: BOUNDARIES.md Station supervisor; INVARIANTS L-1..L-9, C-8..C-10, RG-2, RG-3.
+See README.md for the lifecycle, budgets, locking, recovery and structural limits.
 """
 from __future__ import annotations
 
@@ -141,6 +33,11 @@ INVOCATION_ID = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")  # common.schema.json#/$d
 
 def _refusal(reason: str, detail: str, **facts) -> dict:
     return {"status": "refused", "reason": reason, "detail": detail[:500], **facts}
+
+
+def _request_shape(request: Mapping, keys: frozenset[str]) -> bool:
+    return isinstance(request, Mapping) and set(request) in (keys,) and all(
+        isinstance(request[k], str) and len(request[k]) in range(1, 501) for k in keys)
 
 
 @dataclass(frozen=True)
@@ -276,22 +173,7 @@ class Supervisor:
         return self.advance(order.invocation_id)
 
     def recover(self) -> dict[str, str]:
-        """After a restart, or once the router is back: every job this
-        supervisor holds, advanced from what its handle finds. A job stalled
-        on an incident resumes here, drawing on its recovery budget: that
-        closes its incident, the only way its calls pass the chokepoint again
-        (_call). The budget that ran out stays spent (an outage or a failing
-        write is exhausted until that operation makes progress), so a
-        resumption that fails again stalls again at once (L-6; Astra 1c
-        review A5). With no recovery attempt left the incident stays open as
-        raised, and the job's calls stay refused. A job whose operator
-        recovery was left unfinished draws nothing: its advance finishes that
-        recovery first (recover_incident). Each job's resumption and
-        its advance are one hold of its lock (_exclusive): a job whose lock
-        another caller keeps past the wait is reported busy, its recovery
-        budget untouched. A job whose journal cannot be written is reported
-        as control_failure, and once every job was tried ControlFailure is
-        raised naming them."""
+        """Resume each job under its lock without refilling spent budgets (L-6; Astra 1c A5)."""
         outcomes, failures = {}, []
         for path in sorted(self.jobs_root.iterdir()):
             order = jobs.Job(self.jobs_root, path.name).read("order.json")
@@ -318,47 +200,8 @@ class Supervisor:
     RECOVERY_REQUEST = frozenset({"invocation_id", "incident_since", "requested_by", "reason"})
 
     def recover_incident(self, request: Mapping) -> dict:
-        """The operator's recovery of one job stalled on an incident (task
-        1e-repair; Astra 1e review finding 2, carrying the 1c re-review 2
-        escalation): {invocation_id, incident_since — the open incident the
-        operator saw in status, requested_by — the operator (the surface
-        supplies it), reason}.
-
-        Under the job's lock, drawing one attempt of the job's recovery
-        budget as recover() does (refilling nothing): when the job's end is
-        retained with descendants never confirmed ended — the collected end,
-        which recover() alone stalls on again, since the unconfirmed
-        observation stays what the job holds — the station ends the owned
-        execution group afresh and keeps what it found beside the retained
-        end (collected["rehandled"]), the retained observation and its
-        record left as they were. A group still not confirmed empty keeps
-        the incident open, the episode's hold with the router and the lease
-        held (termination_unconfirmed). Otherwise the incident is closed and
-        the job advanced: the outcome_unknown episode is reconciled through
-        the router's reconcile under the invocation's capability, with a
-        fresh execution record of that handling (_unknown), which alone
-        clears the episode's hold and releases capacity (L-4, L-7; the
-        reconciliation-only hold rule, Astra 1c review A7). No hold is
-        cleared here and no capability is taken from the request: the
-        operator asks for the station's work, which the router judges.
-
-        The recovery is recorded unfinished before any of that is done, in
-        the write that draws its allowance (journal["recovering"]: the
-        incident, who asked and why, the termination once made), and is
-        recorded finished (`recoveries`, with the advance's outcome) only
-        once that work is done: until then status lists it with its
-        incident (incidents()). One left unfinished — the reply lost, the
-        engine ended or replaced mid-way — is carried on from where its
-        journal stands by the next caller holding the job's lock: this
-        request again, advance(), recover() — drawing no allowance again
-        (_recovering; Astra 1e-repair re-review finding 1). Keyed by the
-        incident: the same request once its recovery is finished replays it.
-        Refused, with nothing done: a request not of this shape, an unknown
-        job, an incident not the open one, a settled job, the recovery
-        budget spent, the job's lock another's."""
-        if not isinstance(request, Mapping) or set(request) != self.RECOVERY_REQUEST or not all(
-                isinstance(request[k], str) and 0 < len(request[k]) <= 500 for k in self.RECOVERY_REQUEST) \
-                or not INVOCATION_ID.fullmatch(request["invocation_id"]):
+        """Record operator recovery unfinished before drawing its allowance, then carry it to completion (Astra 1e-repair re-review 1)."""
+        if not _request_shape(request, self.RECOVERY_REQUEST) or not INVOCATION_ID.fullmatch(request["invocation_id"]):
             return _refusal("request_invalid", "a recovery names invocation_id, incident_since, requested_by and reason, each a string")
         inv, since = request["invocation_id"], request["incident_since"]
         job = self.job(inv)
@@ -393,21 +236,12 @@ class Supervisor:
             return _refusal("busy", f"{inv}'s job is held by another caller; nothing was done")
 
     def _recovering(self, job: jobs.Job, order: dict, journal: dict) -> dict:
-        """Carry the job's unfinished operator recovery (journal["recovering"])
-        on from where its durable journal stands, under the job's lock its
-        caller holds, and record it finished: the group ended afresh if the
-        collected end's descendants are still unconfirmed and not yet
-        re-handled (terminating an empty group again confirms it empty), the
-        incident closed if still open, the job advanced. The recovery is
-        finished once that advance has returned (its outcome recorded), or
-        once a fresh termination is not confirmed (the incident kept open).
-        A crash anywhere before leaves it unfinished, to be carried on the
-        same way; nothing here draws on a budget."""
+        """Finish the recorded operator recovery under the job lock without drawing another allowance (Astra 1e-repair re-review 1)."""
         entry, inv = journal["recovering"], order["invocation_id"]
         self._fault("recovery_recorded")
         collected, identity = journal.get("collected"), job.read("identity.json")
         if collected and collected["observation"]["descendants"]["handling"] == "unconfirmed" and not collected.get("rehandled") and identity:
-            ended = job.terminate(identity, term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
+            ended = self._end_group(job, identity)
             entry["termination"] = {"at": self._now(), "descendants": self._handled(ended)}
             if not ended["confirmed"]:
                 self._recovered(job, journal, "termination_unconfirmed")
@@ -431,16 +265,7 @@ class Supervisor:
         return finished
 
     def incidents(self) -> list[dict]:
-        """Every open control incident of this supervisor's jobs (RG-3:
-        visible, owned, deadlined): the one a stalled job waits on
-        (blocking), an operator recovery not yet finished — listed as its
-        incident, with `recovery` saying who asked, when and for what, until
-        it is finished, whether or not it has closed the incident yet
-        (recover_incident) — and each exhausted retry budget (kept beside
-        the job's end, which it does not block). Each names its invocation
-        and that invocation's topic, from the job's durable order, whatever
-        has happened to the topic's lanes since (Astra 1e review finding 5).
-        Read from the journals; changes nothing."""
+        """List owned, deadlined incidents with unfinished recoveries and their invocation topics (RG-3; Astra 1e finding 5)."""
         found = []
         for path in sorted(self.jobs_root.iterdir()):
             job = jobs.Job(self.jobs_root, path.name)
@@ -457,25 +282,9 @@ class Supervisor:
                 found.append({**named, "blocking": False, **journal["exhausted"]})
         return found
 
-    def run(self, invocation_id: str, *, timeout_s: float = 60.0, until: tuple[str, ...] = TERMINAL + ("not_admitted",)) -> str:
-        """Advance until an outcome in `until`, or `timeout_s` of wall time."""
-        deadline = time.monotonic() + timeout_s
-        while True:
-            outcome = self.advance(invocation_id)
-            if outcome in until or time.monotonic() >= deadline:
-                return outcome
-            time.sleep(self.policy.poll_s)
 
     def advance(self, invocation_id: str) -> str:
-        """One step of the job, holding its lock — a delegate's parent's
-        first (_exclusive) — from the read of its journal to its last write,
-        so no other caller reads that journal meanwhile or writes over it:
-        another thread, or another supervisor sharing the jobs directory on
-        this host (L-6, RG-3; Astra 1c re-review 3, BLOCK 1). Waiting for the
-        lock spends nothing and is bounded (Busy: "busy"). An operator
-        recovery left unfinished is this step: it is finished first
-        (_recovering), its outcome the step's ("stalled" if its fresh
-        termination is not confirmed)."""
+        """Advance under the parent-before-delegate lock, finishing any unfinished recovery first (L-6, L-8; Astra 1e-repair re-review 1)."""
         job = self.job(invocation_id)
         order = job.read("order.json")
         if order is None:
@@ -502,31 +311,18 @@ class Supervisor:
 
     # -- the job's lock -------------------------------------------------------
     def _lineage(self, order: dict) -> list[jobs.Job]:
-        """The job and its ancestors, root first: a delegate's parent, then
-        the delegate (L-8 allows no deeper chain; one would be followed)."""
-        lineage, seen, parent = [self.job(order["invocation_id"])], {order["invocation_id"]}, order.get("parent_invocation_id")
-        while parent is not None and parent not in seen:
+        """Lock the single parent before its delegate; L-8 forbids deeper chains."""
+        job = self.job(order["invocation_id"])
+        parent = order.get("parent_invocation_id")
+        if parent is not None:
             ancestor = self.job(parent)
-            ancestor_order = ancestor.read("order.json")
-            if ancestor_order is None:
-                break
-            lineage.insert(0, ancestor)
-            seen.add(parent)
-            parent = ancestor_order.get("parent_invocation_id")
-        return lineage
+            if ancestor.read("order.json") is not None:
+                return [ancestor, job]
+        return [job]
 
     @contextlib.contextmanager
     def _exclusive(self, order: dict):
-        """Hold the lock of every job whose journal a step of this one may
-        read and write (jobs.Job.hold): its parent's — a delegate's grant
-        claims its parent's — then its own. A parent ending its delegates
-        acts on their journals holding its own lock first. So every caller
-        takes them in one order, parent before delegate, and no two wait on
-        each other. One deadline (Policy.lock_wait_s) bounds the whole wait:
-        past it, Busy: no journal read or written, no budget spent. A
-        caller that holds one already (a parent advancing its delegate)
-        holds it again at once. Per job, across the processes and threads of
-        one host; nothing is claimed across hosts (jobs.py)."""
+        """Hold parent then delegate under one bounded wait, spending no budget (L-8; Astra 1c re-review 3, BLOCK 1)."""
         deadline = time.monotonic() + self.policy.lock_wait_s
         with contextlib.ExitStack() as held:
             for job in self._lineage(order):
@@ -580,19 +376,13 @@ class Supervisor:
     def _settle(self, job: jobs.Job, journal: dict, state: str) -> str:
         journal["settled"] = state
         self._save(job, journal)
+        self._children.pop(job.handle, None)
+        self._pinned.pop(job.handle, None)
         return state
 
     def _incident(self, job: jobs.Job, journal: dict, kind: str, key: str = "incident", **facts) -> None:
-        """An owned, deadlined control incident (RG-3), kept in the job's
-        journal: "incident" is the one a stalled job waits on until recover();
-        "exhausted" records a retry budget that ran out, beside the job's end.
-        Write-once while open: one already raised in the job's durable journal
-        — whatever copy the caller holds — is kept as it was, kind, since and
-        deadline included, and nothing is written; only recover() closes an
-        incident (L-6, RG-3; Astra 1c re-review 2, L-6)."""
-        raised = (job.read("journal.json") or {}).get(key)
-        if raised:
-            journal[key] = raised
+        """Keep an open incident unchanged under the job lock (L-6, RG-3; O-1)."""
+        if journal.get(key):
             return
         journal[key] = {"kind": kind, "since": self._now(), "owner": f"supervisor:{self.station_id}",
                         "deadline_at": self._after(self._policy(job).incident_window_s), **facts}
@@ -605,16 +395,7 @@ class Supervisor:
         self._incident(job, journal, "retry_exhausted", key="exhausted", budget=budget, last_refusal=last_refusal, result_ref=result_ref)
 
     def _write_failed(self, job: jobs.Job, failure: Exception) -> str:
-        """A durable write failed — the spool full or refusing, a file-system
-        error. What was durable before it stands (an observation kept in the
-        journal is never made again), and the write is retried on later
-        advances within the write budget; exhausted, the job stalls with an
-        owned, deadlined incident until recover() (C-10, RG-3; Astra 1c
-        review A4) — or, stalled on another incident already (a record of a
-        termination made while the router was away, say), keeps that one as
-        raised and waits with it (_observe). When the journal itself cannot
-        be written the incident cannot be kept either: ControlFailure, out of
-        band."""
+        """Retry durable writes on budget, keeping any open incident; an unwritable journal raises ControlFailure (C-10, RG-3; Astra 1c A4)."""
         error = f"{type(failure).__name__}: {failure}"[:500]
         try:
             journal = self._journal(job)  # what is durable: the failed operation's unsaved changes are dropped
@@ -636,14 +417,7 @@ class Supervisor:
         journal.pop("write_failure", None)
 
     def _refused(self, job: jobs.Job, journal: dict, write: str, response: dict):
-        """The router answered a lifecycle write — an end, a reconciliation,
-        entering outcome_unknown, a cancellation — with a refusal. It is
-        decided and sent afresh on a later advance within the refusal budget,
-        which only that write's acceptance refunds; a refusal no retry can
-        change (FINAL_REFUSALS) stops at once. Past either, the job stalls
-        with an owned, deadlined incident naming the budget, the write and the
-        last refusal, which only recover() resumes, refilling nothing (L-6,
-        RG-3)."""
+        """Only acceptance refunds a refused write; a final refusal or spent budget stalls the job (L-6, RG-3)."""
         refusal = {"reason": response.get("reason"), "detail": response.get("detail")}
         final = refusal["reason"] in FINAL_REFUSALS
         journal["refusal"] = {"write": write, **refusal}
@@ -651,6 +425,13 @@ class Supervisor:
             self._incident(job, journal, "lifecycle_write_refused", budget="refusal", write=write, last_refusal=refusal, final=final)
             raise Waiting("stalled")
         raise Waiting(f"{write}_refused:{refusal['reason']}")
+
+    def _write(self, job: jobs.Job, journal: dict, response: dict, write: str, accepted=("recorded", "replayed")) -> dict:
+        """Judge a lifecycle write after any pending-request cleanup or cancellation race (L-6)."""
+        if response["status"] not in accepted:
+            self._refused(job, journal, write, response)
+        self._accepted(job, journal, write)
+        return response
 
     def _accepted(self, job: jobs.Job, journal: dict, write: str) -> None:
         """The router accepted a lifecycle write: if it is the one last
@@ -684,25 +465,9 @@ class Supervisor:
     READS = frozenset({"invocation_status"})
 
     def _call(self, job: jobs.Job, journal: dict, method: str, request: dict) -> dict:
-        """One router call: the chokepoint every control call goes through.
-        None is made for a job stalled on an open incident, or settled — the
-        job the request is for, as its own durable journal says, whatever
-        job or journal copy the caller holds — whoever calls: its advance,
-        its parent ending it, its delegate needing its capability, recover()
-        with no recovery attempt left. Held is raised and nothing is written:
-        the incident stays as raised, its budget spent, until recover() closes
-        it; a settled job is never sent anything again (L-6, RG-3; Astra 1c
-        re-review 2, L-6).
-        Unreachable: the same request is sent again on a later advance. An
-        outage is budgeted from its first failed call until a write the
-        router answers — a successful read refunds nothing (Astra 1c review
-        A5) — by attempts and by time; past either, the job stalls with an
-        owned, deadlined incident until recover(), which does not refill it
-        (C-10, L-6)."""
-        owner = self.job(request["invocation_id"])
-        held = owner.read("journal.json") or {}
-        if held.get("incident") or held.get("settled"):
-            raise Held(owner.handle, held.get("settled"))
+        """Refuse calls for stalled or settled jobs; only an answered write refunds the outage budget (L-6, RG-3; Astra 1c A5)."""
+        if journal.get("incident") or journal.get("settled"):
+            raise Held(job.handle, journal.get("settled"))
         try:
             response = getattr(self.control, method)(request)
         except ControlUnavailable:
@@ -763,6 +528,10 @@ class Supervisor:
         found = read_scratch(job.scratch, name, 4096)
         return found["data"][:500].decode("utf-8", "replace").strip() or None if found["status"] == "present" else None
 
+    def _end_group(self, job: jobs.Job, identity: dict) -> dict:
+        policy = self._policy(job)
+        return job.terminate(identity, term_grace=policy.term_grace_s, kill_grace=policy.kill_grace_s, reap=self._reap)
+
     def _descendants(self, job: jobs.Job, identity: dict) -> tuple[dict, dict | None]:
         """After the primary ended: wait for the launcher to leave (it has
         recorded the exit), then end whatever else is left of the group and
@@ -774,7 +543,7 @@ class Supervisor:
         left = [pid for pid in jobs.members(identity) if pid != identity["pid"]]
         if not left and identity["pid"] not in jobs.members(identity):
             return {"handling": "none_found", "count": 0}, None
-        ended = job.terminate(identity, term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
+        ended = self._end_group(job, identity)
         if not left and ended["confirmed"]:  # only a lingering launcher was ended: no descendant
             return {"handling": "none_found", "count": 0}, None
         return self._handled({**ended, "found": len(left)}), {"reason": "descendants_after_exit"}
@@ -787,14 +556,7 @@ class Supervisor:
         return {"handling": "terminated", "count": ended["found"]} if ended["found"] else {"handling": "none_found", "count": 0}
 
     def _collect(self, job: jobs.Job, order: dict, journal: dict, view: dict) -> None:
-        """The structural checks: the exit, what is on disk, and the rest of the
-        group. The agent's self-report is data; its declared digest is checked
-        data that cannot establish success — one the bytes do not have refuses
-        the output, one they have adds nothing (L-5).
-        What cannot be done twice is kept in the journal before the next step
-        — the descendants handled, then the observation with its staged
-        result — so a durable write that fails is retried without observing
-        again (C-10; Astra 1c review A4)."""
+        """Keep descendant handling and the observation before staging so a retry never observes twice (C-10; Astra 1c A4)."""
         seen = journal.get("observing") or {}
         if "descendants" not in seen:
             descendants, termination = self._descendants(job, view["identity"])
@@ -829,7 +591,7 @@ class Supervisor:
     def _terminate(self, job: jobs.Job, order: dict, journal: dict, view: dict, reason: str) -> None:
         """End the execution group (timeout or cancellation) and record it;
         the termination is kept before its record is staged (A4)."""
-        ended = job.terminate(view["identity"], term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
+        ended = self._end_group(job, view["identity"])
         observation = {"process": self._process(view["identity"]), "exit": job.read("exit.json"), "termination": {"reason": reason},
                        "descendants": self._handled(ended),
                        "output": {"status": "not_collected", "content_hash": None, "size_bytes": None, "declared_digest": None, "detail": None},
@@ -908,20 +670,7 @@ class Supervisor:
         return step(job, order, journal, grant, status)
 
     def _settle_delegates(self, order: dict) -> None:
-        """A parent's lease is its delegates' too (L-8), and a delegate runs in
-        its own supervisor-owned session, which the parent's descendant check
-        cannot see. So before anything that releases a parent's capacity (a
-        failure, a cancellation, a terminal reconciliation, the final commit)
-        every delegate job of it held here is ended — its cancellation
-        requested, its group terminated, or its already staged result
-        delivered — and the router confirms it ended (L-7; Astra 1c review A3).
-        Until then the parent waits; the router refuses the release anyway.
-        A delegate stalled on an incident passes the same chokepoint as its
-        own advance (_call): its parent makes none of its control calls, so
-        its exhausted budget stays spent and its incident (and deadline) stays
-        as raised, until recover() resumes it; it is still advanced, so its
-        deadline is still observed locally (L-6, C-10; Astra 1c re-review
-        A5-R)."""
+        """End every delegate before releasing parent capacity, preserving stalled delegates and their local deadlines (L-7, L-8, C-10; Astra 1c A3)."""
         if order["kind"] == "delegate":
             return
         pending = []
@@ -941,9 +690,7 @@ class Supervisor:
                         response = self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
                                                                                      "reason": f"its parent {order['invocation_id']} has ended",
                                                                                      "capability_id": grant["capability_id"]})
-                        if response["status"] not in ("cancelled", "recorded", "replayed"):
-                            self._refused(delegate, djournal, "cancel", response)
-                        self._accepted(delegate, djournal, "cancel")
+                        self._write(delegate, djournal, response, "cancel", accepted=("cancelled", "recorded", "replayed"))
                 except Waiting:  # a stalled delegate's calls are refused at the chokepoint (Held): nothing is sent
                     pass
                 if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
@@ -956,9 +703,7 @@ class Supervisor:
         supervisor, under its capability (nothing was spawned, L-2)."""
         response = self._call(job, journal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
                                                                 "reason": reason[:500], "capability_id": grant["capability_id"]})
-        if response["status"] not in ("cancelled", "recorded", "replayed"):
-            self._refused(job, journal, "cancel", response)
-        self._accepted(job, journal, "cancel")
+        self._write(job, journal, response, "cancel", accepted=("cancelled", "recorded", "replayed"))
         return self._drive(job, job.read("order.json"), journal)
 
     def _refused_launch(self, job, journal, grant, reason: str) -> str:
@@ -1056,9 +801,7 @@ class Supervisor:
         next attempt decide afresh, within the refusal budget (_refused)."""
         journal.pop("pending", None)
         self._save(job, journal)
-        if response["status"] not in ("recorded", "replayed"):
-            self._refused(job, journal, write, response)
-        self._accepted(job, journal, write)
+        self._write(job, journal, response, write)
 
     def _end(self, job, order, journal, grant, to_state: str, observation: dict, method: str) -> str:
         self._settle_delegates(order)
@@ -1091,16 +834,12 @@ class Supervisor:
             response = self._transition(job, journal, grant, "failed", failure_class=observation["findings"][0], **facts)
         else:
             response = self._transition(job, journal, grant, "result_ready", result_payload_digest=collected["result"]["content_hash"])
-            if response["status"] in ("recorded", "replayed"):
-                self._accepted(job, journal, "result_ready")
-                self._fault("result_ready_recorded")
-                return self._result_ready(job, order, journal, grant, self._status(job, journal, grant))
-            if response.get("reason") == "cancel_requested":  # the cancellation won the race: the result stays retained (C-10)
+            if response.get("reason") in ("cancel_requested",):  # the cancellation won the race: the result stays retained (C-10)
                 return self._drive(job, order, journal)
-            self._refused(job, journal, "result_ready", response)
-        if response["status"] not in ("recorded", "replayed"):
-            self._refused(job, journal, "end", response)
-        self._accepted(job, journal, "end")
+            self._write(job, journal, response, "result_ready")
+            self._fault("result_ready_recorded")
+            return self._result_ready(job, order, journal, grant, self._status(job, journal, grant))
+        self._write(job, journal, response, "end")
         return self._settle(job, journal, response["state"])
 
     def _result_ready(self, job, order, journal, grant, status) -> str:
@@ -1136,9 +875,7 @@ class Supervisor:
     # -- outcome_unknown -----------------------------------------------------------
     def _enter_unknown(self, job, order, journal, grant, status, cause: str) -> str:
         response = self._transition(job, journal, grant, "outcome_unknown", unknown_episode=status["unknown_episode"] + 1, unknown_cause=cause)
-        if response["status"] not in ("recorded", "replayed"):
-            self._refused(job, journal, "unknown", response)
-        self._accepted(job, journal, "unknown")
+        self._write(job, journal, response, "unknown")
         self._fault("unknown_recorded")
         return self._unknown(job, order, journal, grant, self._status(job, journal, grant))
 
@@ -1161,7 +898,7 @@ class Supervisor:
                 # a cancellation of work that already ended: the owned group is confirmed empty by the same idempotent
                 # operation that ends a live one — an empty group is signalled nothing (descendants none_found) — and the
                 # observed exit is kept as it was: nothing says the cancellation caused it (Q5 ruling; Astra 1c review A2)
-                ended = job.terminate(view["identity"], term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
+                ended = self._end_group(job, view["identity"])
                 if not ended["confirmed"]:
                     self._unresolved(job, journal, status, "the group of work that already exited is not confirmed empty")
                 observation = {**observation, "termination": {"reason": "cancellation"}, "descendants": self._handled(ended)}
@@ -1190,7 +927,7 @@ class Supervisor:
             return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", observation)
         # running under cancellation or past its deadline, or vanished leaving members: end the group, then reconcile by termination
         reason = "cancellation" if cancel else ("timeout" if self._past(order["deadline_at"]) else "reconciliation")
-        ended = job.terminate(view["identity"], term_grace=self._policy(job).term_grace_s, kill_grace=self._policy(job).kill_grace_s, reap=self._reap)
+        ended = self._end_group(job, view["identity"])
         if not ended["confirmed"]:
             self._unresolved(job, journal, status, f"the group's termination ({reason}) is not confirmed")
         observation = {**self._unrun({"cancellation": None, "timeout": "timeout"}.get(reason, "no_exit_record"), None),

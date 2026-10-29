@@ -4,7 +4,7 @@ Every connection applies gen2/store/connection.sql — the integrity-bearing
 per-connection pragmas (foreign_keys, recursive_triggers) — before the DDL,
 exactly as the store module must (INVARIANTS C-11).
 
-DDL_TEXT and CONNECTION_TEXT support in-memory schema substitutions in tests.
+DDL_TEXT and CONNECTION_TEXT hold the declared schema and connection contract.
 
 Builders construct input rows only. Expected accept/reject outcomes are
 written by hand in each test, never derived from the DDL under test.
@@ -15,6 +15,7 @@ import copy
 import json
 import sqlite3
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 from gen2.core.canonical import bytes_digest
@@ -31,8 +32,7 @@ FIND_REQUEST = '{"lane":"crossref","page":1,"request":{"query":"q","request_type
 OTHER = "fleet-a:t2"
 
 # The one subject kind each operator-decision kind admits (hand-copied from
-# the A2 rule, so builders can default it; tests that probe the rule pass
-# subject_kind explicitly).
+# the A2 rule, so builders can default it).
 SUBJECT_KIND = {
     "brief_confirmation": "intake_brief", "scope_approval": "scoping_report",
     "rating_approval": "contract_revision", "contract_approval": "contract_revision",
@@ -70,13 +70,12 @@ def facet(fid: str, **imp) -> dict:
     return {"facet_id": fid, "label": fid, "kind": "effect", "importance": importance(**imp)}
 
 
-def obligation(oid: str, facet_ids=("F-1",), *, template: tuple = ("T1", 1, "effect"), stopping_profile: str = "SP-1",
-               exploratory: bool = False, **imp) -> dict:
+def obligation(oid: str, facet_ids=("F-1",), **imp) -> dict:
     """A contract-v2 obligation entry carrying the fields its normalized row
     duplicates (template id/version/claim type, facet tags, stopping profile,
     exploratory flag, importance)."""
-    return {"obligation_id": oid, "template": {"template_id": template[0], "template_version": template[1], "claim_type": template[2]},
-            "facet_ids": list(facet_ids), "exploratory": exploratory, "stopping_profile_id": stopping_profile, "importance": importance(**imp)}
+    return {"obligation_id": oid, "template": {"template_id": "T1", "template_version": 1, "claim_type": "effect"},
+            "facet_ids": list(facet_ids), "exploratory": False, "stopping_profile_id": "SP-1", "importance": importance(**imp)}
 
 
 def connect(apply_connection_contract: bool = True) -> sqlite3.Connection:
@@ -148,13 +147,16 @@ class StoreTestCase(unittest.TestCase):
                           "eligibility_protocol": {"protocol_version": 1}})
         return (tid, rev, parent, content, doc, status, approved_by, T)
 
-    def contract(self, tid: str, rev: int, status: str = "draft", approved_by: str | None = None, ch: str | None = None,
+    def contract(self, tid: str, rev: int, status: str = "draft", ch: str | None = None,
                  facets: tuple = (), obligations: tuple = (), content_hash: str | None = None, parent: int | None = None) -> str:
         """A draft revision; its parent is the previous revision unless `parent` is given."""
         content = content_hash or h(ch or ("a" if tid == TOPIC else "b") if rev == 1 else ch or str(rev))
         parent = parent if parent is not None else (None if rev == 1 else rev - 1)
-        self.x(self.CONTRACT_INSERT, *self.contract_row(tid, rev, parent, content, facets, obligations, status, approved_by))
+        self.x(self.CONTRACT_INSERT, *self.contract_row(tid, rev, parent, content, facets, obligations, status))
         return content
+
+    def dossier(self, tid: str, rev: int, contract_rev: int, ch: str) -> None:
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, ?, ?, 'eval-1', ?, ?, ?)", tid, rev, contract_rev, ch, h("7"), T)
 
     def contract_cycle(self, tid: str, a: int, b: int, facets: tuple = (), obligations: tuple = ()) -> None:
         """Revisions a and b of `tid`, each naming the other as its parent,
@@ -166,11 +168,11 @@ class StoreTestCase(unittest.TestCase):
                *self.contract_row(tid, b, a, self.chash(tid, b), facets, obligations))
 
     def decision(self, did: str, kind: str, tid: str | None = TOPIC, disposition: str = "approved", *, ref: str | None = None,
-                 rev: int | None = None, hsh: str | None = None, subject_kind: str | None = None, payload: dict | None = None) -> str:
+                 rev: int | None = None, hsh: str | None = None, payload: dict | None = None) -> str:
         """Record an operator decision. Subject defaults: contract/dossier/topic
         subjects are referenced by topic id; other refs must be passed. A
         rating decision carries its rating payload (default: rates nothing)."""
-        sk = subject_kind or SUBJECT_KIND[kind]
+        sk = SUBJECT_KIND[kind]
         if ref is None:
             ref = tid if sk in ("contract_revision", "dossier", "topic") else "ref-" + did
         if kind == "rating_approval" and payload is None:
@@ -376,7 +378,7 @@ class StoreTestCase(unittest.TestCase):
         return (f"INSERT INTO invocations ({names}) VALUES ({', '.join('?' * len(row))})", *row.values())
 
     def receipt_body(self, op: str, rid: str, kind: str, inv: str, tid: str, before: int, *, digest: str | None = None, fingerprint: str | None = None,
-                     admission: tuple | None = None, validator: str = "v1", policy: str = "p1") -> dict:
+                     admission: tuple | None = None, policy: str = "p1") -> dict:
         """The commit receipt JSON (commit-outcome.schema.json#/$defs/receipt)
         for these column values. Admission references come from the
         invocation's pins; `admission=(context, contract_revision, brief_hash)`
@@ -398,8 +400,8 @@ class StoreTestCase(unittest.TestCase):
                 "invocation_id": inv, "topic_id": tid, "request_fingerprint": fingerprint, "payload_digest": digest,
                 "hash_contract": {"canonicalization": "jcs-rfc8785/1", "fingerprint": "commit-fingerprint/1"},
                 "admission": adm, "committed_at": T, "state_revision_before": before, "state_revision_after": before + 1,
-                "validation": {"validator_version": validator, "policy_version": policy, "validated_hashes": [digest]},
-                "effects": {"evidence_revision": None, "research_ordinal": None, "queue_transition": None, "lease_release": None,
+                "validation": {"validator_version": "v1", "policy_version": policy, "validated_hashes": [digest]},
+                "effects": {"research_ordinal": None, "queue_transition": None, "lease_release": None,
                             "holds_created": [], "retry_intent": None, "trigger_identities": [], "outbox_event_ids": [],
                             "decision_receipt_ids": [], "audit_event_id": "aud_" + op[3:]}}
 
@@ -420,22 +422,30 @@ class StoreTestCase(unittest.TestCase):
                op, rid, kind, inv, tid, h("f"), h(digest), lease, gen, context if admission is None else admission[0], contract_rev, brief_hash, h("c"),
                before, before + 1, json.dumps(body), T)
 
-    def recorded_verification_basis(self, verifier: str = "inv_vvvvvvvv") -> None:
-        """Explicit raw admitted full-text operands, independent of receipt edits.
+    def acquire(self, invocation: str, op: str, lease: str, gen: int, *, call_ref: str,
+                verifier: str | None = "inv_vvvvvvvv") -> None:
+        """Raw recorded acquisition; SQL fixtures do not authenticate transport.
 
-        Never called by verify; raw SQL does not authenticate transport.
-        Additional verifiers consume the same independently recorded capture.
+        Reuse existing operands for additional verifiers. verifier=None leaves
+        the acquisition absent for tests that insert their own candidate row.
         """
         if not self.rows("SELECT 1 FROM source_artifacts WHERE source_version = 'v1'"):
-            lease, generation = self.rows("SELECT i.lease_id, l.generation FROM invocations i JOIN leases l USING (lease_id) WHERE i.invocation_id = 'inv_pppppppp'")[0]
-            self.receipt("op_content001", "inv_pppppppp", lease=lease, gen=generation)
-            self.x("INSERT INTO artifact_topics VALUES (?, ?, 'inv_pppppppp', ?)", self.source_hash, TOPIC, T)
-            self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call-1')", TOPIC, h("4"), FIND_REQUEST, T)
+            self.receipt(op, invocation, lease=lease, gen=gen)
+            self.x("INSERT INTO artifact_topics VALUES (?, ?, ?, ?)", self.source_hash, TOPIC, invocation, T)
+            self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) VALUES ('o1', ?, ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', ?)", invocation, TOPIC, h("4"), FIND_REQUEST, T, call_ref)
             self.x("INSERT INTO retrieval_events VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
             self.x("INSERT INTO record_work_links VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
-            self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_content001', ?)", TOPIC, self.source_hash, T)
-        if not self.rows("SELECT 1 FROM source_acquisitions WHERE source_version = 'v1' AND verifier_invocation_id = ?", verifier):
-            self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call-1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, ?, ?, ?, ?, ?)", TOPIC, self.source_hash, T, verifier, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+            self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, ?, ?, ?)", TOPIC, self.source_hash, invocation, op, T)
+        if verifier is not None and not self.rows("SELECT 1 FROM source_acquisitions WHERE source_version = 'v1' AND verifier_invocation_id = ?", verifier):
+            self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', ?, ?, 1, 'crossref', 'find', 'rec-1', ?, ?, ?, ?, ?, ?)", TOPIC, self.source_hash, call_ref, invocation, T, verifier, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
+
+    def recorded_verification_basis(self, verifier: str = "inv_vvvvvvvv") -> None:
+        """Explicit raw full-text operands, independent of receipt edits.
+
+        Never called by verify; additional verifiers reuse the recorded capture.
+        """
+        lease, generation = self.rows("SELECT i.lease_id, l.generation FROM invocations i JOIN leases l USING (lease_id) WHERE i.invocation_id = 'inv_pppppppp'")[0]
+        self.acquire("inv_pppppppp", "op_content001", lease, generation, call_ref="gw-call-1", verifier=verifier)
 
         from gen2.tests.extraction_receipt_fixtures import seed
         seed(self)
@@ -447,10 +457,10 @@ class StoreTestCase(unittest.TestCase):
                producer: str = "inv_pppppppp", verifier: str = "inv_vvvvvvvv", verdict: str = "supports", checks: dict | None = None,
                quote: tuple = ("matched", "qc-1"), source_artifact: str | None = None, tier0: str | None = None, adjudication: dict | None = None,
                gateway: str | None = "gw-call-1", obtained: str | None = None, capability: str | None = None,
-               receipt_overrides: dict | None = None, column_overrides: dict | None = None, drop: tuple = (), historical: bool = False) -> None:
+               receipt_overrides: dict | None = None, drop: tuple = ()) -> None:
         """A verification receipt whose JSON (verification-receipt.schema.json
         shape) and normalized columns are built from the same values; pass
-        receipt_overrides / column_overrides to make them disagree."""
+        receipt_overrides to make them disagree."""
         obtained = obtained or self.source_hash
         status, check_id = quote
         capability = capability or self.rows("SELECT capability_id FROM invocations WHERE invocation_id = ?", verifier)[0][0]
@@ -481,7 +491,6 @@ class StoreTestCase(unittest.TestCase):
                 "acquisition": json.dumps(acquisition), "extraction_method": method, "extraction_invocation_id": extraction,
                 "extraction_validation_ref": doc["extraction"]["validation_ref"] if method == "validated_extraction" else validation, "producer_invocation_id": producer, "verifier_invocation_id": verifier,
                 "quote_check_id": check_id, "verdict": verdict, "receipt": json.dumps(doc), "verified_at": T}
-        cols.update(column_overrides or {})
         self.x(f"INSERT INTO verification_receipts ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())
 
     def quote_check(self, check_id: str, *, claim: tuple = ("clm_00000001", 1), source: str | None = None, match: str = "matched",
@@ -522,8 +531,8 @@ class StoreTestCase(unittest.TestCase):
     def decision_receipt(self, did: str, inv: str, spec_hash: str, provider: str = "jev", answer: dict | None = None, authority: str = "shadow",
                          qualification: str | None = None, action: str = "shadow_log_only", commit_op: str | None = None, hold: str | None = None,
                          cls: str = "screening", tid: str = TOPIC, *, subject: tuple = ("work", "wrk_00000001"), proposal: str | None = None,
-                         status: str = "answered", input_status: str = "complete", raw: str | None = "5", policy: tuple = ("P1", 1),
-                         blind: bool = False, stage_raw: bool = True, receipt_overrides: dict | None = None, column_overrides: dict | None = None,
+                         status: str = "answered", raw: str | None = "5", policy: tuple = ("P1", 1),
+                         stage_raw: bool = True, receipt_overrides: dict | None = None,
                          live_qualification: bool = True) -> None:
         """A decision receipt whose JSON (decision-receipt.schema.json shape) and
         columns come from the same values; the raw response bytes are a staged
@@ -543,22 +552,21 @@ class StoreTestCase(unittest.TestCase):
                "hash_contract": {"canonicalization": "jcs-rfc8785/1"},
                "spec": {"spec_id": spec_id[0][0] if spec_id else "dspec_unknown", "spec_hash": spec_hash}, "decision_class": cls, "provider": provider,
                "subject": {"kind": subject[0], "ref": subject[1]},
-               "input_manifest": {"snapshot_digest": h("6"), "input_record_ids": [], "input_status": input_status},
+               "input_manifest": {"snapshot_digest": h("6"), "input_record_ids": [], "input_status": "complete"},
                "provider_response": {"status": status, "raw_response_digest": digest,
                                      "raw_response_artifact": None if digest is None else {"content_hash": digest, "size_bytes": 10, "media_type": "application/json"},
                                      "answer": answer},
                "policy": {"policy_id": policy[0], "version": policy[1]},
                "authorization": {"authority_level": authority, "qualification_ref": qualification},
                "action": action, "outcome": {"commit_operation_id": commit_op, "proposal_ref": proposal, "hold_id": hold},
-               "blind_sample": {"selected": blind, "initial_disposition_ref": None}}
+               "blind_sample": {"selected": False, "initial_disposition_ref": None}}
         _override(doc, receipt_overrides)
         cols = {"decision_receipt_id": did, "invocation_id": inv, "topic_id": tid, "spec_hash": spec_hash, "decision_class": cls, "provider": provider,
-                "input_status": input_status, "response_status": status, "raw_response_digest": digest,
+                "input_status": "complete", "response_status": status, "raw_response_digest": digest,
                 "answer": None if answer is None else json.dumps(answer), "subject_kind": subject[0], "subject_ref": subject[1],
                 "policy_id": policy[0], "policy_version": policy[1], "authority_level": authority, "qualification_ref": qualification,
-                "action": action, "commit_operation_id": commit_op, "hold_id": hold, "proposal_ref": proposal, "blind_sample": int(blind),
+                "action": action, "commit_operation_id": commit_op, "hold_id": hold, "proposal_ref": proposal, "blind_sample": 0,
                 "receipt": json.dumps(doc), "decided_at": T}
-        cols.update(column_overrides or {})
         self.x(f"INSERT INTO decision_receipts ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", *cols.values())
 
     def to_launching(self, iid: str) -> None:
@@ -573,7 +581,7 @@ class StoreTestCase(unittest.TestCase):
         self.x("UPDATE invocations SET state = 'outcome_unknown', outcome_unknown_since = ?, unknown_episode = unknown_episode + 1 WHERE invocation_id = ?", since, iid)
 
     def reconcile(self, iid: str, resolution: str, *, digest: str | None = None, rid: str | None = None, method: str | None = None,
-                  descendants: str | None = None, since: str | None = None, episode: int | None = None) -> None:
+                  since: str | None = None, episode: int | None = None) -> None:
         """Record the reconciliation of the invocation's current unknown episode
         (evidence: the retained lookup record, artifact h("7"))."""
         if not self.rows("SELECT 1 FROM artifacts WHERE content_hash = ?", h("7")):
@@ -582,8 +590,7 @@ class StoreTestCase(unittest.TestCase):
         since = since or current_since
         episode = episode if episode is not None else current_episode
         method = method or ("execution_group_termination" if resolution == "terminated_group" else "job_handle_lookup")
-        if descendants is None and resolution in ("confirmed_failed", "terminated_group"):
-            descendants = T
+        descendants = T if resolution in ("confirmed_failed", "terminated_group") else None
         request = {"resolution": resolution, "method": method, "evidence_ref": h("7"), "result_payload_digest": digest}
         self.x("INSERT INTO invocation_reconciliations (reconciliation_id, invocation_id, unknown_episode, unknown_since, resolution, method, evidence_ref, result_payload_digest, descendants_confirmed_at, resolved_at, request) "
                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rid or f"rec_{iid[4:]}e{episode}", iid, episode, since, resolution, method, h("7"), digest, descendants, T, json.dumps(request))
@@ -596,22 +603,22 @@ class StoreTestCase(unittest.TestCase):
         self.receipt(op, iid, lease=lease, gen=1, before=0, tid=tid, digest="e")
 
     def scoping_report(self, rid: str = "scope-1", version: int = 1, parent: int | None = None, *, tid: str = OTHER, iid: str = "inv_ssssssss",
-                       op: str = "op_scoping01", content: str | None = None, brief: tuple | None = None, doc_overrides: dict | None = None) -> str:
-        """A scoping report row whose document's identity fields agree with its columns (unless doc_overrides say otherwise). Returns its hash."""
+                       op: str = "op_scoping01", content: str | None = None, brief: tuple | None = None) -> str:
+        """A scoping report row whose document's identity fields agree with its columns. Returns its hash."""
         content = content or "sha256:" + f"{tid}/{rid}".encode().hex()[:52].ljust(52, "0") + f"{version:012d}"
         brief_id, brief_version, brief_hash = brief or ("brief-1", 1, self.brief_hash(tid))
         doc = {"topic_id": tid, "report_id": rid, "version": version, "parent_version": parent, "content_hash": content,
-               "brief": {"brief_id": brief_id, "version": brief_version, "content_hash": brief_hash}, **(doc_overrides or {})}
+               "brief": {"brief_id": brief_id, "version": brief_version, "content_hash": brief_hash}}
         self.x("INSERT INTO scoping_reports (topic_id, report_id, version, parent_version, content_hash, document, brief_id, brief_version, brief_hash, invocation_id, "
                "committed_by_operation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                tid, rid, version, parent, content, json.dumps(doc), brief_id, brief_version, brief_hash, iid, op, T)
         return content
 
     def source_proposal(self, pid: str = "srcp_00000001", *, tid: str = OTHER, iid: str = "inv_ssssssss", op: str = "op_scoping01", kind: str = "research_pass",
-                        supersedes: str | None = None, content: str | None = None, doc_overrides: dict | None = None) -> str:
-        """A source proposal row whose document's identity fields agree with its columns (unless doc_overrides say otherwise). Returns its hash."""
+                        supersedes: str | None = None, content: str | None = None) -> str:
+        """A source proposal row whose document's identity fields agree with its columns. Returns its hash."""
         content = content or "sha256:" + pid.encode().hex()[:64].ljust(64, "0")
-        doc = {"proposal_id": pid, "topic_id": tid, "proposed_by": {"invocation_id": iid, "invocation_kind": kind}, **(doc_overrides or {})}
+        doc = {"proposal_id": pid, "topic_id": tid, "proposed_by": {"invocation_id": iid, "invocation_kind": kind}}
         if supersedes is not None:
             doc["supersedes_proposal_id"] = supersedes
         self.x("INSERT INTO source_proposals (proposal_id, topic_id, content_hash, document, proposed_by_invocation_id, committed_by_operation_id, supersedes_proposal_id, created_at) "
@@ -641,8 +648,11 @@ class StoreTestCase(unittest.TestCase):
         self.to_unknown("inv_pppppppp")
         self.reconcile("inv_pppppppp", "found_running")
         self.x("UPDATE invocations SET state = 'running' WHERE invocation_id = 'inv_pppppppp'")
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 1, ?, 1, 'eval-1', ?, ?, ?)", TOPIC, rev, h("3"), h("7"), T)
-        self.receipt("op_00000001", "inv_pppppppp", kind="final_outcome", before=0)
+        self.dossier(TOPIC, 1, rev, h("3"))
+        self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
+        self.lease("lease_vvvvvvvv", 2, scope="verification")
+        self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
+        self.acquire("inv_pppppppp", "op_00000001", "lease_aaaaaaaa", 1, call_ref="gw-call:1")
         self.x("INSERT INTO obligation_assessments (record_id, topic_id, obligation_id, subject, contract_revision, contract_content_hash, eligibility_protocol_version, framing_version, "
                "disposition, state, confidence, evidence_refs, actor_kind, invocation_id, recorded_by_operation_id, created_at, reason, supersedes_id) "
                "SELECT 'oa-fixture', topic_id, 'O-1', 'fixture obligation', revision, content_hash, 1, framing_version, 'deferred', NULL, "
@@ -654,11 +664,6 @@ class StoreTestCase(unittest.TestCase):
         self.x("INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, recorded_at) VALUES ('cf-1', 'secrets_backend', 'failing', 'vault 403', ?, '[\"semantic_scholar\"]', ?)", T, T)
         self.x("INSERT INTO holds (hold_id, topic_id, subject_ref, hold_class, cause, recoverability, required_authority, owner, deadline_at, clears_when, capability_fact_id, created_at) "
                "VALUES ('hold_00000001', ?, 'lane:semantic_scholar', 'capability', 'vault 403', 'needs_remediation', 'router', 'router', ?, 'secrets backend healthy', 'cf-1', ?)", TOPIC, T, T)
-        self.x("INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt, lane, request, obligation_ids, started_at, coverage_state, result_count, completeness, policy_version, page_outcome, gateway_call_ref) "
-               "VALUES ('o1', 'inv_pppppppp', ?, ?, 1, 'crossref', ?, '[\"O-1\"]', ?, 'searched_ok', 1, 'complete', 'pol1', 'end_unknown', 'gw-call:1')", TOPIC, h("4"), FIND_REQUEST, T)
-        self.x("INSERT INTO retrieval_events (event_id, observation_id, topic_id, provider_record_id, rank, captured_at) VALUES ('e1', 'o1', ?, 'rec-1', 1, ?)", TOPIC, T)
-        self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', ?)", T)
-        self.x("INSERT INTO record_work_links (event_id, work_id, dedup_method_version, linked_at) VALUES ('e1', 'wrk_00000001', 'dedup-1', ?)", T)
         self.x("INSERT INTO screening_assessments (assessment_id, topic_id, work_id, contract_revision, eligibility_protocol_version, framing_version, stage, decision, reason_code, criterion_results, actor_kind, invocation_id, recorded_by_operation_id, created_at) "
                "VALUES ('sa1', ?, 'wrk_00000001', ?, 1, 1, 'abstract', 'include', NULL, '{}', 'primary', 'inv_pppppppp', 'op_00000001', ?)", TOPIC, rev, T)
         self.x("INSERT INTO semantic_assessments (assessment_id, topic_id, work_id, source_version, contract_revision, eligibility_protocol_version, framing_version, novelty, independence, applicability, contribution, evidence_refs, actor_kind, invocation_id, recorded_by_operation_id, created_at) "
@@ -674,32 +679,21 @@ class StoreTestCase(unittest.TestCase):
                "contract_revision, eligibility_protocol_version, framing_version, NULL, 'probe', evidence_refs, actor_kind, invocation_id, recorded_by_operation_id, created_at "
                "FROM semantic_assessments WHERE assessment_id = 'sem1'")
         self.x("INSERT INTO branch_windows VALUES ('bw-fixture', ?, 'B-1', 'rdp_branch1', 'inv_pppppppp', 'primary', 'inv_pppppppp', 'op_00000001', ?)", TOPIC, T)
-        if self.ATTRIBUTED_POPULATION:
-            self.x("INSERT INTO artifact_topics VALUES (?,?,'inv_pppppppp',?)", self.source_hash, TOPIC, T)
-        self.x("INSERT INTO source_artifacts VALUES (?, 'wrk_00000001', 'v1', ?, 'inv_pppppppp', 'op_00000001', ?)", TOPIC, self.source_hash, T)
         self.x("INSERT INTO claims (claim_id, revision, topic_id, text_ref, producer_invocation_id, load_bearing, required_access_tier, status, created_at) VALUES ('clm_00000001', 1, ?, ?, 'inv_pppppppp', 1, 'full_text', 'provisional', ?)", TOPIC, h("7"), T)
         self.x("INSERT INTO claim_source_links (claim_id, claim_revision, work_id, source_version, topic_id, contract_revision, obligation_id, spans, contribution, evidence_origin_lineage, created_at) "
                "VALUES ('clm_00000001', 1, 'wrk_00000001', 'v1', ?, ?, 'O-1', '[]', 'answer', 'study-1', ?)", TOPIC, rev, T)
-        self.lease("lease_vvvvvvvv", 2, scope="verification")
-        self.invocation("inv_vvvvvvvv", kind="verification", lease="lease_vvvvvvvv")
-        # Raw-row sweep fixture, not authenticated gateway acquisition evidence.
-        if "source_acquisitions" in self.tables():  # legacy-DDL installation tests stop before SQL 14
-            self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'v1', ?, 'o1', 'e1', 'gw-call:1', 'inv_pppppppp', 1, 'crossref', 'find', 'rec-1', ?, 'inv_vvvvvvvv', ?, ?, ?, ?)",
-                   TOPIC, self.source_hash, T, h("4"), FIND_REQUEST.encode(), b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}'.ljust(512), T)
-        if "source_extractions" in self.tables():
-            approval = {"registry_version": 1, "operator_id": "user", "reason": "fixture approval",
-                "tools": [{"extractor_identity": "tool-a", "family": "family-a"}, {"extractor_identity": "tool-b", "family": "family-b"}]}
-            self.x("INSERT INTO audit_events VALUES ('aud_extractors', ?, 'extractor_registry_registered', NULL, NULL, NULL, ?)", T, json.dumps(approval))
-            self.x("INSERT INTO extractor_registry_revisions VALUES (1, 'user', 'fixture approval', 'aud_extractors', ?)", T)
-            for tool in approval["tools"]:
-                self.x("INSERT INTO extractor_tools VALUES (1, ?, ?)", tool["extractor_identity"], tool["family"])
-            self.receipt("op_extractval", "inv_vvvvvvvv", lease="lease_vvvvvvvv", gen=2, before=1, kind="interim_transition")
-            ref = json.dumps({"content_hash": self.source_hash, "size_bytes": 512, "media_type": "application/json"})
-            for eid, tool, inv, op in (("ext-target", "tool-a", "inv_pppppppp", "op_00000001"), ("ext-independent", "tool-b", "inv_vvvvvvvv", "op_extractval")):
-                self.x("INSERT INTO source_extractions VALUES (?, ?, 'wrk_00000001', 'v1', 'e1', 'inv_vvvvvvvv', ?, '1', ?, ?, 'full_text', ?, ?, 1)", eid, TOPIC, tool, inv, ref, op, T)
-            self.x("INSERT INTO extraction_validations VALUES ('val-fixture', 'ext-target', 'inv_vvvvvvvv', 'ext-independent', 'independent_extraction', 1, 'succeeded', 'byte_equal', ?, 'op_extractval', ?)", ref, T)
-            if "extraction_validations_v2" in self.tables():
-                self.x("INSERT INTO extraction_validations_v2 SELECT validation_id, target_extraction_id, validator_invocation_id, validator_extraction_id, method, 2, outcome, comparison, comparison_evidence_ref, recorded_by_operation_id, created_at FROM extraction_validations")
+        approval = {"registry_version": 1, "operator_id": "user", "reason": "fixture approval",
+            "tools": [{"extractor_identity": "tool-a", "family": "family-a"}, {"extractor_identity": "tool-b", "family": "family-b"}]}
+        self.x("INSERT INTO audit_events VALUES ('aud_extractors', ?, 'extractor_registry_registered', NULL, NULL, NULL, ?)", T, json.dumps(approval))
+        self.x("INSERT INTO extractor_registry_revisions VALUES (1, 'user', 'fixture approval', 'aud_extractors', ?)", T)
+        for tool in approval["tools"]:
+            self.x("INSERT INTO extractor_tools VALUES (1, ?, ?)", tool["extractor_identity"], tool["family"])
+        self.receipt("op_extractval", "inv_vvvvvvvv", lease="lease_vvvvvvvv", gen=2, before=1, kind="interim_transition")
+        ref = json.dumps({"content_hash": self.source_hash, "size_bytes": 512, "media_type": "application/json"})
+        for eid, tool, inv, op in (("ext-target", "tool-a", "inv_pppppppp", "op_00000001"), ("ext-independent", "tool-b", "inv_vvvvvvvv", "op_extractval")):
+            self.x("INSERT INTO source_extractions VALUES (?, ?, 'wrk_00000001', 'v1', 'e1', 'inv_vvvvvvvv', ?, '1', ?, ?, 'full_text', ?, ?, 1)", eid, TOPIC, tool, inv, ref, op, T)
+        self.x("INSERT INTO extraction_validations VALUES ('val-fixture', 'ext-target', 'inv_vvvvvvvv', 'ext-independent', 'independent_extraction', 1, 'succeeded', 'byte_equal', ?, 'op_extractval', ?)", ref, T)
+        self.x("INSERT INTO extraction_validations_v2 SELECT validation_id, target_extraction_id, validator_invocation_id, validator_extraction_id, method, 2, outcome, comparison, comparison_evidence_ref, recorded_by_operation_id, created_at FROM extraction_validations")
         if self.ATTRIBUTED_POPULATION:
             # One literal record for the retained-table rewrite/deletion sweep.
             # Receipt semantic matrices no longer need attributed assessments here.
@@ -804,3 +798,175 @@ class StoreTestCase(unittest.TestCase):
 
     def tables(self) -> list[str]:
         return [r[0] for r in self.rows("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+
+
+class OwnCases:
+
+    def setUp(self):
+        from gen2.tests.router_fixtures import fixture, FULL, extraction_document
+        from gen2.tests.detailed_receipt_fixtures import seed_checks
+        context = fixture(FULL)
+        self.case = context.__enter__()
+        self.doc = extraction_document(self.case, 'verifier_extraction')
+        seed_checks(self.case, self.doc)
+        self.addCleanup(context.__exit__, None, None, None)
+        self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'bibliographic'
+
+    def submit(self):
+        from gen2.tests.router_fixtures import send
+        return send(self.case, self.doc)
+
+    def refuse(self):
+        # Historical /1 operands isolate the existing extraction predicate.
+        from gen2.tests.detailed_receipt_fixtures import historical_receipt, historical_admission
+        historical_receipt(self.doc)
+        before = self.case.state(exclude=())
+        with historical_admission(self.case):
+            out = self.submit()
+        self.assertEqual(out['status'], 'rejected', out)
+        self.assertEqual(out.get('reason'), 'payload_invalid', out)
+        self.assertIn('receipt needs its verifier durable extraction', out['detail'])
+        self.case.assert_audited_state(before, 1)
+        self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])
+
+    def clone(self, table, changes, where=''):
+        cur = self.case.db.execute('SELECT * FROM ' + table + (' WHERE ' + where if where else '') + ' LIMIT 1')
+        row = {**dict(zip([d[0] for d in cur.description], cur.fetchone())), **changes}
+        self.case.x(f"INSERT INTO {table} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", *row.values())
+
+    def foreign(self, selector):
+        from gen2.tests.router_fixtures import extraction_document
+        c = self.case
+        inv = self.doc['verifier_invocation_id']; version = 'v1'; work = c.work; event = c.EVENT_ID
+        if selector == 'version':
+            version = 'v2'
+            self.clone('source_artifacts', {'source_version': version})
+            self.clone('source_acquisitions', {'source_version': version})
+        elif selector == 'verifier':
+            self.assertEqual(c.finish(c.verifier, 'op_oldverify1')['status'], 'committed')
+            c.verifier = c.started('inv_foreign01', 'verification')
+            c.admit()
+            self.doc = extraction_document(c, 'verifier_extraction')
+            op = c.value('SELECT operation_id FROM operation_receipts WHERE invocation_id = ?', c.verifier['invocation_id'])
+            self.clone('source_extractions', dict(extraction_id='foreign-basis', extracting_invocation_id=c.verifier['invocation_id'],
+                recorded_by_operation_id=op), "verifier_invocation_id = '" + inv + "'")
+            self.doc['extraction']['extraction_id'] = 'foreign-basis'
+            return
+        else:
+            observation = 'obs_foreign01'; event = 'rev_foreign01'
+            changes = dict(observation_id=observation, attempt=2)
+            if selector == 'call': changes['gateway_call_ref'] = 'gw-call:102'
+            if selector == 'route':
+                request = json.loads(c.value('SELECT request FROM search_observations'))
+                request['lane'] = 'core'
+                changes.update(lane='core', request=json.dumps(request))
+            self.clone('search_observations', changes)
+            event_changes = dict(event_id=event, observation_id=observation)
+            if selector == 'time': event_changes['captured_at'] = '2026-09-28T10:00:00Z'
+            if selector == 'work':
+                work = 'wrk_foreign01'
+                self.clone('works', dict(work_id=work, identity_value='10.1/foreign'))
+                event_changes['provider_record_id'] = 'other-record'
+            self.clone('retrieval_events', event_changes)
+            self.clone('record_work_links', dict(event_id=event, work_id=work))
+            if selector == 'work': self.clone('source_artifacts', {'work_id': work})
+            obs = dict(zip([d[0] for d in c.db.execute('SELECT * FROM search_observations LIMIT 0').description],
+                c.rows('SELECT * FROM search_observations WHERE observation_id = ?', observation)[0]))
+            self.clone('source_acquisitions', dict(event_id=event, work_id=work, observation_id=observation, attempt=2,
+                gateway_call_ref=obs['gateway_call_ref'], lane=obs['lane'], request_bytes=obs['request'].encode(),
+                provider_record_id=event_changes.get('provider_record_id', 'doi:10.1/fixture'),
+                retrieved_at=event_changes.get('captured_at', self.doc['acquisition']['retrieved_at'])))
+        self.clone('source_extractions', dict(extraction_id='foreign-basis', work_id=work, source_version=version,
+            event_id=event, verifier_invocation_id=inv, supported_tier='bibliographic'))
+        self.doc['extraction']['extraction_id'] = 'foreign-basis'
+
+    def test_control(self):
+        self.assertEqual(self.submit()['status'], 'committed')
+        self.assertEqual(json.loads(self.case.value('SELECT receipt FROM verification_receipts')), self.doc)
+        self.assertEqual(self.case.rows('PRAGMA foreign_key_check'), [])
+
+    def test_missing(self):
+        del self.doc['extraction']['extraction_id']
+        self.refuse()
+
+    def test_invented(self):
+        self.doc['extraction']['extraction_id'] = 'invented'
+        self.refuse()
+
+    def test_tool(self):
+        self.doc['extraction']['extractor'] = 'Receipt-tool'
+        self.refuse()
+
+    def test_unpinned(self):
+        self.case.x('DROP TRIGGER source_extractions_immutable_u')
+        self.case.x('UPDATE source_extractions SET extractor_registry_version = NULL')
+        self.refuse()
+
+    def test_tier(self):
+        self.case.x('DROP TRIGGER source_extractions_immutable_u')
+        self.case.x("UPDATE source_extractions SET supported_tier = 'bibliographic'")
+        self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = 'abstract'
+        self.refuse()
+
+    def test_extractor(self):
+        op = self.case.value('SELECT operation_id FROM operation_receipts WHERE invocation_id = ?', self.case.ACQUIRER)
+        self.clone('source_extractions', dict(extraction_id='foreign-basis', extracting_invocation_id=self.case.ACQUIRER, recorded_by_operation_id=op))
+        self.doc['extraction']['extraction_id'] = 'foreign-basis'
+        self.refuse()
+
+    def test_version(self): self.foreign('version'); self.refuse()
+    def test_work(self): self.foreign('work'); self.refuse()
+    def test_verifier(self): self.foreign('verifier'); self.refuse()
+    def test_call(self): self.foreign('call'); self.refuse()
+    def test_time(self): self.foreign('time'); self.refuse()
+    def test_route(self): self.foreign('route'); self.refuse()
+
+
+class RecordIntegrityCase(StoreTestCase):
+    """Admitted raw operands, with explicit corruption confined to each savepoint."""
+    def setUp(self):
+        super().setUp()
+        self.populate_every_table()
+        self.other_ref = dict(content_hash=h('6'), size_bytes=13, media_type='text/plain')
+        self.x("INSERT INTO artifacts (content_hash,size_bytes,media_type,staged_at) VALUES (?,13,'text/plain',?)", h('6'), T)
+        self.x("INSERT INTO artifact_topics VALUES (?,?,'inv_pppppppp',?)", h('6'), TOPIC, T)
+
+    def record_row(self, table, **changes):
+        key, identity = {'source_extractions': ('extraction_id', 'ext-target'),
+            'extraction_validations': ('validation_id', 'val-fixture'),
+            'extraction_validations_v2': ('validation_id', 'val-fixture'),
+            'detailed_check_records': ('check_id', 'check-fixture')}[table]
+        columns = [r[1] for r in self.rows(f'PRAGMA table_info({table})')]
+        row = dict(zip(columns, self.rows(f'SELECT * FROM {table} WHERE {key}=?', identity)[0]))
+        return {**row, key: 'raw-candidate', **changes}
+
+    def insert_record(self, table, **changes):
+        row = self.record_row(table, **changes)
+        self.x(f"INSERT INTO {table} ({','.join(row)}) VALUES ({','.join('?' for _ in row)})", *row.values())
+
+    def registry(self, version, tools):
+        doc = dict(registry_version=version, operator_id='user', reason='fixture approval',
+            tools=[dict(extractor_identity=i, family=f) for i, f in tools])
+        audit = 'aud_registry_' + str(version)
+        self.x("INSERT INTO audit_events VALUES (?,?,'extractor_registry_registered',NULL,NULL,NULL,?)", audit, T, json.dumps(doc))
+        self.x('INSERT INTO extractor_registry_revisions VALUES (?,?,?,?,?)', version, 'user', 'fixture approval', audit, T)
+        for identity, family in tools:
+            self.x('INSERT INTO extractor_tools VALUES (?,?,?)', version, identity, family)
+
+    @contextmanager
+    def corrupt(self, table, where, **changes):
+        self.x('PRAGMA foreign_keys=OFF')
+        self.x('SAVEPOINT corrupt_operand')
+        try:
+            for name, sql in self.rows("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=?", table):
+                if 'BEFORE UPDATE' in sql:
+                    self.x('DROP TRIGGER "' + name + '"')
+            self.x('PRAGMA ignore_check_constraints=ON')
+            self.x(f"UPDATE {table} SET {','.join(k+'=?' for k in changes)} WHERE {where}", *changes.values())
+            self.x('PRAGMA ignore_check_constraints=OFF')
+            yield
+        finally:
+            self.x('PRAGMA ignore_check_constraints=OFF')
+            self.x('ROLLBACK TO corrupt_operand')
+            self.x('RELEASE corrupt_operand')
+            self.x('PRAGMA foreign_keys=ON')

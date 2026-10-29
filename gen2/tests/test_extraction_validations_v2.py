@@ -2,7 +2,7 @@
 import sqlite3
 
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.test_extraction_records import RecordCase
+from gen2.tests.router_fixtures import RecordCase
 
 
 class V2Case(RecordCase):

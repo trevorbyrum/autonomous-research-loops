@@ -1,15 +1,11 @@
 """Successful retained /2 bases bind receipts through the Router."""
 import json
 import unittest
-from unittest.mock import patch
 
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
-from gen2.tests.ddl_fixtures import restore_triggers
 from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt, historical_admission
-from gen2.tests.test_canonical_content_tiers import FULL, fixture
-from gen2.tests.test_extraction_acquisitions import extraction_document
-from gen2.tests.test_own_extraction_receipts import OwnCases
+from gen2.tests.router_fixtures import FULL, fixture
+from gen2.tests.router_fixtures import extraction_document
+from gen2.tests.store_fixtures import OwnCases
 from gen2.tests.independent_tier_fixtures import independent_basis
 
 
@@ -24,15 +20,13 @@ class ValidatedCases:
     submit = OwnCases.submit
 
     def setUp(self):
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            context = fixture(FULL)
-            self.case = context.__enter__()
-            self.doc = extraction_document(self.case, 'validated_extraction')
-            seed_checks(self.case, self.doc)
+        context = fixture(FULL)
+        self.case = context.__enter__()
+        self.doc = extraction_document(self.case, 'validated_extraction')
+        seed_checks(self.case, self.doc)
         self.addCleanup(context.__exit__, None, None, None)
         self.validation = self.doc['extraction']['validation_ref']
         self.target, self.independent = self.case.rows('SELECT target_extraction_id, validator_extraction_id FROM extraction_validations_v2')[0]
-        restore_triggers(self.case, sf.DDL_TEXT)
 
     def refuse(self):
         # Historical /1 operands isolate the existing validation predicate.

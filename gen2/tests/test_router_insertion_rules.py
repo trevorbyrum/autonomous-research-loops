@@ -4,9 +4,9 @@ import unittest
 from unittest.mock import patch
 
 from gen2.router.boundary import Refusal
-from gen2.tests import test_canonical_content_tiers as content
-from gen2.tests import test_table_availability as tables
-from gen2.tests.test_reaccess_admission import RAW
+from gen2.tests import router_fixtures as content
+from gen2.tests import router_fixtures as tables
+from gen2.tests.router_fixtures import RAW
 
 
 class RouterInsertionRulesTest(unittest.TestCase):
@@ -78,7 +78,9 @@ class RouterInsertionRulesTest(unittest.TestCase):
         for method in methods:
             for record, tier, inflated in (({"identity": content.IDENTITY}, "bibliographic", "abstract"),
                     ({"identity": content.IDENTITY, "abstract": "Recorded abstract"}, "abstract", "full_text"),
-                    (content.FULL, "full_text", "reproduced")):
+                    (content.FULL, "full_text", "reproduced"),
+                    ({**content.FULL, "reproduced": True, "access_tier": "reproduced"}, "full_text", "reproduced"),
+                    ({"identity": content.IDENTITY, "abstract": "Fixture abstract"}, "abstract", "full_text")):
                 for verdict in ("supports", "partially_supports", "does_not_support", "cannot_assess_at_required_tier"):
                     with self.subTest(method=method, tier=tier, verdict=verdict), tables.span_fixture(record) as case:
                         label = "canonical" if method == "canonical_bytes" else "extraction"
@@ -91,10 +93,11 @@ class RouterInsertionRulesTest(unittest.TestCase):
             for record, tier in (({"identity": content.IDENTITY}, "bibliographic"),
                     ({"identity": content.IDENTITY, "abstract": "Recorded abstract"}, "abstract")):
                 for verdict in ("supports", "partially_supports", "does_not_support"):
-                    with self.subTest(method=method, tier=tier, verdict=verdict), tables.span_fixture(record) as case:
-                        self.refuse(case, tables.document(case, method, tier, verdict, (tables.PAGE, tables.TABLE)),
-                            "table citation requires recorded full-text availability")
-                        self.assertEqual(case.send(tables.document(case, method, tier, verdict, (tables.PAGE,)))["status"], "committed")
+                    for spans in ((tables.TABLE,), (tables.PAGE, tables.TABLE)):
+                        with self.subTest(method=method, tier=tier, verdict=verdict, spans=spans), tables.span_fixture(record) as case:
+                            self.refuse(case, tables.document(case, method, tier, verdict, spans),
+                                "table citation requires recorded full-text availability")
+                            self.assertEqual(case.send(tables.document(case, method, tier, verdict, (tables.PAGE,)))["status"], "committed")
 
     def test_table_controls_and_hold_exemption(self):
         for method in tables.METHODS:

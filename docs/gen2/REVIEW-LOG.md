@@ -3662,3 +3662,172 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **O-12 was a false alarm:** S2-1 to S2-7 had merged in records PR #42 at 00:48; the reviewers read stale copies.
 - **S6 brief amended** (tests-store item 1): it previously missed three test families, one of which would have broken an import.
 
+## 2026-10-27: S6 merged (value-domain DDL); gateway hand-written mutants retired
+- **S6** (PR #46, `ed21d5a`, Sol `eaec591c`): net −2,829 (SQL −1,355, tools −717, tests −734, production +11, docs −4, config −30).
+  - **Round 1, Astra BLOCK B1:** NUL-only nonblank. Repaired by reusing `DetailedChecks._nonblank` at admission, with 184 literal routed cases.
+  - Sol audited the semantics of every S5 and S6 rule-table row (116 screened, 27 compared): only B1 differed.
+  - **Astra round 2:** A, B and C PASS, ROOT-CAUSE. Astra re-ran the audit independently and spot-checked five S5 rows.
+  - Verifier exit 0 in 3,422 s (the branch predated S2d). Final trigger-order baseline: 242 triggers, 1,868 outcomes identical. Merged.
+  - **The DDL is now integrity-only** (346 triggers at the start of 2026-10-27, now 242).
+  - Approved scope additions recorded in the S6 COMPLETION: six consumer repairs, eight catalogue-family tests retired, and the INVARIANTS B-3 marker `code: .github/`.
+- **Gateway mutants retired** (PR #48, `07adf65`, Sol `4092b96c`), Gate S #2 item 3 and ruling 3: −2,433 (tooling −2,471).
+  - Gateway production now enters changed-line Cosmic Ray.
+  - INVARIANTS H-5 locator only, orchestrator-approved.
+  - Astra (`55f5459a`): A and C PASS, ROOT-CAUSE.
+  - Verifier: gen2-accept exit 0 in 791 s (8 shards), and gen2-gateway exit 0 in 436 s (1,540 no-DB plus 1,540 DB). Merged.
+  - Stale CI-DESIGN sentences are listed for R2 (D12).
+- **In flight:** Batch B (Sonnet, sharded acceptance rerun after merging gen2) and Batch C (Sol, supervisor plus O-1).
+
+## 2026-10-27: Batch C merged (supervisor plus O-1); Batch D1 merged (store fixtures plus O-8); Batch B held on mutation scope
+- **Batch C** (PR #50, `f250716`, Sol `cde8fac7`): production −374, tests +38, docs −4.
+  - O-1: one concurrency backstop. With the `_save` guard removed, the test fails with `StaleJournal not raised`.
+  - **Astra** (`e7a9a9fe`, `private/reviews/gen2-batch-c-astra-review-20261027.md`): A, B and C PASS, ROOT-CAUSE. Every `_call`/`_incident` site was read.
+  - NB1: the probe `unknown_provider` detail is now truncated at 500 characters for escaped Unicode.
+  - NB2: six `test_station_config` waits went from 60 s to 20 s.
+  - Both NBs are a follow-up PR before 2f (C-fu).
+  - Verifier exit 0 in 1,753 s (8 shards, 3,377 tests; 25 mutants killed). Merged.
+- **Batch D1** (PR #51, `4641ccc`, Sol `75f88f28`): net −350. Collected 3,102 → 2,969: 75 duplicate collections plus 58 O-8 counterfactual methods.
+  - TS6 (lifecycle kinds 5 → 2) is justified: the transition DDL depends on state only.
+  - O-8: `test_schema_counterfactuals` deleted. Its two probes are now example fixtures, and the checker asserts the exact error multiset.
+  - **Astra** (`b0d34e37`): PASS, no findings.
+  - Verifier exit 0 in 750 s. Merged.
+- **Batch B** (Sonnet `3468c51e`, not yet pushed): its changed-line campaign on a pure-move refactor reached only 3 of 258 mutants in about 1.5 h. Moved lines count as changed, and stage 1 runs serially per mutant.
+  - Stopped. The worthwhile fixes were made regardless: reuse the existing `Rows` protocol instead of new stubs, and a literal test for the untested `retrieval_events.items.additionalProperties`.
+  - **Operator decision pending:** (1) move-aware changed-line scope, and (2) parallel stage-1 workers.
+- **Dispatched:** Batch E (Sonnet `95e7ea69`: accounting, store `api.py`, config, plus O-3 and O-4) and Batch F (Sol `6dc32759`: operator tokens, O-2).
+
+## 2026-10-27: trigger-order retired (S2-2); Batch F BLOCK (O-2 premise); Batch E and C-fu in flight
+- **Trigger-order retired** (PR #55, `2d5ffeb`, Sol `88f19ad0`): net −614 (tooling and recipes −255, tests and fixtures −355, docs −4).
+  - All 720 assertions preserved in identical AST and order across 27 files (checked independently by Astra).
+  - 23 reversal loops and 15 `DDL_TEXT` patches removed. 14 authorized test ids removed.
+  - Jenkins' default workload never ran trigger-order.
+  - **Astra** (`55f5459a`): A and C PASS.
+  - Verifier exit 0 in 692 s (8 shards, 2,954 tests). Merged.
+  - VERIFIER.md and the charter were updated (this PR). Stale CI-DESIGN sentences are left for R2.
+- **Batch F** (PR #54, `037f8c7`, Sol `6dc32759`, net −645): **Astra BLOCK F1** (`private/reviews/gen2-batch-f-astra-review-20261027.md`).
+  - The O-2 premise ("json.dumps never escapes an alphabet token, so no reply can form one") is false. JSON escapes in *other* values can form a token: `"\nABCDEFGHIJKLMNO"` serializes to bytes containing `nABCDEFGHIJKLMNO`.
+  - Reproduced over real HTTP: a raw configured token appeared in MCP and REST reply bytes, where the base refused. Nested MCP results also produced invalid JSON after replacement.
+  - The verifier's acceptance passed. Its auth-demo d2b failure is the known by-design residual (DEBT-004, owned by 2e1), not a regression.
+  - **Not merged. Operator decision pending.** Recommended: check the final wire bytes at each serialization layer, and send a generic error if any configured token appears.
+- **Refactor mutation scope** (Batch B, A, O-5): operator decision still pending.
+- **In flight:** Batch E (Sonnet `95e7ea69`) and C-fu (Sol `4836f21b`).
+
+## 2026-10-27: C-fu merged; Batch E merged (plus O-3/O-4); O-10 answered "not yet"; D2 resumed
+- **C-fu** (PR #57, `3963097`, Sol `4836f21b`). Batch C NB1 restored the untruncated `unknown_provider` detail (828/500/828 fault receipt). NB2 made `timeout_s=60` explicit at six station calls. Astra confirmed. Verifier exit 0 in 751 s. Merged.
+- **Batch E** (PR #58, `515d2f8`, Sonnet `95e7ea69`): production −37, tests −20, config −21, docs +4.
+  - Deleted P1 `branch_accrual`, P2 `novelty_judgments` and P3 `Store.raw_text`/`integer_columns`. P6 rewrote helpers, with a Hypothesis old-equals-new proof.
+  - **O-3:** Store `request_bytes` digest recomputation deleted; `test_attempted_request_bytes.test_wrong_hash` is the literal Router witness.
+  - **O-4:** DEPLOYMENT-CONTRACT §5 restore lines added.
+  - `[modules.importer]` kept: two tests use it to prove the importer cannot reach a store. Orchestrator accepted.
+  - **Astra** (`e7a9a9fe`): A, B and C PASS, ROOT-CAUSE.
+    - NB1: the completion note's claim that the `is not` mutant is equivalent is wrong (distinct int objects at 256 or more pins). The final membership code is correct.
+    - NB2: the `core/pagination.py` docstring still says "Router/Store admission"; it rides in D2.
+  - Verifier exit 0 in 765 s (3,100 tests). Merged.
+  - **BOUNDARIES updated in this PR:** Accrual operands now names `views.RegistryHistory`; the retained-request paragraph now reads "The Router recomputes the byte hash (the Store does not; O-3)".
+- **O-10** (Astra, `private/reviews/gen2-o10-receipt-v1-astra-20261027.md`): **may not proceed yet.**
+  - The Router still admits new `/1` receipts. The history rules require readback, not perpetual `/1` admission.
+  - Path: stop admitting new `/1` receipts while keeping readback, and declare that 2f uses a fresh store. That follow-up question goes to the operator.
+  - Corrected inventory: five fixtures, 22 helper calls.
+- **D2** (Sol `ce0452c3`) stopped correctly when its consumer closure needed Batch E's and F's files. It resumed after E merged; `raw_exchange` is deferred to Batch F's file.
+
+## 2026-10-27: D2a-1 and D2a-2 merged; first design-before-code review (6b1′) ACCEPTED WITH CHANGES
+- **D2 split** to respect the 1,200-touched-line mechanical cap (Trevor's rule): D2a-n for the TO1 helper moves, D2b for dedup, TO4–TO6 and O-11.
+  - **D2a-1** (PR #60, `f372eb9`): 832 touched, +94 net; cross-test imports 143 → 118. Also carried the pagination docstring rider (Batch E NB2).
+  - **D2a-2** (PR #61, `b9f08ba`): 1,190 touched, +76 net; cross-test imports 118 → 65.
+  - Both kept 2,953 collected ids and 6,730 assertions, AST-preserved. Astra (`b0d34e37`) accepted both. Verifiers exit 0 in 691 s and 681 s. Merged.
+  - `raw_exchange` is deferred to Batch F's file.
+- **6b1′ design** (Sonnet `7ecf6019`, `private/reviews/gen2-6b1-design-20261027.md`). This is the **first pre-code design review** (charter "Build throughput").
+  - **Astra** (`5ad3aab0`, `private/reviews/gen2-6b1-design-review-astra-20261027.md`): **ACCEPTED WITH CHANGES.**
+    - **B1:** PR 0 must be internally complete. Remove the `dossiers.evidence_revision` column with its classification, receipt member and schema in one PR, and witness the schema-identity refusal of pre-change stores.
+    - **B2:** `ProfileResult` drops raw window uncertainty: stale standing rewrites indeterminate to ineligible, and the scoped result omits out-of-scope uncertain windows, both shown by probe. Carry compact raw-window provenance. This is the S4-type operand mismatch the step exists to catch.
+    - **B3:** `_commit_dossier_inputs` checks cancellation on a cached invocation row. Re-fetch it at each authority check, with a route-level interleaving test.
+    - **B4:** bind `protocol_revision` to the captured contract, and retain a producer `invocation_id` (needed by 6b2′'s non-author review).
+    - **B5:** named debt-case witnesses through record → stored → decode, with an independent encoded shape.
+  - Brief: `private/reviews/gen2-6b1-brief-20261027.md`. **PR 0** (B1) is dispatched; **PR 1** follows Batch A.
+
+
+## 2026-10-27: D2 complete (D2a-3, D2b); 6b1′ PR 0 merged; R2 merged; O-9 split and merged; stray COMPLETION.md removed
+- **Task-file history moved (R2):** the `docs/gen2/tasks/` history, except `2d.md` and `2c-4.md`, moved to the private dossier history on 2026-10-27. Task paths in older entries of this log are historical.
+- **D2a-3** (PR #64, `6b75a74`, Sol `ce0452c3`): moved the quote, capture and attention worlds into `router_fixtures.py`.
+  - 548 touched, +78 net (code −3).
+  - Collected ids 2,953 → 2,953; 6,730 assertions, AST-preserved; cross-test imports 65 → 59.
+  - Astra: no blocking findings. Verifier exit 0. Merged.
+- **D2b** (PR #66, `87c3984`, Sol `ce0452c3`): TO4–TO6 plus O-11.
+  - Durability, lock-wait and refusal doubles shared.
+  - `OwnCases` moved to `store_fixtures.py`.
+  - Three TO4 duplicate matrices, four TO5 redundant tests and four O-11 content pins removed.
+  - 802 touched, −82 net (tests −198); collected ids 2,953 → 2,942.
+  - Astra: no blocking findings. Verifier exit 0. Merged.
+  - **D2 is complete.** `raw_exchange` stays deferred to Batch F's file.
+- **Stray `COMPLETION.md`:** D2a-1 to D2a-3 and R2 committed coder evidence notes to the public repo root. Three reviews missed it. The notes held private paths but no secrets.
+  - D2b's head (`87c3984`) removed the file.
+  - Briefs now forbid committing evidence and progress files, and review tasks check the diff's file list.
+- **6b1′ PR 0** (PR #63, `bd7ab21`, Sonnet `7ecf6019`): design item B1.
+  - `dossiers.evidence_revision` and the receipt `effects.evidence_revision` removed atomically, with their classification and schema.
+  - Pre-change stores fail schema identity on writable open, as the witness shows.
+  - Astra: ACCEPTED, with non-blocking NB: `test_router_commit.py:251` "the replayed receipt" should read "the stored receipt". Verifier exit 0. Merged.
+  - **Open records item:** INVARIANTS C-4 still says "evidence revision". This is a frozen-text amendment, so it goes to the operator.
+- **R2** (PR #65, Sonnet `c3c28700`): INVARIANTS back to normative rules plus `enforced at` pointers.
+  - Generated `TRACEABILITY.md` from `traceability.toml`, with the `--check` in `gen2-locators`; the §13 G-4 row moved per S2-6; tasks history moved. INVARIANTS 121,113 → 116,875 bytes.
+  - **Round 1** shortening cut live normative text (G-12, C-12/G-4, H-1), which was restored.
+  - **Rounds 2–3** completed the mapping. Astra (`5ad3aab0`): ACCEPTED at `d69ee0b`.
+  - **Non-blocking pointer corrections, for a follow-up:**
+    - E-5 → `test_accounting.AccountingTest.test_deferred_remains_unassessed`;
+    - C-10 → the `test_supervisor_lifecycle` router-outage tests;
+    - H-3 → the `HoldTest` owner/deadline/clearing tests;
+    - G-9's owner → `common.schema.json`/`export-bundle.schema.json`/queue DDL;
+    - D-4/D-6: DEBT-010 is the wrong debt, so use the decision-layer §13 owner.
+  - **Jenkins pr-merge failed twice** at `d69ee0b`. The cause was a real merge-tree failure, not a transient one: D2b had moved `OwnCases`, which made one locator stale. The repoint (`9ca1502`) passed Astra's delta check. Verifier exit 0 in 717 s. Merged.
+  - The CI-DESIGN amendment proposals (D12) are with the operator.
+- **O-9** (Sol `ce0452c3`) was split at the 1,200-line cap (1,307 combined).
+  - **O-9a** (PR #67, `c50ed37`): the seven TO11 raw-DDL classes moved to `test_store_*` modules.
+    - AST-identical, with 37 assertion sites; ids 2,942 → 2,942.
+    - Nine guard-drop receipts.
+    - 749 touched, +27 net.
+    - Astra PASS. NB riders: a stale "control above" comment and an unused `json` import in two moved modules. Pre-existing: plain `pytest --collect-only` errors on the `tests` generator imported in `test_ci_runner.py`.
+    - Verifier exit 0 in 713 s. Merged.
+  - **O-9b** (PR #68): the six RAW twins replaced by direct named-guard tests.
+    - Classification: 102 rows (87 integrity, 7 value-domain, 8 Router-only).
+    - 93 twin ids → 28 direct tests.
+    - Size +96 net against the −100 to −200 planned, because D2 had already shrunk the twins to 200 lines.
+    - **Astra round 1 BLOCK**, with two coverage losses, each shown by a selective trigger defect that the new tests passed:
+      - B1: the same-identity, different-version `independent_extraction` refusal;
+      - B2: no non-NULL evidence positive control for the detailed-check artifact negatives.
+    - **Round 2** (Sonnet `f51b9686`, `83162f7`, 8 touched lines): both defects now fail by assertion. Astra ACCEPTED. Verifier exit 0 in 700 s. Merged (PR #68). **O-9 is complete.**
+
+## 2026-10-28: Riders-1 merged; nightly test-portfolio review set up (Trevor's ruling)
+- **Riders-1** (PR #70, `97bcda3`, Sol `ce0452c3`).
+  - Contents: R2's five pointer corrections (E-5, C-10, H-3, G-9, D-4/D-6), O-9a's two move residues, 6b1′ PR 0's "stored receipt" comment, and the `test_ci_runner` generator alias, so plain pytest collection no longer errors.
+  - 52 touched, +6 net; ids unchanged at 2,883.
+  - Astra PASS. Non-blocking NB: console pytest still needs `PYTHONPATH=.`, as before.
+  - Verifier exit 0 in 706 s.
+  - Jenkins errored once at 20 s. The local merged-tree `--mode default` passed, and a retrigger (`d6ecc8d`) passed.
+  - Merged at `738f9d9`.
+- **Nightly test-portfolio review** (Trevor, 2026-10-28): charter section added.
+  - Sol reviews: a baseline now (`cb137570`), then nightly through paseo schedule `3c43a612`.
+  - A fresh Fable session approves, through schedule `38c22433`.
+  - The approval classes are as in the charter.
+
+## 2026-10-28/29: test-portfolio v2 set up and first nightly cycle run; Trevor's rulings; Batch F and mutation-scope work dispatched
+- **The plan:** the harness's nightly test-pruning plan, relayed at Trevor's direction and adapted as `private/reviews/test-portfolio/PLAN-v2-20261028.md`.
+  - Gate S (Fable, fresh, `22620d4e`) recommended 11 amendments, which were adopted as §8 A1–A12. The main ones: tests of merge-gate machinery inherit T1, and the no-Astra landing covers removals only.
+- **Tiers:**
+  - The Sol baseline (`cb137570`) passed the full suite and tiered 93% of tests T1.
+  - The Fable tier draft (`0c543748`) tiered by the rule each test protects and got 95.7% T1.
+  - Astra's completeness check (`6e2a3822`) promoted 93 ids, for a final T1 2,853 · T2 8 · T3 22 · Dead 0.
+  - **Finding:** tiering by consequence leaves almost no tier-based deletion; volume comes from merges.
+- **First nightly cycle, a dry run** (schedules `3c43a612`/`38c22433`):
+  - Sol's report at 08:25: 3 class-A and 21 class-B items, with the full suite passing.
+  - Fable's ruling at 12:08: 3 strengthenings approved with change (Gate C), and the 21-pair exact-duplicate merge sent to Trevor with a recommendation to approve, verified as 2,883 → 2,862 ids with no assertion lost. Fable recommended not building the lane yet.
+- **Trevor's rulings (2026-10-29), recorded in DOSSIER:**
+  - move-aware mutation scope plus parallel stage 1;
+  - Batch F option A;
+  - the CI-DESIGN amendments approved;
+  - the C-4 wording fix;
+  - O-10 approved;
+  - test-pruning items 7–11.
+  - The 21-pair merge (TP-20261028-7) is approved under ruling 7, because the keeper retains the killer assertion.
+  - The tier table awaits his review of the method.
+- **Dispatched:**
+  - Sol `0406d97b`: the move-aware mutation scope (`gen2-wt-2`). Batch B, A, O-5 and 6b1′ PR 1 follow it.
+  - Sol `6dc32759`: Batch F round 2 (shared tree, PR #54).

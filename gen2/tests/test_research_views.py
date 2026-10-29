@@ -6,7 +6,7 @@ from gen2 import accounting as a
 from gen2.accounting import views as v
 from gen2.accounting.stopping import WindowPin
 from gen2.tests import children, test_accrual as f
-from gen2.tests.test_router_amendments import ContractWorld, compatible
+from gen2.tests.router_fixtures import ContractWorld, compatible
 from gen2.tests.router_fixtures import OTHER
 
 DATE, LATER = f.DATE, f.LATER

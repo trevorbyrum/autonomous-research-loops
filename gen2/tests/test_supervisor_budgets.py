@@ -67,18 +67,7 @@ from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import jobs, spool as spool_module
 from gen2.supervisor.supervisor import ControlFailure
 from gen2.tests import router_fixtures as rf
-from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, MAIN, SupervisedTestCase, Unreachable, released
-
-HANG_WITH_DESCENDANT = [{"op": "spawn_descendant", "marker": "descendant.pid"}, {"op": "hang"}]
-CLEAN = ["admitted", "launching", "running", "result_ready", "committed"]
-
-
-def alive(pid: int) -> bool:
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text()
-    except FileNotFoundError:
-        return False
-    return stat[stat.rindex(")") + 2] != "Z"
+from gen2.tests.supervisor_fixtures import HANG_WITH_DESCENDANT, CLEAN, Unconfirmed, alive, AFTER_DEADLINE, MAIN, SupervisedTestCase, Unreachable, released
 
 
 class WritesDown(Unreachable):
@@ -119,21 +108,6 @@ class Refusing(Unreachable):
                 return {"status": "refused", "reason": self.reason, "detail": "refused by the test"}
             return call(request)
         return maybe
-
-
-class Unconfirmed:
-    """jobs.Job.terminate for a group that will not end: nothing is signalled
-    and the group is never confirmed empty. `calls` counts the attempts."""
-
-    def __init__(self) -> None:
-        self.calls = 0
-
-    def terminate(self, job, identity, **kwargs) -> dict:
-        self.calls += 1
-        return {"found": len(jobs.members(identity)), "confirmed": False}
-
-    def patched(self):
-        return mock.patch.object(jobs.Job, "terminate", lambda job, identity, **kwargs: self.terminate(job, identity, **kwargs))
 
 
 class BudgetFaults:

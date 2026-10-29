@@ -15,10 +15,9 @@ from __future__ import annotations
 
 import json
 
-from gen2.store import api
 from gen2.tests import test_router_evidence as ev
-from gen2.tests import test_router_workflow as wf
-from gen2.tests.router_fixtures import TOPIC, empty_outcome
+from gen2.tests import router_fixtures as wf
+from gen2.tests.router_fixtures import TOPIC, empty_outcome, Refusing
 
 
 class UnrecordedPromotionTest(ev.EvidenceCase):
@@ -33,25 +32,6 @@ class UnrecordedPromotionTest(ev.EvidenceCase):
         self.assertEqual(self.rows("SELECT claim_id, revision, status FROM claims"), [("clm_00000001", 1, "accepted_support")])
 
 
-class RefusesOnce:
-    """The router's store, refusing its `at`-th write (an insert or an update, counted from 0) and no other, unless that is the audit event of a rejection; `tables` lists the tables written to, the refused write included."""
-
-    def __init__(self, store, at: int) -> None:
-        self._store, self.at, self.tables = store, at, []
-
-    def __getattr__(self, name: str):
-        member = getattr(self._store, name)
-        if name not in ("insert", "update"):
-            return member
-
-        def write(table, *args, **kwargs):
-            self.tables.append(table)
-            if len(self.tables) - 1 == self.at and not (table == "audit_events" and args[0]["kind"] == "commit_rejected"):  # the refusal's own audit event is no write of the commit
-                raise api.StoreWriteError("refused for the test")
-            return member(table, *args, **kwargs)
-        return write
-
-
 class Rollback(wf.Workflow):
     """A world and a `commit()` answering through self.router; no test of its own."""
 
@@ -59,7 +39,7 @@ class Rollback(wf.Workflow):
         """Run `commit` with each of its writes refused in turn, then with none; the run with none must have written `table`, and every write before it was refused once. Returns the tables of the run with none, in write order."""
         before, rejected = self.state(), 0
         for position in range(80):
-            double = RefusesOnce(self.store, position)
+            double = Refusing(self.store, position, once=True)
             self.router = type(self.router)(double, self.spool, clock=self.clock, new_id=self.ids, fault=self.fault)  # the Router class the fixtures built: a mutant of service.py is the class under test
             out = commit()
             if out["status"] == "committed":

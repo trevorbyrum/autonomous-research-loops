@@ -3,7 +3,7 @@ import json
 from unittest.mock import patch
 
 from gen2.tests import operator_fixtures as op
-from gen2.tests.test_extraction_records import RecordCase
+from gen2.tests.router_fixtures import RecordCase
 
 
 def approval(version=1, **changes):

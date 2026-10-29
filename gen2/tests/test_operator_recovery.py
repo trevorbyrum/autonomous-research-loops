@@ -36,7 +36,7 @@ from gen2.supervisor import jobs
 from gen2.tests import operator_fixtures as of
 from gen2.tests import supervisor_fixtures as sf
 from gen2.tests.router_fixtures import TOPIC
-from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, MAIN, PARENT
+from gen2.tests.supervisor_fixtures import Unconfirmed, AFTER_DEADLINE, MAIN, PARENT
 
 FORBIDDEN = {"status": "refused", "reason": "forbidden"}
 
@@ -48,20 +48,6 @@ def at(doc, *path):
             return None
         doc = doc[key]
     return doc
-
-
-class Unconfirmed:
-    """jobs.Job.terminate for a group that will not end: nothing is
-    signalled, the group is never confirmed empty (test_supervisor_budgets)."""
-
-    def __init__(self) -> None:
-        self.calls = 0
-
-    def patched(self):
-        def terminate(job, identity, **kwargs) -> dict:
-            self.calls += 1
-            return {"found": len(jobs.members(identity)), "confirmed": False}
-        return mock.patch.object(jobs.Job, "terminate", terminate)
 
 
 class RecoveryWorld:

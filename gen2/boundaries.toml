@@ -134,7 +134,7 @@ third_party = []
 path = "gen2/supervisor"
 purpose = "One lifecycle for every execution kind: launch intent, process identity, deadlines, cancellation, result retention, structural telemetry, snapshot assembly. Calls decision providers and the tier-0 checker at the trusted station/adapter boundary (flow §3 step 2). Submits results to the router only through the core ControlBackend protocol."
 boundaries = ["Station supervisor"]
-may_import = ["core", "decision", "tier0", "gateway_client"]
+may_import = ["core", "gateway_client"]
 stdlib_capabilities = [
   "subprocess", "signal", "asyncio",
   "os.kill", "os.killpg", "os.exec*", "os.spawn*", "os.posix_spawn*",
@@ -149,34 +149,10 @@ may_import = ["core"]
 stdlib_capabilities = []
 third_party = []
 
-[modules.decision]
-path = "gen2/decision"
-purpose = "DecisionProvider adapters (Jev primary, LLM fallback) returning provider-specific typed answers under a DecisionSpec. Answers only: may not import store or router. Optional at runtime: the engine must run with it disabled (charter: Jev is not a build dependency)."
-boundaries = ["Decision layer (DecisionProvider: Jev primary, LLM fallback)"]
-may_import = ["core"]
-stdlib_capabilities = ["socket", "ssl", "http.client", "urllib.request"]
-third_party = []
-
-[modules.tier0]
-path = "gen2/tier0"
-purpose = "Client for the local NLI claim-vs-span screen; runs after exact quote byte-matching, produces pass/alarm signals with checker identity. Screens only."
-boundaries = ["Tier-0 checker (NLI, local)"]
-may_import = ["core"]
-stdlib_capabilities = ["socket", "http.client", "urllib.request"]
-third_party = []
-
 [modules.gateway_client]
 path = "gen2/gateway_client"
 purpose = "The engine's typed door to the Gateway service (gateway/research_gateway runs as its own process and is never imported). Carries invocation IDs, request identity and coverage facts; never turns an unparseable payload into zero results."
 boundaries = ["Gateway"]
-may_import = ["core"]
-stdlib_capabilities = ["socket", "ssl", "http.client", "urllib.request"]
-third_party = []
-
-[modules.exporter]
-path = "gen2/exporter"
-purpose = "Outbox consumer driving the one export API (docs/gen2/EXPORT-API.md; operator ruling 2026-09-26): delivers each approved manifest's bundle through the one connector contract to every connector the manifest names, identically. Ships the reference connectors only (sql, jsonl_file, webhook); a connector for any other database is a reviewed extension outside the core, so no database product is named or imported here. Delivery receipts are acknowledged through the ControlBackend protocol, never by writing the store, and nothing a connector holds is ever read back as research: no engine module may import this one except the composition root."
-boundaries = ["Exporter"]
 may_import = ["core"]
 stdlib_capabilities = ["socket", "ssl", "http.client", "urllib.request"]
 third_party = []
@@ -201,7 +177,7 @@ third_party = []
 path = "gen2/app"
 purpose = "Composition root: constructs the router (which owns its store) and hands the core ControlBackend protocol to supervisor, exporter and operator. Exists so router and supervisor never import each other. No domain logic. Task 1e: it also carries the operator service's transports — the engine's HTTP listener (http.server; DEPLOYMENT-CONTRACT.md §1.1) and the operator CLI's client of it (http.client) — which only move bytes to and from gen2/operator/service.py."
 boundaries = []
-may_import = ["core", "router", "supervisor", "decision", "tier0", "gateway_client", "exporter", "operator"]
+may_import = ["core", "router", "supervisor", "gateway_client", "operator"]
 stdlib_capabilities = ["http.server", "http.client"]
 third_party = []
 
@@ -222,3 +198,6 @@ third_party = []
 "Primary agent (per-station frontier LLM)" = "An external model invocation launched by the supervisor (invocation kind research_pass/checkpoint). It writes nothing directly; its typed proposals enter only through commit_outcome."
 "Secondary/delegate agents" = "External model invocations (kind discovery/delegate) under the supervisor's lifecycle; no evidence-write capability exists for them to hold."
 "Verifier" = "A separate invocation (kind verification) with its own capability; role separation and required access tier are enforced by the router at commit (and by the verification_receipts constraints in gen2/store/schema/03-evidence-and-decisions.sql)."
+"Decision layer (DecisionProvider: Jev primary, LLM fallback)" = "Phase 3: no code exists yet. Phase 3 declares gen2/decision here with the code; the answers-only rule (may not import store or router) is carried by the BOUNDARIES entry meanwhile."
+"Tier-0 checker (NLI, local)" = "Phase 3: no code exists yet. Phase 3 declares gen2/tier0 here with the code; it screens only."
+"Exporter" = "Phase 3: no code exists yet. Phase 3 declares gen2/exporter here with the code; no engine module may import it except the composition root."

@@ -24,7 +24,7 @@ from pathlib import Path
 
 from gen2.app.station import open_station
 from gen2.tests import router_fixtures as rf
-from gen2.tests.supervisor_fixtures import FAST, launcher
+from gen2.tests.supervisor_fixtures import FAST, TestSupervisor, launcher
 
 
 def main(argv: list[str]) -> int:
@@ -39,7 +39,7 @@ def main(argv: list[str]) -> int:
             os._exit(137)
     station = open_station(root, station_id="station-1", host_id="host-test", clock=rf.Clock(start), fixture_policy=FAST,
                            supervisor_options={"launcher": launcher(), "fault": die})
-    print(station.supervisor.run(invocation_id, timeout_s=60))
+    print(TestSupervisor.run(station.supervisor, invocation_id, timeout_s=60))
     return 3
 
 

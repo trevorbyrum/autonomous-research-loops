@@ -2,7 +2,8 @@
 import json
 import unittest
 
-from gen2.tests.test_table_availability import content, document, METHODS, PAGE, span_fixture
+from gen2.tests.router_fixtures import document, METHODS, PAGE, span_fixture
+from gen2.tests import router_fixtures as content
 from gen2.tests.router_fixtures import empty_outcome
 
 

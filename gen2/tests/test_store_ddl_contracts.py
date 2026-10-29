@@ -157,7 +157,7 @@ class ContractGovernanceTest(StoreTestCase):
 
         def dossier_refused(rev: int) -> None:
             with self.assertRaises(sqlite3.IntegrityError) as ctx:
-                self.dossier(9, rev, h("9"))
+                self.dossier(TOPIC, 9, rev, h("9"))
             self.assertIn(no_dossier, str(ctx.exception))
 
         stored = (self.snapshot("contract_revisions"), self.snapshot("dossiers"))
@@ -190,13 +190,13 @@ class ContractGovernanceTest(StoreTestCase):
             dossier_refused(3)
         self.assertEqual((self.snapshot("contract_revisions"), self.snapshot("dossiers")), stored)
         self.x(approve, "opd_appr0003", TOPIC, 3)
-        self.dossier(1, 3, h("1"))
+        self.dossier(TOPIC, 1, 3, h("1"))
         self.contract_with_rows(TOPIC, 5, **entries, parent=3, content_hash=self.chash(TOPIC, 5))
         self.decision("opd_amend005", "amendment_approval", rev=5, hsh=self.chash(TOPIC, 5))
         self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 3", TOPIC)
         self.x(approve, "opd_amend005", TOPIC, 5)
-        self.dossier(2, 3, h("2"))  # under the historically approved, now superseded revision
-        self.dossier(3, 5, h("3"))
+        self.dossier(TOPIC, 2, 3, h("2"))  # under the historically approved, now superseded revision
+        self.dossier(TOPIC, 3, 5, h("3"))
         self.assertEqual(self.rows("SELECT revision, status, approved_by_decision_id FROM contract_revisions WHERE topic_id = ? ORDER BY revision", TOPIC),
                          [(1, "draft", None), (2, "draft", None), (3, "superseded", "opd_appr0003"), (4, "draft", None), (5, "approved", "opd_amend005")])
         self.assertEqual(self.rows("SELECT dossier_revision, contract_revision FROM dossiers ORDER BY dossier_revision"), [(1, 3), (2, 3), (3, 5)])
@@ -359,9 +359,6 @@ class ContractGovernanceTest(StoreTestCase):
                 self.assertIn("importance_score receipt", str(ctx.exception))
         self.insert_obligation(TOPIC, 2, entries["dec_import01"])
 
-    def dossier(self, rev: int, contract_rev: int, ch: str) -> None:
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, ?, ?, 1, 'eval-1', ?, ?, ?)", TOPIC, rev, contract_rev, ch, h("7"), T)
-
     def test_completion_needs_approval_of_current_dossier(self) -> None:
         """D54 rewrite (A2): the transition names an approved completion approval
         of the current dossier (revision + hash) evaluated under the active,
@@ -378,20 +375,20 @@ class ContractGovernanceTest(StoreTestCase):
         self.x("UPDATE queue_entries SET active_contract_revision = 1 WHERE topic_id = ?", TOPIC)
         complete = "UPDATE queue_entries SET status = 'completed_with_qualified_conclusions', status_decision_id = ?, state_revision = state_revision + 1 WHERE topic_id = ?"
         refused = "completion requires operator approval"
-        self.dossier(1, 1, h("3"))
+        self.dossier(TOPIC, 1, 1, h("3"))
         self.decision("opd_stale001", "completion_approval", rev=1, hsh=h("3"))
-        self.dossier(2, 1, h("4"))  # material change after that approval
+        self.dossier(TOPIC, 2, 1, h("4"))  # material change after that approval
         self.rejects(refused, complete, "opd_stale001", TOPIC)
         self.decision("opd_rejected", "completion_approval", disposition="rejected", rev=2, hsh=h("4"))
         self.rejects(refused, complete, "opd_rejected", TOPIC)
         self.rejects("existing subject", "INSERT INTO operator_decisions (decision_id, topic_id, kind, disposition, subject_kind, subject_ref, subject_revision, subject_hash, operator_id, decided_at) VALUES ('opd_wronghsh', ?, 'completion_approval', 'approved', 'dossier', ?, 2, ?, 'user', ?)", TOPIC, TOPIC, h("3"), T)
         for rev in (2, 3, 4, 5):
             self.contract(TOPIC, rev)
-        self.dossier(5, 1, self.content_hash_of(TOPIC, 5))  # current dossier carrying contract 5's hash
+        self.dossier(TOPIC, 5, 1, self.content_hash_of(TOPIC, 5))  # current dossier carrying contract 5's hash
         self.decision("opd_wrongknd", "rating_approval", rev=5, hsh=self.content_hash_of(TOPIC, 5))
         self.rejects(refused, complete, "opd_wrongknd", TOPIC)
         self.approve_contract(OTHER, 1)
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 5, 1, 1, 'eval-1', ?, ?, ?)", OTHER, h("9"), h("7"), T)
+        self.dossier(OTHER, 5, 1, h("9"))
         self.decision("opd_othertop", "completion_approval", tid=OTHER, rev=5, hsh=h("9"))
         self.rejects(refused, complete, "opd_othertop", TOPIC)  # another topic's approval of its own dossier 5
         self.decision("opd_valid005", "completion_approval", rev=5, hsh=self.content_hash_of(TOPIC, 5))
@@ -399,17 +396,19 @@ class ContractGovernanceTest(StoreTestCase):
         self.x("UPDATE queue_entries SET active_contract_revision = 2 WHERE topic_id = ?", TOPIC)
         self.rejects(refused, complete, "opd_valid005", TOPIC)  # dossier's contract (approved) is not the active one
         # RA3: no dossier is ever evaluated against a draft (revision 2 is one)
-        self.rejects("never a draft", "INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 6, 2, 1, 'eval-1', ?, ?, ?)", TOPIC, h("6"), h("7"), T)
+        with self.assertRaises(sqlite3.IntegrityError) as ctx:
+            self.dossier(TOPIC, 6, 2, h("6"))
+        self.assertIn("never a draft", str(ctx.exception))
         # protocol currency: the dossier's (active) contract was approved, then superseded by an amendment
         self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 1", TOPIC)
         self.approve_contract(TOPIC, 2, kind="amendment_approval")
-        self.dossier(6, 2, h("6"))
+        self.dossier(TOPIC, 6, 2, h("6"))
         self.decision("opd_supersed", "completion_approval", rev=6, hsh=h("6"))
         self.x("UPDATE contract_revisions SET status = 'superseded' WHERE topic_id = ? AND revision = 2", TOPIC)
         self.approve_contract(TOPIC, 3, kind="amendment_approval")
         self.rejects(refused, complete, "opd_supersed", TOPIC)  # dossier under the active contract, which is no longer approved
         self.x("UPDATE queue_entries SET active_contract_revision = 3 WHERE topic_id = ?", TOPIC)
-        self.dossier(7, 3, h("8"))
+        self.dossier(TOPIC, 7, 3, h("8"))
         self.decision("opd_00000001", "completion_approval", rev=7, hsh=h("8"))
         self.x(complete, "opd_00000001", TOPIC)
         self.assertEqual(self.rows("SELECT status, status_decision_id FROM queue_entries WHERE topic_id = ?", TOPIC), [("completed_with_qualified_conclusions", "opd_00000001")])
@@ -469,7 +468,7 @@ class ContractGovernanceTest(StoreTestCase):
         self.rejects(refused, retire, "opd_stale000", TOPIC)
         self.decision("opd_rejected", "retirement", disposition="rejected", rev=now)
         self.decision("opd_othertop", "retirement", tid=OTHER, rev=now)
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, ?, 1, 1, 'eval-1', ?, ?, ?)", TOPIC, now, h("3"), h("7"), T)
+        self.dossier(TOPIC, now, 1, h("3"))
         self.decision("opd_wrongknd", "completion_approval", rev=now, hsh=h("3"))
         for did in ("opd_rejected", "opd_othertop", "opd_wrongknd"):
             with self.subTest(decision=did):
@@ -550,7 +549,7 @@ class DraftVocabularyTransitionTest(StoreTestCase):
         self.approve_contract(tid, 1, did=f"opd_ca{n:06d}")
         self.x("UPDATE queue_entries SET active_contract_revision = 1 WHERE topic_id = ?", tid)
         dossier_hash = "sha256:" + f"{n:060x}d0d0"
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, 1, 1, 1, 'eval-1', ?, ?, ?)", tid, dossier_hash, h("7"), T)
+        self.dossier(tid, 1, 1, dossier_hash)
         self.decision(f"opd_co{n:06d}", "completion_approval", tid, rev=1, hsh=dossier_hash)
         return tid
 
