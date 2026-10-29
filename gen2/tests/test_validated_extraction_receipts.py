@@ -2,7 +2,7 @@
 import json
 import unittest
 
-from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt, historical_admission
+from gen2.tests.detailed_receipt_fixtures import seed_checks, unreferenced_checks, reference_isolation
 from gen2.tests.router_fixtures import FULL, fixture
 from gen2.tests.router_fixtures import extraction_document
 from gen2.tests.store_fixtures import OwnCases
@@ -29,10 +29,10 @@ class ValidatedCases:
         self.target, self.independent = self.case.rows('SELECT target_extraction_id, validator_extraction_id FROM extraction_validations_v2')[0]
 
     def refuse(self):
-        # Historical /1 operands isolate the existing validation predicate.
-        historical_receipt(self.doc)
+        # Unreferenced /2 operands isolate the existing validation predicate.
+        unreferenced_checks(self.doc)
         before = self.case.state(exclude=())
-        with historical_admission(self.case):
+        with reference_isolation(self.case):
             out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)
         self.assertEqual(out.get('reason'), 'payload_invalid', out)
@@ -66,10 +66,10 @@ class ValidatedCases:
                 self.refuse()
 
     def test_missing(self):
-        historical_receipt(self.doc)
+        unreferenced_checks(self.doc)
         self.doc['extraction']['validation_ref'] = None
         before = self.case.state(exclude=())
-        with historical_admission(self.case):
+        with reference_isolation(self.case):
             self.assertEqual(self.submit()['status'], 'rejected')
         self.case.assert_audited_state(before, 1)
 

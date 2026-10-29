@@ -28,7 +28,7 @@
     "verified_at"
   ],
   "properties": {
-    "receipt_version": {"enum": ["verification-receipt/1", "verification-receipt/2"]},
+    "receipt_version": {"enum": ["verification-receipt/2"]},
     "detailed_checks": {
       "description": "Version 2 attributed outcomes; record_id is optional until part 4. checks retains an explicitly checked legacy summary projection, never a record outcome alias.",
       "type": "object", "additionalProperties": false,

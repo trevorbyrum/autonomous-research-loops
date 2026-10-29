@@ -497,6 +497,8 @@ read-only aids forensics; it is not a rollback mechanism.
 path writes through `Store.maintain` (opening writes nothing). A command-line
 entry point for it comes with 2g.
 
+2f runs on a store newly created after O-10 landed; no pre-change fixture, backup or retained store is reused. (O-10.)
+
 **The restore drill** (documented, rehearsed, and re-rehearsed whenever the DDL
 changes — never first attempted during an incident):
 

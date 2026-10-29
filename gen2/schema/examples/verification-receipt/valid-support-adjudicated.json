@@ -5,7 +5,7 @@
     "tests": "A6: an adverse check and a tier-0 alarm may coexist with 'supports' only through an explicit adjudicated resolution"
   },
   "instance": {
-    "receipt_version": "verification-receipt/1",
+    "receipt_version": "verification-receipt/2",
     "verification_receipt_id": "ver_01J8ZQ60V1",
     "topic_id": "fleet-a:intake-latency",
     "claim": {
@@ -70,6 +70,20 @@
       "resolution": "Operator adjudicated: the qualification narrows but does not contradict the claim; the NLI alarm was a negation-scope false alarm."
     },
     "verdict": "supports",
-    "verified_at": "2026-09-25T11:12:00Z"
+    "verified_at": "2026-09-25T11:12:00Z",
+    "detailed_checks": {
+      "numeric_units": {
+        "outcome": "succeeded"
+      },
+      "denominators": {
+        "outcome": "succeeded"
+      },
+      "negation": {
+        "outcome": "not_applicable"
+      },
+      "qualifications": {
+        "outcome": "failed"
+      }
+    }
   }
 }

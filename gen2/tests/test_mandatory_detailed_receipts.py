@@ -3,8 +3,7 @@ import copy
 import unittest
 
 from gen2.tests import test_detailed_check_receipts as references
-from gen2.tests.ddl_fixtures import TRIGGERS
-from gen2.tests.detailed_receipt_fixtures import OUTCOME, attach_checks, seed_checks, historical_receipt, historical_admission
+from gen2.tests.detailed_receipt_fixtures import OUTCOME, attach_checks, seed_checks
 from gen2.tests.router_fixtures import load_claim
 from gen2.tests import router_fixtures as rf
 
@@ -52,7 +51,7 @@ class MandatoryCases:
         del case.doc['detailed_checks']
         for verdict in ('supports', 'partially_supports'):
             case.doc['verdict'] = verdict
-            self.refused(case, 'requires detailed check records')
+            self.refused(case, "/receipt_version: not one of ['verification-receipt/2']")
 
     def test_bindings(self):
         case = self.opened()
@@ -105,27 +104,6 @@ class MandatoryCases:
             case.doc['checks'][kind] = 'not_applicable'
         attach_checks(case, case.doc)
         self.missing_entries(case)
-
-    def test_historical_isolation_restores_current_policy_and_catalog(self):
-        case = self.opened()
-        case.x("CREATE TRIGGER legacy_sentinel BEFORE INSERT ON verification_receipts "
-            "WHEN NEW.verification_receipt_id='ver_sentinel' BEGIN SELECT RAISE(ABORT,'legacy sentinel'); END")
-        catalog = case.rows(TRIGGERS)
-        historical_receipt(case.doc)
-        with historical_admission(case):
-            self.assertNotIn('verification_receipts_require_detailed_checks', dict(case.rows(TRIGGERS)))
-            self.assertEqual(case.submit()['status'], 'committed')
-            case.doc['verification_receipt_id'] = 'ver_sentinel'
-            self.refused(case, 'legacy sentinel')
-        self.assertEqual(case.rows(TRIGGERS), catalog)
-        retained = case.store.select('verification_receipts')[0]['receipt']
-        self.assertEqual(retained['receipt_version'], 'verification-receipt/1')
-        with self.assertRaisesRegex(RuntimeError, 'historical rollback'):
-            with historical_admission(case):
-                raise RuntimeError('historical rollback')
-        self.assertEqual(case.rows(TRIGGERS), catalog)
-        case.doc['verification_receipt_id'] = 'ver_current001'
-        self.refused(case, 'requires detailed check records')
 
     def missing_entries(self, case):
         for kind in rf.KINDS:

@@ -14,6 +14,11 @@
         "op": "replace",
         "path": "/checks/denominators",
         "value": "unavailable"
+      },
+      {
+        "op": "replace",
+        "path": "/detailed_checks/denominators/outcome",
+        "value": "unavailable"
       }
     ],
     "errors": [
