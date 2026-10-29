@@ -91,30 +91,37 @@ Both are re-indexed from the reviewed commit before every Gate D and are availab
 - **Cost before review.** A tooling repair states its cost budget in the brief and measures it before review (the S2b-C1 lesson).
 - **Trigger-order is retired** (S2-2). S6's final DDL baseline passed at `ed21d5a` (242 triggers, 1,868 identical outcomes), and the tool, recipe and CI mode were removed in PR #55.
 
-## Nightly test-portfolio review (Trevor, 2026-10-28)
-Every test is asked one question: is it important to the overall objective and architecture? That means testing a critical function, or one with cascading responsibilities, rather than ancillary code or the test tooling itself.
+## Nightly test-portfolio review (Trevor, 2026-10-28; v2 rules 2026-10-28/29)
+Every test is asked one question: is it important to the overall objective and architecture?
 
-**Who does what**
-- **Sol** runs the review: one full baseline pass, then nightly on what changed (paseo schedule, 08:00 UTC). It is read-only and writes a report.
-- **A fresh Fable session** reviews that report (12:00 UTC). It verifies each item and approves or rejects it.
-- **Approved items** go through the normal coder → Astra → verifier → PR path.
+**How it runs**
+- **Sol** runs nightly, read-only, at 08:00 UTC, with a full baseline first.
+- **A fresh Fable session** verifies Sol's proposals and approves or rejects each one at 12:00 UTC.
+- **Approved items** become coder batches.
 
-**What Sol does**
-- **Tiers by risk:**
-  - T1: invariant witnesses, boundary contracts, and code with cascading dependents;
-  - T2: important workflow behaviour;
-  - T3: ancillary tests, test-tooling tests and implementation pins;
-  - dead.
-- **Removal is judged by catch record,** not by coverage or mutation score. A low-value test that is still live is proposed for less frequent running, with a full-run backstop, rather than deletion.
-- **The nightly run also flags test changes that weakened checking** (assertions removed, expected values flipped, skips added, exceptions widened) and weak T1 tests to strengthen.
+**Tiers** (`private/reviews/test-portfolio/TIERS.md`)
+- A test takes the tier of the most critical rule it protects.
+- Tests of merge-gate machinery and test oracles inherit T1.
+- The tier table is approved once by Trevor.
 
-**What Fable may approve, and what comes to Trevor**
-- **Fable may approve:** dead tests, exact duplicates with no catch record, obsolete tests, merges, strengthenings, and restorations.
-- **Comes to Trevor:** removing or weakening a T1 test or an invariant's last witness, traceability changes, demoting a test with a catch record, and building a nightly test lane.
+**What runs automatically, and what comes to Trevor**
+- **Automatic:**
+  - T3 and dead deletions with no catch record;
+  - T2 and T3 moves of zero-reach tests to a nightly lane, once the lane is built after measurement;
+  - merges into one keeper test with no lost assertion, at any tier;
+  - strengthening and restoring at any tier.
+- **Landing:**
+  - **Removals** (deletion, move, exact-duplicate merge) land on a path allowlist, an inventory diff, the verifier and Jenkins, without Astra.
+  - **Edits** keep Gate C.
+- **To Trevor:**
+  - T1 and T2 deletions;
+  - any change to a test with a catch record;
+  - traceability changes.
+- **Production code** is not in this pass; Gate S keeps it.
 
 **Sources**
-- Task files and reports: `private/reviews/test-portfolio/`.
-- Research basis: `Autonomous-Loop-Design/research/agentic-build-process-2026-10/06-gap-round-2-full-text/01-retiring-checks-and-tests.md` and `research/31-testing-acceptance-evidence.md`.
+- Plan: `private/reviews/test-portfolio/PLAN-v2-20261028.md`, including §8.
+- Research basis: `Autonomous-Loop-Design/research/agentic-build-process-2026-10/06-gap-round-2-full-text/01-retiring-checks-and-tests.md` and `04-criticality-scaled-assurance.md`.
 
 ## Review throughput (the user, 2026-10-05)
 Adopted after asking what research suggests for speeding up the build. The research: repair loops get most of their achievable gain within 3–4 rounds (arXiv 2607.05197). Review rounds and turnaround grow with change size (Google's modern code review study; Greptile's analysis). Expensive suites belong once at the gate, not on every iteration (Google's diff-based mutation testing; merge-queue practice). These rules apply from the next dispatch onward. They do not change a review already running.

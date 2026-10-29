@@ -3808,3 +3808,26 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - A fresh Fable session approves, through schedule `38c22433`.
   - The approval classes are as in the charter.
 
+## 2026-10-28/29: test-portfolio v2 set up and first nightly cycle run; Trevor's rulings; Batch F and mutation-scope work dispatched
+- **The plan:** the harness's nightly test-pruning plan, relayed at Trevor's direction and adapted as `private/reviews/test-portfolio/PLAN-v2-20261028.md`.
+  - Gate S (Fable, fresh, `22620d4e`) recommended 11 amendments, which were adopted as §8 A1–A12. The main ones: tests of merge-gate machinery inherit T1, and the no-Astra landing covers removals only.
+- **Tiers:**
+  - The Sol baseline (`cb137570`) passed the full suite and tiered 93% of tests T1.
+  - The Fable tier draft (`0c543748`) tiered by the rule each test protects and got 95.7% T1.
+  - Astra's completeness check (`6e2a3822`) promoted 93 ids, for a final T1 2,853 · T2 8 · T3 22 · Dead 0.
+  - **Finding:** tiering by consequence leaves almost no tier-based deletion; volume comes from merges.
+- **First nightly cycle, a dry run** (schedules `3c43a612`/`38c22433`):
+  - Sol's report at 08:25: 3 class-A and 21 class-B items, with the full suite passing.
+  - Fable's ruling at 12:08: 3 strengthenings approved with change (Gate C), and the 21-pair exact-duplicate merge sent to Trevor with a recommendation to approve, verified as 2,883 → 2,862 ids with no assertion lost. Fable recommended not building the lane yet.
+- **Trevor's rulings (2026-10-29), recorded in DOSSIER:**
+  - move-aware mutation scope plus parallel stage 1;
+  - Batch F option A;
+  - the CI-DESIGN amendments approved;
+  - the C-4 wording fix;
+  - O-10 approved;
+  - test-pruning items 7–11.
+  - The 21-pair merge (TP-20261028-7) is approved under ruling 7, because the keeper retains the killer assertion.
+  - The tier table awaits his review of the method.
+- **Dispatched:**
+  - Sol `0406d97b`: the move-aware mutation scope (`gen2-wt-2`). Batch B, A, O-5 and 6b1′ PR 1 follow it.
+  - Sol `6dc32759`: Batch F round 2 (shared tree, PR #54).
