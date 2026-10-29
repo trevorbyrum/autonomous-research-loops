@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import unittest
 
+from gen2.operator.auth import Credentials
 from gen2.tests import operator_fixtures as of
+from gen2.tests.test_operator_auth import WireClient
 from gen2.tests.router_fixtures import OTHER
 
 OPERATOR_TOOLS = ["status", "apply_operator_decision", "request_cancel", "requeue", "close_brief", "activate_config_bundle", "register_extractor_registry", "version_brief",
@@ -71,6 +73,45 @@ class McpTest(McpClient, of.CommandWorld):
         code, reply = self.rpc("resources/list")
         self.assertEqual((code, reply["error"]["code"]), (200, -32601))
         self.assertEqual(self.rpc("notifications/initialized", ident=None), (202, {}))
+
+
+class McpWireTest(WireClient, of.OperatorTestCase):
+    def test_serialized_ids_are_refused_in_success_and_error_envelopes(self) -> None:
+        for method in ("ping", "unknown-method"):
+            with self.subTest(method=method):
+                raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "\nABCDEFGHIJKLMNO", "method": method})
+                self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 400 Bad Request")
+                self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+                    b'{"error": {"code": -32600, "data": {"reason": "request_invalid", "status": "refused"}, "message": "invalid request"}, "id": null, "jsonrpc": "2.0"}')
+                self.assertNotIn(b"nABCDEFGHIJKLMNO", raw)
+
+    def test_nested_tool_text_stays_valid_json(self) -> None:
+        raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "request-7", "method": "tools/call",
+            "params": {"name": "request_cancel", "arguments": {"\nABCDEFGHIJKLMNO": 1}}})
+        body = raw.partition(b"\r\n\r\n")[2]
+        self.assertEqual(body,
+            b'{"id": "request-7", "jsonrpc": "2.0", "result": {"content": [{"text": "{\\"status\\": \\"refused\\", \\"reason\\": \\"request_invalid\\", \\"detail\\": \\"[credential]\\"}", "type": "text"}], "isError": true}}')
+        self.assertEqual(json.loads(json.loads(body)["result"]["content"][0]["text"]),
+                         {"status": "refused", "reason": "request_invalid", "detail": "[credential]"})
+        self.assertNotIn(b"nABCDEFGHIJKLMNO", raw)
+
+    def test_an_all_digit_token_is_not_echoed_as_a_numeric_id(self) -> None:
+        self.restart(Credentials({"alice": of.OPERATOR_TOKEN, "bob": "9007199254740991"}))
+        raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": 9007199254740991, "method": "ping"})
+        self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 400 Bad Request")
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+            b'{"error": {"code": -32600, "data": {"reason": "request_invalid", "status": "refused"}, "message": "invalid request"}, "id": null, "jsonrpc": "2.0"}')
+        self.assertNotIn(b"9007199254740991", raw)
+
+    def test_ordinary_tool_text_bytes_are_unchanged(self) -> None:
+        raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "ordinary", "method": "tools/call",
+            "params": {"name": "not-a-tool"}})
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+            b'{"id": "ordinary", "jsonrpc": "2.0", "result": {"content": [{"text": "{\\"status\\": \\"refused\\", \\"reason\\": \\"no_such_route\\"}", "type": "text"}], "isError": true}}')
+        # Pair the byte-identical control with a sensitive reply, independently
+        # of the nested-text witness above, to qualify the boundary fault.
+        sensitive = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "\nABCDEFGHIJKLMNO", "method": "ping"})
+        self.assertEqual(sensitive.split(b"\r\n", 1)[0], b"HTTP/1.0 400 Bad Request")
 
 
 REFUSED = {"status": "refused", "reason": "request_invalid"}

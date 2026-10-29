@@ -70,14 +70,13 @@ Every request is logged as one line — principal, method, route, HTTP status
 and the reply's status — and nothing else: never a header, a token, a query
 or a body. The method and route are the service's own labels (label()): a
 route it serves by its name, anything else "?" — never the request's own
-text, which may carry a credential (Astra 1e review finding 3). And every
-reply and log line passes through Credentials.redact() before it leaves, so
-no configured token a request carries — in its path, its query or its body,
-echoed by a refusal — is written back or logged; a tool's reply over MCP
-passes through it before it is nested as text, and an MCP id carrying one is
-refused (_mcp). Operator ruling O-2 (2026-10-27) constrains the token
-alphabet: JSON escaping cannot re-form a token, so serialization uses
-json.dumps.
+text, which may carry a credential (Astra 1e review finding 3). Every final
+serialized reply passes the token boundary in wire.py (Trevor's option A,
+2026-10-29). It repairs offending field values and rechecks the bytes;
+failure becomes the transport's fixed generic error. A tool's own serialized
+JSON passes before nesting, and the complete envelope passes again. MCP ids
+are checked in their serialized form before dispatch and refused rather than
+changed. Plain access diagnostics use the same byte predicate.
 """
 from __future__ import annotations
 
@@ -232,7 +231,7 @@ class OperatorService:
         "2.0"; method a string; id, where present, a string or an integer
         (never null, a float, a boolean or a structure); params, where
         present, an object (-32600 Invalid Request otherwise). An id that
-        carries a configured token, raw or percent-encoded, is refused
+        carries a configured token in its serialized bytes is refused
         before dispatch and answered with a null id: echoing it would repeat
         the credential, and replacing it would answer another request's id.
         A message without an id is a notification: a notifications/ method is accepted
@@ -245,10 +244,11 @@ class OperatorService:
         "request_invalid"}) as their data, and nothing is dispatched. A
         well-formed call's refusal, at any later step — the role, who acts
         named, an unknown or capability-bearing tool, the arguments, the
-        router's own — is an in-band tool error carrying its reply, redacted
-        before it is serialized into the tool's text."""
+        router's own — is an in-band tool error carrying its reply. Its JSON
+        bytes are checked and repaired before embedding them as tool text;
+        the final envelope's bytes are checked again at encode()."""
         has_id, ident = "id" in message, message.get("id")
-        usable = has_id and _request_id(ident) and self._credentials.redact(ident) == ident
+        usable = has_id and _request_id(ident) and not self._credentials.boundary.forbidden(json.dumps(ident).encode("utf-8"))
         if set(message) - JSONRPC_MEMBERS or message.get("jsonrpc") != "2.0" or not isinstance(message.get("method"), str) \
                 or (has_id and not usable) or ("params" in message and not isinstance(message["params"], dict)):
             return self._rpc_refusal(ident if usable else None, -32600, "invalid request")
@@ -280,7 +280,7 @@ class OperatorService:
         else:
             code, reply = 404, {"status": "refused", "reason": "no_such_route"}
         failed = code != 200 or reply.get("status") in ("refused", "rejected")
-        nested = answer({"content": [{"type": "text", "text": json.dumps(self._credentials.redact(reply))}], "isError": failed})
+        nested = answer({"content": [{"type": "text", "text": self._credentials.boundary.encode(reply, sort_keys=False).decode("utf-8")}], "isError": failed})
         return 200, nested, f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
 
     @staticmethod
@@ -301,13 +301,12 @@ class OperatorService:
         return (body, None) if isinstance(body, dict) else (None, (400, "request_invalid"))
 
     def _answer(self, principal: Principal | None, method: str, route: str, code: int, reply: dict) -> tuple[int, dict]:
-        """Log the request's line (labels only: label()) and answer; both with
-        every configured token redacted."""
+        """Log checked label bytes; leave the reply structure for encode()."""
         who = "-" if principal is None else f"{principal.role}:{principal.name}"
         outcome = reply.get("status") if isinstance(reply, dict) else None
-        self._log(self._credentials.redact(f"{who} {method} {route} -> {code} {outcome}"))
-        return code, self._credentials.redact(reply)
+        self._log(self._credentials.boundary.diagnostic(f"{who} {method} {route} -> {code} {outcome}"))
+        return code, reply
 
     def encode(self, reply: dict) -> bytes:
-        """An answer as JSON text in UTF-8."""
-        return json.dumps(reply, sort_keys=True).encode("utf-8")
+        """The final checked JSON bytes, shared by every transport reply path."""
+        return self._credentials.boundary.encode(reply)

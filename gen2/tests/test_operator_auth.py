@@ -21,7 +21,6 @@ import unittest
 from unittest import mock
 
 from gen2.operator.auth import Credentials, CredentialsRefused, Principal
-from gen2.operator.service import OperatorService
 from gen2.tests import operator_fixtures as of
 from gen2.tests import router_fixtures as rf
 from gen2.tests.router_fixtures import TOPIC
@@ -409,15 +408,84 @@ class SecrecyTest(of.CommandWorld):
             self.assertFalse([s for s in seen if token in s], f"a token ({token[:6]}...) appeared")
 
 
-class TokenEchoTest(of.OperatorTestCase):
-    def test_raw_and_single_percent_encoded_reply_echoes_are_redacted(self) -> None:
-        self.restart(Credentials({"alice": "Aa0_-Bb1Cc2Dd3Ee"}))
-        for echo, expected in (("before Aa0_-Bb1Cc2Dd3Ee after", "before [credential] after"),
-                               ("before %41%61%30%5f%2d%42%62%31%43%63%32%44%64%33%45%65 after", "[credential]")):
-            with self.subTest(echo=echo), mock.patch.object(self.engine.service._backend, "request_cancel",
-                                                          return_value={"status": "refused", "detail": echo}):
-                code, reply, _ = self.http("POST", "/v1/commands/request_cancel", {}, token="Aa0_-Bb1Cc2Dd3Ee")
-                self.assertEqual((code, reply), (200, {"status": "refused", "detail": expected}))
+class WireClient:
+    """Real response bytes; expected bytes are literal in each witness."""
+    def setUp(self) -> None:
+        super().setUp()
+        self.restart(Credentials({"alice": of.OPERATOR_TOKEN, "bob": "nABCDEFGHIJKLMNO"}))
+
+    def wire(self, method: str, path: str, message=None) -> bytes:
+        body = b"" if message is None else json.dumps(message).encode("utf-8")
+        request = (f"{method} {path} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n"
+                   f"Content-Length: {len(body)}\r\n\r\n").encode() + body
+        return raw_exchange(self.engine, request)
+
+
+class WireReplyTest(WireClient, of.OperatorTestCase):
+    def test_serialization_created_token_in_router_refusal(self) -> None:
+        raw = self.wire("POST", "/v1/commands/request_cancel", {"\nABCDEFGHIJKLMNO": 1})
+        self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 200 OK")
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+                         b'{"detail": "[credential]", "reason": "request_invalid", "status": "refused"}')
+        self.assertNotIn(b"nABCDEFGHIJKLMNO", raw)
+
+    def test_raw_percent_and_unicode_spelling_values(self) -> None:
+        reply = {"status": "refused", "detail": ["nABCDEFGHIJKLMNO", "%6eABCDEFGHIJKLMNO", "%6EABCDEFGHIJKLMNO",
+                 r"\u006eABCDEFGHIJKLMNO", r"\u006EABCDEFGHIJKLMNO",
+                 "%6e%41%42%43%44%45%46%47%48%49%4a%4b%4c%4d%4e%4f",
+                 r"\u006e\u0041\u0042\u0043\u0044\u0045\u0046\u0047\u0048\u0049\u004a\u004b\u004c\u004d\u004e\u004f"]}
+        with mock.patch.object(self.engine.service._backend, "request_cancel", return_value=reply):
+            raw = self.wire("POST", "/v1/commands/request_cancel", {})
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+            b'{"detail": ["[credential]", "[credential]", "[credential]", "[credential]", "[credential]", "[credential]", "[credential]"], "status": "refused"}')
+
+    def test_short_and_unicode_escapes_can_create_tokens(self) -> None:
+        self.restart(Credentials({"alice": of.OPERATOR_TOKEN, "bob": "nABCDEFGHIJKLMNO", "carol": "tABCDEFGHIJKLMNO",
+            "dave": "rABCDEFGHIJKLMNO", "eve": "bABCDEFGHIJKLMNO", "finn": "fABCDEFGHIJKLMNO", "grace": "u00e9ABCDEFGHIJK"}))
+        reply = {"status": "refused", "detail": ["\nABCDEFGHIJKLMNO", "\tABCDEFGHIJKLMNO", "\rABCDEFGHIJKLMNO",
+                 "\bABCDEFGHIJKLMNO", "\fABCDEFGHIJKLMNO", "éABCDEFGHIJK"]}
+        with mock.patch.object(self.engine.service._backend, "request_cancel", return_value=reply):
+            raw = self.wire("POST", "/v1/commands/request_cancel", {})
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+            b'{"detail": ["[credential]", "[credential]", "[credential]", "[credential]", "[credential]", "[credential]"], "status": "refused"}')
+
+    def test_numeric_values_and_an_all_digit_token(self) -> None:
+        creds = Credentials({"alice": of.OPERATOR_TOKEN, "bob": "9007199254740991"})
+        self.assertEqual(creds.authenticate("Bearer 9007199254740991"), Principal("bob", "operator"))
+        self.restart(creds)
+        with mock.patch.object(self.engine.service._backend, "request_cancel", return_value={"status": "refused",
+                               "detail": [9007199254740991, -9007199254740991, 9007199254740991.0]}):
+            raw = self.wire("POST", "/v1/commands/request_cancel", {})
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+                         b'{"detail": ["[credential]", "[credential]", "[credential]"], "status": "refused"}')
+        self.assertNotIn(b"9007199254740991", raw)
+
+    def test_diagnostic_suppresses_a_token_in_the_principal_label(self) -> None:
+        self.restart(Credentials({"nABCDEFGHIJKLMNO": of.OPERATOR_TOKEN, "bob": "nABCDEFGHIJKLMNO"}))
+        raw = self.wire("GET", "/v1/no-such-route")
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2], b'{"reason": "no_such_route", "status": "refused"}')
+        self.assertNotIn(b"nABCDEFGHIJKLMNO", raw)
+        self.assertEqual(self.logs[-1].encode("utf-8"), b"[credential]")
+
+    def test_unrepairable_member_name_is_a_generic_fault(self) -> None:
+        with mock.patch.object(self.engine.service._backend, "request_cancel",
+                               return_value={"nABCDEFGHIJKLMNO": 1, "status": "refused"}):
+            raw = self.wire("POST", "/v1/commands/request_cancel", {})
+        self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 500 Internal Server Error")
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2], b'{"reason": "internal", "status": "error"}')
+        self.assertNotIn(b"nABCDEFGHIJKLMNO", raw)
+
+    def test_ordinary_reply_bytes_are_unchanged(self) -> None:
+        with mock.patch.object(self.engine.service._backend, "request_cancel",
+                               return_value={"status": "refused", "reason": "ordinary", "detail": "100%25"}) as backend:
+            raw = self.wire("POST", "/v1/commands/request_cancel", {})
+            self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+                             b'{"detail": "100%25", "reason": "ordinary", "status": "refused"}')
+            # The sensitive companion makes removal of the boundary an assertion
+            # failure while the ordinary control above must stay byte-identical.
+            backend.return_value = {"status": "refused", "detail": "\nABCDEFGHIJKLMNO"}
+            sensitive = self.wire("POST", "/v1/commands/request_cancel", {})
+        self.assertEqual(sensitive.partition(b"\r\n\r\n")[2], b'{"detail": "[credential]", "status": "refused"}')
 
 
 def raw_exchange(engine, request: bytes) -> bytes:
@@ -446,40 +514,16 @@ class CredentialsTest(unittest.TestCase):
         self.assertEqual(creds.authenticate(f"Bearer {of.EXPORTER_TOKEN}"), Principal("exporter", "exporter"))
         self.assertIsNone(Credentials.from_environ({**self.ENV, "GEN2_SECRET_EXPORTER_TOKEN": ""}).authenticate(f"Bearer {of.EXPORTER_TOKEN}"))
 
-    def test_redact_takes_every_configured_token_out(self) -> None:
-        """Wherever a configured token stands in a reply — a string, a key, a
-        list, nested — it is replaced; a token that is another's prefix does
-        not leave the longer one half-redacted; other text is kept."""
-        long_token = of.OPERATOR_TOKEN + "-and-more"
-        creds = Credentials({"alice": of.OPERATOR_TOKEN, "carol": long_token}, of.EXPORTER_TOKEN)
-        reply = {"detail": f"/{long_token}: no value is allowed here", of.EXPORTER_TOKEN: [f"x{of.OPERATOR_TOKEN}y", {"k": of.EXPORTER_TOKEN}], "n": 5,
-                 "kept": "op-token-mallory-0123456789abcdef"}
-        self.assertEqual(creds.redact(reply), {"detail": "/[credential]: no value is allowed here", "[credential]": ["x[credential]y", {"k": "[credential]"}],
-                                              "n": 5, "kept": "op-token-mallory-0123456789abcdef"})
-        self.assertEqual(creds.redact(f"- POST {of.EXPORTER_TOKEN}"), "- POST [credential]")
-
     def test_the_token_alphabet_and_minimum_are_checked_without_echoing(self) -> None:
         for token in ("Abcdef012345678", *("Abcdef0123456789" + char + "z" for char in
                       " !\"#$%&'()*+,./:;<=>?@[\\]^`{|}~\t\n\r\0\x7fé\ud800")):
-            with self.subTest(token=ascii(token)), self.assertRaises(CredentialsRefused) as refused:
-                Credentials({"alice": token})
-            self.assertEqual(str(refused.exception), "GEN2_OPERATOR_TOKENS and GEN2_SECRET_EXPORTER_TOKEN require tokens matching [A-Za-z0-9_-]{16,}")
-            self.assertNotIn(token, str(refused.exception))
+            with self.subTest(token=ascii(token)):
+                with self.assertRaises(CredentialsRefused) as refused:
+                    Credentials({"alice": token})
+                self.assertEqual(str(refused.exception), "GEN2_OPERATOR_TOKENS and GEN2_SECRET_EXPORTER_TOKEN require tokens matching [A-Za-z0-9_-]{16,}")
+                self.assertNotIn(token, str(refused.exception))
         creds = Credentials.from_environ({"GEN2_OPERATOR_TOKENS": "alice=Aa0_-Bb1Cc2Dd3Ee"})
         self.assertEqual(creds.authenticate("Bearer Aa0_-Bb1Cc2Dd3Ee"), Principal("alice", "operator"))
-
-    def test_json_does_not_escape_the_allowed_alphabet(self) -> None:
-        token = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
-        self.assertEqual(json.dumps(token), '"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"')
-        self.assertEqual(Credentials({"alice": token}).authenticate("Bearer " + token), Principal("alice", "operator"))
-
-    def test_mcp_echoes_an_equal_redacted_id(self) -> None:
-        creds = Credentials({"alice": "Aa0_-Bb1Cc2Dd3Ee"})
-        # The redactor's value is the contract; it may return an equal copy.
-        with mock.patch.object(creds, "redact", return_value="request-7".encode().decode()):
-            self.assertEqual(OperatorService(None, creds)._mcp(Principal("alice", "operator"),
-                {"jsonrpc": "2.0", "id": "request-7", "method": "ping"}),
-                (200, {"jsonrpc": "2.0", "id": "request-7", "result": {}}, "/mcp"))
 
     def test_unusable_secrets_refuse_the_start(self) -> None:
         """Each defect alone, beside ENV, which starts (the control); no

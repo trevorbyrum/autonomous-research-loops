@@ -23,11 +23,10 @@ every configured token's digest with hmac.compare_digest, all of them, with
 no early exit, so which principal matched does not change the work done (the
 presented token's length does: SHA-256 reads all of it). Tokens stay in this
 module: they are never logged, echoed, returned or stored. The configured
-ones are kept here, in memory, for one purpose: redact() takes each of them
-out of whatever the listener is about to write — a reply, a log line — as
-raw substrings or after one percent-decoding pass. Operator ruling O-2
-(2026-10-27) constrains the token alphabet so JSON escaping cannot re-form a
-token; serialization uses json.dumps without decoding redaction.
+ones also initialize the serialized-byte boundary (wire.py). O-2 constrains
+both operator and exporter tokens to [A-Za-z0-9_-]{16,}; it does not prevent
+JSON serialization of another value from creating one. Trevor's option A
+(2026-10-29) checks the final bytes, repairs field values and rechecks them.
 
 Persistence (RG-9): the principal set is the mounted secrets', read at every
 start. A restart or a replacement with the same mount keeps every principal,
@@ -40,12 +39,12 @@ import hashlib
 import hmac
 import re
 from typing import Mapping, NamedTuple
-from urllib.parse import unquote
+
+from gen2.operator.wire import TokenBoundary
 
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 MIN_TOKEN = 16
 SCHEME = "bearer "
-REDACTED = "[credential]"
 
 
 class CredentialsRefused(ValueError):
@@ -82,7 +81,7 @@ class Credentials:
         if len(set(digests)) != len(digests):
             raise CredentialsRefused("two principals share a token: a token names one principal")
         self._entries = [(principal, digest) for (principal, _), digest in zip(entries, digests)]
-        self._tokens = tuple(sorted((token for _, token in entries), key=len, reverse=True))
+        self.boundary = TokenBoundary(token for _, token in entries)
 
     @property
     def principals(self) -> list[Principal]:
@@ -99,23 +98,6 @@ class Credentials:
             if hmac.compare_digest(presented, digest):
                 found = principal
         return found
-
-    def redact(self, value):
-        """Replace configured tokens in JSON strings and keys, longest first.
-        A string carrying one after a single percent-decoding is replaced whole;
-        other strings keep their original encoding."""
-        if isinstance(value, str):
-            for token in self._tokens:
-                value = value.replace(token, REDACTED)
-            decoded = unquote(value)
-            return REDACTED if any(token in decoded for token in self._tokens) else value
-        if isinstance(value, dict):
-            return {self.redact(k): self.redact(v) for k, v in value.items()}
-        if isinstance(value, list):
-            return [self.redact(item) for item in value]
-        if isinstance(value, (int, float)) and any(token in str(value) for token in self._tokens):  # True/False hold no token
-            return REDACTED
-        return value
 
     @classmethod
     def from_environ(cls, environ: Mapping[str, str]) -> "Credentials":
