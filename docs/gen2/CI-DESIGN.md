@@ -18,7 +18,7 @@ Status: **APPROVED by the operator 2026-10-05** (D1–D3 and D5–D11 as recomme
 
 | Thing | Verified state |
 |---|---|
-| **Jenkins gen2 job** | The `Jenkinsfile` makes one `standardPipeline` call: image `ci-py312-noble:1`, a *mutable tag*; lint `gen2-boundaries gen2-size`; build `gen2-venv`; unit `gen2-check`; 50-minute timeout. Build #1 at `ea5a699` took **31.94 min**: engine tests 644 s, mutation 1,209 s. **No gateway target runs.** Mutation used **7 workers under a 2-CPU quota**, because `tools/gen2_mutations.py:595` takes the default from host-visible `os.cpu_count()`. |
+| **Jenkins gen2 job** | The `Jenkinsfile` makes one `standardPipeline` call: image `ci-py312-noble:1`, a *mutable tag*; lint `gen2-boundaries gen2-size`; build `gen2-venv`; unit `gen2-check`; 50-minute timeout. Build #1 at `ea5a699` took **31.94 min**: engine tests 644 s, mutation 1,209 s. **No gateway target runs.** Mutation used **7 workers under a 2-CPU quota**, because `tools/gen2_mutations.py:595` takes the default from host-visible `os.cpu_count()`. (At build #1, `ea5a699`; the hand-written mutation tool `tools/gen2_mutations.py` named here was retired by S2: mutation now runs through `tools/gen2_mutation_runner.py` over changed lines.) |
 | **Status names** | `continuous-integration/jenkins/pr-merge` and `continuous-integration/jenkins/branch`. `ci/std` is a future name in the platform design. PR builds run the **merge commit** (JCasC strategy), not the PR head. |
 | **Library and workspace** | JCasC loads library `main`, not an immutable tag; build #1 actually ran library revision `716e6de`. `checkout scm` has no explicit workspace reset. `HOME=$WORKSPACE/.ci-home` persists across builds of a branch. The venv marker is keyed on requirements timestamps, not on the interpreter or image. `ci-results/v0` has stages but no source identity. Only three named JSON artifacts are archived. |
 | **GitHub Actions `gen2-check.yml`** | Runs every push on `ubuntu-latest`, Python **3.12.14**, and **fails** on `TheEndpointForms`. 3.12.14's `IPv6Address.__str__` renders IPv4-mapped addresses as dotted quads; 3.12.3 does not. The failure is confirmed as a representation/acceptance defect in `gen2/gateway_client/client.py:195` (`str(ip)`). It is not a wrong-destination or token leak. |
@@ -41,7 +41,7 @@ Each requirement below is tied to a recorded problem. R8 and R11 are **preventiv
 | R8 | *Preventive*: "no live calls" is enforced only by briefs and a Python guard. | **No external provider egress from the defined execution boundary** (§3.6). This is not a claim to confine every future agent or dependency. |
 | R9 | The gateway suite isn't in CI. | Run the gateway suites, without and with a database, in CI, with the required prerequisites pinned (§3.2). |
 | R10 | The metrics analyser met Python forms it couldn't model (three BLOCKs on 2q-a). | CI enforces **whatever Gate D #4 rules**. It does not pre-accept the blocked analyser and does not silently permit under-approximation. |
-| R11 | *Preventive*: two complexity measures (gen2-metrics and archgate/lizard) for one property. | **One authoritative ratchet per property**. Today archgate is observe-only, so there aren't two blocking ratchets. |
+| R11 | *Preventive*: two complexity measures (gen2-complexity and archgate/lizard) for one property. | **One authoritative ratchet per property**. Today archgate is observe-only, so there aren't two blocking ratchets. |
 | R12 | Evidence was lost from `/tmp` on the 2026-10-01 reboot. | A **controller-bound, retained evidence bundle**, including raw and failure evidence (§3.8). |
 | R13 | *(new)* Review/authority transitions were remembered by people, not recorded. These are: Gate D triggers, the third-BLOCK rule, family redesign. | CI and the workflow **preserve and record the charter state machine** (§5). |
 
@@ -93,36 +93,26 @@ Each mode is a defined workload. They are alternatives, not cumulative layers, s
 | **integration** (merge into `gen2`) | the full acceptance workload, with an **interlock**: a pending, failed, aborted or missing integration result blocks the next merge | measured; must not be aborted by later merges |
 | **nightly** | full acceptance + bounded stress + drift + absolute audit + deep architecture analyses + Gate D pack | bounded, with room for cleanup and publication |
 
-Engine work fixes **worker budgeting**: mutation jobs come from the container's CPU quota, not `os.cpu_count()`, and the engine and gateway get an explicit aggregate budget. The gateway command is split into explicit modes (no-DB suite, DB suite, mutants), each with **one DB owner per shard**.
+Engine work fixes **worker budgeting**: mutation jobs come from the container's CPU quota, not `os.cpu_count()`, and the engine and gateway get an explicit aggregate budget. The gateway command is split into explicit modes (no-DB suite, DB suite), each with **one DB owner per shard**; gateway mutation runs through the same changed-line campaign as the engine.
 
 ### 3.3 Tiers and the mutation selector
 
 - **T0 (every push):**
-  - `gen2-sqlite`, `gen2-boundaries`, `gen2-size`, `gen2-schemas`, `gen2-ddl`, `gen2-catalog-check`, `gen2-metrics`, `gen2-debt`, `gen2-locators`;
-  - the supported-source guard, `gen2-source` (`docs/gen2/SOURCE-CONTRACT.md`; operator ruling 2026-10-05, Gate D #4 option B);
+  - `gen2-sqlite`, `gen2-boundaries`, `gen2-size`, `gen2-schemas`, `gen2-ddl`, `gen2-catalog-check`, `gen2-complexity` (radon cyclomatic ceilings, absolute, no ledger), `gen2-debt`, `gen2-locators` (which also runs the traceability check; there is no separate target);
   - the protected-path and test-integrity reports;
   - a secret and personal-data scan.
 
   It runs inside the no-egress boundary (§3.6), because these are candidate-controlled checkers.
 - **Acceptance tests:** the engine suite, the gateway suite without a DB and the gateway suite with a DB. JUnit for each. A report of **executed test identities and unexpected skips**, compared against the expected set.
-- **Mutation:** full in phases 1–5. Conservative diff selection only from phase 6, *after* it has been validated against full runs (§7). The **selector contract** (versioned):
-  - It computes over **both base and candidate inventories**. A mutant is selected when any of these changed: an edited target, a killer, a control, an explicit fixture dependency, its own definition, or its pairing record.
-  - Gateway-relative paths are normalised. Multi-file targets are expanded (35 gateway mutants edit several files). Symbolic engine targets (`ddl`, `connection`, special-loading files) are mapped explicitly. Deletes and renames are handled.
-  - **Full affected inventory, or both inventories when impact is unclear**, on any change to shared fixtures, loaders, runners, controls generation, toolchains, dependencies, broad contracts or unclassified paths.
-  - Trigger-order testing follows changes to store tests, fixtures and connection behaviour as well as DDL.
-  - Unmutated baselines, every selected killer and control, child attestation (and the tool-completion record: both detect accidental incomplete execution by trusted code, not deliberate same-process forgery, under trust model B; DEBT-016 item 7) and global inventory-integrity checks are all kept. (`--only` currently suppresses the engine's full trigger-coverage check; the selector must not.)
-  - Selected and omitted IDs are recorded with reasons. Unknown IDs and an unavailable comparison base are **rejected**. "No applicable mutants" is reported distinctly from a broken selector. Engine `--only` currently matches prefixes and gateway `--only` matches exact IDs; both are normalised.
-  - **High-risk changes always get the full run.** "High-risk" is defined in the selector policy.
-  - The map cannot prove complete transitive impact. The integration and nightly full runs exist to catch what it misses.
+- **Mutation:** automatic mutation over production lines changed against the explicit base at acceptance (survivors fail; an unavailable base is rejected); full campaign nightly and at phase gates, report-only. Selection is native git changed-line filtering against `GEN2_BASE`; high-risk and unclassified changes run the full campaign; selected and omitted files are recorded in the mutation report. The unmutated baseline is kept; per-test oracle review stays with Gate C.
 
 ### 3.4 Protected-path and test-integrity review signals (R2)
 
 - **Protected set:** exact repository-relative paths with owners. Changes are evaluated against the **trusted base policy**, so a candidate can't silently change what is protected. The set:
   - the oracle (`gateway/tests/oracle/**`, `gateway/tests/test_oracle.py`);
-  - metrics state (`metrics-baseline.json`, `metrics-ledger.md`, `metrics-exemptions.md`);
   - `DEBT-REGISTER.md`, `phase-status.json`;
-  - `gen2/boundaries.toml`, `docs/gen2/BOUNDARIES.md`, INVARIANTS, BUILD-CHARTER, ENVIRONMENT.md and the supported-source contract;
-  - the Makefile, test discovery and runners, mutant definitions and controls JSON;
+  - `gen2/boundaries.toml`, `docs/gen2/BOUNDARIES.md`, INVARIANTS, BUILD-CHARTER, ENVIRONMENT.md;
+  - the Makefile, test discovery and runners;
   - the policy checker and its config, requirements and the image contract;
   - `Jenkinsfile`, `.github/**`.
 
@@ -144,8 +134,7 @@ Engine work fixes **worker budgeting**: mutation jobs come from the container's 
 
 - Outcomes are classified **at the subprocess/tool boundary**: tools invoked by tests emit structured termination evidence (exit cause, exception type, signal, timeout, malformed result, behaviour reached), and the mutation verdict consumes it.
 - A **valid kill** is a policy refusal or the intended behavioural counterexample. An unexpected exception, a signal, a timeout, a malformed result or failure to reach the target behaviour is **INVALID**: distinct from SURVIVED, and also failing acceptance.
-- **Repair the six 2q-a-repair-2 crash mutants into executable behavioural counterfactuals.** Relabelling them as crashes is not a repair.
-- **Narrow, reviewed expectations** cover deliberately tested process failures and the engine's documented non-setup SQLite `IntegrityError` case. There is **no** generic `kill: error` escape.
+- Outcomes are the tool's own classes: normalised assertion failure (kill), error/timeout/crash/internal/missing result (review-required, never a silent kill), syntax-invalid variant, completeness of the report; the nested-child boundary limit is documented. No paired-control ledger is retained. Survivors in changed lines fail acceptance unless an inline reasoned pragma was reviewed by Astra.
 - This belongs with 2q-a's harness work, and its owner is the mutation harness.
 
 ### 3.6 No-egress execution boundary (R8)
@@ -175,7 +164,7 @@ Engine work fixes **worker budgeting**: mutation jobs come from the container's 
   - executed tests and skips;
   - subprocess failure evidence;
   - the protected and integrity reports;
-  - metrics deltas and ledger entries;
+  - `gen2-complexity` results (no ledger or baseline state);
   - the finding-regression set;
   - artifact checksums.
 
@@ -189,11 +178,11 @@ Every check below has an **owner**, a **measured cost**, an **exact claim**, its
 
 | Tier | Checks | Claim / limit | Blocking |
 |---|---|---|---|
-| **T0** | `gen2-boundaries` (import boundaries), `gen2-size`, `gen2-metrics` (edges, fan-in/out, reach, propagation cost, cycles, smells, per-function complexity, ledgered), and the Gate D #4 supported-source guard. **Change-impact summary:** edges added or removed, components touched, reverse-reach (blast radius) of changed files, complexity deltas. **CONTRACT / LEDGER / PROTECTED** banners. | The import graph is gen2-metrics' declared semantics; it excludes injected protocols and calls (`gen2_metrics.py:15–20`). Blast radius is reverse import reach, not runtime impact. | the existing gates yes; the summary and banners are signals |
-| **Acceptance (PR)** | **Interface-change report:** each component's public surface (exported names and signatures), `gen2/schema` JSON schemas, DDL tables and columns, gateway HTTP/MCP routes, diffed against the merge base. A compatibility policy has to be defined before it can block. **Observed runtime coupling:** cross-component *module import* edges recorded during tests, compared like-for-like with the static import graph. A runtime-only *call* through injection is a separately classified observation, not a blind spot. **Test locality / impact map.** | Dynamic traces are coverage-bound: they supplement the static graph and are never ground truth or a complete test-selection oracle. They are **not** the 2q-a root repair, which stays the supported-source contract plus adversarial analyser fixtures. Tracing overhead on timing-sensitive tests is measured first. | reports first; promotion per criteria. A runtime-only import edge not in the static graph is an analyser finding that needs a fix or a reviewed rule amendment. |
+| **T0** | `gen2-boundaries` (import boundaries), `gen2-size`, `gen2-complexity` (radon cyclomatic ceilings; raw and maintainability index advisory); the boundary checker keeps its own `ast` parsing. **Change-impact summary:** edges added or removed, components touched, reverse-reach (blast radius) of changed files, complexity deltas. **CONTRACT / LEDGER / PROTECTED** banners. | The import graph is `gen2-boundaries`' (`tools/check_boundaries.py`); it excludes injected protocols and calls. Blast radius is reverse import reach, not runtime impact. | the existing gates yes; the summary and banners are signals |
+| **Acceptance (PR)** | **Interface-change report:** each component's public surface (exported names and signatures), `gen2/schema` JSON schemas, DDL tables and columns, gateway HTTP/MCP routes, diffed against the merge base. A compatibility policy has to be defined before it can block. **Observed runtime coupling:** cross-component *module import* edges recorded during tests, compared like-for-like with the static import graph. A runtime-only *call* through injection is a separately classified observation, not a blind spot. **Test locality / impact map.** | Dynamic traces are coverage-bound: they supplement the static graph and are never ground truth or a complete test-selection oracle. They are **not** the 2q-a root repair, which stays the boundary checker plus adversarial analyser fixtures (the supported-source contract was retired by S3). Tracing overhead on timing-sensitive tests is measured first. | reports first; promotion per criteria. A runtime-only import edge not in the static graph is an analyser finding that needs a fix or a reviewed rule amendment. |
 | **T2 (gateway DB)** | Contracts for gateway database authority and schema (roles, `servable_records` view, DDL), with their integration-test evidence linked into the bundle. | Covers what the DB suite exercises. | the DB suite yes |
-| **Mutation** | Rule mutants for the boundary and metrics checkers (they already exist for gen2-metrics). | Measures checker test strength. | yes |
-| **Integration / nightly (deep)** | **Absolute audit** report, under its own policy: thresholds, accepted historical debt, escalation. Making existing debt a blocker is an amendment. **Change coupling and hotspots:** a review lead, *not* proof of hidden coupling, since shared task commits and generated files co-change. **Duplication** (token/AST clones; scope and exclusions defined). **Dead code** (reviewed allow-list). **Boundary type contracts** (annotation coverage and type-checking of boundary modules; `Any` and unchecked dependencies don't count as proof). **Stability:** reuse gen2-metrics' existing measures (`gen2_metrics.py:22, :69–74`). **Abstractness/cohesion:** new, advisory. | Detectors produce false positives, and a baseline controls old findings only. Each has scope, exclusions, reviewed exceptions and evidence of being actionable. | absolute audit report-only until its policy is approved. Hotspots stay **advisory** per BUILD-CHARTER:27 unless the operator amends it. The others are report-only until calibrated. |
+| **Mutation** | Rule mutants for the boundary checker (its rules are covered by its own tests). | Measures checker test strength. | yes |
+| **Integration / nightly (deep)** | **Absolute audit** report, under its own policy: thresholds, accepted historical debt, escalation. Making existing debt a blocker is an amendment. **Change coupling and hotspots:** a review lead, *not* proof of hidden coupling, since shared task commits and generated files co-change. **Duplication** (token/AST clones; scope and exclusions defined). **Dead code** (reviewed allow-list). **Boundary type contracts** (annotation coverage and type-checking of boundary modules; `Any` and unchecked dependencies don't count as proof). **Stability:** new, advisory (the metrics tool is retired). **Abstractness/cohesion:** new, advisory. | Detectors produce false positives, and a baseline controls old findings only. Each has scope, exclusions, reviewed exceptions and evidence of being actionable. | absolute audit report-only until its policy is approved. Hotspots stay **advisory** per BUILD-CHARTER:27 unless the operator amends it. The others are report-only until calibrated. |
 | **Nightly Gate D pack** | **Trend series** (every merge's numbers). **Traceability table** generated from a **reviewed mapping** with pinned document identities, separating *declared implementation* from *verified coverage*. The locator check only proves that locators exist. A **sourced Gate D input bundle:** trends, smells, hotspots, observed-coupling findings, interface changes since the last Gate D, duplication/dead-code deltas, the traceability table, defect-family history from REVIEW-LOG, and the debt register. | **Gate D keeps its fresh-session semantic judgment.** The pack lists deltas and explanations; Gate D judges completeness and adequacy. Private flow documents are not published. | report-only |
 | **Scaffolding** | CodeGraphContext and Emerge, regenerated in a **separately provisioned advisory job** that is never a product-build dependency (BUILD-CHARTER:29–33), with source, tool and config identities attached. | Approximate views; any finding must be confirmed in code. | never |
 
@@ -208,7 +197,7 @@ Every check below has an **owner**, a **measured cost**, an **exact claim**, its
 - Scaffolding (CodeGraphContext/Emerge) is refreshed **for the same review pin**, as BUILD-CHARTER:33 requires.
 
 **First-slice additions (from the re-review):**
-- **Non-import coupling.** Include deltas of gen2-metrics' implicit collaboration (C3-attributed self-calls) alongside import reach, keeping the two edge meanings distinct. Compute impact over **both base and candidate** graphs, so deleted edges don't erase their former dependents.
+- **Non-import coupling.** Compute impact over **both base and candidate** graphs, so deleted edges don't erase their former dependents.
 - **Support for Gate D's semantic questions.** A short, reviewed change/risk note and a **release-scenario table** covering crash, replay, fencing, stale lease and outage: the boundaries affected, the named test evidence, and remaining risks or the later phases that own them. Add prompts for duplicate mechanisms, parallel representations and special cases created by repairs. Clone counts and import graphs can't answer these questions.
 - **Trend comparability.** Annotate changes to the analyser, contracts and baseline. Compare on a common analyser version where needed. A discontinuity caused by a change in measurement is never reported as an architectural improvement.
 - **Complexity of the verification tooling,** as a separate **advisory** view: the metrics analyser, the mutation runners and the CI harness. 2q-a showed complexity accumulating there. This is never folded into the production ratchet.
@@ -217,10 +206,10 @@ Every check below has an **owner**, a **measured cost**, an **exact claim**, its
 
 ### 3.10 The architecture ratchet: one authority per property (R11)
 
-- gen2's `gen2-boundaries`, `gen2-size` and `gen2-metrics` stay **blocking in lint** under the current contract. They enforce different properties: gen2-metrics does not replace boundaries or size.
+- gen2's `gen2-boundaries`, `gen2-size` and `gen2-complexity` stay **blocking in lint** under the current contract. They enforce different properties: gen2-complexity does not replace boundaries or size.
 - Platform archgate stays **observe-only**, with its lizard CCN marked **advisory, a different measure**. Its tool and config errors are handled as infrastructure failures, separately from findings.
 - A **narrow, library-owned adapter contract (C3)** is requested only after the gen2 checker is accepted. It names the required checks, normalises reports and exit semantics, and keeps the platform's enforcement slot. There will be **no** general per-repo "disable archgate" switch.
-- **CI never folds ledger entries or rebaselines** (Makefile:57). Only reviewed changes do.
+- There is no ledger or baseline; ceilings change only through reviewed Makefile edits.
 
 ## 4. Qualification before CI becomes the verifier of record (R1)
 
@@ -265,7 +254,7 @@ Gate D stays fresh-session. A CI pass is never acceptance of the tests or of the
   When D2 is approved, the charter's "branch `gen2` only" coder line is narrowly amended to allow task branches and worktrees. That amendment does not authorise extra coders or agent merges.
 
 - **The orchestrator owns shared state** (BUILD-STATE, REVIEW-LOG, phase-status) and **serialises** acceptance, integration and phase transitions.
-- After a rebase onto the accepted integration head, mutation controls and metrics state are **regenerated**. Baselines are never mechanically merged, identity serials are never reused, and stale traces are never accepted.
+- After a rebase onto the accepted integration head, there is no mutation or metrics state to regenerate. Baselines are never mechanically merged, identity serials are never reused, and stale traces are never accepted.
 - **WIP limit** on the review queue.
 - **A second coder** only after measuring review and CI capacity, and only for tasks that are disjoint in *contracts and shared metadata*, not just file paths.
 - **Recorded:** review rounds, family reopenings, queue time, compute time and agent usage as each agent reports it. Account-wide subscription-window changes are never attributed to a single review (per the usage-attribution rule). The product's usage obligations (2e1 capture, the Phase 3 estimator) stay separately owned.
