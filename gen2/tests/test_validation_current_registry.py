@@ -7,7 +7,7 @@ from gen2.tests import router_fixtures as rf
 
 
 class CurrentCases:
-    registry, result = v2.V2Case.registry, v2.V2Case.result
+    registry, result = v2.RouterV2Test.registry, v2.RouterV2Test.result
 
     def validation(self, **changes):
         return {**rf.RecordCase.validation(self), "policy_version": 2, **changes}
@@ -81,7 +81,7 @@ class CurrentCases:
 
 
 class RouterCurrentRegistryTest(CurrentCases, rf.RecordCase):
-    # Delegate explicitly: V2Case.send uses zero-argument super().
+    # Delegate explicitly: RouterV2Test.send uses zero-argument super().
     def send(self, grant=None, op="op_record0001", **sections):
         if "extraction_validations" in sections:
             sections["extraction_validations_v2"] = sections.pop("extraction_validations")
