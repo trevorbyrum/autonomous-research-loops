@@ -3,7 +3,7 @@ import json
 import unittest
 
 from gen2.tests.detailed_support_fixtures import insert_receipt
-from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
+from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
 
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.router_fixtures import FULL, fixture
@@ -38,7 +38,6 @@ class PromotionCases:
 
     def store(self, legacy=False):
         if legacy:
-            historical_receipt(self.doc)
             out = insert_receipt(self.case, self.doc)
         else:
             attach_checks(self.case, self.doc)

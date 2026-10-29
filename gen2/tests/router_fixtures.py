@@ -444,7 +444,8 @@ class RouterTestCase(unittest.TestCase):
         return doc
 
     def verification_receipt(self, verifier: dict) -> dict:
-        return {"receipt_version": "verification-receipt/1", "verification_receipt_id": "ver_000000000001", "topic_id": TOPIC,
+        from gen2.tests.detailed_receipt_fixtures import unreferenced_checks
+        return unreferenced_checks({"receipt_version": "verification-receipt/2", "verification_receipt_id": "ver_000000000001", "topic_id": TOPIC,
                 "claim": {"claim_id": "clm_00000001", "claim_revision": 1}, "source": {"work_id": "wrk_00000001", "source_version": "v1"},
                 "cited_spans": [{"start": 0, "end": 5, "locator": {"kind": "page", "value": "3"}}], "obtained_content_hash": h("7"),
                 "access_tier": "full_text", "requested_for": {"use": "load_bearing", "required_access_tier": "full_text"},
@@ -454,7 +455,7 @@ class RouterTestCase(unittest.TestCase):
                 "verifier_capability_id": verifier["capability_id"], "quote_check_id": None,
                 "checks": {"exact_quote": {"status": "not_applicable", "normalization_version": "n1", "source_artifact_hash": h("7")},
                            "numeric_units": "checked_ok", "denominators": "checked_ok", "negation": "not_applicable", "qualifications": "checked_ok"},
-                "adjudication": None, "verdict": "supports", "verified_at": "2026-09-27T10:05:00Z"}
+                "adjudication": None, "verdict": "supports", "verified_at": "2026-09-27T10:05:00Z"})
 
 
 # -- Workflow and approved-contract worlds -----------------------------------
@@ -870,7 +871,8 @@ class ReceiptCase(AcquisitionCase):
         self.assertEqual(self.router.commit_outcome(self.envelope(self.producer, "op_claim001", payload, refs=[text]))["status"], "committed")
 
     def document(self):
-        return {"receipt_version": "verification-receipt/1", "verification_receipt_id": "ver_fixture001", "topic_id": TOPIC,
+        from gen2.tests.detailed_receipt_fixtures import unreferenced_checks
+        return unreferenced_checks({"receipt_version": "verification-receipt/2", "verification_receipt_id": "ver_fixture001", "topic_id": TOPIC,
             "claim": {"claim_id": "clm_fixture001", "claim_revision": 1}, "source": {"work_id": self.work, "source_version": "v1"},
             "cited_spans": [{"start": 0, "end": 5, "locator": {"kind": "section", "value": "Abstract"}}],
             "obtained_content_hash": self.source["content_hash"], "access_tier": "abstract",
@@ -880,7 +882,7 @@ class ReceiptCase(AcquisitionCase):
             "producer_invocation_id": "inv_capture001", "verifier_invocation_id": "inv_verify0001", "verifier_capability_id": self.verifier["capability_id"],
             "quote_check_id": None, "checks": {"exact_quote": {"status": "not_applicable", "normalization_version": "none/1", "source_artifact_hash": self.source["content_hash"]},
                 "numeric_units": "not_applicable", "denominators": "not_applicable", "negation": "checked_ok", "qualifications": "checked_ok"},
-            "adjudication": None, "verdict": "supports", "verified_at": STAMP}
+            "adjudication": None, "verdict": "supports", "verified_at": STAMP})
 
     def send(self, doc=None, op="op_verify001"):
         payload = {**empty_outcome(self.verifier['invocation_id'], "interim_transition"), "verification_receipts": [doc or self.document()]}
@@ -920,10 +922,10 @@ class AttributedReceiptCase(ReceiptCase):
         seed_checks(self, doc)
 
     def rejected(self, doc=None):
-        # Explicit /1 isolation of acquisition refusals, never a positive basis.
-        from gen2.tests.detailed_receipt_fixtures import historical_receipt
+        # Unreferenced /2 isolates acquisition refusals, never a positive basis.
+        from gen2.tests.detailed_receipt_fixtures import unreferenced_checks
         doc = doc or ReceiptCase.document(self)
-        historical_receipt(doc)
+        unreferenced_checks(doc)
         super().rejected(doc)
 
 
@@ -1299,10 +1301,10 @@ class CaptureCase(CanonicalQuotesCase):
             "accepted_support" if accepted else "provisional")
 
     def refuse(self, records, doc, revision=2):
-        from gen2.tests.detailed_receipt_fixtures import historical_receipt, historical_admission
-        historical_receipt(doc)  # Explicit /1 capture-guard refusal isolation.
+        from gen2.tests.detailed_receipt_fixtures import unreferenced_checks, reference_isolation
+        unreferenced_checks(doc)  # /2 capture-guard refusal isolation.
         before = self.state(exclude=())
-        with historical_admission(self):
+        with reference_isolation(self):
             out = self.send(records, verification_receipts=[doc])
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)
         self.rolled_back(before)

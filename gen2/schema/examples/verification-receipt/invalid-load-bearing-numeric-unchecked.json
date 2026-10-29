@@ -9,6 +9,11 @@
         "op": "replace",
         "path": "/checks/numeric_units",
         "value": "not_checked"
+      },
+      {
+        "op": "replace",
+        "path": "/detailed_checks/numeric_units/outcome",
+        "value": "not_checked"
       }
     ],
     "errors": [

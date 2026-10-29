@@ -4,12 +4,11 @@ Attaching references only reads rows,
 so receipt rollback/replay snapshots include all previously admitted evidence.
 """
 import copy
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from gen2.core import canonical
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 
 OUTCOME = dict(checked_ok='succeeded', checked_problem='failed',
     not_applicable='not_applicable', not_checked='not_checked', unavailable='unavailable')
@@ -77,19 +76,15 @@ def attach_checks(case, doc):
     doc.update(receipt_version='verification-receipt/2', detailed_checks=entries)
 
 
-def historical_receipt(doc):
-    """Explicit /1 isolation/history operand, retaining its original summaries."""
-    doc['receipt_version'] = 'verification-receipt/1'
-    doc.pop('detailed_checks', None)
+def unreferenced_checks(doc):
+    """Current-format summaries without references, for isolated guard probes."""
+    doc.update(receipt_version='verification-receipt/2', detailed_checks={
+        kind: dict(outcome=OUTCOME[doc['checks'][kind]]) for kind in CONTEXT})
+    return doc
 
 
 @contextmanager
-def historical_admission(case):
-    """Explicit old-admission experiments; restore exact subject predicates/order."""
-    catalog = case.rows(TRIGGERS)
-    checker = getattr(getattr(case, 'router', None), '_detailed_checks', None)
-    with patch.object(checker, '_require_performed_references', return_value=None) if checker else nullcontext():
-        try:
-            yield
-        finally:
-            restore_triggers(case, catalog=catalog)
+def reference_isolation(case):
+    """Isolate refusal guards from performed-reference admission, using /2."""
+    with patch.object(case.router._detailed_checks, '_require_performed_references', return_value=None):
+        yield

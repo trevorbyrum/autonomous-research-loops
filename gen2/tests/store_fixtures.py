@@ -466,7 +466,7 @@ class StoreTestCase(unittest.TestCase):
         capability = capability or self.rows("SELECT capability_id FROM invocations WHERE invocation_id = ?", verifier)[0][0]
         spans = [{"start": 0, "end": 5, "locator": {"kind": "page", "value": "3"}}]
         acquisition = {"route": "gateway:crossref", "retrieved_at": T, "gateway_call_ref": gateway, "cache_reuse": False}
-        doc = {"receipt_version": "verification-receipt/1", "verification_receipt_id": rid, "topic_id": TOPIC,
+        doc = {"receipt_version": "verification-receipt/2", "verification_receipt_id": rid, "topic_id": TOPIC,
                "claim": {"claim_id": claim[0], "claim_revision": claim[1]}, "source": {"work_id": work, "source_version": "v1"},
                "cited_spans": spans, "obtained_content_hash": obtained, "access_tier": tier,
                "requested_for": {"use": use, "required_access_tier": required}, "acquisition": acquisition,
@@ -476,6 +476,8 @@ class StoreTestCase(unittest.TestCase):
                "checks": {"exact_quote": {"status": status, "normalization_version": "n1", "source_artifact_hash": source_artifact or self.source_hash},
                           **(checks or self.CHECKS_OK), **({"tier0": {"checker": "minicheck", "checker_version": "1", "signal": tier0}} if tier0 else {})},
                "adjudication": adjudication, "verdict": verdict, "verified_at": T}
+        from gen2.tests.detailed_receipt_fixtures import unreferenced_checks
+        unreferenced_checks(doc)
         for key, value in (receipt_overrides or {}).items():
             doc[key] = value
         from gen2.tests.extraction_receipt_fixtures import attach
@@ -817,11 +819,11 @@ class OwnCases:
         return send(self.case, self.doc)
 
     def refuse(self):
-        # Historical /1 operands isolate the existing extraction predicate.
-        from gen2.tests.detailed_receipt_fixtures import historical_receipt, historical_admission
-        historical_receipt(self.doc)
+        # Unreferenced /2 operands isolate the existing extraction predicate.
+        from gen2.tests.detailed_receipt_fixtures import unreferenced_checks, reference_isolation
+        unreferenced_checks(self.doc)
         before = self.case.state(exclude=())
-        with historical_admission(self.case):
+        with reference_isolation(self.case):
             out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)
         self.assertEqual(out.get('reason'), 'payload_invalid', out)
