@@ -108,6 +108,10 @@ enforced_at = [
 ]
 tests = [
   "gen2/tests/test_operator_restart.py",
+  "gen2/tests/test_station_config.py::RestartPolicyTest",
+  "gen2/tests/test_router_registries.py::RegistryRestartTest",
+  "gen2/tests/test_router_amendments.py::AmendmentRestartTest",
+  "gen2/tests/test_router_scheduling.py::SchedulingRestartTest",
 ]
 
 [invariant.RG-U]
@@ -163,6 +167,9 @@ enforced_at = [
 tests = [
   "gen2/tests/test_router_restart.py::RestartTest.test_a_committed_result_replays_without_its_staged_bytes",
   "gen2/tests/test_router_commit.py::ReplayAndIdentityTest",
+  "gen2/tests/test_store_ddl_invocations.py::HashContractTest",
+  "gen2/tests/test_store_ddl_invocations.py::CommitFencingTest",
+  "gen2/tests/test_store_examples.py::ExampleWorldTest.test_commit_receipt_cannot_describe_another_row",
 ]
 
 [invariant.C-6]
@@ -222,6 +229,8 @@ enforced_at = [
 tests = [
   "gen2/tests/test_check_boundaries.py::BoundaryCheckerTest",
   "gen2/tests/test_store_history.py",
+  "gen2/tests/test_check_ddl_rules.py::DdlRuleTest",
+  "gen2/tests/test_sqlite_gate.py::ConnectionContractGateTest",
 ]
 
 [invariant.C-12]
@@ -272,6 +281,12 @@ tests = [
   "gen2/tests/test_json_global_admission.py::GlobalAdmissionTest.test_store_all_columns_control",
   "gen2/tests/test_json_member_admission.py::ColumnCoverageTest.test_json_columns_are_prepared",
   "gen2/tests/test_json_member_admission.py::AdmissionTest.test_store_nul",
+  "gen2/tests/test_canonical.py",
+  "gen2/tests/test_canonical_decimal.py",
+  "gen2/tests/test_writer.py::CanonicalStorageTest",
+  "gen2/tests/test_writer.py::IdentityBoundTest",
+  "gen2/tests/test_writer.py::ReceiptHashContractWriterTest",
+  "gen2/tests/test_store_ddl_invocations.py::HashContractTest",
 ]
 
 [invariant.L-1]
@@ -298,6 +313,9 @@ enforced_at = [
 tests = [
   "gen2/tests/test_store_ddl_invocations.py::InvocationLifecycleTest.test_running_requires_process_identity_not_a_pid",
   "gen2/tests/test_store_ddl_invocations.py::InvocationLifecycleTest.test_process_identity_is_write_once",
+  "gen2/tests/test_supervisor_jobs.py::IdentityTest",
+  "gen2/tests/test_supervisor_jobs.py::LookupTest",
+  "gen2/tests/test_supervisor_jobs.py::AbandonTest",
 ]
 
 [invariant.L-4]
@@ -309,7 +327,10 @@ enforced_at = [
 ]
 tests = [
   "gen2/tests/test_router_lifecycle.py::UnknownTest.test_a_terminal_resolution_needs_confirmed_descendants_and_a_finding",
+  "gen2/tests/test_router_lifecycle.py::UnknownTest",
   "gen2/tests/test_supervisor_crash.py::CrashFaults",
+  "gen2/tests/test_store_supervision.py::UnknownHoldTest",
+  "gen2/tests/test_store_supervision.py::RecordedRequestTest",
 ]
 
 [invariant.L-5]
@@ -329,6 +350,9 @@ enforced_at = [
 tests = [
   "gen2/tests/test_router_scheduling.py::RequeueTest.test_policy_requeues_only_transient_ends",
   "gen2/tests/test_store_registries.py::RetryTest",
+  "gen2/tests/test_supervisor_requeue.py::Requeues.test_the_policy_budget_ends_in_a_hold_not_a_run",
+  "gen2/tests/test_supervisor_serialization.py::Serialized",
+  "gen2/tests/test_supervisor_budgets.py::BudgetFaults",
 ]
 
 [invariant.L-7]
@@ -349,6 +373,10 @@ enforced_at = [
 tests = [
   "gen2/tests/test_router_lifecycle.py::FailureTest.test_a_parents_lease_is_not_released_while_a_delegate_is_live",
   "gen2/tests/test_supervisor_delegates.py::ParentEnds",
+  "gen2/tests/test_router_ops.py::ClaimTest",
+  "gen2/tests/test_store_ddl_invocations.py::AdmissionAndLeaseTest",
+  "gen2/tests/test_store_ddl_invocations.py::LeaseFencingTest",
+  "gen2/tests/test_supervisor_requeue.py::DelegateContextTest",
 ]
 
 [invariant.L-9]
@@ -566,6 +594,10 @@ enforced_at = [
 ]
 tests = [
   "gen2/tests/test_router_amendments.py",
+  "gen2/tests/test_router_evidence.py::ProductionAndAdoptionTest",
+  "gen2/tests/test_store_ddl_evidence.py::ContractAdmittedSupportTest",
+  "gen2/tests/test_router_evidence_wiring.py::UnrecordedPromotionTest",
+  "gen2/tests/test_router_workflow.py::ScopingClaimLinkTest",
 ]
 
 [invariant.D-1]
@@ -685,6 +717,12 @@ enforced_at = [
 tests = [
   "gen2/tests/test_store_ddl_contracts.py::ContractGovernanceTest",
   "gen2/tests/test_router_amendments.py::AmendmentApprovalTest",
+  "gen2/tests/test_router_amendments.py::ImpactTest",
+  "gen2/tests/test_router_amendments.py::InventoryImpactTest",
+  "gen2/tests/test_router_amendments.py::BriefImpactTest",
+  "gen2/tests/test_router_amendments.py::StandingTest",
+  "gen2/tests/test_store_registries.py::AmendmentImpactTest",
+  "gen2/tests/test_confidence_contract.py::SchemeImpactTest",
 ]
 
 [invariant.G-2]
@@ -781,6 +819,7 @@ enforced_at = [
 tests = [
   "gen2/tests/test_router_workflow.py",
   "gen2/tests/test_store_workflow.py",
+  "gen2/tests/test_router_ops.py::OperatorDecisionTest",
 ]
 
 [invariant.G-9]
@@ -825,6 +864,8 @@ enforced_at = [
 tests = [
   "gen2/tests/test_router_workflow.py",
   "gen2/tests/test_router_workflow.py::ReviewClosureTest.test_an_episode_opened_after_admission_is_not_closed_whatever_the_clock_read",
+  "gen2/tests/test_router_scheduling.py::SignalQueueTest",
+  "gen2/tests/test_store_registries.py::SignalQueueEpisodeTest",
 ]
 
 [invariant.P-1]
@@ -976,6 +1017,7 @@ enforced_at = [
 tests = [
   "gen2/tests/test_gateway_ownership.py",
   "gen2/tests/test_gateway_routes.py",
+  "gen2/tests/test_gateway_exchange.py",
 ]
 
 [invariant.B-1]
