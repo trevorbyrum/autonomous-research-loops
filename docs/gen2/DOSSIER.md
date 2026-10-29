@@ -173,6 +173,12 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
      - The production-code rows leave the pruning table (Gate S keeps them).
      - The 13 unlisted T1 protector groups become traceability locators.
      - The tier table is **not yet approved**: Trevor asked how it was tiered and on what research basis.
+- **2026-10-29, later rulings (Trevor):**
+  - **Batch F F2: option A.** Operator replies stop reflecting caller-supplied text. Refusals use fixed typed descriptions. JSON-RPC ids are admitted only from a closed plain grammar. The final-bytes check stays as a backstop.
+  - **The tier table is approved:** `private/reviews/test-portfolio/TIERS-v2.md`, with Astra's two-way review taking precedence (L1 2,831 · L2 3 · L3 40 · L4 9).
+    - No nightly-only lane is built.
+    - The nightly review's focus moves to duplicates, near-duplicate parametrization, per-KIND repetition, weakened tests, and dead tests and helpers.
+    - A one-off consolidation sweep runs under ruling 7.
 
 ## Current contract
 

@@ -11,10 +11,10 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
     - the move-aware mutation scope (PR #73, Sol, measurement running), which unblocks Batch B, then A, O-5 and 6b1′ PR 1;
     - the nightly test-portfolio review, in its dry-run week.
   - **Done 2026-10-29:** O-10 (PR #75), Docs-1 (PR #74), Prune-1 (PR #76; collected ids 2,883 → 2,862).
-  - **Held for Trevor:** Batch F F2 (PR #54); TIERS-v2 approval.
+  - **In flight (2026-10-29 evening):** Batch F round 3, option A (Sol, PR #54); the mutation-scope round 2, B1 timeout classification (Sol, PR #73); the test consolidation sweep (Sol, read-only); the Fable ruling on the 20261028 baseline strengthenings.
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`.
 - **Last verifier result:** Prune-1 `759a42d`, gen2-accept exit 0 in 722 s (8 shards, 2,862 tests).
-- **Blockers:** none. Trevor ruled on 2026-10-29 (DOSSIER): mutation scope, Batch F option A, CI-DESIGN, C-4, O-10, and test-pruning items 7–11. **Open:** the tier-table approval, pending his review of the tiering method.
+- **Blockers:** none. Trevor ruled on 2026-10-29 (DOSSIER): mutation scope, Batch F option A, CI-DESIGN, C-4, O-10, and test-pruning items 7–11. The tier table is approved (TIERS-v2 plus Astra), and Batch F option A was chosen.
 - **Gate S:** last run was the **full pass at `3a579af`** (2026-10-27; rulings O-1 to O-11 approved). Gate S #2's rulings S2-1 to S2-7 were approved 2026-10-27.
 - **What's next:** after the operator decisions, Batch B → A → O-5 → 6b1′ PR 1 → 6b2′ → 2e1-minimum → 2e2-minimum → 2f. Batch F, then `raw_exchange`, on the second coder. Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
