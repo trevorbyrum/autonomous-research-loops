@@ -8,11 +8,12 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 - **Open task:** 2d, slice 6. 6a is complete. The checks cut-back S1–S6, S2b–S2d and the gateway-mutant and trigger-order retirements are complete.
   - **Complete:** the Gate S full-pass batches C, C-fu, D1, D2 (a1–a3, b), E, O-9 (a, b); R2 (INVARIANTS rules plus generated traceability); 6b1′ PR 0.
   - **In flight:**
-    - the move-aware mutation scope (Sol, `gen2-wt-2`), which unblocks Batch B, then A, O-5 and 6b1′ PR 1;
-    - Batch F round 2, option A (Sol, shared tree, PR #54);
-    - the nightly test-portfolio review, in its dry-run week (08:00 and 12:00 UTC).
+    - the move-aware mutation scope (PR #73, Sol, measurement running), which unblocks Batch B, then A, O-5 and 6b1′ PR 1;
+    - the nightly test-portfolio review, in its dry-run week.
+  - **Done 2026-10-29:** O-10 (PR #75), Docs-1 (PR #74), Prune-1 (PR #76; collected ids 2,883 → 2,862).
+  - **Held for Trevor:** Batch F F2 (PR #54); TIERS-v2 approval.
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`.
-- **Last verifier result:** Riders-1 `97bcda3`, gen2-accept exit 0 in 706 s (8 shards).
+- **Last verifier result:** Prune-1 `759a42d`, gen2-accept exit 0 in 722 s (8 shards, 2,862 tests).
 - **Blockers:** none. Trevor ruled on 2026-10-29 (DOSSIER): mutation scope, Batch F option A, CI-DESIGN, C-4, O-10, and test-pruning items 7–11. **Open:** the tier-table approval, pending his review of the tiering method.
 - **Gate S:** last run was the **full pass at `3a579af`** (2026-10-27; rulings O-1 to O-11 approved). Gate S #2's rulings S2-1 to S2-7 were approved 2026-10-27.
 - **What's next:** after the operator decisions, Batch B → A → O-5 → 6b1′ PR 1 → 6b2′ → 2e1-minimum → 2e2-minimum → 2f. Batch F, then `raw_exchange`, on the second coder. Task 2g follows 2f.

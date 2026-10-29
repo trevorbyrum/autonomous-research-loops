@@ -3831,3 +3831,31 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **Dispatched:**
   - Sol `0406d97b`: the move-aware mutation scope (`gen2-wt-2`). Batch B, A, O-5 and 6b1′ PR 1 follow it.
   - Sol `6dc32759`: Batch F round 2 (shared tree, PR #54).
+
+## 2026-10-29: O-10, Docs-1 and Prune-1 merged; Batch F BLOCK F2; tier table v2; mutation scope in progress
+- **O-10** (PR #75, `2c27a6d`, Sol `704cbad2`): the receipt schema enum now admits only `verification-receipt/2`. New `/1` submissions are refused with `payload_invalid`. Recorded `/1` rows read back unchanged.
+  - One literal `/1` stored-row non-support witness is kept.
+  - DEPLOYMENT-CONTRACT now says 2f runs on a store newly created after O-10.
+  - Three fixture files were added to scope by the orchestrator, for minimal `/1`→`/2` conversions.
+  - Astra (`54e36a27`) PASS. Verifier exit 0 in 899 s. Merged.
+- **Docs-1** (PR #74, `801ced5`, Sonnet `f8675827`): the C-4 wording ("the resulting topic state revision"), the CI-DESIGN amendments with trigger-order deleted, and the traceability additions for the 13 unlisted T1 protector groups.
+  - **Astra rounds 1–2 BLOCK B1:** class- and file-level locators don't guard individual methods, as Astra's deletion probes showed.
+  - **Round 3 accepted:** 112 method locators in total, and all 35 deletion probes now fail.
+  - The first verifier went red on host contention (load about 24, from a coder's mutation measurement), because `test_recursive_make_reuses_coverage` uses a 15 s nested-make timeout. Rerun at load 3.35: exit 0 in 724 s. Merged.
+  - **Rule:** verifiers wait for every heavy gen2 unit, and for load below 8.
+- **Prune-1** (PR #76, `759a42d`, Sonnet `5392cb24`), the first test-portfolio reduction:
+  - the 21 exact-duplicate `V2Case` executions merged into `RouterV2Test`, taking collected ids from 2,883 to 2,862, with 31 bodies and 56 assertion sites preserved;
+  - the three `FailClosedTest` strengthenings, per Fable's C1–C3.
+  - Astra (`1eaf87f9`) PASS, confirming the payloads are byte-identical across the changed `super()` resolution. Verifier exit 0 in 722 s. Merged.
+- **Batch F round 2** (`3ecd186`, merged with gen2 as `25892e1`): option A, the final-wire-bytes boundary. F1's reproductions are closed.
+  - **Astra (`83b652c3`) BLOCK F2:** composed percent and JSON spellings of an escape pass the check. Astra classes the family as a MITIGATION.
+  - Sent to Trevor with options: A, stop reflecting caller text (recommended); B, a decode-closure check; C, accept as mitigation.
+  - The superseded verifier was stopped.
+- **Tier table v2, component level** (Fable `c6cf3e8f`, then Astra's two-way review `ddf190f3`):
+  - Corrected totals: L1 2,831 · L2 3 · L3 40 · L4 9.
+  - After the exceptions, at most 12 ids (64 lines) could move, and no deletion is established.
+  - Fable's mutation-saving claim was false: tools are never mutation targets.
+  - **Conclusion:** tier-based pruning yields almost nothing here. The reduction comes from duplicate merges, parametrization and strengthening.
+  - Awaiting Trevor's approval.
+- **Mutation scope** (PR #73, Sol `0406d97b`): the move-aware scope takes the Batch B campaign from 258 to 94 mutants. Parallel stage 1 is implemented. The measurement is still running, with stage-2 survivors costing hours.
+
