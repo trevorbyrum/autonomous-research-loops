@@ -9,7 +9,12 @@ import time
 from types import SimpleNamespace
 import unittest
 
-from gen2_coverage import Baseline
+from attrs import asdict
+from cosmic_ray.mutating import mutate_and_test
+from cosmic_ray.work_item import MutationSpec
+import shlex
+
+from gen2_coverage import Baseline, source_state
 from gen2_ci_evidence import complete_union, parallel, partition, tests
 
 MARKER = "GEN2_MUTATION_RESULT "
@@ -96,6 +101,16 @@ def normalize(result):
 
 
 def run(config):
+    if mutations := config.pop("mutations", None):
+        # This process owns a separate checkout. Every test still starts fresh.
+        before = source_state()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json") as request:
+            json.dump(config, request)
+            request.flush()
+            result = mutate_and_test([MutationSpec(**m) for m in mutations],
+                shlex.join([sys.executable, __file__, request.name]), 7200)
+        print(json.dumps(dict(result=asdict(result), before=before, after=source_state())), flush=True)
+        return 0
     if config.get("coverage") and not config["tests"] and config.get("workers", 1) > 1:
         return subprocess.call([sys.executable, str(ROOT / "tools/gen2_test.py"), "--workers", str(config["workers"])],
             env={**os.environ, "GEN2_TEST_COVERAGE": config["coverage"]})
@@ -137,6 +152,7 @@ def run(config):
     except SyntaxError as exc:
         print(MARKER + json.dumps(dict(kind="SYNTAX_INVALID", detail=str(exc))), flush=True)
         return 86
+    before = source_state() if config.get("identity") else None
     stages = []
     while True:
         started = time.monotonic()
@@ -176,13 +192,15 @@ def run(config):
         print("\n".join(line for line in output.splitlines() if not line.startswith(MARKER)))
         stages.append(dict(stage=config.get("stage", "baseline"), tests=config["tests"],
                            seconds=time.monotonic() - started, verdict=verdict, **data))
-        if config.get("stage") not in (1, "1b") or verdict != "SURVIVED":
+        if config.get("stage_only") or config.get("stage") not in (1, "1b") or verdict != "SURVIVED":
             break
         config.update(tests=config["full_tests"], stage=2)
-    print(MARKER + json.dumps({**data, "stages": stages}), flush=True)
+    identity = dict(source_before=before, source_after=source_state()) if before else {}
+    print(MARKER + json.dumps({**data, "stages": stages, **identity}), flush=True)
     return returncode if returncode in (0, 1) else 86
 
 
 if __name__ == "__main__":
     argument = sys.argv[1]
+    os.chdir(ROOT)
     sys.exit(run(json.loads(argument if argument.startswith("{") else Path(argument).read_text())))
