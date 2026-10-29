@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from unittest import mock
 
 from gen2.operator.auth import Credentials
 from gen2.tests import operator_fixtures as of
@@ -76,24 +77,89 @@ class McpTest(McpClient, of.CommandWorld):
 
 
 class McpWireTest(WireClient, of.OperatorTestCase):
-    def test_serialized_ids_are_refused_in_success_and_error_envelopes(self) -> None:
+    def test_composed_spelling_ids_are_refused_for_success_and_error(self) -> None:
+        for ident in ("%5Cu006eABCDEFGHIJKLMNO", r"\u00%36%65ABCDEFGHIJKLMNO", r"\u00256eABCDEFGHIJKLMNO"):
+            for method in ("ping", "unknown-method"):
+                with self.subTest(ident=ident, method=method):
+                    raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": ident, "method": method})
+                    self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 400 Bad Request")
+                    self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+                        b'{"error": {"code": -32600, "data": {"reason": "request_invalid", "status": "refused"}, "message": "invalid request"}, "id": null, "jsonrpc": "2.0"}')
+
+    def test_ids_outside_the_closed_grammar_get_a_null_id(self) -> None:
+        for ident in ("plain%id", r"plain\id", 'plain"id', "plain/id", "plain id", "é", "a" * 65, "", 2**53, -(2**53), True, 1.0, None):
+            with self.subTest(ident=ident):
+                raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": ident, "method": "ping"})
+                self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+                    b'{"error": {"code": -32600, "data": {"reason": "request_invalid", "status": "refused"}, "message": "invalid request"}, "id": null, "jsonrpc": "2.0"}')
+
+    def test_plain_ids_are_echoed_byte_exact(self) -> None:
+        for ident, expected in (
+            ("Plain_9.a-Z", b'{"id": "Plain_9.a-Z", "jsonrpc": "2.0", "result": {}}'),
+            ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.",
+             b'{"id": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.", "jsonrpc": "2.0", "result": {}}'),
+            ("x", b'{"id": "x", "jsonrpc": "2.0", "result": {}}'),
+            (0, b'{"id": 0, "jsonrpc": "2.0", "result": {}}'),
+            (9007199254740991, b'{"id": 9007199254740991, "jsonrpc": "2.0", "result": {}}'),
+            (-9007199254740991, b'{"id": -9007199254740991, "jsonrpc": "2.0", "result": {}}')):
+            with self.subTest(ident=ident):
+                self.assertEqual(self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": ident, "method": "ping"}).partition(b"\r\n\r\n")[2], expected)
+        invalid = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "plain%id", "method": "ping"})
+        self.assertEqual(invalid.split(b"\r\n", 1)[0], b"HTTP/1.0 400 Bad Request")
+
+    def test_mcp_numbers_and_duplicate_members_remain_strict(self) -> None:
+        for raw in (
+            b'[]',
+            b'null',
+            b'1',
+            b'"plain"',
+            b'{"jsonrpc":"2.0","id":NaN,"method":"ping"}',
+            b'{"jsonrpc":"2.0","id":1,"id":2,"method":"ping"}',
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":1,"x":2}}}',
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":1.0000000000000001}}}',
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":1e-999}}}',
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":9007199254740992}}}',
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":NaN}}}',
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":"\\ud800"}}}',
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":"\xff"}}}'):
+            with self.subTest(raw=raw):
+                self.assertEqual(self.wire("POST", "/mcp", raw).partition(b"\r\n\r\n")[2],
+                    b'{"reason": "request_invalid", "status": "refused"}')
+        self.assertEqual(self.wire("POST", "/mcp",
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":0.1}}}').partition(b"\r\n\r\n")[2],
+            b'{"id": 1, "jsonrpc": "2.0", "result": {}}')
+        # REST command data still validates the entire document, including id.
+        self.assertEqual(self.wire("POST", "/v1/commands/request_cancel", b'{"id":9007199254740992}').partition(b"\r\n\r\n")[2],
+            b'{"reason": "request_invalid", "status": "refused"}')
+
+    def test_token_ids_are_refused_in_success_and_error_envelopes(self) -> None:
         for method in ("ping", "unknown-method"):
             with self.subTest(method=method):
-                raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "\nABCDEFGHIJKLMNO", "method": method})
+                raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "nABCDEFGHIJKLMNO", "method": method})
                 self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 400 Bad Request")
                 self.assertEqual(raw.partition(b"\r\n\r\n")[2],
                     b'{"error": {"code": -32600, "data": {"reason": "request_invalid", "status": "refused"}, "message": "invalid request"}, "id": null, "jsonrpc": "2.0"}')
                 self.assertNotIn(b"nABCDEFGHIJKLMNO", raw)
 
     def test_nested_tool_text_stays_valid_json(self) -> None:
-        raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "request-7", "method": "tools/call",
-            "params": {"name": "request_cancel", "arguments": {"\nABCDEFGHIJKLMNO": 1}}})
+        for key in ("\nABCDEFGHIJKLMNO", "%5Cu006eABCDEFGHIJKLMNO", r"\u00%36%65ABCDEFGHIJKLMNO", r"\u00256eABCDEFGHIJKLMNO"):
+            with self.subTest(key=key):
+                raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "request-7", "method": "tools/call",
+                    "params": {"name": "request_cancel", "arguments": {key: 1}}})
+                body = raw.partition(b"\r\n\r\n")[2]
+                self.assertEqual(body,
+                    b'{"id": "request-7", "jsonrpc": "2.0", "result": {"content": [{"text": "{\\"status\\": \\"refused\\", \\"reason\\": \\"request_invalid\\", \\"detail\\": \\"operation refused\\"}", "type": "text"}], "isError": true}}')
+                self.assertEqual(json.loads(json.loads(body)["result"]["content"][0]["text"]),
+                                 {"status": "refused", "reason": "request_invalid", "detail": "operation refused"})
+
+    def test_server_tool_text_passes_the_inner_boundary(self) -> None:
+        with mock.patch.object(self.engine.service._backend, "request_cancel", return_value={"status": "recorded", "detail": "\nABCDEFGHIJKLMNO"}):
+            raw = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "request-7", "method": "tools/call",
+                "params": {"name": "request_cancel"}})
         body = raw.partition(b"\r\n\r\n")[2]
         self.assertEqual(body,
-            b'{"id": "request-7", "jsonrpc": "2.0", "result": {"content": [{"text": "{\\"status\\": \\"refused\\", \\"reason\\": \\"request_invalid\\", \\"detail\\": \\"[credential]\\"}", "type": "text"}], "isError": true}}')
-        self.assertEqual(json.loads(json.loads(body)["result"]["content"][0]["text"]),
-                         {"status": "refused", "reason": "request_invalid", "detail": "[credential]"})
-        self.assertNotIn(b"nABCDEFGHIJKLMNO", raw)
+            b'{"id": "request-7", "jsonrpc": "2.0", "result": {"content": [{"text": "{\\"status\\": \\"recorded\\", \\"detail\\": \\"[credential]\\"}", "type": "text"}], "isError": false}}')
+        self.assertEqual(json.loads(json.loads(body)["result"]["content"][0]["text"]), {"status": "recorded", "detail": "[credential]"})
 
     def test_an_all_digit_token_is_not_echoed_as_a_numeric_id(self) -> None:
         self.restart(Credentials({"alice": of.OPERATOR_TOKEN, "bob": "9007199254740991"}))
@@ -110,7 +176,7 @@ class McpWireTest(WireClient, of.OperatorTestCase):
             b'{"id": "ordinary", "jsonrpc": "2.0", "result": {"content": [{"text": "{\\"status\\": \\"refused\\", \\"reason\\": \\"no_such_route\\"}", "type": "text"}], "isError": true}}')
         # Pair the byte-identical control with a sensitive reply, independently
         # of the nested-text witness above, to qualify the boundary fault.
-        sensitive = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "\nABCDEFGHIJKLMNO", "method": "ping"})
+        sensitive = self.wire("POST", "/mcp", {"jsonrpc": "2.0", "id": "nABCDEFGHIJKLMNO", "method": "ping"})
         self.assertEqual(sensitive.split(b"\r\n", 1)[0], b"HTTP/1.0 400 Bad Request")
 
 
@@ -170,7 +236,7 @@ class McpEnvelopeTest(McpClient, of.CommandWorld):
                 self.assertEqual(self.mcp({**self.valid(), "id": ident}), (400, {"jsonrpc": "2.0", "id": None,
                     "error": {"code": -32600, "message": "invalid request", "data": {"status": "refused", "reason": "request_invalid"}}}))
         self.assertEqual(self.state(exclude=()), before)
-        self.assertEqual(self.rpc("ping", ident="request-100%"), (200, {"jsonrpc": "2.0", "id": "request-100%", "result": {}}))
+        self.assertEqual(self.rpc("ping", ident="request-100"), (200, {"jsonrpc": "2.0", "id": "request-100", "result": {}}))
         code, reply = self.mcp({**self.valid(), "id": "request-7"})
         self.assertEqual((code, reply["id"], reply["result"]["isError"]), (200, "request-7", False))
 

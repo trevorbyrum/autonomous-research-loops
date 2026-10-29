@@ -52,8 +52,9 @@ refused before anything but the route is read:
      re-queue or recovery, a brief closure's closed_by) and capability_id are
      refused if the body names them (400 authority_in_request), and the
      others are then set from the principal.
-  6. The router's operation answers (200): its reply is the answer, whatever
-     it decided — its `status` says what happened, a refusal included.
+  6. The backend answers (200): its status and required result facts say
+     what happened. Refusal text and rejected record ids are replaced with
+     fixed descriptions; a recovery's caller-supplied reason is omitted.
 
 Capability-bearing calls (claim, record_transition, record_observation,
 commit_outcome, reconcile, invocation_status, a supervisor's cancellation)
@@ -75,8 +76,9 @@ serialized reply passes the token boundary in wire.py (Trevor's option A,
 2026-10-29). It repairs offending field values and rechecks the bytes;
 failure becomes the transport's fixed generic error. A tool's own serialized
 JSON passes before nesting, and the complete envelope passes again. MCP ids
-are checked in their serialized form before dispatch and refused rather than
-changed. Plain access diagnostics use the same byte predicate.
+must first match a closed plain-ASCII grammar or the safe integer range,
+then pass the serialized-byte check before dispatch. Unsafe ids are refused
+rather than changed. Plain access diagnostics use the same byte predicate.
 """
 from __future__ import annotations
 
@@ -139,8 +141,34 @@ MAX_ID = 2**53 - 1
 
 def _request_id(ident: object) -> bool:
     """A JSON-RPC id as MCP allows it: a string, or an integer (never a
-    boolean, a float, null or a structure), bounded."""
-    return (isinstance(ident, str) and 0 < len(ident) <= 200) or (type(ident) is int and -MAX_ID <= ident <= MAX_ID)
+    boolean, a float, null or a structure). Strings have a closed ASCII
+    grammar: the protocol requires this one caller value to be echoed."""
+    return (isinstance(ident, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", ident) is not None) \
+        or (isinstance(ident, int) and not isinstance(ident, bool) and -MAX_ID <= ident <= MAX_ID)
+
+
+def _backend_reply(reply: dict) -> dict:
+    """Map backend diagnostics, never reflect unvalidated request text.
+
+    Refusal reasons are server-defined codes; detail and rejected record ids
+    can quote arbitrary request keys, values or paths. Keep only the code and
+    the station's termination fact. Successful records retain their required
+    identities and results, but not recovery's caller-supplied reason.
+    """
+    if reply.get("status") in ("refused", "rejected"):
+        mapped = {key: reply[key] for key in ("status", "reason", "termination") if key in reply}
+        mapped["detail"] = "operation refused"
+        return mapped
+    return {key: value for key, value in reply.items() if key != "reason"}
+
+
+def _unique_members(pairs: list[tuple[str, object]]) -> dict:
+    members = {}
+    for key, value in pairs:
+        if key in members:
+            raise ValueError("duplicate member")
+        members[key] = value
+    return members
 
 
 def _status_query(query: str) -> dict | None:
@@ -180,7 +208,7 @@ class OperatorService:
         if path == "/v1/status" and method == "GET":
             return self._answer(principal, method_label, route, *self._status(principal, _status_query(query)))
         if path == "/mcp" and method == "POST":
-            body, error = self._body(length, read)
+            body, error = self._body(length, read, mcp=True)
             if error is not None:
                 return self._answer(principal, method_label, route, error[0], {"status": "refused", "reason": error[1]})
             code, reply, route = self._mcp(principal, body)
@@ -204,7 +232,14 @@ class OperatorService:
         if arguments is None or set(arguments) - {"topic"} or not isinstance(arguments.get("topic", ""), str):
             return 400, {"status": "refused", "reason": "request_invalid"}
         facts = self._backend.status({} if "topic" not in arguments else {"topic_id": arguments["topic"]})
-        return 200, status_view.compose(facts, self._incidents()) if facts.get("status") == "ok" else facts
+        if facts.get("status") in ("ok",):
+            for fact in facts["capability_facts"]:
+                # Rejected bundle diagnostics can retain unvalidated keys.
+                # Map the reply view; the recorded fact stays unchanged.
+                if (fact["capability"], fact["state"]) in (("config-bundle", "failing"),):
+                    fact["detail"] = "configuration rejected"
+            return 200, status_view.compose(facts, self._incidents())
+        return 200, _backend_reply(facts)
 
     def _command(self, principal: Principal, name: str, body: dict) -> tuple[int, dict]:
         """One command, the same for every transport: the role it needs, who
@@ -217,7 +252,7 @@ class OperatorService:
             return 400, {"status": "refused", "reason": "authority_in_request",
                          "detail": f"{', '.join(named)}: who acts is the authenticated principal, never the request"}
         request = {**body, **{field: value(principal) for field, value in supplied.items()}}
-        return 200, getattr(self._backend, name)(request)
+        return 200, _backend_reply(getattr(self._backend, name)(request))
 
     def _mcp(self, principal: Principal, message: dict) -> tuple[int, dict, str]:
         """Stateless MCP over HTTP (DEPLOYMENT-CONTRACT.md §1.1: one JSON-RPC
@@ -229,7 +264,8 @@ class OperatorService:
         strictly as a command's body (Astra 1e review finding 4; JSON-RPC 2.0,
         MCP): members only jsonrpc, id, method and params; jsonrpc exactly
         "2.0"; method a string; id, where present, a string or an integer
-        (never null, a float, a boolean or a structure); params, where
+        (strings matching [A-Za-z0-9_.-]{1,64}, integers in the safe range;
+        never null, a float, a boolean or a structure); params, where
         present, an object (-32600 Invalid Request otherwise). An id that
         carries a configured token in its serialized bytes is refused
         before dispatch and answered with a null id: echoing it would repeat
@@ -287,7 +323,7 @@ class OperatorService:
     def _rpc_refusal(ident, code: int, message: str) -> tuple[int, dict, str]:
         return 400, {"jsonrpc": "2.0", "id": ident, "error": {"code": code, "message": message, "data": {"status": "refused", "reason": "request_invalid"}}}, "/mcp"
 
-    def _body(self, length: str | None, read: Callable[[int], bytes]) -> tuple[dict | None, tuple[int, str] | None]:
+    def _body(self, length, read: Callable[[int], bytes], mcp: bool = False):
         if length is None:
             return None, (411, "length_required")
         if not LENGTH.fullmatch(length):
@@ -295,7 +331,17 @@ class OperatorService:
         if int(length) > MAX_BODY:
             return None, (413, "body_too_large")
         try:
-            body = canonical.parse_json_strict(read(int(length)))
+            raw = read(int(length))
+            if mcp:
+                # Admit the envelope id separately, so an out-of-range id
+                # gets -32600/null rather than a body-level parse refusal.
+                # Keep C-13's duplicate/number/Unicode checks on all other data.
+                body = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_members,
+                                  parse_float=canonical.parse_json_strict, parse_constant=canonical.parse_json_strict)
+                canonical.parse_json_strict(json.dumps({key: value for key, value in body.items() if key != "id"}
+                                                       if isinstance(body, dict) else body))
+            else:
+                body = canonical.parse_json_strict(raw)
         except (ValueError, TypeError):  # CanonicalizationError is a ValueError
             return None, (400, "request_invalid")
         return (body, None) if isinstance(body, dict) else (None, (400, "request_invalid"))

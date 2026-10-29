@@ -19,6 +19,7 @@ import socket
 import time
 import unittest
 from unittest import mock
+from urllib.parse import quote
 
 from gen2.operator.auth import Credentials, CredentialsRefused, Principal
 from gen2.tests import operator_fixtures as of
@@ -414,50 +415,113 @@ class WireClient:
         super().setUp()
         self.restart(Credentials({"alice": of.OPERATOR_TOKEN, "bob": "nABCDEFGHIJKLMNO"}))
 
-    def wire(self, method: str, path: str, message=None) -> bytes:
-        body = b"" if message is None else json.dumps(message).encode("utf-8")
-        request = (f"{method} {path} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {of.OPERATOR_TOKEN}\r\n"
+    def wire(self, method: str, path: str, message=None, token: str = of.OPERATOR_TOKEN) -> bytes:
+        body = message if isinstance(message, bytes) else b"" if message is None else json.dumps(message).encode("utf-8")
+        request = (f"{method} {path} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {token}\r\n"
                    f"Content-Length: {len(body)}\r\n\r\n").encode() + body
         return raw_exchange(self.engine, request)
 
 
 class WireReplyTest(WireClient, of.OperatorTestCase):
-    def test_serialization_created_token_in_router_refusal(self) -> None:
+    def test_router_refusal_does_not_repeat_unknown_members(self) -> None:
         raw = self.wire("POST", "/v1/commands/request_cancel", {"\nABCDEFGHIJKLMNO": 1})
         self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 200 OK")
         self.assertEqual(raw.partition(b"\r\n\r\n")[2],
-                         b'{"detail": "[credential]", "reason": "request_invalid", "status": "refused"}')
+                         b'{"detail": "operation refused", "reason": "request_invalid", "status": "refused"}')
         self.assertNotIn(b"nABCDEFGHIJKLMNO", raw)
 
+    def test_composed_spellings_are_not_reflected_as_unknown_members(self) -> None:
+        for key in ("%5Cu006eABCDEFGHIJKLMNO", r"\u00%36%65ABCDEFGHIJKLMNO", r"\u00256eABCDEFGHIJKLMNO", "caller_unknown_member"):
+            with self.subTest(key=key):
+                raw = self.wire("POST", "/v1/commands/request_cancel", {key: 1})
+                self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+                    b'{"detail": "operation refused", "reason": "request_invalid", "status": "refused"}')
+
+    def test_refusals_do_not_repeat_values_or_paths(self) -> None:
+        for method, path, body, expected in (
+            ("GET", "/v1/status?topic=" + quote(r"\u00256eABCDEFGHIJKLMNO", safe=""), None,
+             b'{"detail": "operation refused", "reason": "request_invalid", "status": "refused"}'),
+            ("GET", "/v1/status?topic=fleet:caller-chosen-topic", None,
+             b'{"detail": "operation refused", "reason": "unknown_topic", "status": "refused"}'),
+            ("POST", "/v1/commands/probe_capability", {"provider": "%5Cu006eABCDEFGHIJKLMNO"},
+             b'{"detail": "operation refused", "reason": "unknown_provider", "status": "refused"}'),
+            ("POST", "/v1/commands/request_cancel", {"invocation_id": "inv_CALLER123", "reason": "caller reason"},
+             b'{"detail": "operation refused", "reason": "unknown_invocation", "status": "refused"}')):
+            with self.subTest(path=path):
+                self.assertEqual(self.wire(method, path, body).partition(b"\r\n\r\n")[2], expected)
+
+    def test_rejected_record_ids_are_not_echoed(self) -> None:
+        self.restart(Credentials({"alice": of.OPERATOR_TOKEN}, of.EXPORTER_TOKEN))
+        for operation, field, token in (("apply_operator_decision", "decision_id", of.OPERATOR_TOKEN),
+                                        ("ack_delivery", "export_receipt_id", of.EXPORTER_TOKEN)):
+            with self.subTest(operation=operation):
+                raw = self.wire("POST", "/v1/commands/" + operation, {field: r"\u00%36%65ABCDEFGHIJKLMNO"}, token=token)
+                self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+                    b'{"detail": "operation refused", "reason": "request_invalid", "status": "rejected"}')
+
+    def test_status_does_not_repeat_a_stored_schema_refusal(self) -> None:
+        refused = self.wire("POST", "/v1/commands/activate_config_bundle",
+                            {**rf.BUNDLE, "version": 2, "%5Cu006eABCDEFGHIJKLMNO": 1})
+        self.assertEqual(refused.partition(b"\r\n\r\n")[2],
+            b'{"detail": "operation refused", "reason": "bundle_invalid", "status": "refused"}')
+        before = self.state(exclude=())
+        for method, path, message in (("GET", "/v1/status", None),
+            ("POST", "/mcp", {"jsonrpc": "2.0", "id": "status-7", "method": "tools/call", "params": {"name": "status"}})):
+            with self.subTest(path=path):
+                raw = self.wire(method, path, message)
+                self.assertNotIn(b"%5Cu006eABCDEFGHIJKLMNO", raw)
+                self.assertIn(b"configuration rejected", raw)
+                self.assertIn(b"tier-0 disabled", raw)
+                reply = json.loads(raw.partition(b"\r\n\r\n")[2])
+                if path == "/mcp":
+                    reply = json.loads(reply["result"]["content"][0]["text"])
+                self.assertEqual(reply["capability_facts"][0]["detail"], "configuration rejected")
+        self.assertEqual(self.state(exclude=()), before)
+
+    def test_recovery_does_not_echo_the_callers_reason(self) -> None:
+        reply = json.loads(r'{"status":"resumed","invocation_id":"inv_SERVER123","reason":"\\u00256eABCDEFGHIJKLMNO","outcome":"failed"}')
+        with mock.patch.object(self.engine.service._backend, "recover_incident", return_value=reply):
+            raw = self.wire("POST", "/v1/commands/recover_incident", {"reason": r"\u00256eABCDEFGHIJKLMNO"})
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+            b'{"invocation_id": "inv_SERVER123", "outcome": "failed", "status": "resumed"}')
+
+    def test_refusal_keeps_the_termination_fact(self) -> None:
+        reply = {"status": "refused", "reason": "termination_unconfirmed", "detail": "caller diagnostic",
+                 "termination": {"descendants": {"handling": "unconfirmed", "count": 1}}}
+        with mock.patch.object(self.engine.service._backend, "recover_incident", return_value=reply):
+            raw = self.wire("POST", "/v1/commands/recover_incident", {})
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2],
+            b'{"detail": "operation refused", "reason": "termination_unconfirmed", "status": "refused", "termination": {"descendants": {"count": 1, "handling": "unconfirmed"}}}')
+
     def test_raw_percent_and_unicode_spelling_values(self) -> None:
-        reply = {"status": "refused", "detail": ["nABCDEFGHIJKLMNO", "%6eABCDEFGHIJKLMNO", "%6EABCDEFGHIJKLMNO",
+        reply = {"status": "recorded", "detail": ["nABCDEFGHIJKLMNO", "%6eABCDEFGHIJKLMNO", "%6EABCDEFGHIJKLMNO",
                  r"\u006eABCDEFGHIJKLMNO", r"\u006EABCDEFGHIJKLMNO",
                  "%6e%41%42%43%44%45%46%47%48%49%4a%4b%4c%4d%4e%4f",
                  r"\u006e\u0041\u0042\u0043\u0044\u0045\u0046\u0047\u0048\u0049\u004a\u004b\u004c\u004d\u004e\u004f"]}
         with mock.patch.object(self.engine.service._backend, "request_cancel", return_value=reply):
             raw = self.wire("POST", "/v1/commands/request_cancel", {})
         self.assertEqual(raw.partition(b"\r\n\r\n")[2],
-            b'{"detail": ["[credential]", "[credential]", "[credential]", "[credential]", "[credential]", "[credential]", "[credential]"], "status": "refused"}')
+            b'{"detail": ["[credential]", "[credential]", "[credential]", "[credential]", "[credential]", "[credential]", "[credential]"], "status": "recorded"}')
 
     def test_short_and_unicode_escapes_can_create_tokens(self) -> None:
         self.restart(Credentials({"alice": of.OPERATOR_TOKEN, "bob": "nABCDEFGHIJKLMNO", "carol": "tABCDEFGHIJKLMNO",
             "dave": "rABCDEFGHIJKLMNO", "eve": "bABCDEFGHIJKLMNO", "finn": "fABCDEFGHIJKLMNO", "grace": "u00e9ABCDEFGHIJK"}))
-        reply = {"status": "refused", "detail": ["\nABCDEFGHIJKLMNO", "\tABCDEFGHIJKLMNO", "\rABCDEFGHIJKLMNO",
+        reply = {"status": "recorded", "detail": ["\nABCDEFGHIJKLMNO", "\tABCDEFGHIJKLMNO", "\rABCDEFGHIJKLMNO",
                  "\bABCDEFGHIJKLMNO", "\fABCDEFGHIJKLMNO", "éABCDEFGHIJK"]}
         with mock.patch.object(self.engine.service._backend, "request_cancel", return_value=reply):
             raw = self.wire("POST", "/v1/commands/request_cancel", {})
         self.assertEqual(raw.partition(b"\r\n\r\n")[2],
-            b'{"detail": ["[credential]", "[credential]", "[credential]", "[credential]", "[credential]", "[credential]"], "status": "refused"}')
+            b'{"detail": ["[credential]", "[credential]", "[credential]", "[credential]", "[credential]", "[credential]"], "status": "recorded"}')
 
     def test_numeric_values_and_an_all_digit_token(self) -> None:
         creds = Credentials({"alice": of.OPERATOR_TOKEN, "bob": "9007199254740991"})
         self.assertEqual(creds.authenticate("Bearer 9007199254740991"), Principal("bob", "operator"))
         self.restart(creds)
-        with mock.patch.object(self.engine.service._backend, "request_cancel", return_value={"status": "refused",
+        with mock.patch.object(self.engine.service._backend, "request_cancel", return_value={"status": "recorded",
                                "detail": [9007199254740991, -9007199254740991, 9007199254740991.0]}):
             raw = self.wire("POST", "/v1/commands/request_cancel", {})
         self.assertEqual(raw.partition(b"\r\n\r\n")[2],
-                         b'{"detail": ["[credential]", "[credential]", "[credential]"], "status": "refused"}')
+                         b'{"detail": ["[credential]", "[credential]", "[credential]"], "status": "recorded"}')
         self.assertNotIn(b"9007199254740991", raw)
 
     def test_diagnostic_suppresses_a_token_in_the_principal_label(self) -> None:
@@ -469,7 +533,7 @@ class WireReplyTest(WireClient, of.OperatorTestCase):
 
     def test_unrepairable_member_name_is_a_generic_fault(self) -> None:
         with mock.patch.object(self.engine.service._backend, "request_cancel",
-                               return_value={"nABCDEFGHIJKLMNO": 1, "status": "refused"}):
+                               return_value={"nABCDEFGHIJKLMNO": 1, "status": "recorded"}):
             raw = self.wire("POST", "/v1/commands/request_cancel", {})
         self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 500 Internal Server Error")
         self.assertEqual(raw.partition(b"\r\n\r\n")[2], b'{"reason": "internal", "status": "error"}')
@@ -477,15 +541,15 @@ class WireReplyTest(WireClient, of.OperatorTestCase):
 
     def test_ordinary_reply_bytes_are_unchanged(self) -> None:
         with mock.patch.object(self.engine.service._backend, "request_cancel",
-                               return_value={"status": "refused", "reason": "ordinary", "detail": "100%25"}) as backend:
+                               return_value={"status": "recorded", "detail": "100%25"}) as backend:
             raw = self.wire("POST", "/v1/commands/request_cancel", {})
             self.assertEqual(raw.partition(b"\r\n\r\n")[2],
-                             b'{"detail": "100%25", "reason": "ordinary", "status": "refused"}')
+                             b'{"detail": "100%25", "status": "recorded"}')
             # The sensitive companion makes removal of the boundary an assertion
             # failure while the ordinary control above must stay byte-identical.
-            backend.return_value = {"status": "refused", "detail": "\nABCDEFGHIJKLMNO"}
+            backend.return_value = {"status": "recorded", "detail": "\nABCDEFGHIJKLMNO"}
             sensitive = self.wire("POST", "/v1/commands/request_cancel", {})
-        self.assertEqual(sensitive.partition(b"\r\n\r\n")[2], b'{"detail": "[credential]", "status": "refused"}')
+        self.assertEqual(sensitive.partition(b"\r\n\r\n")[2], b'{"detail": "[credential]", "status": "recorded"}')
 
 
 def raw_exchange(engine, request: bytes) -> bytes:
