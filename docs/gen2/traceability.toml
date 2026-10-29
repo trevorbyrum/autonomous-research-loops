@@ -179,6 +179,7 @@ tests = [
   "gen2/tests/test_store_ddl_invocations.py::CommitFencingTest.test_state_revision_advances_by_exactly_one",
   "gen2/tests/test_store_ddl_invocations.py::AdmissionAndLeaseTest.test_receipt_json_admission_matches_its_columns",
   "gen2/tests/test_writer.py::ReceiptHashContractWriterTest.test_commit_receipt_contract_checked_before_sql",
+  "gen2/tests/test_store_ddl_invocations.py::AdmissionAndLeaseTest.test_pre_contract_receipt_json_names_the_pinned_brief",
 ]
 
 [invariant.C-6]
@@ -308,6 +309,27 @@ tests = [
   "gen2/tests/test_writer.py::ReceiptHashContractWriterTest.test_commit_receipt_contract_checked_before_sql",
   "gen2/tests/test_store_ddl_invocations.py::HashContractTest.test_commit_receipt_records_the_frozen_contracts",
   "gen2/tests/test_store_ddl_invocations.py::HashContractTest.test_frozen_versions_agree_across_ddl_schema_and_helper",
+  "gen2/tests/test_canonical.py::PublishedVectorsTest.test_rfc_3_2_2_serialization_and_3_2_4_utf8_bytes",
+  "gen2/tests/test_canonical.py::PublishedVectorsTest.test_rfc_3_2_3_utf16_property_order",
+  "gen2/tests/test_canonical.py::PublishedVectorsTest.test_rfc_appendix_b_number_serialization",
+  "gen2/tests/test_canonical.py::PublishedVectorsTest.test_development_portal_vectors",
+  "gen2/tests/test_canonical.py::PublishedVectorsTest.test_cross_implementation_vectors",
+  "gen2/tests/test_canonical.py::StrictBoundaryTest.test_parse_rejects",
+  "gen2/tests/test_canonical.py::StrictBoundaryTest.test_parse_accepts_exact_values",
+  "gen2/tests/test_canonical.py::StrictBoundaryTest.test_parse_decodes_bytes_as_utf8",
+  "gen2/tests/test_canonical.py::StrictBoundaryTest.test_identity_bound_holds_by_value_in_every_notation",
+  "gen2/tests/test_canonical.py::StrictBoundaryTest.test_large_numbers_stay_legitimate_outside_identity_fields",
+  "gen2/tests/test_canonical.py::StrictBoundaryTest.test_value_rejects",
+  "gen2/tests/test_canonical.py::HashSemanticsTest.test_content_hash_excludes_exactly_itself",
+  "gen2/tests/test_canonical.py::HashSemanticsTest.test_request_fingerprint_excludes_exactly_submitted_at",
+  "gen2/tests/test_canonical.py::HashSemanticsTest.test_semantically_changed_envelopes_fingerprint_differently",
+  "gen2/tests/test_canonical.py::HashSemanticsTest.test_raw_bytes_are_hashed_raw_never_canonicalized",
+  "gen2/tests/test_canonical_decimal.py::DecimalExactnessTest.test_extreme_zero",
+  "gen2/tests/test_canonical_decimal.py::DecimalExactnessTest.test_nonzero_refusals",
+  "gen2/tests/test_canonical_decimal.py::DecimalExactnessTest.test_equivalent_control",
+  "gen2/tests/test_writer.py::IdentityBoundTest.test_a_generated_increment_past_the_bound_writes_nothing",
+  "gen2/tests/test_writer.py::ReceiptHashContractWriterTest.test_decision_receipt_contract_checked_before_sql",
+  "gen2/tests/test_store_ddl_invocations.py::HashContractTest.test_decision_receipt_records_the_frozen_canonicalization_only",
 ]
 
 [invariant.L-1]
@@ -795,6 +817,11 @@ tests = [
   "gen2/tests/test_store_registries.py::AmendmentImpactTest.test_an_impact_record_names_its_row_and_never_changes",
   "gen2/tests/test_confidence_contract.py::SchemeImpactTest.test_addition_records_g1_impact",
   "gen2/tests/test_confidence_contract.py::SchemeImpactTest.test_control_unchanged_scheme",
+  "gen2/tests/test_confidence_contract.py::SchemeImpactTest.test_scheme_change_requires_new_protocol_revision",
+  "gen2/tests/test_confidence_contract.py::SchemeImpactTest.test_rubric_change_records_impact_and_retains_both_definitions",
+  "gen2/tests/test_router_amendments.py::StandingTest.test_a_restored_obligation_revives_no_work_or_claim",
+  "gen2/tests/test_router_amendments.py::StandingTest.test_a_version_no_impact_lists_is_not_reused",
+  "gen2/tests/test_router_amendments.py::BriefImpactTest.test_a_brief_restored_revives_no_scoping_work",
 ]
 
 [invariant.G-2]
@@ -899,6 +926,9 @@ tests = [
   "gen2/tests/test_router_ops.py::OperatorDecisionTest.test_a_rejected_decision_is_recorded_and_changes_nothing_else",
   "gen2/tests/test_router_ops.py::OperatorDecisionTest.test_approval_binds_to_a_hash_that_is_true_of_the_stored_document",
   "gen2/tests/test_router_ops.py::OperatorDecisionTest.test_the_same_decision_again_replays",
+  "gen2/tests/test_router_ops.py::OperatorDecisionTest.test_brief_confirmation_moves_intake_to_scoping",
+  "gen2/tests/test_store_workflow.py::SourceProposalTest.test_a_source_decision_names_a_stored_proposal_exactly",
+  "gen2/tests/test_store_ddl_contracts.py::ContractGovernanceTest.test_retirement_needs_operator_decision",
 ]
 
 [invariant.G-9]
