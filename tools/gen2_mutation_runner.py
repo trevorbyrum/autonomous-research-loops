@@ -89,7 +89,12 @@ def normalize(result):
         return "INVALID"
     if data.get("errors"):
         errors = [event for event in data.get("events", []) if event.get("kind") == "error"]
-        return "ERROR_KILL" if (rc == 1 and result.test_outcome == "killed" and
+        if any(event.get("exception_type") in {"subprocess.TimeoutExpired", "builtins.TimeoutError"}
+               for event in errors):
+            return "TIMEOUT"
+        # A successful clean control cannot establish that an exception was
+        # caused by the mutant. Preserve errors for review, never as kills.
+        return "TEST_ERROR" if (rc == 1 and result.test_outcome == "killed" and
             len(errors) == data["errors"] and all(event.get("executed") for event in errors)) else "INVALID"
     if not data["tests_run"] and not (data.get("shard") and data.get("expected") and data.get("selected") == []):
         return "INVALID"
@@ -169,7 +174,11 @@ def run(config):
                        "log": str(path / "console.log")} for code, path in runs]
             verdicts = [normalize(SimpleNamespace(worker_outcome="normal", output=MARKER + json.dumps(row),
                 test_outcome="survived" if row["exit"] == 0 else "killed")) for row in shards]
-            chosen = next((i for i, verdict in enumerate(verdicts) if verdict in {"ASSERTION_KILL", "ERROR_KILL"}), None)
+            # Infrastructure/error outcomes must not be hidden by another
+            # shard's assertion kill. All shard evidence remains in the result.
+            chosen = next((i for i, verdict in enumerate(verdicts) if verdict not in {"SURVIVED", "ASSERTION_KILL"}), None)
+            if chosen is None:
+                chosen = next((i for i, verdict in enumerate(verdicts) if verdict == "ASSERTION_KILL"), None)
             if chosen is None and all(verdict == "SURVIVED" for verdict in verdicts):
                 complete_union(shards, count)
                 data = {**shards[0], "tests_run": sum(row["tests_run"] for row in shards), "shard": None}

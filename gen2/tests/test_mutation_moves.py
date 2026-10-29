@@ -124,6 +124,7 @@ class MutationMovesTest(unittest.TestCase):
         report = self.campaign(expected=1, env={**os.environ, "MUTATION_RECEIPTS": str(receipts)})
         self.assertEqual(report["counts"], {"ASSERTION_KILL": 1, "SURVIVED": 1})
         self.assertEqual(report["selected_mutants"], 2)
+        self.assertEqual((report["case_workers"], report["stage2_workers"]), (2, 1))
         self.assertEqual(source.read_text(), "def answer(): return 1\n")
         rows = [json.loads(path.read_text()) for path in receipts.glob("*.json")]
         roots = {row["root"] for row in rows}
@@ -134,4 +135,25 @@ class MutationMovesTest(unittest.TestCase):
         self.assertEqual([stage["stage"] for stage in stages], [1, 1])
         self.assertEqual({stage["verdict"] for stage in stages}, {"ASSERTION_KILL", "SURVIVED"})
         self.assertEqual(len({stage["test_pid"] for stage in stages}), 2)
+        survivor = next(row for row in report["mutants"] if row["verdict"] == "SURVIVED")
+        fallback = scope.marker(survivor["native"]["output"])["stages"][-1]
+        self.assertEqual(fallback["stage"], 2)
+        self.assertNotIn("shards", fallback)
         self.assertTrue(all(row["valid"] for row in report["qualifications"]))
+
+    def test_selected_test_timeout_is_not_a_kill(self):
+        self.base({"gen2/probe.py": "def answer(): return 0\n"})
+        (self.root / "gen2/probe.py").write_text("def answer(): return 1\n")
+        (self.root / "gen2/tests/test_probe.py").write_text(
+            "import subprocess, sys, unittest\nfrom gen2.probe import answer\n"
+            "class Case(unittest.TestCase):\n def test_answer(self):\n"
+            "  if answer() != 1:\n"
+            "   subprocess.run([sys.executable, '-c', 'import time; time.sleep(2)'], timeout=0.05)\n")
+        report = self.campaign(expected=1)
+        self.assertEqual(report["counts"], {"TIMEOUT": 2})
+        self.assertTrue(report["failed"])
+        self.assertEqual(report["qualifications"], [])
+        for row in report["mutants"]:
+            stages = scope.marker(row["native"]["output"])["stages"]
+            self.assertEqual([stage["stage"] for stage in stages], [1])
+            self.assertEqual(stages[0]["events"][0]["exception_type"], "subprocess.TimeoutExpired")

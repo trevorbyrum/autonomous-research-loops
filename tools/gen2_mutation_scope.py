@@ -131,7 +131,8 @@ def main():
         targets = sorted(name for name in names.splitlines() if name.endswith(".py") and not name.startswith("gen2/tests/"))
         report["targets"] = targets
         def runner(config, name="baseline", root=ROOT):
-            config.update(workers=args.workers, shard_logs=str(out))
+            config.setdefault("workers", args.workers)
+            config["shard_logs"] = str(out)
             request = out / f"{name}.json"
             request.write_text(json.dumps(config))
             return [sys.executable, str(root / "tools/gen2_mutation_runner.py"), str(request)]
@@ -188,6 +189,9 @@ def main():
             report["selected_mutants"] = len(selected)
             report["moved_excluded_mutants"] = len(move_skipped)
             if selected:
+                case_workers = min(args.workers, len(selected))
+                stage2_workers = max(1, args.workers // case_workers)
+                report.update(case_workers=case_workers, stage2_workers=stage2_workers)
                 began = time.monotonic()
                 reuse = not args.tests and cached.valid()
                 if not reuse:
@@ -227,7 +231,7 @@ def main():
                         if stage != 2 and not tests:
                             continue
                         config = dict(targets=targets, tests=tests, full_tests=args.tests, stage=stage,
-                            stage_only=True, mutations=[asdict(m, value_serializer=lambda _, __, v:
+                            stage_only=True, workers=stage2_workers, mutations=[asdict(m, value_serializer=lambda _, __, v:
                                 str(v) if isinstance(v, Path) else v) for m in item.mutations])
                         output = subprocess.check_output(runner(config, item.job_id, local.root),
                             cwd=local.root, env=env, text=True)
@@ -238,7 +242,7 @@ def main():
                         evidence = marker(result.output)
                         stages.extend(evidence.get("stages", []))
                         diagnostics.extend(line for line in (result.output or "").splitlines() if not line.startswith(MARKER))
-                        if normalize(result) in {"ASSERTION_KILL", "ERROR_KILL"}:
+                        if normalize(result) in {"ASSERTION_KILL", "TEST_ERROR"}:
                             valid = qualify(evidence["stages"][-1], receipt["before"], local.root)
                             if not valid and stage != 2:
                                 stages, diagnostics = [], []
@@ -250,7 +254,7 @@ def main():
                     if evidence:
                         result = evolve(result, output="\n".join([*diagnostics, MARKER + json.dumps({**evidence, "stages": stages})]))
                     return result, valid
-                with ThreadPoolExecutor(max_workers=args.workers, initializer=prepare_worker) as pool, use_db(session) as db:
+                with ThreadPoolExecutor(max_workers=case_workers, initializer=prepare_worker) as pool, use_db(session) as db:
                     for index, (item, (result, valid)) in enumerate(zip(selected, pool.map(execute, selected)), 1):
                         if valid:
                             accepted.add(item.job_id)
@@ -270,7 +274,7 @@ def main():
                     verdict = ("FILTERED_GIT" if item.job_id in locals().get("git_skipped", set()) else
                                "FILTERED_MOVE" if item.job_id in locals().get("move_skipped", set()) else
                                "PRAGMA" if result and result.worker_outcome == "skipped" else normalize(result))
-                    if verdict in {"ASSERTION_KILL", "ERROR_KILL"} and item.job_id not in accepted:
+                    if verdict in {"ASSERTION_KILL", "TEST_ERROR"} and item.job_id not in accepted:
                         verdict = "INVALID"
                     mutation = item.mutations[0]
                     pragma = None
@@ -296,7 +300,7 @@ def main():
         if report["counts"].get("PENDING"):
             report["status"] = "incomplete"
         report["failed"] = report["status"] not in ("complete", "no-applicable-files") or any(
-            row["verdict"] not in {"FILTERED_GIT", "FILTERED_MOVE", "PRAGMA", "ASSERTION_KILL", "ERROR_KILL", "SYNTAX_INVALID"} for row in report["mutants"])
+            row["verdict"] not in {"FILTERED_GIT", "FILTERED_MOVE", "PRAGMA", "ASSERTION_KILL", "SYNTAX_INVALID"} for row in report["mutants"])
         (out / "mutation-report.json").write_text(json.dumps(report, indent=2) + "\n")
         print(f"gen2-mutation: {out / 'mutation-report.json'}: {report['status']} {report['counts']}", flush=True)
     return int(report["failed"] and not args.report_only)
