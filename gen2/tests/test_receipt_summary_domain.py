@@ -2,7 +2,7 @@
 import copy
 import unittest
 
-from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt
+from gen2.tests.detailed_receipt_fixtures import seed_checks, unreferenced_checks
 from gen2.tests.router_fixtures import ReceiptCase
 from gen2.tests.router_fixtures import KINDS
 from gen2.tests.test_detailed_check_receipts import ReferenceCases
@@ -41,7 +41,7 @@ class SummaryCases:
         return out
 
     def test_b1(self):
-        # Astra's exact bypass: /1, all four successor words, no records,
+        # All four successor words remain outside the summary domain in /2,
         # ordinary current admission with the declared catalog.
         case = self.opened()
         case.doc['verdict'] = 'partially_supports'
@@ -53,21 +53,19 @@ class SummaryCases:
         for method in METHODS:
             case = self.opened(method)
             original = copy.deepcopy(case.doc)
-            for version in ('verification-receipt/1', 'verification-receipt/2'):
-                for verdict in ('supports', 'partially_supports'):
-                    for bad in BAD:
-                        for kind in KINDS:
-                            with self.subTest(method=method, version=version,
-                                    verdict=verdict, bad=bad, kind=kind):
-                                case.doc = copy.deepcopy(original)
-                                case.doc.update(receipt_version=version, verdict=verdict)
-                                if verdict == 'supports':
-                                    case.doc['adjudication'] = dict(adjudication_ref='adj-domain',
-                                        resolved_at=case.doc['verified_at'], resolution='Explicit fixture resolution.')
-                                if version.endswith('/2'):
-                                    case.doc['detailed_checks'] = {k: dict(outcome='succeeded') for k in KINDS}
-                                case.doc['checks'][kind] = bad
-                                self.refused(case)
+            for verdict in ('supports', 'partially_supports'):
+                for bad in BAD:
+                    for kind in KINDS:
+                        with self.subTest(method=method,
+                                verdict=verdict, bad=bad, kind=kind):
+                            case.doc = copy.deepcopy(original)
+                            case.doc.update(verdict=verdict)
+                            if verdict == 'supports':
+                                case.doc['adjudication'] = dict(adjudication_ref='adj-domain',
+                                    resolved_at=case.doc['verified_at'], resolution='Explicit fixture resolution.')
+                            case.doc['detailed_checks'] = {k: dict(outcome='succeeded') for k in KINDS}
+                            case.doc['checks'][kind] = bad
+                            self.refused(case)
             self.doCleanups()
 
     def test_control(self):
@@ -107,6 +105,7 @@ class SummaryCases:
                 case.doc['requested_for']['use'] = use
                 for kind in KINDS:
                     case.doc['checks'][kind] = summary
+                unreferenced_checks(case.doc)
                 self.assertEqual(ReferenceCases.submit(case)['status'], 'committed')
                 self.assertEqual(case.store.select('verification_receipts')[0]['receipt'], case.doc)
 

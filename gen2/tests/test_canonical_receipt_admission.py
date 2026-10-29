@@ -1,7 +1,6 @@
 """Canonical receipts consume literal trusted exchanges, inside Router commits."""
 import json
 
-from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
 from gen2.tests.router_fixtures import AttributedReceiptCase
 
 

@@ -234,8 +234,12 @@ class ReferenceCases:
         self.doc['verification_receipt_id'] = 'ver_legacy001'
         self.doc['receipt_version'] = 'verification-receipt/1'
         del self.doc['detailed_checks']
-        self.assertEqual(self.submit()['status'], 'committed')
-        self.assertEqual(self.store.select('verification_receipts', {'verification_receipt_id': 'ver_legacy001'})[0]['receipt'], self.doc)
+        before = self.state(exclude=())
+        out = self.submit()
+        self.assertEqual((out['status'], out.get('reason')), ('rejected', 'payload_invalid'), out)
+        self.assertIn("/verification_receipts/0/receipt_version: not one of ['verification-receipt/2']", out['detail'])
+        self.assertEqual(self.store.select('verification_receipts', {'verification_receipt_id': 'ver_legacy001'}), [])
+        self.assert_audited_state(before, 1)
 
 
 class ReferenceRouterTest(ReferenceCases, ReceiptCase):

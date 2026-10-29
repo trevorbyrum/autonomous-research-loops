@@ -4,14 +4,14 @@ import unittest
 
 from gen2.tests.router_fixtures import FULL, attributed_fixture as fixture
 from gen2.tests.router_fixtures import AttributedReceiptCase
-from gen2.tests.detailed_receipt_fixtures import attach_checks, historical_receipt
+from gen2.tests.detailed_receipt_fixtures import attach_checks, unreferenced_checks
 from gen2.tests.router_fixtures import EXTRACTION_METHODS as METHODS
 from gen2.tests.router_fixtures import send, extraction_document
 
 
 class ExtractionRouterTest(unittest.TestCase):
     def refuse(self, case, doc):
-        historical_receipt(doc)  # /1 isolates the existing acquisition predicate.
+        unreferenced_checks(doc)  # /2 isolates the existing acquisition predicate.
         before = case.state()
         out = send(case, doc)
         self.assertEqual((out["status"], out.get("reason")), ("rejected", "payload_invalid"), out)

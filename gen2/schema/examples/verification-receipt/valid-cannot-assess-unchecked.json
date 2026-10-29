@@ -5,7 +5,7 @@
     "tests": "A6: a truthful load-bearing cannot_assess_at_required_tier with unperformed/unavailable checks is valid (the review's rejected truthful receipt)"
   },
   "instance": {
-    "receipt_version": "verification-receipt/1",
+    "receipt_version": "verification-receipt/2",
     "verification_receipt_id": "ver_01J8ZQ60V1",
     "topic_id": "fleet-a:intake-latency",
     "claim": {
@@ -61,6 +61,20 @@
     },
     "adjudication": null,
     "verdict": "cannot_assess_at_required_tier",
-    "verified_at": "2026-09-25T11:12:00Z"
+    "verified_at": "2026-09-25T11:12:00Z",
+    "detailed_checks": {
+      "numeric_units": {
+        "outcome": "not_checked"
+      },
+      "denominators": {
+        "outcome": "unavailable"
+      },
+      "negation": {
+        "outcome": "not_checked"
+      },
+      "qualifications": {
+        "outcome": "unavailable"
+      }
+    }
   }
 }

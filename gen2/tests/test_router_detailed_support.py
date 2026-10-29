@@ -1,13 +1,16 @@
 """Promotion reads actual records through the sole Router support owner."""
 import copy
 import json
+import sqlite3
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
 from gen2.core import canonical
 from gen2.tests.test_receipt_summary_domain import SummaryCases
 from gen2.tests import test_detailed_check_receipts as refs
-from gen2.tests.detailed_receipt_fixtures import attach_checks, seed_checks, historical_receipt
+from gen2.tests.detailed_receipt_fixtures import attach_checks, seed_checks
 from gen2.tests.detailed_support_fixtures import history, insert_receipt
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_receipt_summary_domain import METHODS
@@ -60,23 +63,49 @@ class RouterDetailedSupportTest(unittest.TestCase):
                 self.assertEqual(case.value("SELECT status FROM claims WHERE claim_id='clm_loadbear1'"), 'accepted_support')
                 self.doCleanups()
 
+    def test_stored_v1_readback_and_non_support(self):
+        from gen2.router.history import HistoryReader
+        for attributed in (False, True):
+            with self.subTest(attributed=attributed):
+                case = self.opened()
+                case.doc['receipt_version'] = 'verification-receipt/1'
+                if not attributed:
+                    del case.doc['detailed_checks']
+                # The attributed variant keeps every /2 operand qualifying,
+                # so the version discriminator itself must deny support.
+                self.store(case)
+                self.assertEqual(case.store.select('verification_receipts')[0]['receipt'], case.doc)
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / 'retained.sqlite3'
+                    with sqlite3.connect(path) as snapshot:
+                        case.db.backup(snapshot)
+                        snapshot.execute('PRAGMA journal_mode=WAL')
+                    snapshot.close()
+                    before = path.read_bytes()
+                    reader = HistoryReader.open(path)
+                    retained = reader.records('verification_receipts')
+                    self.assertEqual(retained['interpretation'], 'historical_records')
+                    self.assertEqual(retained['records'][0]['receipt'], case.doc)
+                    self.assertEqual(path.read_bytes(), before)
+                self.promote(case)
+                self.doCleanups()
+        # Otherwise identical current-format stored-row control.
+        case = self.opened()
+        self.store(case)
+        self.promote(case, True)
+
     def test_historical_shapes(self):
         for method in METHODS:
             case = self.opened(method)
             self.store(case)
-            for shape in ('legacy', 'old_domain', 'empty', 'null', 'partial', 'extra'):
+            for shape in ('old_domain', 'empty', 'null', 'partial', 'extra'):
                 with self.subTest(method=method, shape=shape):
                     doc = copy.deepcopy(case.doc)
-                    if shape == 'legacy':
-                        doc['receipt_version'] = 'verification-receipt/1'
-                    elif shape == 'old_domain':
-                        historical_receipt(doc)
+                    if shape == 'old_domain':
                         doc['checks'].update({k: 'invented' for k in rf.KINDS})
                         doc['adjudication'] = dict(adjudication_ref='adj-history', resolved_at=doc['verified_at'],
                             resolution='Retained old-domain assessment, never detailed authority.')
                     elif shape == 'empty':
-                        historical_receipt(doc)
-                        doc['receipt_version'] = 'verification-receipt/2'
                         doc['detailed_checks'] = {}
                         doc['checks'].update({k: 'invented' for k in rf.KINDS})
                     elif shape == 'null': doc['detailed_checks'] = None

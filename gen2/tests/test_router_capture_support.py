@@ -4,7 +4,7 @@ import json
 import unittest
 
 from gen2.tests.detailed_support_fixtures import history
-from gen2.tests.detailed_receipt_fixtures import attach_checks, historical_receipt
+from gen2.tests.detailed_receipt_fixtures import attach_checks, unreferenced_checks
 from gen2.tests.extraction_receipt_fixtures import attach
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.router_fixtures import CaptureCase
@@ -46,7 +46,7 @@ class RouterCaptureSupportTest(unittest.TestCase):
             attach(case, extraction); attach_checks(case, extraction)
             case.accepted(record, verification_receipts=[canonical, extraction])
             historical = copy.deepcopy(canonical)
-            historical_receipt(historical)
+            unreferenced_checks(historical)
             self.retained(case, historical)
             case.promote(accepted=False)
             # A later, individually complete canonical candidate may win.
@@ -110,7 +110,7 @@ class RouterCaptureSupportTest(unittest.TestCase):
         record, doc = case.operands()
         case.accepted(record, verification_receipts=[doc])
         case.promote()
-        historical_receipt(doc)
+        unreferenced_checks(doc)
         self.retained(case, doc)
         self.assertIsNotNone(case.router.receipt(case.env['operation_id']))
         self.late(case, records=[{**record, 'check_id': 'qck_latehistory'}])
