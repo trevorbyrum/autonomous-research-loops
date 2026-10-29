@@ -250,7 +250,8 @@ def main():
                             choices = [(args.tests, 2)]
                             continue
                         break
-                    result = evolve(result, output="\n".join([*diagnostics, MARKER + json.dumps({**evidence, "stages": stages})]))
+                    if evidence:
+                        result = evolve(result, output="\n".join([*diagnostics, MARKER + json.dumps({**evidence, "stages": stages})]))
                     return result, valid
                 with ThreadPoolExecutor(max_workers=args.workers, initializer=prepare_worker) as pool, use_db(session) as db:
                     for index, (item, (result, valid)) in enumerate(zip(selected, pool.map(execute, selected)), 1):
