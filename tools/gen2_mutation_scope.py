@@ -3,7 +3,6 @@ import argparse
 import ast
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
@@ -205,7 +204,6 @@ def main():
                 (out / "test-selection.json").write_text(json.dumps(selection, indent=2) + "\n")
                 (out / "module-selection.json").write_text(json.dumps(modules, indent=2) + "\n")
                 local = threading.local()
-                full_lock = threading.Lock()
                 source_names = subprocess.check_output(["git", "ls-files", "--cached", "--others",
                     "--exclude-standard", "-z"], cwd=ROOT).decode().split("\0")
                 def prepare_worker():
@@ -231,9 +229,8 @@ def main():
                         config = dict(targets=targets, tests=tests, full_tests=args.tests, stage=stage,
                             stage_only=True, mutations=[asdict(m, value_serializer=lambda _, __, v:
                                 str(v) if isinstance(v, Path) else v) for m in item.mutations])
-                        with full_lock if stage == 2 else nullcontext():
-                            output = subprocess.check_output(runner(config, item.job_id, local.root),
-                                cwd=local.root, env=env, text=True)
+                        output = subprocess.check_output(runner(config, item.job_id, local.root),
+                            cwd=local.root, env=env, text=True)
                         receipt = json.loads(output)
                         result = WorkResult(**receipt["result"])
                         if receipt["before"] != receipt["after"]:
