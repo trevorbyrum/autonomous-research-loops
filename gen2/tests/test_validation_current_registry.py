@@ -2,14 +2,15 @@
 from unittest.mock import patch
 
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests import test_extraction_records as records, test_extraction_validations_v2 as v2
+from gen2.tests import test_extraction_validations_v2 as v2
+from gen2.tests import router_fixtures as rf
 
 
 class CurrentCases:
-    registry, result = v2.V2Case.registry, v2.V2Case.result
+    registry, result = v2.RouterV2Test.registry, v2.RouterV2Test.result
 
     def validation(self, **changes):
-        return {**records.RecordCase.validation(self), "policy_version": 2, **changes}
+        return {**rf.RecordCase.validation(self), "policy_version": 2, **changes}
 
     def merge(self):
         self.registry(7, [("tool-a", "family-a"), ("tool-b", "family-a"), ("tool-c", "family-c")])
@@ -79,8 +80,8 @@ class CurrentCases:
         self.refuse(extraction_validations=[self.validation(validation_id="new-validation")])
 
 
-class RouterCurrentRegistryTest(CurrentCases, records.RecordCase):
-    # Delegate explicitly: V2Case.send uses zero-argument super().
+class RouterCurrentRegistryTest(CurrentCases, rf.RecordCase):
+    # Delegate explicitly: RouterV2Test.send uses zero-argument super().
     def send(self, grant=None, op="op_record0001", **sections):
         if "extraction_validations" in sections:
             sections["extraction_validations_v2"] = sections.pop("extraction_validations")
@@ -145,7 +146,7 @@ class RouterCurrentRegistryTest(CurrentCases, records.RecordCase):
     def test_legacy_after_merge_control(self):
         self.basis()
         self.merge()
-        self.assertEqual(records.RecordCase.send(self, self.verifier, "op_legacy0001",
+        self.assertEqual(rf.RecordCase.send(self, self.verifier, "op_legacy0001",
             extraction_validations=[self.validation(policy_version=1)])["status"], "committed")
         self.assertEqual(self.store.select("extraction_validations")[0]["policy_version"], 1)
         self.assertEqual(self.store.select("extraction_validations_v2"), [])

@@ -1,8 +1,8 @@
 # The store DDL, in parts, in the order the store applies them: one file name
 # per line (blank lines and # comments are ignored). gen2/store/db.py
 # schema_text() joins them in this order and the store executes the result as
-# one script; every reader of the DDL (the store, the tests, the DDL and
-# trigger-order checks) takes it from there. Each part is whole sections of
+# one script; every reader of the DDL (the store, the tests and the DDL
+# checks) takes it from there. Each part is whole sections of
 # what was one schema.sql, split only so that no file passes the 1,500-line
 # limit (task 2r); no statement spans two parts.
 01-queue-and-contracts.sql
@@ -19,15 +19,10 @@
 13-quote-adjudication.sql
 14-source-acquisitions.sql
 22-extraction-records.sql
-23-json-member-domain.sql
 24-attempted-request-bytes.sql
 25-retained-request-representation.sql
-26-json-member-rollout.sql
-27-json-member-completion.sql
 28-extractor-registry.sql
 29-extraction-validations-v2.sql
-30-extraction-v2-member-domain.sql
 31-validation-current-registry.sql
 35-detailed-check-records.sql
-36-detailed-check-member-domain.sql
 43-store-generation.sql

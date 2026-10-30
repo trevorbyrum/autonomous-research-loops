@@ -21,6 +21,43 @@ EvidenceResult, MARKER, normalize = runner.EvidenceResult, runner.MARKER, runner
 
 
 class AutomaticMutationTest(unittest.TestCase):
+    def test_gateway_changed_line_enters_scope_and_engine_only_scope_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel in ("tools", "gen2/tests", "gateway/research_gateway"):
+                (root / rel).mkdir(parents=True)
+            shutil.copy(ROOT / ".gitignore", root / ".gitignore")
+            for name in ("gen2_mutation_scope.py", "gen2_mutation_runner.py", "gen2_coverage.py",
+                         "gen2_test.py", "gen2_ci_evidence.py"):
+                shutil.copy(ROOT / "tools" / name, root / "tools" / name)
+            paths = ("gateway/research_gateway/probe.py", "gen2/probe.py")
+            for path in paths:
+                (root / path).write_text("def answer(): return 0\n")
+            def git(*args):
+                subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+            git("init", "-q")
+            git("add", ".")
+            git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "base")
+            for index, changed in enumerate(paths):
+                with self.subTest(changed=changed):
+                    for path in paths:
+                        (root / path).write_text(f"def answer(): return {int(path == changed)}\n")
+                    (root / "gen2/tests/test_probe.py").write_text(
+                        "import unittest\nfrom gateway.research_gateway.probe import answer as gateway_answer\n"
+                        "from gen2.probe import answer as engine_answer\nclass Case(unittest.TestCase):\n"
+                        f" def test_gateway(self): self.assertEqual(gateway_answer(), {int(changed == paths[0])})\n"
+                        f" def test_engine(self): self.assertEqual(engine_answer(), {int(changed == paths[1])})\n")
+                    out = root / f"campaign-{index}"
+                    result = subprocess.run([sys.executable, "tools/gen2_mutation_scope.py", "--base", "HEAD",
+                        "--out", str(out), "--coverage", str(root / f"coverage-{index}.sqlite")],
+                        cwd=root, capture_output=True, text=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    report, = out.glob("*/mutation-report.json")
+                    data = json.loads(report.read_text())
+                    self.assertEqual(data["targets"], [changed])
+                    self.assertGreater(data["counts"].get("ASSERTION_KILL", 0), 0)
+                    self.assertEqual({row["mutation"]["module_path"] for row in data["mutants"]}, {changed})
+
     def test_cached_execution_configuration(self):
         coverage_tool = sys.modules["gen2_coverage"]
         with tempfile.TemporaryDirectory() as tmp:
@@ -46,7 +83,7 @@ class AutomaticMutationTest(unittest.TestCase):
             (result(output=""), "INVALID"), (result(output=MARKER + "{"), "INVALID"),
             (result({**clean, "exit": 3}), "INVALID"), (result({**clean, "exit": -9}), "CRASH"),
             (result({**clean, "errors": 1}), "INVALID"),
-            (result({**clean, "errors": 1, "events": [{"kind": "error", "executed": True}]}), "ERROR_KILL"),
+            (result({**clean, "errors": 1, "events": [{"kind": "error", "executed": True}]}), "TEST_ERROR"),
             (result({**clean, "errors": 1, "events": [{"kind": "error", "executed": False}]}), "INVALID"),
             (result(dict(kind="SYNTAX_INVALID")), "SYNTAX_INVALID"),
             (result(clean), "ASSERTION_KILL"),
@@ -83,7 +120,7 @@ class AutomaticMutationTest(unittest.TestCase):
             def test_unused(self): pass
         fixture = runner.run(unittest.defaultTestLoader.loadTestsFromTestCase(FixtureError))
         native.output = MARKER + json.dumps(dict(exit=1, tests_run=0, errors=1, failures=0, events=fixture.events))
-        self.assertEqual(normalize(native), "ERROR_KILL")
+        self.assertEqual(normalize(native), "TEST_ERROR")
 
     def test_native_filters_and_incomplete_campaign(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -144,8 +181,9 @@ class AutomaticMutationTest(unittest.TestCase):
             self.assertTrue(selected)
             self.assertTrue(all(len(json.dumps(names)) > 131072 and len(names) == 3000 for names in selected))
             test.write_text(original.replace("self.assertEqual(answer(), 1)", "\n  if answer() != 1: raise ValueError('mutant error')"))
-            result, report = campaign()
-            self.assertIn("ERROR_KILL", report["counts"])
+            result, report = campaign(expected=1)
+            self.assertIn("TEST_ERROR", report["counts"])
+            self.assertTrue(report["failed"])
             self.assertFalse(report["baseline_reused"])
             test.write_text(original.replace("answer(), 1", "answer(), 2"))
             result, report = campaign(expected=1)
@@ -158,7 +196,7 @@ class AutomaticMutationTest(unittest.TestCase):
             saved_source = source.read_text()
             for stage in (1, "1b"):
                 for kind, check in (("ASSERTION_KILL", "self.assertTrue(state.get('ready'))"),
-                                    ("ERROR_KILL", "state['ready']")):
+                                    ("TEST_ERROR", "state['ready']")):
                     with self.subTest(stage=stage, clean_failure=kind):
                         source.write_text("untouched = 100\ndef answer(): return " + ("1" if stage == 1 else "0") +
                             "\ndef equivalent(): return 5\n" + ("uncovered = 7\n" if stage == "1b" else ""))
@@ -178,7 +216,7 @@ class AutomaticMutationTest(unittest.TestCase):
 
             source.write_text(saved_source)
             for kind, check in (("ASSERTION_KILL", "self.assertEqual(os.environ['TEST_RESOURCE'], 'available')"),
-                                ("ERROR_KILL", "{'available': True}[os.environ['TEST_RESOURCE']]")):
+                                ("TEST_ERROR", "{'available': True}[os.environ['TEST_RESOURCE']]")):
                 with self.subTest(environment_failure=kind):
                     write_test(" def test_answer(self): answer(); " + check + "\n", "import os")
                     available = {**os.environ, "TEST_RESOURCE": "available"}
@@ -242,7 +280,7 @@ class AutomaticMutationTest(unittest.TestCase):
             decorators = [row for row in report["mutants"] if row["mutation"]["operator_name"] == "core/RemoveDecorator"]
             self.assertTrue(decorators)
             for row in decorators:
-                self.assertEqual(row["verdict"], "ERROR_KILL")
+                self.assertEqual(row["verdict"], "TEST_ERROR")
                 self.assertEqual(runner.marker(row["native"]["output"])["stages"][0]["stage"], "1b")
             lonely = [row for row in report["mutants"] if row["mutation"]["module_path"] == "gen2/lonely.py"]
             self.assertTrue(lonely)

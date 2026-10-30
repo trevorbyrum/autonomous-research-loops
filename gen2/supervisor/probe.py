@@ -36,8 +36,7 @@ Declared expiry (task 1f-repair; Astra 1f review finding 1). Once the runner
 reads the credential as usable, the probe reads the same file for what it
 says of its own expiry, in the runner's format (Runner.declared: codex's
 auth.json, the `exp` claims of its ChatGPT access and ID tokens, RFC 7519
-§4.1.4; claude_declared reads a claude credential's `expiresAt`, for a
-claude runner once one is pinned). The observation records it as
+§4.1.4). The observation records it as
 `declared_expiry`: each token's declared instant (null: it declares none — an
 API key, an opaque token), and whether a refresh credential is present; null
 when nothing was read. Only the access token's instant decides, since that
@@ -74,6 +73,7 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from gen2.core.instants import utc_instant_ns
+from gen2.supervisor.supervisor import _refusal, _request_shape
 
 PATH = "/usr/local/bin:/usr/bin:/bin"
 REQUEST = frozenset({"provider", "requested_by"})
@@ -144,17 +144,6 @@ def codex_declared(credential: object) -> dict:
             "refresh_credential": isinstance(tokens.get("refresh_token"), str) and tokens["refresh_token"] != ""}
 
 
-def claude_declared(credential: object) -> dict:
-    """claude 2.1.283's .credentials.json (AUTH-DEMO.md appendix): its OAuth
-    access token's `expiresAt`, in milliseconds; it has no ID token. No
-    claude runner is pinned in RUNNERS: this is the reader one would name."""
-    oauth = credential.get("claudeAiOauth") if isinstance(credential, dict) else None
-    oauth = oauth if isinstance(oauth, dict) else {}
-    ms = oauth.get("expiresAt")
-    return {"access_token": epoch_instant(-(-ms // 1000)) if isinstance(ms, (int, float)) and not isinstance(ms, bool) else None,  # whole seconds, up
-            "id_token": None, "refresh_credential": isinstance(oauth.get("refreshToken"), str) and oauth["refreshToken"] != ""}
-
-
 def declared_verdict(declared: dict | None, observed: str) -> tuple[str, str] | None:
     """declared_expired, with its detail, when the access token declares an
     expiry at or before `observed` (RFC 7519: not to be accepted on or after
@@ -183,14 +172,13 @@ class CapabilityProbe:
         returning its answer. Refused, with nothing run or recorded: a request
         not of this shape, a provider with no pinned runner, a station with no
         auth homes mounted."""
-        if not isinstance(request, Mapping) or set(request) != REQUEST or not all(
-                isinstance(request[k], str) and 0 < len(request[k]) <= 500 for k in REQUEST):
-            return {"status": "refused", "reason": "request_invalid", "detail": "a probe names provider and requested_by, each a string"}
+        if not _request_shape(request, REQUEST):
+            return _refusal("request_invalid", "a probe names provider and requested_by, each a string")
         runner = self._runners.get(request["provider"])
         if runner is None:
             return {"status": "refused", "reason": "unknown_provider", "detail": f"no pinned runner here for {request['provider'][:80]!r}"}
         if self._auth_root is None:
-            return {"status": "refused", "reason": "no_auth_homes", "detail": "this station has no auth homes mounted"}
+            return _refusal("no_auth_homes", "this station has no auth homes mounted")
         started, home = self._clock(), self._auth_root / runner.name
         outcome, detail = self._home(home) or self._probe(runner, home)
         declared = self._declared(runner, home) if outcome == "usable" else None

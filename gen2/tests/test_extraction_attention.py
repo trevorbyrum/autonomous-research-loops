@@ -4,7 +4,7 @@ import unittest
 
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_bound_extraction_support import PromotionCases
-from gen2.tests.test_pending_extraction_support import METHODS
+from gen2.tests.router_fixtures import EXTRACTION_METHODS as METHODS
 from gen2.tests.test_validated_extraction_receipts import ValidatedCases
 from gen2.tests.independent_tier_fixtures import independent_basis
 from gen2.tests.detailed_receipt_fixtures import attach_checks

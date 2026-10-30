@@ -1,64 +1,12 @@
 """Isolated SQL 22 / Router guards; fixture execution only, no receipt changes."""
 import sqlite3
+from unittest.mock import patch
 
-from gen2.tests.router_fixtures import OTHER, empty_outcome
-from gen2.tests.test_reaccess_admission import AcquisitionCase, RAW, STAMP, raw_acquisition
+from gen2.router.boundary import Refusal
 
-
-class RecordCase(AcquisitionCase):
-    RAW = False
-
-    def setUp(self):
-        super().setUp()
-        self.assertEqual(self.router.register_extractor_registry({"registry_version": 1, "operator_id": "fixture-operator",
-            "reason": "approve fixture tools", "tools": [{"extractor_identity": "tool-a", "family": "family-a"},
-                {"extractor_identity": "tool-b", "family": "family-b"}]})["status"], "registered")
-        self.assertEqual(self.router.admit_reaccess(self.request())["status"], "admitted")
-        self.extractor = self.started("inv_extract001", "checkpoint")
-        self.output = self.artifact(b"independent extraction output")
-        self.evidence = self.artifact(b"validator comparison rationale")
-        for grant in (self.extractor, self.verifier):
-            payload = empty_outcome(grant["invocation_id"], "interim_transition")
-            self.assertEqual(self.router.commit_outcome(self.envelope(grant, "op_setup_" + grant["invocation_id"],
-                payload, refs=[self.output, self.evidence]))["status"], "committed")
-
-    def extraction(self, identity="target", **changes):
-        return {**dict(extraction_id=identity, work_id=self.work, source_version="v1", event_id=self.EVENT_ID,
-            verifier_invocation_id=self.verifier["invocation_id"], extractor_identity="tool-a" if identity == "target" else "tool-b",
-            extractor_version="1", extractor_registry_version=1, output_ref=self.output, supported_tier="abstract"), **changes}
-
-    def validation(self, **changes):
-        return {"validation_id": "validation-1", "target_extraction_id": "target", "validator_extraction_id": "independent",
-            "method": "independent_extraction", "policy_version": 1, "outcome": "succeeded", "comparison": "byte_equal",
-            "comparison_evidence_ref": self.evidence, **changes}
-
-    def foreign_ref(self, text):
-        ref = self.artifact(text)
-        self.to_scoping(OTHER)
-        other = self.started("inv_other001", tid=OTHER)
-        self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, ?, ?, ?)",
-            ref["content_hash"], ref["size_bytes"], ref["media_type"], STAMP)
-        self.x("INSERT INTO artifact_topics VALUES (?, ?, ?, ?)", ref["content_hash"], OTHER, other["invocation_id"], STAMP)
-        return ref
-
-    def send(self, grant=None, op="op_record0001", **sections):
-        grant = grant or self.extractor
-        payload = {**empty_outcome(grant["invocation_id"], "interim_transition"), **sections}
-        return self.router.commit_outcome(self.envelope(grant, op, payload))
-
-    def basis(self, target_grant=None, target=None, independent=None):
-        self.assertEqual(self.send(target_grant, source_extractions=[target or self.extraction()])["status"], "committed")
-        self.assertEqual(self.send(self.verifier, "op_independent1", source_extractions=[independent or self.extraction("independent")])["status"], "committed")
-
-    def refuse(self, **sections):
-        before = self.state()
-        grant = self.verifier if "extraction_validations" in sections else self.extractor
-        out = self.send(grant, "op_refused001", **sections)
-        self.assertEqual(out["status"], "rejected", out)
-        if self.RAW:
-            self.assertEqual(self.state(exclude=()), before)
-        else:
-            self.assert_audited_state(before, 1)
+from gen2.tests.router_fixtures import empty_outcome
+from gen2.tests.router_fixtures import RAW, raw_acquisition
+from gen2.tests.router_fixtures import RecordCase
 
 
 class RecordTest(RecordCase):
@@ -82,7 +30,20 @@ class RecordTest(RecordCase):
     def test_tier(self):
         record = self.extraction()
         record["supported_tier"] = "full_text"
-        self.refuse(source_extractions=[record])
+        before, refused = self.state(), []
+        original = self.router._extractions.write
+        def write(*args):
+            try:
+                return original(*args)
+            except Refusal as exc:
+                refused.append((exc.reason, exc.detail))
+                raise
+        with patch.object(self.router._extractions, "write", side_effect=write):
+            out = self.send(source_extractions=[record])
+        self.assertEqual((out["status"], out.get("reason"), out.get("detail")),
+            ("rejected", "payload_invalid", "extraction tier exceeds recorded content"))
+        self.assertEqual(refused, [("payload_invalid", "extraction tier exceeds recorded content")])
+        self.assert_audited_state(before, 1)
 
     def test_extractor(self):
         self.basis(target_grant=self.verifier)

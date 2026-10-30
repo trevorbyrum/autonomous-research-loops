@@ -328,6 +328,8 @@ class OpenStoreTest(unittest.TestCase):
             "user_version": ddl.replace("PRAGMA user_version = 1;", "PRAGMA user_version = 2;"),
             # a store written before the observation admission contract (2b-repair-13d): refused by the same identity check, never migrated
             # or read back as if it were current; any later reconciliation must mark an unrecoverable end unknown, never exhausted
+            "dossiers before evidence_revision removal": ddl.replace("  contract_revision INTEGER NOT NULL,\n  evaluator_version TEXT NOT NULL,\n  content_hash TEXT NOT NULL UNIQUE,",
+                "  contract_revision INTEGER NOT NULL,\n  evidence_revision INTEGER NOT NULL CHECK (evidence_revision >= 1),\n  evaluator_version TEXT NOT NULL,\n  content_hash TEXT NOT NULL UNIQUE,"),
             "observations before the admission contract": ddl.replace("  CHECK (completeness != 'complete' OR COALESCE(gateway_call_ref != '', 0)),\n", ""),
         }
         for case, text in cases.items():
@@ -340,6 +342,8 @@ class OpenStoreTest(unittest.TestCase):
                 exc = self.open_error(path)
                 self.assertIsInstance(exc, db.StoreOpenError)
                 self.assertIn("store schema is not the DDL in gen2/store/schema/", str(exc))
+                if case.startswith("dossiers"):
+                    self.assertIn("changed ['table dossiers", str(exc))
 
 
 class FirstOpenContentionTest(unittest.TestCase):

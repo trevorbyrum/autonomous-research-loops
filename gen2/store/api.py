@@ -68,7 +68,7 @@ from gen2.store import capture, compat, db
 # [0, 2**53-1] by canonical.identity_integer, by value, in every table.
 IDENTITY_COLUMNS = frozenset({
     "revision", "successor_revision", "parent_revision", "protocol_revision", "framing_version", "contract_revision", "active_contract_revision",
-    "claim_revision", "dossier_revision", "evidence_revision", "source_revision", "subject_revision", "state_revision",
+    "claim_revision", "dossier_revision", "source_revision", "subject_revision", "state_revision",
     "state_revision_before", "state_revision_after", "generation", "lease_generation", "supersedes_generation",
     "options_revision", "supersedes_options_revision", "unknown_episode", "seq", "ordinal", "brief_version", "template_version",
     "policy_version", "eligibility_protocol_version", "attempt", "version", "parent_version", "opened_after_generation",
@@ -290,13 +290,6 @@ class Store:
             raise StoreWriteError("an insert names at least one column")
         prepared = {column: self._prepare(table, column, value) for column, value in row.items()}
         self._check_hash_contract(table, prepared)
-        if table == 'search_observations' and prepared.get('request_bytes') is not None:
-            try:
-                digest = canonical.bytes_digest(prepared['request_bytes'])
-            except TypeError as exc:
-                raise StoreWriteError(str(exc)) from exc
-            if digest != prepared.get('request_bytes_hash'):
-                raise StoreWriteError('attempted-request byte hash mismatch')
         self._bump_once(table)
         self._conn.execute(f"INSERT INTO {table} ({', '.join(prepared)}) VALUES ({', '.join('?' for _ in prepared)})", list(prepared.values()))
 
@@ -369,12 +362,6 @@ class Store:
             out.append(record)
         return out
 
-    def raw_text(self, table: str, column: str, where: Mapping[str, object]) -> list[str | None]:
-        """The stored text of one column (what the DDL's JSON checks read)."""
-        self._check_names(table, [column, *where])
-        clause = " AND ".join(f"{c} = ?" for c in where) or "1"
-        return [r[0] for r in self._conn.execute(f"SELECT {column} FROM {table} WHERE {clause} ORDER BY rowid", [self._prepare(table, c, v) for c, v in where.items()])]
-
 
 def open_store(path: str | Path, *, create: bool = False) -> Store:
     """Create (create=True) or open the durable store at `path` through the
@@ -403,8 +390,3 @@ def adopt_in_memory(conn: sqlite3.Connection) -> Store:
     observed = compat.check_connection(conn)
     db.check_schema_identity(conn)
     return Store(conn, observed, _admitted_by=_ADMITTED)
-
-
-def integer_columns(store: Store) -> dict[str, list[str]]:
-    """Every INTEGER column per table (for the classification test)."""
-    return {t: [c for c, kind in cols.items() if kind == "INTEGER"] for t, cols in store._columns.items()}

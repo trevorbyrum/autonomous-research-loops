@@ -40,6 +40,7 @@ from gen2.core import canonical
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor.supervisor import Policy, WorkOrder, supervisor_policy
 from gen2.tests import router_fixtures as rf, store_fixtures
+from gen2.tests.supervisor_fixtures import TestSupervisor
 
 B1 = {"bundle_version": "config-bundle/1", "version": 1, "questions": [], "policy": {"supervisor": {"launch_attempts": 1, "lock_wait_s": 5}}}
 B2 = {"bundle_version": "config-bundle/1", "version": 2, "questions": [], "policy": {"supervisor": {"launch_attempts": 4, "lock_wait_s": 7}}}
@@ -104,7 +105,7 @@ class PinnedPolicyTest(StationWorld):
         self.assertEqual(self.station.supervisor.submit(self.order("inv_discov01", B1)), "not_admitted")  # an order pinning a superseded bundle
         self.assertEqual(self.rows("SELECT count(*) FROM invocations"), [(0,)])
         self.station.supervisor.prepare(self.order("inv_discov02", B2))
-        self.assertEqual(self.station.supervisor.run("inv_discov02"), "failed")  # admitted and run to its end (an executor writing no output fails, L-9)
+        self.assertEqual(TestSupervisor.run(self.station.supervisor, "inv_discov02", timeout_s=60), "failed")  # admitted and run to its end (an executor writing no output fails, L-9)
         self.assertEqual(self.rows("SELECT config_bundle_hash, failure_class FROM invocations"), [(canonical.logical_hash(B2), "empty_output")])
         with self.assertRaises(KeyError):  # an order pinning no recorded bundle is refused before anything is written
             self.station.supervisor.prepare(self.order("inv_discov03", {**B2, "version": 9}))
@@ -143,11 +144,11 @@ class StationSchedulingTest(StationWorld):
 
     def test_a_requeued_failure_runs_again_through_the_station(self) -> None:
         self.station.supervisor.prepare(self.order("inv_probe0001", B1))
-        self.assertEqual(self.station.supervisor.run("inv_probe0001"), "failed")
+        self.assertEqual(TestSupervisor.run(self.station.supervisor, "inv_probe0001", timeout_s=60), "failed")
         self.assertEqual(self.station.supervisor.submit(self.order("inv_probe0002", B1)), "not_admitted")  # the lane waits for its re-queue
         self.assertEqual(self.router.requeue({"invocation_id": "inv_probe0001", "requested_by": "operator", "reason": "diagnosed"})["status"], "requeued")
         self.station.supervisor.prepare(replace(self.order("inv_probe0003", B1), retry_of="inv_probe0001"))
-        self.assertEqual(self.station.supervisor.run("inv_probe0003"), "failed")  # a new execution (this command writes no output, L-9)
+        self.assertEqual(TestSupervisor.run(self.station.supervisor, "inv_probe0003", timeout_s=60), "failed")  # a new execution (this command writes no output, L-9)
         self.assertEqual(self.rows("SELECT invocation_id, state, failure_class FROM invocations ORDER BY admitted_at"),
                          [("inv_probe0001", "failed", "empty_output"), ("inv_probe0003", "failed", "empty_output")])
         self.assertEqual(self.rows("SELECT invocation_id, attempt, retry_invocation_id FROM retries"), [("inv_probe0001", 2, "inv_probe0003")])
@@ -155,10 +156,10 @@ class StationSchedulingTest(StationWorld):
     def test_a_mounted_fractional_hold_window_is_kept(self) -> None:
         self.reopen(self.RETRYING)
         self.station.supervisor.prepare(self.order("inv_probe0001", self.RETRYING))
-        self.assertEqual(self.station.supervisor.run("inv_probe0001"), "failed")
+        self.assertEqual(TestSupervisor.run(self.station.supervisor, "inv_probe0001", timeout_s=60), "failed")
         self.assertEqual(self.router.requeue({"invocation_id": "inv_probe0001", "requested_by": "policy", "reason": "transient"})["status"], "requeued")
         self.station.supervisor.prepare(replace(self.order("inv_probe0002", self.RETRYING), retry_of="inv_probe0001"))
-        self.assertEqual(self.station.supervisor.run("inv_probe0002"), "failed")
+        self.assertEqual(TestSupervisor.run(self.station.supervisor, "inv_probe0002", timeout_s=60), "failed")
         self.assertEqual(self.router.requeue({"invocation_id": "inv_probe0002", "requested_by": "policy", "reason": "transient"})["status"], "exhausted")
         created, deadline = self.rows("SELECT created_at, deadline_at FROM holds")[0]
         self.assertEqual(utc_instant_ns(deadline) - utc_instant_ns(created), 500_000_000)
@@ -204,7 +205,7 @@ class RestartPolicyTest(StationWorld):
         self.reopen(B2)
         self.restart_unmounted()
         self.station.supervisor.prepare(self.order("inv_discov02", B2))
-        self.assertEqual(self.station.supervisor.run("inv_discov02"), "failed")  # admitted and run to its end (no output: L-9)
+        self.assertEqual(TestSupervisor.run(self.station.supervisor, "inv_discov02", timeout_s=60), "failed")  # admitted and run to its end (no output: L-9)
         self.assertEqual(self.rows("SELECT config_bundle_hash FROM invocations"), [(canonical.logical_hash(B2),)])
         self.assertEqual(self.station.supervisor.submit(self.order("inv_discov03", B1)), "not_admitted")  # the superseded bundle admits nothing new
 

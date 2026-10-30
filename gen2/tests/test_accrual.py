@@ -3,9 +3,10 @@ import unittest
 from dataclasses import replace
 
 from gen2 import accounting as a
+from gen2.accounting import views as v
 from gen2.tests import children
 from gen2.tests.router_fixtures import TOPIC, OTHER
-from gen2.tests.test_router_amendments import ContractWorld, compatible, reframed
+from gen2.tests.router_fixtures import ContractWorld, compatible, reframed
 
 DATE = "2026-10-09T00:00:00Z"
 LATER = "2026-10-09T00:00:01Z"
@@ -34,19 +35,16 @@ class AccrualTest(unittest.TestCase):
         inv = inventory(source_lineage=(lineage,))
         self.assertEqual(operands(inv), (a.SemanticOperand(SEMANTIC, "current", (lineage,), (a.LifecycleOperand(SOURCE, "current"),)),))
         self.assertEqual(operands(inv)[0].labels, ("novel", "shared_origin", "applicable", "answer"))
-        self.assertEqual(a.branch_accrual(inv, "B-1", DATE).dispositions, ("promote",))
         self.assertEqual(a.rescreening_view(inv), ())
 
     def test_control_compatible(self):
         inv = replace(inventory(), current_contract_revision=2, amendment_impacts=(impact(),))
         self.assertEqual(operands(inv)[0].standing, "compatible")
         self.assertEqual(operands(inv)[0].labels, ("novel", "shared_origin", "applicable", "answer"))
-        self.assertEqual(a.branch_accrual(inv, "B-1", DATE).dispositions, ("promote",))
 
     def test_invalid_and_cycling(self):
         inv = replace(inventory(), current_contract_revision=2, amendment_impacts=(impact(classification="reframed"),))
         self.assertEqual((operands(inv)[0].standing, operands(inv)[0].labels), ("stale", ("unknown",) * 4))
-        self.assertIsNone(a.branch_accrual(inv, "B-1", DATE).dispositions)
         # Even a later explicit compatible record cannot undo the invalidation.
         cycled = replace(inv, current_contract_revision=3, amendment_impacts=inv.amendment_impacts + (impact(3),))
         self.assertEqual((operands(cycled)[0].standing, operands(cycled)[0].labels), ("stale", ("unknown",) * 4))
@@ -60,8 +58,6 @@ class AccrualTest(unittest.TestCase):
                     replace(inventory(), current_contract_revision=2, amendment_impacts=(impact(standing_revision=9),))):
             with self.subTest(inv=inv):
                 self.assertEqual((operands(inv)[0].standing, operands(inv)[0].labels), ("unknown", ("unknown",) * 4))
-                self.assertIsNone(a.branch_accrual(inv, "B-1", DATE).dispositions)
-        self.assertIsNone(a.branch_accrual(inventory(), "missing", DATE).dispositions)
         self.assertEqual(a.semantic_accrual(inventory(), "missing", "v1", DATE), ())
 
     def test_exact_joins_and_lifecycle_reversal(self):
@@ -90,7 +86,7 @@ class AccrualTest(unittest.TestCase):
         inv = replace(inventory(), registry_dispositions=(promote, BRANCH, drop, park))
         for date, expected, prefix in ((DATE, ("promote",), (BRANCH,)), (LATER, ("park",), (BRANCH, park)),
                                       (drop.created_at, ("drop",), (BRANCH, park, drop)), (promote.created_at, ("promote",), (BRANCH, park, drop, promote))):
-            view = a.branch_accrual(inv, "B-1", date)
+            view = v.depth_view(inv, date).registries[0]
             self.assertEqual((view.dispositions, view.history), (expected, prefix))
 
     def test_disagreement_and_unrelated(self):
@@ -98,7 +94,7 @@ class AccrualTest(unittest.TestCase):
         other = replace(BRANCH, disposition_id="b3", registry_id="B-2")
         contradiction = replace(BRANCH, disposition_id="c1", registry_kind="contradiction", disposition="unresolved")
         inv = replace(inventory(), registry_dispositions=(BRANCH, competing, other, contradiction))
-        self.assertEqual(a.branch_accrual(inv, "B-1", DATE).dispositions, ("promote", "park"))
+        self.assertEqual(v.depth_view(inv, DATE).registries[0].dispositions, ("promote", "park"))
         disagreement = replace(SEMANTIC, assessment_id="s2", novelty="not_novel")
         sem = operands(replace(inv, semantic_assessments=(SEMANTIC, disagreement)))
         self.assertEqual([r.labels[0] for r in sem], ["novel", "not_novel"])
@@ -186,9 +182,6 @@ def unrelated(label, revision):
     extra = replace(BRANCH, disposition_id="extra", registry_id="B-2", disposition=label, contract_revision=revision)
     appended = replace(inv, registry_dispositions=inv.registry_dispositions + (extra,))
     assert operands(inv) == operands(appended)
-    assert a.branch_accrual(inv, "B-1", DATE) == a.branch_accrual(appended, "B-1", DATE)
-    future = replace(BRANCH, disposition_id="future", supersedes_id="b1", disposition=label, created_at=LATER)
-    assert a.branch_accrual(inv, "B-1", DATE) == a.branch_accrual(replace(inv, registry_dispositions=(BRANCH, future)), "B-1", DATE)
 @settings(max_examples=30, derandomize=True, database=None, deadline=None)
 @given(st.sampled_from(["novelty", "independence", "applicability", "contribution"]))
 def unknown(field):

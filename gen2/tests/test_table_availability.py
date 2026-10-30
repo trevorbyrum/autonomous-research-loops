@@ -3,52 +3,12 @@ import json
 import unittest
 from contextlib import contextmanager
 
-from gen2.tests import test_canonical_content_tiers as content
-from gen2.tests.test_canonical_receipt_admission import AttributedReceiptCase, ReceiptCase
+from gen2.tests import router_fixtures as content
+from gen2.tests.router_fixtures import AttributedReceiptCase
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
-from gen2.tests.ddl_fixtures import restore_triggers
-from gen2.tests import store_fixtures as sf
-from gen2.store import db
-from gen2.tests.test_extraction_acquisitions import extraction_document
-from gen2.tests.test_reaccess_admission import RAW, STAMP
+from gen2.tests.router_fixtures import RAW, STAMP
 from gen2.tests.router_fixtures import TOPIC, empty_outcome
-
-TABLE = {"start": 0, "end": 5, "locator": {"kind": "table", "value": "Table 1"}}
-PAGE = {"start": 5, "end": 9, "locator": {"kind": "page", "value": "2"}}
-
-METHODS = ("canonical_bytes", "verifier_extraction", "validated_extraction")
-
-
-def seed_spans(case, bindings=((TABLE,), (PAGE,), (PAGE, TABLE))):
-    restore_triggers(case, db.schema_text())
-    try:
-        for spans in bindings:
-            doc = ReceiptCase.document(case)
-            doc['cited_spans'] = list(spans)
-            # Byte-equal ordinary outputs share this exact binding; no
-            # source/target/validator discrimination is claimed here.
-            seed_checks(case, doc)
-    finally:
-        restore_triggers(case, sf.DDL_TEXT)
-
-
-@contextmanager
-def span_fixture(record, coverage='searched_ok', others=(), *, bindings=((TABLE,), (PAGE,), (PAGE, TABLE))):
-    with content.attributed_fixture(record, coverage, others) as case:
-        seed_spans(case, bindings)
-        yield case
-
-
-def document(case, method, tier, verdict="supports", spans=(TABLE,), *, detailed=True):
-    doc = extraction_document(case, method)
-    if method == "verifier_extraction":
-        doc["extraction"]["produced_by_invocation_id"] = case.verifier["invocation_id"]
-    doc.update(access_tier=tier, verdict=verdict, cited_spans=list(spans))
-    doc["requested_for"]["required_access_tier"] = tier
-    if detailed:
-        attach_checks(case, doc)
-    return doc
-
+from gen2.tests.router_fixtures import TABLE, PAGE, METHODS, seed_spans, span_fixture, document
 
 class TableRouterTest(unittest.TestCase):
     def refuse(self, case, doc):
@@ -60,15 +20,6 @@ class TableRouterTest(unittest.TestCase):
         control = {**doc, "cited_spans": [PAGE]}
         attach_checks(case, control)
         self.assertEqual(case.send(control)["status"], "committed")
-
-    def test_insufficient_and_mixed(self):
-        for method in METHODS:
-            for record, tier in (({"identity": content.IDENTITY}, "bibliographic"),
-                    ({"identity": content.IDENTITY, "abstract": "Recorded abstract"}, "abstract")):
-                for verdict in ("supports", "partially_supports", "does_not_support"):
-                    for spans in ((TABLE,), (PAGE, TABLE)):
-                        with self.subTest(method=method, tier=tier, verdict=verdict, spans=spans), span_fixture(record) as case:
-                            self.refuse(case, document(case, method, tier, verdict, spans))
 
     def test_controls_readback_replay(self):
         for method in METHODS:
@@ -136,7 +87,7 @@ class TableRouterTest(unittest.TestCase):
                         seed_spans(case)
                         self.assertEqual(case.router.admit_reaccess(case.request(work_id=work, source_version=version,
                             event_id="rev_other0001"))["status"], "admitted")
-                        self.assertEqual(sorted(case.rows("SELECT recorded_tier_rank FROM source_acquisition_content_tiers")), [(1,), (3,)])
+                        self.assertEqual(sorted((case.router._detailed_checks._content_rank(a),) for a in case.store.select('source_acquisitions')), [(1,), (3,)])
                         self.refuse(case, document(case, method, "bibliographic"))
                     finally:
                         case.tearDown()

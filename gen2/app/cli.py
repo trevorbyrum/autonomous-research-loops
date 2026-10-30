@@ -11,7 +11,7 @@ service"); DEPLOYMENT-CONTRACT.md §1.1 (operator clients on the host reach
 
 OPERATION is an operation the service routes (the router's
 apply_operator_decision, request_cancel, requeue, close_brief,
-activate_config_bundle, version_brief, mark_brief_overdue,
+activate_config_bundle, register_extractor_registry, version_brief, mark_brief_overdue,
 propose_amendment; the station's recover_incident and probe_capability);
 the body is sent as it is, and the service supplies who acts from the token. The engine is GEN2_OPERATOR_URL
 (default http://127.0.0.1:8770); the token is GEN2_OPERATOR_TOKEN, read from

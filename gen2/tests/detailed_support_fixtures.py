@@ -19,7 +19,7 @@ def history(case, *, unchecked=False):
         yield
     finally:
         case.x("PRAGMA ignore_check_constraints=" + str(checks))
-        restore_triggers(case, None, catalog=catalog)
+        restore_triggers(case, catalog=catalog)
 
 
 def insert_receipt(case, doc):

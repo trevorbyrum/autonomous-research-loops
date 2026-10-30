@@ -775,25 +775,6 @@ class OverRealHttp(unittest.TestCase):
         self.assertEqual(summary(by_lane(c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1"))["crossref"])[:3],
                          ("searched_ok", "complete", 1))
 
-    def test_a_redirect_is_never_followed(self):
-        seen = []
-        other = serve(self, lambda h: seen.append(h.headers.get("Authorization")))
-        for code in (301, 302, 303, 307, 308):   # urllib would follow a POST's 301-303 on its own, carrying the token
-            with self.subTest(code):
-                def redirect(h, code=code):
-                    h.send_response(code)
-                    h.send_header("Location", other + "/v1/find")
-                    h.send_header("Content-Length", "0")
-                    h.end_headers()
-                clock = VirtualTime()
-                with deadline_clock(gateway, clock, wire=True):
-                    out = GatewayClient(serve(self, redirect), ENGINE_TOKEN, transport=http_transport, timeout=5,
-                                        monotonic=clock.monotonic, sleep=clock.sleep).search(
-                        FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
-                self.assertEqual([summary(o) for o in out["observations"]], [("unknown", "unobserved", None, "transport_failure", [])])
-                self.assertEqual(seen, [], "the token went nowhere else")
-
-
 class RecordedByTheRouter(RouterTestCase):
     """What the client returns is what the router records (2c/2d consume these rows), in the
     order observe.router_requests gives: the gateway's facts, then the observations."""

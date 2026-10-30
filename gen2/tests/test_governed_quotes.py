@@ -9,74 +9,9 @@ from pathlib import Path
 from gen2.core.canonical import bytes_digest
 from gen2.router.schemas import SchemaSet
 from gen2.tests.router_fixtures import OTHER, TOPIC, empty_outcome
-from gen2.tests.test_router_workflow import Workflow
+from gen2.tests.router_fixtures import QuotesCase
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schema/quote-check.schema.json"
-
-
-class QuotesCase(Workflow):
-    SOURCE_BYTES = b"<effect observed>"
-    SOURCE_MEDIA = "text/plain"
-    SPAN = (1, 16)
-
-    def setUp(self):
-        super().setUp()
-        self.to_queued()
-        self.capture_grant = self.started("inv_capture001")
-        events = self.observe(self.capture_grant, "obs_quote00001", ("quote-record",))
-        self.work = self.register(self.capture_grant, [("doi", "10.1/quote", events)])["works"][0]["work_id"]
-        self.source = self.artifact(self.SOURCE_BYTES, self.SOURCE_MEDIA)
-        self.text = self.artifact(b"effect observed")
-        payload = {**empty_outcome("inv_capture001", "interim_transition"),
-            "source_artifacts": [{"work_id": self.work, "source_version": "v1", "artifact_ref": self.source}],
-            "claims": [{"claim_id": "clm_quote00001", "revision": 1, "text_ref": self.text, "load_bearing": False, "required_access_tier": None}]}
-        out = self.router.commit_outcome(self.envelope(self.capture_grant, "op_capture001", payload, refs=[self.source, self.text]))
-        self.assertEqual(out["status"], "committed", out)
-        self.grant = self.started("inv_verify0001", "verification")
-
-    def record(self, **changes):
-        return {"check_id": "qck_quote00001", "claim_id": "clm_quote00001", "claim_revision": 1,
-            "work_id": self.work, "source_version": "v1", "artifact_ref": self.source,
-            "quoted_text": "effect observed", "span_start": self.SPAN[0], "span_end": self.SPAN[1], **changes}
-
-    def send(self, records, grant=None, refs=(), **sections):
-        grant = grant or self.grant
-        payload = {**empty_outcome(grant["invocation_id"], "interim_transition", grant["topic_id"]), "quote_checks": records, **sections}
-        self.env = self.envelope(grant, self.ids("op_"), payload, refs=refs)
-        return self.router.commit_outcome(self.env)
-
-    def accepted(self, record=None, **kwargs):
-        out = self.send([record or self.record()], **kwargs)
-        self.assertEqual(out["status"], "committed", out)
-        return out
-
-    def rejected(self, record, reason, detail=None, **kwargs):
-        before = self.state()
-        out = self.send([record], **kwargs)
-        self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
-        if detail is not None:
-            self.assertIn(detail, out.get("detail", ""))
-        self.assert_audited_state(before, 1)
-
-    def result(self):
-        raw = self.value("SELECT match_result FROM quote_checks WHERE check_id = 'qck_quote00001'")
-        self.assertIsNotNone(raw)
-        return json.loads(raw)
-
-    def receipt_document(self, status="matched", verdict="supports"):
-        """Explicit /1 refusal fixture; admitted support uses CanonicalQuotesCase."""
-        path = Path(__file__).resolve().parents[1] / "schema/examples/verification-receipt/valid-load-bearing-full-text.json"
-        doc = json.loads(path.read_text())["instance"]
-        doc.update(verification_receipt_id="ver_quote00001", topic_id=TOPIC,
-            claim={"claim_id": "clm_quote00001", "claim_revision": 1}, source={"work_id": self.work, "source_version": "v1"},
-            cited_spans=[{"start": self.SPAN[0], "end": self.SPAN[1], "locator": {"kind": "section", "value": "Results"}}],
-            obtained_content_hash=self.source["content_hash"], requested_for={"use": "sampled", "required_access_tier": "full_text"},
-            producer_invocation_id="inv_capture001", verifier_invocation_id="inv_verify0001", verifier_capability_id=self.grant["capability_id"],
-            quote_check_id="qck_quote00001", verdict=verdict, verified_at="2026-09-27T10:00:00Z")
-        doc["extraction"].update(produced_by_invocation_id="inv_verify0001")
-        doc["checks"]["exact_quote"].update(status=status, source_artifact_hash=self.source["content_hash"], normalization_version="quote-nfc-safe/2+ucd15.0.0")
-        del doc["checks"]["tier0"]
-        return doc
 
 
 class AdmissionTest(QuotesCase):
@@ -171,7 +106,7 @@ class AdmissionTest(QuotesCase):
 
     def test_support_control(self):
         # Local import: the admitted-input fixture itself inherits QuotesCase.
-        from gen2.tests.canonical_quotes_fixtures import CanonicalQuotesCase
+        from gen2.tests.router_fixtures import CanonicalQuotesCase
         case = CanonicalQuotesCase()
         case.setUp()
         self.addCleanup(case.tearDown)

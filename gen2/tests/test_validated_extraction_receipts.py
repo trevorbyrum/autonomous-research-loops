@@ -1,15 +1,11 @@
 """Successful retained /2 bases bind receipts through the Router."""
 import json
 import unittest
-from unittest.mock import patch
 
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
-from gen2.tests.ddl_fixtures import restore_triggers
-from gen2.tests.detailed_receipt_fixtures import seed_checks, historical_receipt, historical_admission
-from gen2.tests.test_canonical_content_tiers import FULL, fixture
-from gen2.tests.test_extraction_acquisitions import extraction_document
-from gen2.tests.test_own_extraction_receipts import OwnCases
+from gen2.tests.detailed_receipt_fixtures import seed_checks, unreferenced_checks, reference_isolation
+from gen2.tests.router_fixtures import FULL, fixture
+from gen2.tests.router_fixtures import extraction_document
+from gen2.tests.store_fixtures import OwnCases
 from gen2.tests.independent_tier_fixtures import independent_basis
 
 
@@ -24,21 +20,19 @@ class ValidatedCases:
     submit = OwnCases.submit
 
     def setUp(self):
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            context = fixture(FULL)
-            self.case = context.__enter__()
-            self.doc = extraction_document(self.case, 'validated_extraction')
-            seed_checks(self.case, self.doc)
+        context = fixture(FULL)
+        self.case = context.__enter__()
+        self.doc = extraction_document(self.case, 'validated_extraction')
+        seed_checks(self.case, self.doc)
         self.addCleanup(context.__exit__, None, None, None)
         self.validation = self.doc['extraction']['validation_ref']
         self.target, self.independent = self.case.rows('SELECT target_extraction_id, validator_extraction_id FROM extraction_validations_v2')[0]
-        restore_triggers(self.case, sf.DDL_TEXT)
 
     def refuse(self):
-        # Historical /1 operands isolate the existing validation predicate.
-        historical_receipt(self.doc)
+        # Unreferenced /2 operands isolate the existing validation predicate.
+        unreferenced_checks(self.doc)
         before = self.case.state(exclude=())
-        with historical_admission(self.case):
+        with reference_isolation(self.case):
             out = self.submit()
         self.assertEqual(out['status'], 'rejected', out)
         self.assertEqual(out.get('reason'), 'payload_invalid', out)
@@ -72,10 +66,10 @@ class ValidatedCases:
                 self.refuse()
 
     def test_missing(self):
-        historical_receipt(self.doc)
+        unreferenced_checks(self.doc)
         self.doc['extraction']['validation_ref'] = None
         before = self.case.state(exclude=())
-        with historical_admission(self.case):
+        with reference_isolation(self.case):
             self.assertEqual(self.submit()['status'], 'rejected')
         self.case.assert_audited_state(before, 1)
 
@@ -155,7 +149,7 @@ class ValidatedReceiptRouterTest(ValidatedCases, unittest.TestCase):
                 self.doc['access_tier'] = self.doc['requested_for']['required_access_tier'] = required
                 independent_basis(self.case, self.doc, independent, 'low' + str(n))
                 self.assertEqual(self.case.value('SELECT supported_tier FROM source_extractions WHERE extraction_id=?', self.target), 'full_text')
-                self.assertEqual(self.case.value('SELECT recorded_tier_rank FROM source_acquisition_content_tiers'), 3)
+                self.assertEqual(self.case.router._detailed_checks._content_rank(self.case.store.select('source_acquisitions')[0]), 3)
                 self.refuse()
 
     def test_independent_tier_control(self):

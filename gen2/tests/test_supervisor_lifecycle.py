@@ -45,18 +45,7 @@ from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import jobs, supervisor as supervisor_module
 from gen2.tests import children
 from gen2.tests import router_fixtures as rf
-from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, DEADLINE, MAIN, PARENT, SupervisedTestCase, outcome_text, released, succeed
-
-HANG_WITH_DESCENDANT = [{"op": "spawn_descendant", "marker": "descendant.pid"}, {"op": "hang"}]
-GATED = [{"op": "wait_for", "name": "gate", "seconds": 60}]
-
-
-def alive(pid: int) -> bool:
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text()
-    except FileNotFoundError:
-        return False
-    return stat[stat.rindex(")") + 2] != "Z"
+from gen2.tests.supervisor_fixtures import HANG_WITH_DESCENDANT, GATED, alive, AFTER_DEADLINE, DEADLINE, MAIN, PARENT, SupervisedTestCase, outcome_text, released, succeed
 
 
 class LifecycleFaults:

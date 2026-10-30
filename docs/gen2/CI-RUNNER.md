@@ -19,11 +19,9 @@ the authority for the executed checkout and branch head versus PR merge.
 | --- | --- | --- |
 | `push` (default) | sqlite, boundaries, size, schemas, DDL, catalog consistency, metrics, debt, locators, supported source | One execution |
 | `engine-unit` | Full unittest discovery through the existing verbose runner | Classes assigned by SHA-256 modulo shard count; all class occurrences stay together in discovery-relative order |
-| `engine-trigger-order` | Original and reversed store suites, with the unchanged rebuild and outcome gates | One execution |
 | `engine-mutation` | Cosmic Ray changed-line campaign against the merge-base of `GEN2_BASE` (default `origin/gen2`), native git/pragma filters, shared full-suite coverage; line/module selections before full-suite escalation | One serial execution |
 | `gateway-no-db` | Existing full gateway discovery without a DSN | One execution; requires psycopg even without PostgreSQL |
 | `gateway-db` | Schema/seed plus full gateway discovery on a disposable Unix-socket PostgreSQL cluster | One DB owner in this invocation |
-| `gateway-mutants` | Schema/seed and every gateway mutant on a disposable cluster | One DB owner in this invocation |
 
 Unit partitioning is exhaustive: every index must finish before acceptance.
 Mutation is unsharded and records every generated identity, filtered outcome,
@@ -39,18 +37,19 @@ Comparison requires those counts exactly. Mutation IDs remain unique.
 Filtering can coalesce class/module fixture transitions when intervening classes
 are assigned elsewhere. Class placement does not promise identical fixture
 transitions for arbitrary suites; the unsharded sequence remains unchanged.
-The unit and trigger-order runners also emit test/subtest outcomes and JUnit;
+The unit runner also emits test/subtest outcomes and JUnit;
 the mutation runner retains typed failures/errors, fresh test PIDs, baseline coverage, per-job test selections and per-stage outcomes/timings.
 
 `make gen2-check` runs static gates and units. Under `make gen2-accept`, that
-unit run also collects coverage once; acceptance then runs
-trigger-order when `git diff --name-only <GEN2_BASE>...HEAD -- gen2/store/schema`
-is non-empty or unavailable, followed by changed-line mutation;
+unit run also collects coverage once; acceptance then runs changed-line mutation;
 `GEN2_BASE` defaults to `origin/gen2`. Local acceptance uses `GEN2_TEST_WORKERS` concurrent unit and stage-2
 shards (default 8; set 1 for serial comparison). Standalone CI partitions
-retain their explicit selection and allocation contract. `make gen2-gateway` still runs no-DB, DB and all mutants by default,
-on its existing bootstrap interpreter. Its new `GEN2_GATEWAY_MODE` only selects
-an explicit invocation; the full default is unchanged.
+retain their explicit selection and allocation contract. `make gen2-gateway` runs
+no-DB and DB suites by default, on its existing bootstrap interpreter.
+`GEN2_GATEWAY_MODE` selects `all`, `no-db` or `db`; `mutants` and the
+`gen2-ci-gateway-mutants` target have been retired. The `gateway-mutants` CI mode
+has also been removed. Cosmic Ray changed-line mutation covers `gen2/**`
+production Python and `gateway/research_gateway/**` production Python.
 
 ## Allocation
 
@@ -79,8 +78,8 @@ with several sequential commands would still share that timeout.
 
 | Trigger | Current result | Required full-acceptance path |
 | --- | --- | --- |
-| Branch push, including `gen2` and task branches | T0 + unit partition 1/8 at the branch checkout | Separate engine shards at that same pin; trigger-order on DDL change |
-| Ready PR creation/update | T0 + unit partition 1/8 at the platform's PR merge checkout | Separate engine shards at the executed merge pin, invalidated by target updates; trigger-order on DDL change |
+| Branch push, including `gen2` and task branches | T0 + unit partition 1/8 at the branch checkout | Separate engine shards at that same pin |
+| Ready PR creation/update | T0 + unit partition 1/8 at the platform's PR merge checkout | Separate engine shards at the executed merge pin, invalidated by target updates |
 | Draft PR | Platform does not build it | No acceptance claim |
 | Integration/nightly/manual mode selection | Not exposed to consumers | Platform-owned opt-in trigger and aggregation |
 
@@ -105,7 +104,7 @@ No commit-footer, build-number, branch-name or temporary-Jenkinsfile scheme is
 used to simulate a scheduler.
 
 If either full engine mode exceeds its per-execution limit, proposed initial
-qualification uses eight repository partitions for it, plus trigger-order. These are unqualified sizes, not measured bounds.
+qualification uses eight repository partitions for it. These are unqualified sizes, not measured bounds.
 No partition is promised to fit until measured on cir. Increase partition count
 only while retaining the complete expected inventory and all controls/gates.
 
@@ -149,7 +148,7 @@ expected failures remain recorded outcomes: their identities, multiplicities
 and skip reasons must match the independent reference exactly. A new or changed
 skip therefore fails equality; this does not authorise any new test skip.
 It compares test/subtest identity/outcome multisets, exact mutant identities and
-normalized verdicts and the mutation base, plus both trigger orders. It does
+normalized verdicts and the mutation base. It does
 not compare durations or machine-specific paths as a substitute for outcomes.
 Any actual identity differences, including unstable subtest names, are reported
 rather than normalised away. CI qualification and the shadow window remain
@@ -159,8 +158,8 @@ separate later work.
 
 `make gen2-ci-default` prints **PARTIAL ACCEPTANCE — NOT FULL ACCEPTANCE**
 before execution and again at completion, including failure. Its fixed scope is
-T0 and units 1/8. Complete trigger-order, unit partitions 2–8/8, all mutation
-work and all gateway modes are omitted. A green result covers only that scope.
+T0 and units 1/8. Unit partitions 2–8/8, all mutation work and all gateway
+modes are omitted. A green result covers only that scope.
 `default-1-of-1/scope.json` records the planned scope, actual per-mode execution
 statuses and source SHA/tree; `GEN2_CI_SCOPE` retains it in the console.
 `acceptance-scope.xml` publishes the banner and scope as a Jenkins-visible test
@@ -184,11 +183,9 @@ unmerged std v1.2 PRs #13–#15 do not establish deployed capability.
 | --- | --- | --- |
 | `push` | `make gen2-ci GEN2_CI_MODE=push` | 50 minutes; expected a few minutes, measure in Jenkins |
 | `engine-unit` | `make gen2-ci-unit` | 50 minutes, split into explicit repository partitions if measured over budget |
-| `engine-trigger-order` | `make gen2-ci-trigger-order` | 50 minutes |
 | `engine-mutation` | `make gen2-ci-mutation` | Changed lines only; serial, measured per change (no universal time bound) |
 | `gateway-no-db` | `make gen2-ci-gateway-no-db` | 50 minutes; blocked on gateway interpreter dependency |
 | `gateway-db` | `make gen2-ci-gateway-db` | 50 minutes; disabled pending image :2 and locked interpreter selection |
-| `gateway-mutants` | `make gen2-ci-gateway-mutants` | 50 minutes; disabled pending image :2 and locked interpreter selection |
 
 For an explicitly configured repository partition, append
 `GEN2_CI_SHARD=INDEX/TOTAL` to `gen2-ci-unit` or `gen2-ci-mutation`. The complete
@@ -199,7 +196,9 @@ headroom. Do not combine long modes under one shared timeout.
 
 `make gen2-mutation-report` runs all production Python files as report-only
 evidence at phase gates and Gate S. It never participates in acceptance or blocks.
-The gateway retains its existing 413-mutant PostgreSQL step pending separate adoption.
+The hand-written 413-mutant gateway inventory and PostgreSQL mutation step have
+been retired under operator ruling 3 (2026-10-24); future gateway production
+changes use the same Cosmic Ray changed-line filter as engine production changes.
 The wrapper observes the test-runner boundary: an outer assertion following a
 nested child crash can still look like an assertion failure. Astra reviews intent.
 

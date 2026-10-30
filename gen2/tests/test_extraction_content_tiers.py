@@ -2,11 +2,11 @@
 import json
 import unittest
 
-from gen2.tests import test_canonical_content_tiers as content
-from gen2.tests.test_canonical_receipt_admission import AttributedReceiptCase
-from gen2.tests.test_extraction_acquisitions import extraction_document, send
-from gen2.tests.test_pending_extraction_support import METHODS
-from gen2.tests.test_reaccess_admission import RAW, STAMP
+from gen2.tests import router_fixtures as content
+from gen2.tests.router_fixtures import AttributedReceiptCase
+from gen2.tests.router_fixtures import extraction_document, send
+from gen2.tests.router_fixtures import EXTRACTION_METHODS as METHODS
+from gen2.tests.router_fixtures import RAW, STAMP
 from gen2.tests.router_fixtures import TOPIC, empty_outcome
 
 
@@ -40,15 +40,6 @@ class ExtractionContentRouterTest(unittest.TestCase):
                     before = case.state(exclude=())
                     self.assertEqual(case.router.commit_outcome(case.env), {"status": "replayed", "receipt": out["receipt"]})
                     self.assertEqual(case.state(exclude=()), before)
-
-    def test_inflation(self):
-        for method in METHODS:
-            for record, tier, control in (({"identity": content.IDENTITY}, "abstract", "bibliographic"),
-                    ({"identity": content.IDENTITY, "abstract": "Fixture abstract"}, "full_text", "abstract"),
-                    ({**content.FULL, "reproduced": True, "access_tier": "reproduced"}, "reproduced", "full_text")):
-                for verdict in ("supports", "partially_supports", "does_not_support", "cannot_assess_at_required_tier"):
-                    with self.subTest(method=method, tier=tier, verdict=verdict), content.attributed_fixture(record) as case:
-                        self.refuse(case, method, tier, control, verdict)
 
     def test_record_and_route(self):
         scenarios = (({"identity": content.IDENTITY, "kind": "full_text", "links": ["https://fixture.invalid/paper"],

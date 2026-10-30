@@ -36,208 +36,13 @@ from __future__ import annotations
 
 import copy
 import json
-import sqlite3
-import tempfile
-from pathlib import Path
 
 from gen2.core import canonical
-from gen2.store import api
-from gen2.store import db as store_db
-from gen2.tests.ddl_fixtures import restore_triggers
-from gen2.tests.detailed_receipt_fixtures import seed_checks
 from gen2.tests import router_fixtures as rf, store_fixtures
 from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, find_request, h, jcs
-from gen2.tests import test_router_commit  # its verification-receipt builder (the module, so its tests are not collected twice)
+from gen2.tests.router_fixtures import ContractWorld, REFRAMED_QUESTION, columns, compatible, contract_doc, protocol_changed, reframed
 
-EXAMPLE = json.loads((rf.EXAMPLES / "contract-v2" / "valid-two-obligations.json").read_text())["instance"]
 KINDS = ("research_pass", "discovery", "verification", "checkpoint")
-
-
-def contract_doc(revision: int, parent: int | None, *, rated: bool = True, edit=None) -> dict:
-    """The example contract as TOPIC's revision `revision`; `edit` changes it."""
-    doc = copy.deepcopy(EXAMPLE)
-    # 2c-3b: these declared thresholds/challenge/screening operands have no
-    # automatic evaluator. This Router fixture explicitly requests reviews.
-    for profile in doc["stopping_profiles"]:
-        for rule in profile["rules"]:
-            rule["evaluation"] = "reviewed_judgment"
-    doc.update(topic_id=TOPIC, revision=revision, parent_revision=parent, created_at="2026-09-27T09:30:00Z")
-    doc["decision_record"]["objective"]["confirmed_brief"] = {"brief_id": "brief-1", "version": 1, "confirmed_by": "opd_brieft101"}  # the world's (task 2a checks it)
-    for entry in doc["facet_map"]["facets"] + doc["obligations"]:
-        entry["importance"]["proposed"] = None
-        if not rated:
-            entry["importance"]["operator_rating"] = None
-    if edit is not None:
-        edit(doc)
-    doc["content_hash"] = canonical.content_hash(doc)
-    return doc
-
-
-def compatible(doc: dict) -> None:
-    """A surveillance-policy edit — when a completed topic is re-checked
-    (flow S8) — with no framing, protocol or obligation change
-    (CompatibilityRuleTest states why it is compatible)."""
-    doc["surveillance_policy"]["freshness_requirement"]["max_currency_age_days"] = 90
-
-
-def protocol_changed(doc: dict) -> None:
-    doc["protocol_revision"] = 2
-    doc["eligibility_protocol"]["protocol_version"] = 2
-    doc["eligibility_protocol"]["criteria"][1]["description"] = "Reports an omission, coverage or cost outcome for elicited requirements."
-
-
-REFRAMED_QUESTION = "Which facets does intake design cause to be missed, and at what operator cost?"
-
-
-def reframed(doc: dict) -> None:
-    """A reframe: a framework link's key question reworded, under the next framing version (G-6)."""
-    doc["facet_map"]["framing_version"] = 2
-    doc["facet_map"]["analytic_framework"]["links"][0]["key_question"] = REFRAMED_QUESTION
-
-
-def columns(entry: dict) -> tuple:
-    """A facet's or obligation's importance columns, from its entry (written out here, not the router's projection)."""
-    proposed, rating = entry["importance"]["proposed"] or {}, entry["importance"]["operator_rating"] or {}
-    return (proposed.get("source"), proposed.get("score"), proposed.get("decision_receipt_id"), rating.get("band"), rating.get("score"), rating.get("operator_decision_id"))
-
-
-class ContractWorld(RouterTestCase):
-    def setUp(self) -> None:
-        super().setUp()
-        self.build_world()
-
-    def build_world(self) -> None:
-        self.x("INSERT INTO works (work_id, identity_scheme, identity_value, created_at) VALUES ('wrk_00000001', 'doi', '10.1/x', '2026-09-27T09:00:00Z')")
-        self.to_scoping()
-        self.scope_seeded()
-        r1, rated = contract_doc(1, None, rated=False), contract_doc(2, 1)
-        self.store_draft(r1)
-        payload = {"facets": {f["facet_id"]: {"band": f["importance"]["operator_rating"]["band"], "score": f["importance"]["operator_rating"].get("score")}
-                              for f in rated["facet_map"]["facets"]},
-                   "obligations": {o["obligation_id"]: {"band": o["importance"]["operator_rating"]["band"], "score": o["importance"]["operator_rating"].get("score")}
-                                   for o in rated["obligations"]}}
-        assert self.decide("opd_rate0001", "rating_approval", {"kind": "contract_revision", "revision": 1, "hash": r1["content_hash"]}, payload=payload)["status"] == "applied"
-        self.store_draft(rated)
-        assert self.decide("opd_cntr0002", "contract_approval", {"kind": "contract_revision", "revision": 2, "hash": rated["content_hash"]})["status"] == "applied"
-
-    def store_draft(self, doc: dict) -> None:
-        """A first draft and its rows (raw SQL: contract construction is Phase 2)."""
-        self.x("INSERT INTO contract_revisions (topic_id, revision, parent_revision, protocol_revision, framing_version, content_hash, document, status, created_at) "
-               "VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?)", doc["topic_id"], doc["revision"], doc["parent_revision"], doc["protocol_revision"],
-               doc["facet_map"]["framing_version"], doc["content_hash"], jcs(doc).decode(), doc["created_at"])
-        for f in doc["facet_map"]["facets"]:
-            self.x("INSERT INTO facets (topic_id, contract_revision, facet_id, proposed_importance_source, proposed_importance_score, proposed_decision_receipt_id, "
-                   "operator_importance_band, operator_importance_score, operator_rating_decision_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                   doc["topic_id"], doc["revision"], f["facet_id"], *columns(f))
-        for o in doc["obligations"]:
-            self.x("INSERT INTO obligations (topic_id, contract_revision, obligation_id, template_id, template_version, claim_type, facet_ids, stopping_profile_id, exploratory, "
-                   "proposed_importance_source, proposed_importance_score, proposed_decision_receipt_id, operator_importance_band, operator_importance_score, operator_rating_decision_id) "
-                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", doc["topic_id"], doc["revision"], o["obligation_id"], o["template"]["template_id"],
-                   o["template"]["template_version"], o["template"]["claim_type"], json.dumps(o["facet_ids"]), o["stopping_profile_id"], int(o["exploratory"]), *columns(o))
-
-    def propose(self, revision: int, edit=None, parent: int | None = None) -> dict:
-        doc = contract_doc(revision, revision - 1 if parent is None else parent, edit=edit)
-        out = self.router.propose_amendment({"document": doc})
-        assert out["status"] == "recorded", out
-        return doc
-
-    def approve(self, doc: dict, kind: str = "amendment_approval", did: str | None = None) -> dict:
-        return self.decide(did or f"opd_amend{doc['revision']:04d}", kind, {"kind": "contract_revision", "revision": doc["revision"], "hash": doc["content_hash"]})
-
-    def impact(self, did: str) -> dict:
-        document = self.value("SELECT document FROM amendment_impacts WHERE decision_id = ?", did)
-        self.assertIsNotNone(document, f"no impact is recorded for {did}")
-        return json.loads(document)
-
-    def research(self, inv: str = "inv_research01", *, load_bearing: bool = True) -> dict:
-        """A research pass under revision 2 that screens (an inclusion and an
-        exclusion), captures a claim (load-bearing, at full text, unless
-        `load_bearing` is False) and observes a search."""
-        grant = self.started(inv)
-        text = self.artifact(b"a load-bearing claim")
-        outcome = empty_outcome(inv, "interim_transition")
-        outcome["claims"] = [{"claim_id": "clm_00000001", "revision": 1, "text_ref": text, "load_bearing": load_bearing,
-                               "required_access_tier": "full_text" if load_bearing else None}]
-        outcome["screening_assessments"] = [
-            {"assessment_id": "asm_000000000001", "work_id": "wrk_00000001", "stage": "abstract", "decision": "include", "reason_code": None,
-             "criterion_results": {"EC-outcome": "met"}, "actor_kind": "primary", "decision_receipt_id": None, "supersedes_assessment_id": None},
-            {"assessment_id": "asm_000000000002", "work_id": "wrk_00000001", "stage": "abstract", "decision": "exclude", "reason_code": "EC-outcome",
-             "criterion_results": {"EC-outcome": "not_met"}, "actor_kind": "primary", "decision_receipt_id": None, "supersedes_assessment_id": None}]
-        assert self.router.commit_outcome(self.envelope(grant, "op_capture0001", outcome, refs=[text]))["status"] == "committed"
-        request = find_request("intake omissions")
-        observation = {"observation_id": "obs_000000000001", "request": request, "request_identity": canonical.logical_hash(request), "attempt": 1, "lane": "crossref",
-                       "obligation_ids": ["O-1"], "started_at": "2026-09-27T10:00:00Z", "ended_at": "2026-09-27T10:00:01Z", "coverage_state": "searched_empty",
-                       "result_count": 0, "completeness": "complete", "error_class": None, "capability_fact_id": None, "policy_version": "pol-1", "cost_units": None,
-                       "gateway_call_ref": "call-1", "page_outcome": "end_unknown", "continuation": None}
-        assert self.router.record_observation({"capability_id": grant["capability_id"], "invocation_id": inv, "observation": observation, "retrieval_events": []})["status"] == "recorded"
-        return grant
-
-    def verify(self, canonical_producer=None, acquisition_producer=None) -> dict:
-        verifier = self.started("inv_verify01", "verification")
-        self.verifier = verifier
-        doc = test_router_commit.AuthorityTest.verification_receipt(self, verifier)
-        if canonical_producer is not None or acquisition_producer is not None:
-            # Raw admitted fixture operands for the amendment control. This
-            # test exercises pin compatibility, not capture authentication.
-            raw = b'{"records":[{"identity":"rec-full","kind":"full_text","text":"Fixture full text"}]}'
-            ref = self.artifact(raw, "application/json")
-            self.x("""INSERT INTO search_observations (observation_id, invocation_id, topic_id, request_identity, attempt,
-                lane, request, obligation_ids, started_at, ended_at, coverage_state, result_count, completeness,
-                error_class, capability_fact_id, policy_version, cost_units, gateway_call_ref, page_outcome, continuation)
-                SELECT 'obs_support001', invocation_id, topic_id, request_identity, 2, lane, request, obligation_ids,
-                started_at, ended_at, 'searched_ok', 1, completeness, error_class, capability_fact_id, policy_version,
-                cost_units, gateway_call_ref, page_outcome, continuation FROM search_observations
-                WHERE observation_id = 'obs_000000000001'""")
-            self.x("INSERT INTO retrieval_events VALUES ('rev_support001', 'obs_support001', ?, 'rec-full', 1, '2026-09-27T10:00:00Z')", TOPIC)
-            self.x("INSERT INTO record_work_links VALUES ('rev_support001', 'wrk_00000001', 'dedup-1', '2026-09-27T10:00:00Z')")
-            payload = {**empty_outcome("inv_research01", "interim_transition"), "source_artifacts": [
-                {"work_id": "wrk_00000001", "source_version": "canonical-v1", "artifact_ref": ref}]}
-            self.assertEqual(self.router.commit_outcome(self.envelope(canonical_producer or acquisition_producer, "op_support001", payload, refs=[ref]))["status"], "committed")
-            request, identity = self.rows("SELECT request, request_identity FROM search_observations WHERE observation_id = 'obs_support001'")[0]
-            self.x("INSERT INTO source_acquisitions VALUES (?, 'wrk_00000001', 'canonical-v1', ?, 'obs_support001', 'rev_support001', 'call-1', 'inv_research01', 2, 'crossref', 'find', 'rec-full', '2026-09-27T10:00:00Z', 'inv_verify01', ?, ?, ?, '2026-09-27T10:00:00Z')", TOPIC, ref["content_hash"], identity, request.encode(), raw)
-            doc["source"]["source_version"] = "canonical-v1"
-            doc["obtained_content_hash"] = doc["checks"]["exact_quote"]["source_artifact_hash"] = ref["content_hash"]
-            if canonical_producer is not None:
-                doc["extraction"].update(method="canonical_bytes", produced_by_invocation_id="inv_research01")
-        if acquisition_producer is not None:
-            from gen2.tests.extraction_receipt_fixtures import seed, attach
-            seed(self, verifier, acquisition_producer)
-            attach(self, doc)
-        # Authenticate retained assessments before the receipt transaction;
-        # the subject still runs with the complete requested trigger catalog.
-        restore_triggers(self, store_db.schema_text())
-        try:
-            seed_checks(self, doc)
-        finally:
-            restore_triggers(self, store_fixtures.DDL_TEXT)
-        own = {**empty_outcome("inv_verify01", "interim_transition"), "verification_receipts": [doc]}
-        assert self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own))["status"] == "committed"
-        return verifier
-
-    def promote_revision_one(self, grant: dict, op: str) -> dict:
-        outcome = {**empty_outcome(grant["invocation_id"], "interim_transition"), "claim_promotions": [{"claim_id": "clm_00000001", "revision": 1}]}
-        before = self.state()
-        response = self.router.commit_outcome(self.envelope(grant, op, outcome))
-        self.assertEqual((response["status"], response.get("reason")), ("rejected", "amendment_pending"), response)
-        self.assertIn("contract-admitted work adopts it as a new revision", response.get("detail"))
-        self.assert_audited_state(before, 1)
-        return response
-
-    def adopt(self, grant: dict) -> None:
-        text = self.artifact(b"a load-bearing claim")
-        adopt = {**empty_outcome(grant["invocation_id"], "interim_transition"),
-                 "claims": [{"claim_id": "clm_00000001", "revision": 2, "text_ref": text, "load_bearing": False, "required_access_tier": None}],
-                 "claim_promotions": [{"claim_id": "clm_00000001", "revision": 2}]}
-        self.assertEqual(self.router.commit_outcome(self.envelope(grant, "op_adopt000001", adopt, refs=[text]))["status"], "committed")
-        self.assertEqual(self.rows("SELECT revision, status FROM claims ORDER BY revision"), [(1, "provisional"), (2, "accepted_support")])
-
-    def refused_command(self, method, request: dict, reason: str, detail: str | None = None) -> None:
-        before = self.state()
-        out = getattr(self.router, method)(request)
-        self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
-        if detail is not None:
-            self.assertIn(detail, out.get("detail", ""))
-        self.assertEqual(self.state(), before)
 
 
 class AmendmentProposalTest(ContractWorld):
@@ -325,8 +130,8 @@ class AmendmentApprovalTest(ContractWorld):
     def test_an_approved_amendment_requeues_a_completed_topic(self) -> None:
         self.x("UPDATE queue_entries SET status = 'active', state_revision = state_revision + 1 WHERE topic_id = ?", TOPIC)
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, staged_at) VALUES (?, 10, 'application/json', ?)", h("7"), "2026-09-27T09:00:00Z")
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evidence_revision, evaluator_version, content_hash, document_ref, created_at) "
-               "VALUES (?, 1, 2, 1, 'eval-1', ?, ?, ?)", TOPIC, h("3"), h("7"), "2026-09-27T09:00:00Z")
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evaluator_version, content_hash, document_ref, created_at) "
+               "VALUES (?, 1, 2, 'eval-1', ?, ?, ?)", TOPIC, h("3"), h("7"), "2026-09-27T09:00:00Z")
         self.assertEqual(self.decide("opd_complete01", "completion_approval", {"kind": "dossier", "revision": 1, "hash": h("3")})["status"], "applied")
         self.assertEqual(self.status(), "completed_with_qualified_conclusions")
         out = self.approve(self.propose(3, compatible))
@@ -962,31 +767,14 @@ class BriefLineageTest(RouterTestCase):
         self.assertEqual((brief["brief_id"], brief["version"]), ("brief-2", 1))
 
 
-class AmendmentRestartTest(ContractWorld):
+class AmendmentRestartTest(rf.DurableRouterTestCase, ContractWorld):
     """RG-9: impact records and the pins they judge survive a restart; a
     reopened router still fences what an approval made incompatible."""
 
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.directory = Path(self._tmp.name)
-        api.open_store(self.directory / "store.sqlite3", create=True).close()
-        self.db = sqlite3.connect(self.directory / "store.sqlite3", isolation_level=None)
-        self.db.executescript(store_fixtures.CONNECTION_TEXT)
-        self.store = api.open_store(self.directory / "store.sqlite3")
-        self.spool, self.clock, self.ids, self.faults = rf.Spool(), rf.Clock(), rf.Ids(), {}
-        self.router = self.make_router()
-        self.seed()
+        super().setUp()
         self.build_world()
 
-    def tearDown(self) -> None:
-        self.router.close()
-        self.db.close()
-        self._tmp.cleanup()
-
-    def reopen(self) -> None:
-        self.router.close()
-        self.store = api.open_store(self.directory / "store.sqlite3")
-        self.router = self.make_router()
 
     def test_impacts_and_pins_survive_a_restart(self) -> None:
         self.research()

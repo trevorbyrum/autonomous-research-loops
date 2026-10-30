@@ -247,6 +247,8 @@ class FencingTest(CommitCase):
         env["expected_state_revision"] = self.state_revision()
         receipt = self.router.commit_outcome(env)["receipt"]
         self.assertEqual((receipt["effects"]["queue_transition"], receipt["effects"]["lease_release"]["rest_state"]), (None, "held"))
+        self.assertNotIn("evidence_revision", receipt["effects"])
+        self.assertNotIn("evidence_revision", self.router.receipt(env["operation_id"])["effects"])  # the stored receipt
         self.assertEqual(self.status(), "held")
 
     def test_one_final_outcome_per_invocation(self) -> None:
@@ -326,7 +328,7 @@ class AuthorityTest(CommitCase):
         receipt = self.verification_receipt(verifier)
         # Recorded input for this authority test; trusted transport has separate
         # Router tests. Keep identity refusals independent of acquisition refusal.
-        from gen2.tests.test_router_workflow import Workflow
+        from gen2.tests.router_fixtures import Workflow
         event = Workflow.observe(self, self.grant, "obs_authority01", ("rec-1",))[0]
         self.x("INSERT INTO record_work_links VALUES (?, 'wrk_00000001', 'dedup-1', '2026-09-27T10:00:00Z')", event)
         source = self.artifact(b'{"records":[{"identity":"rec-1","kind":"full_text","text":"Fixture text"}]}', "application/json")
@@ -351,22 +353,15 @@ class AuthorityTest(CommitCase):
                 committing["verification_receipts"] = [doc]
                 env = self.envelope(grant, "op_verify0001", committing)
                 before, audits = self.snapshot()
-                from gen2.tests.detailed_receipt_fixtures import historical_admission
-                with historical_admission(self):
+                from gen2.tests.detailed_receipt_fixtures import reference_isolation
+                with reference_isolation(self):
                     self.assertRejected(self.router.commit_outcome(env), reason, before, audits)
         own = empty_outcome("inv_verify01", "interim_transition")
         # NB1: the accepted support is a current positive; refusals above retain
-        # their explicit /1 authority-isolation operands.
-        from gen2.store import db
-        from gen2.tests import store_fixtures as sf
-        from gen2.tests.ddl_fixtures import restore_triggers
+        # their unreferenced /2 authority-isolation operands.
         from gen2.tests.detailed_receipt_fixtures import seed_checks
         self.verifier = verifier
-        restore_triggers(self, db.schema_text())
-        try:
-            seed_checks(self, receipt)
-        finally:
-            restore_triggers(self, sf.DDL_TEXT)
+        seed_checks(self, receipt)
         own["verification_receipts"] = [receipt]
         self.assertEqual(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own))["status"], "committed")
         self.assertEqual(self.rows("SELECT verifier_invocation_id, producer_invocation_id FROM verification_receipts"), [("inv_verify01", "inv_research01")])
@@ -389,8 +384,8 @@ class AuthorityTest(CommitCase):
         before, audits = self.snapshot()
         self.assertRejected(self.router.commit_outcome(env), "payload_missing", before, audits, "canonical bytes are not staged")
         before, audits = self.snapshot()
-        from gen2.tests.detailed_receipt_fixtures import historical_admission
-        with historical_admission(self):
+        from gen2.tests.detailed_receipt_fixtures import reference_isolation
+        with reference_isolation(self):
             self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired])),
                                 "payload_invalid", before, audits, "must consume its admitted acquisition")
 
@@ -418,24 +413,11 @@ class AuthorityTest(CommitCase):
         self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own)), "payload_missing", before, audits, "canonical bytes are not staged")
         self.spool.put(raw, media_type="application/pdf", topic=TOPIC)
         before, audits = self.snapshot()
-        from gen2.tests.detailed_receipt_fixtures import historical_admission
-        with historical_admission(self):
+        from gen2.tests.detailed_receipt_fixtures import reference_isolation
+        with reference_isolation(self):
             self.assertRejected(self.router.commit_outcome(self.envelope(verifier, "op_verify0001", own, refs=[acquired])),
                                 "payload_invalid", before, audits, "must consume its admitted acquisition")
         self.assertEqual(self.rows("SELECT topic_id FROM artifact_topics WHERE content_hash = ? ORDER BY topic_id", acquired["content_hash"]), [(OTHER,)])
-
-    def verification_receipt(self, verifier: dict) -> dict:
-        return {"receipt_version": "verification-receipt/1", "verification_receipt_id": "ver_000000000001", "topic_id": TOPIC,
-                "claim": {"claim_id": "clm_00000001", "claim_revision": 1}, "source": {"work_id": "wrk_00000001", "source_version": "v1"},
-                "cited_spans": [{"start": 0, "end": 5, "locator": {"kind": "page", "value": "3"}}], "obtained_content_hash": h("7"),
-                "access_tier": "full_text", "requested_for": {"use": "load_bearing", "required_access_tier": "full_text"},
-                "acquisition": {"route": "gateway:crossref", "retrieved_at": "2026-09-27T10:00:00Z", "gateway_call_ref": "call-1", "cache_reuse": False},
-                "extraction": {"method": "verifier_extraction", "extractor": "x-1", "produced_by_invocation_id": verifier["invocation_id"], "validation_ref": None},
-                "producer_invocation_id": "inv_research01", "verifier_invocation_id": verifier["invocation_id"],
-                "verifier_capability_id": verifier["capability_id"], "quote_check_id": None,
-                "checks": {"exact_quote": {"status": "not_applicable", "normalization_version": "n1", "source_artifact_hash": h("7")},
-                           "numeric_units": "checked_ok", "denominators": "checked_ok", "negation": "not_applicable", "qualifications": "checked_ok"},
-                "adjudication": None, "verdict": "supports", "verified_at": "2026-09-27T10:05:00Z"}
 
     def setUp(self) -> None:
         super().setUp()

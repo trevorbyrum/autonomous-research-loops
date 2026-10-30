@@ -5,7 +5,6 @@ SQL readbacks are independent of the accounting adapter. Current dispositions,
 G-1 semantic reuse and accrual are the later 2c-2b slice.
 """
 import json
-import sqlite3
 import unittest
 from fractions import Fraction
 from pathlib import Path
@@ -14,10 +13,13 @@ from gen2 import accounting as a
 from gen2.router.schemas import SchemaSet
 from gen2.tests import children
 from gen2.tests.router_fixtures import TOPIC, OTHER, empty_outcome
-from gen2.tests.store_fixtures import StoreTestCase
-from gen2.tests.test_router_workflow import Workflow
+from gen2.tests.router_fixtures import Workflow
 
 OUTCOME_SCHEMA = Path(__file__).resolve().parents[1] / "schema/outcome-document.schema.json"
+
+
+def judgments(records):
+    return tuple(a.NoveltyJudgment(r.work_id, {"novel": True, "not_novel": False, "unknown": None}[r.novelty]) for r in records)
 
 
 class LifecycleSchemaTest(unittest.TestCase):
@@ -81,7 +83,7 @@ class SemanticTest(Workflow):
         inv = self.router.evidence_inventory(TOPIC, history="native")
         self.assertEqual(a.candidate_units(inv).deduplicated_works.value, 2)
         self.assertEqual(a.candidate_units(inv).assessed_candidates.value, 0)  # semantics do not screen candidates
-        self.assertEqual(a.novelty(a.Count(frozenset(self.works)), a.novelty_judgments(inv.semantic_assessments)), Fraction(1, 2))
+        self.assertEqual(a.novelty(a.Count(frozenset(self.works)), judgments(inv.semantic_assessments)), Fraction(1, 2))
         self.assertEqual(inv.semantic_assessments[0].evidence_refs, (a.EvidenceReference(**self.ref),))
         self.assertEqual({r.recorded_by_operation_id for r in inv.semantic_assessments}, {self.env["operation_id"]})
         self.assertEqual(len(inv.source_lineage), 2)
@@ -142,9 +144,9 @@ class SemanticTest(Workflow):
         self.assertEqual(self.send([self.record(novelty="unknown"), self.record(1)])["status"], "committed")
         records = self.router.evidence_inventory(TOPIC, history="native").semantic_assessments
         count = a.Count(frozenset(self.works))
-        self.assertIsNone(a.novelty(count, a.novelty_judgments(records)))
-        self.assertIsNone(a.novelty(count, a.novelty_judgments(records[1:])))
-        self.assertIsNone(a.novelty(count, a.novelty_judgments((records[1], records[1]))))
+        self.assertIsNone(a.novelty(count, judgments(records)))
+        self.assertIsNone(a.novelty(count, judgments(records[1:])))
+        self.assertIsNone(a.novelty(count, judgments((records[1], records[1]))))
 
     def test_append_keeps_earlier_dated_records(self):
         self.assertEqual(self.send([self.record()])["status"], "committed")
@@ -179,17 +181,18 @@ from dataclasses import replace
 from fractions import Fraction
 from hypothesis import given, settings, strategies as st
 from gen2 import accounting as a
+judgments = lambda records: tuple(a.NoveltyJudgment(r.work_id, {"novel": True, "not_novel": False, "unknown": None}[r.novelty]) for r in records)
 @settings(max_examples=40, derandomize=True, database=None)
 @given(st.lists(st.sampled_from(["novel", "not_novel"]), min_size=1, max_size=20))
 def labels_law(labels):
     template = a.SemanticAssessment("asm", "work", "v1", 1, 1, 1, "novel", "unknown", "unknown", "unknown", (), "primary", "inv", "op", "date")
     records = tuple(replace(template, work_id=str(i), novelty=label) for i, label in enumerate(labels))
     count = a.Count(frozenset(str(i) for i in range(len(labels))))
-    judgments = a.novelty_judgments(records)
-    assert a.novelty(count, judgments) == Fraction(labels.count("novel"), len(labels))
-    assert a.novelty(count, judgments[::-1]) == a.novelty(count, judgments)
-    assert a.novelty(count, judgments + judgments[:1]) is None
-    assert a.novelty(count, a.novelty_judgments((replace(records[0], novelty="unknown"), *records[1:]))) is None
+    judged = judgments(records)
+    assert a.novelty(count, judged) == Fraction(labels.count("novel"), len(labels))
+    assert a.novelty(count, judged[::-1]) == a.novelty(count, judged)
+    assert a.novelty(count, judged + judged[:1]) is None
+    assert a.novelty(count, judgments((replace(records[0], novelty="unknown"), *records[1:]))) is None
 labels_law()
 '''
 
@@ -216,46 +219,3 @@ class RegistrySchemaTest(unittest.TestCase):
                         {"registry_kind": "invalid", "disposition": "park"}, {"disposition": "invalid"},
                         {"disposition": "park"}, {"registry_kind": "branch"}, {"evidence_refs": []}):
             self.assertTrue(self.schemas().errors(self.record(**changes), target), changes)
-
-
-class SemanticDDLTest(StoreTestCase):
-    """Raw DDL fixture, so mutants exercise guards without the opening identity gate."""
-    def setUp(self):
-        super().setUp()
-        self.populate_every_table()
-
-    def append(self, **changes):
-        columns = [r[1] for r in self.rows("PRAGMA table_info(semantic_assessments)")]
-        row = dict(zip(columns, self.rows("SELECT * FROM semantic_assessments WHERE assessment_id = 'sem1'")[0]))
-        row.update(assessment_id="sem2", **changes)
-        self.x(f"INSERT INTO semantic_assessments ({','.join(columns)}) VALUES ({','.join('?' for c in columns)})", *row.values())
-
-    def test_control_insert(self):
-        self.append(novelty="novel")
-        self.assertEqual(self.rows("SELECT assessment_id, novelty FROM semantic_assessments ORDER BY assessment_id"), [("sem1", "unknown"), ("sem2", "novel")])
-
-    def test_update_guard(self):
-        for table in ("semantic_assessments", "source_lineage"):
-            with self.subTest(table=table), self.assertRaises(sqlite3.IntegrityError):
-                self.x(f"UPDATE {table} SET assessment_id = assessment_id")
-
-    def test_binding_guard(self):
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.append(framing_version=2)
-
-    def test_actor_and_label_guards(self):
-        for field in ("actor_kind", "novelty", "independence", "applicability", "contribution"):
-            with self.subTest(field=field), self.assertRaises(sqlite3.IntegrityError):
-                self.append(**{field: "unauthorized"})
-
-    def test_lineage_shape_guard(self):
-        self.append()
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x("INSERT INTO source_lineage VALUES ('sem2', 'shared_study_origin', NULL, NULL, NULL)")
-
-    def test_delete_guard(self):
-        self.append()  # sem2 has no dependents: no foreign key can mask its guard
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x("DELETE FROM semantic_assessments WHERE assessment_id = 'sem2'")
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x("DELETE FROM source_lineage")

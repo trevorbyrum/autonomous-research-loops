@@ -1,15 +1,11 @@
 """Current receipt admission: attributed records, never self-declared authority."""
 import copy
 import unittest
-from unittest.mock import patch
 
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
 from gen2.tests import test_detailed_check_receipts as references
-from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
-from gen2.tests.detailed_receipt_fixtures import OUTCOME, attach_checks, seed_checks, historical_receipt, historical_admission
-from gen2.tests.test_pending_extraction_support import load_claim
-from gen2.tests.ddl_fixtures import reverse_triggers
+from gen2.tests.detailed_receipt_fixtures import OUTCOME, attach_checks, seed_checks
+from gen2.tests.router_fixtures import load_claim
+from gen2.tests import router_fixtures as rf
 
 
 class MandatoryCases:
@@ -18,12 +14,10 @@ class MandatoryCases:
         case = references.ReferenceRouterTest('test_control')
         case.setUp()
         self.addCleanup(case.tearDown)
-        restore_triggers(case, db.schema_text())
         load_claim(case, 'abstract')
         case.doc['claim']['claim_id'] = 'clm_loadbear1'
         case.doc['requested_for']['use'] = 'load_bearing'
         seed_checks(case, case.doc)
-        restore_triggers(case, sf.DDL_TEXT)
         return case
 
     def refused(self, case, detail=None):
@@ -44,7 +38,7 @@ class MandatoryCases:
         case = self.opened()
         original = copy.deepcopy(case.doc)
         for verdict in ('supports', 'partially_supports'):
-            for kind in references.KINDS:
+            for kind in rf.KINDS:
                 with self.subTest(verdict=verdict, kind=kind):
                     case.doc = copy.deepcopy(original)
                     case.doc['verdict'] = verdict
@@ -57,12 +51,12 @@ class MandatoryCases:
         del case.doc['detailed_checks']
         for verdict in ('supports', 'partially_supports'):
             case.doc['verdict'] = verdict
-            self.refused(case, 'requires detailed check records')
+            self.refused(case, "/receipt_version: not one of ['verification-receipt/2']")
 
     def test_bindings(self):
         case = self.opened()
         original = copy.deepcopy(case.doc)
-        for kind in references.KINDS:
+        for kind in rf.KINDS:
             with self.subTest(kind=kind):
                 # All other references match; only this reference names the
                 # independently admitted record for the other claim revision.
@@ -76,7 +70,7 @@ class MandatoryCases:
     def test_outcomes(self):
         case = self.opened()
         original = copy.deepcopy(case.doc)
-        for kind in references.KINDS:
+        for kind in rf.KINDS:
             for summary, outcome in OUTCOME.items():
                 with self.subTest(kind=kind, outcome=outcome):
                     case.doc = copy.deepcopy(original)
@@ -97,7 +91,7 @@ class MandatoryCases:
 
     def test_failed_without_record(self):
         case = self.opened()
-        for kind in references.KINDS:
+        for kind in rf.KINDS:
             case.doc['checks'][kind] = 'checked_problem'
         attach_checks(case, case.doc)
         case.doc['adjudication'] = dict(adjudication_ref='adj-unperformed',
@@ -106,38 +100,13 @@ class MandatoryCases:
 
     def test_exemption_without_record(self):
         case = self.opened()
-        for kind in references.KINDS:
+        for kind in rf.KINDS:
             case.doc['checks'][kind] = 'not_applicable'
         attach_checks(case, case.doc)
         self.missing_entries(case)
 
-    def test_historical_isolation_restores_current_policy_and_catalog(self):
-        for reverse in (False, True):
-            ddl = reverse_triggers(sf.DDL_TEXT) if reverse else sf.DDL_TEXT
-            with self.subTest(reverse=reverse), patch.object(sf, 'DDL_TEXT', ddl):
-                case = self.opened()
-                restore_triggers(case, ddl)
-                case.x("CREATE TRIGGER legacy_sentinel BEFORE INSERT ON verification_receipts "
-                    "WHEN NEW.verification_receipt_id='ver_sentinel' BEGIN SELECT RAISE(ABORT,'legacy sentinel'); END")
-                catalog = case.rows(TRIGGERS)
-                historical_receipt(case.doc)
-                with historical_admission(case):
-                    self.assertNotIn('verification_receipts_require_detailed_checks', dict(case.rows(TRIGGERS)))
-                    self.assertEqual(case.submit()['status'], 'committed')
-                    case.doc['verification_receipt_id'] = 'ver_sentinel'
-                    self.refused(case, 'legacy sentinel')
-                self.assertEqual(case.rows(TRIGGERS), catalog)
-                retained = case.store.select('verification_receipts')[0]['receipt']
-                self.assertEqual(retained['receipt_version'], 'verification-receipt/1')
-                with self.assertRaisesRegex(RuntimeError, 'historical rollback'):
-                    with historical_admission(case):
-                        raise RuntimeError('historical rollback')
-                self.assertEqual(case.rows(TRIGGERS), catalog)
-                case.doc['verification_receipt_id'] = 'ver_current001'
-                self.refused(case, 'requires detailed check records')
-
     def missing_entries(self, case):
-        for kind in references.KINDS:
+        for kind in rf.KINDS:
             entry = case.doc['detailed_checks'][kind]
             identity = entry.pop('record_id')
             self.refused(case, 'requires detailed check records')

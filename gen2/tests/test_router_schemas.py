@@ -19,6 +19,7 @@ C review does that).
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import unittest
@@ -127,20 +128,39 @@ class RouterDocumentsSatisfyTheOracleTest(RouterTestCase):
 
 
 class FailClosedTest(unittest.TestCase):
+    def probe(self, schema: dict, **more: dict) -> router_schemas.SchemaSet:
+        return router_schemas.SchemaSet(extra={"probe": {"$defs": {"x": schema}}, **more})
+
     def test_a_schema_using_an_unimplemented_keyword_is_refused_at_load(self) -> None:
+        self.assertEqual(self.probe({}).errors("ok", "probe#/$defs/x"), [])  # the probe loads, so each refusal below is its own
         for keyword, value in (("patternProperties", {"^a": {}}), ("unevaluatedProperties", False), ("prefixItems", [{}]),
                                ("dependentRequired", {"a": ["b"]}), ("$dynamicRef", "#x")):
-            with self.subTest(keyword), self.assertRaises(router_schemas.SchemaError):
-                router_schemas.SchemaSet(extra={"probe": {"$defs": {"x": {keyword: value}}}})
+            with self.subTest(keyword), self.assertRaisesRegex(router_schemas.SchemaError, re.escape(f"keyword '{keyword}' is not implemented here")):
+                self.probe({keyword: value})
 
     def test_an_unknown_format_or_an_unresolvable_ref_is_refused(self) -> None:
-        for bad in ({"format": "email"}, {"$ref": "common.schema.json#/$defs/nope"}, {"$ref": "nowhere.schema.json"}, {"type": "text"}):
-            with self.subTest(bad), self.assertRaises(router_schemas.SchemaError):
-                router_schemas.SchemaSet(extra={"probe": {"$defs": {"x": bad}}})
+        other = {"other": {"$defs": {"y": {"type": "string"}}}}
+        admits = self.probe({"$ref": "other#/$defs/y"}, **other)
+        self.assertEqual((admits.errors("s", "probe#/$defs/x"), bool(admits.errors(1, "probe#/$defs/x"))), ([], True))
+        stamp = self.probe({"format": "date-time"})
+        self.assertEqual((stamp.errors("2028-02-29T00:00:00Z", "probe#/$defs/x"), bool(stamp.errors("2026-02-29T00:00:00Z", "probe#/$defs/x"))), ([], True))
+        ref = self.probe({"$ref": "common.schema.json#/$defs/invocation_id"})
+        self.assertEqual((ref.errors("inv_abcdefgh", "probe#/$defs/x"), bool(ref.errors("op_abcdefgh", "probe#/$defs/x"))), ([], True))
+        typed = self.probe({"type": "string"})
+        self.assertEqual((typed.errors("s", "probe#/$defs/x"), bool(typed.errors(1, "probe#/$defs/x"))), ([], True))
+        for bad, fragment in (({"format": "email"}, "format 'email' is not implemented here"),
+                              ({"$ref": "common.schema.json#/$defs/nope"}, "does not resolve"),
+                              ({"$ref": "nowhere.schema.json"}, "unknown schema 'nowhere.schema.json'"),
+                              ({"type": "text"}, "unknown type 'text'")):
+            with self.subTest(bad), self.assertRaisesRegex(router_schemas.SchemaError, re.escape(fragment)):
+                self.probe(bad, **other)
 
     def test_a_dollar_inside_a_pattern_is_refused(self) -> None:
-        with self.assertRaises(router_schemas.SchemaError):
-            router_schemas.SchemaSet(extra={"probe": {"$defs": {"x": {"pattern": "^a$|^b$"}}}})
+        grouped = self.probe({"pattern": "^(a|b)$"})
+        self.assertEqual([grouped.errors(v, "probe#/$defs/x") for v in ("a", "b")], [[], []])
+        self.assertTrue(all(grouped.errors(v, "probe#/$defs/x") for v in ("c", "a\n")))
+        with self.assertRaisesRegex(router_schemas.SchemaError, re.escape("`$` is supported only at the end")):
+            self.probe({"pattern": "^a$|^b$"})
 
 
 class EqualityTest(unittest.TestCase):

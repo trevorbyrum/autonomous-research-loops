@@ -1,50 +1,7 @@
 """V-8 durable admission only; literal fixture bytes, no provider execution."""
 import json
 
-from gen2.tests.router_fixtures import TOPIC, empty_outcome
-from gen2.tests.test_reaccess_admission import AcquisitionCase
-
-KINDS = ('numeric_units', 'denominators', 'negation', 'qualifications')
-OUTCOMES = ('succeeded', 'failed', 'not_applicable', 'not_checked', 'unavailable')
-
-
-class CheckCase(AcquisitionCase):
-    RAW = False
-
-    def setUp(self):
-        super().setUp()
-        self.assertEqual(self.capture(self.producer, 'op_claimcheck1')['status'], 'committed')
-        self.assertEqual(self.capture(self.verifier, 'op_setupcheck1', claim=None)['status'], 'committed')
-
-    def record(self, **changes):
-        span = {'start': 0, 'end': 10, 'locator': {'kind': 'paragraph', 'value': '1'}}
-        report = dict(claim_id='clm_00000001', claim_revision=1, work_id=self.work, source_version='v1',
-            source_artifact_hash=self.source['content_hash'], examined_artifact_ref=self.source,
-            cited_spans=[span], context_spans=[{**span, 'end': 20}], kind='numeric_units', outcome='succeeded',
-            method='attributed-assessment/1', assessment='Verifier assessment of this claim and source.',
-            context_examined='No quantities; units interpreted in the retained surrounding text.', applicability_reason='')
-        report.update(changes)
-        ref = self.artifact(json.dumps(report).encode(), 'application/json')
-        return dict(check_id='check-1', assessment=report, evidence_ref=ref)
-
-    def env(self, record, grant=None, op='op_detailcheck1'):
-        grant = grant or self.verifier
-        payload = {**empty_outcome(grant['invocation_id'], 'interim_transition'), 'detailed_check_records': [record]}
-        return self.envelope(grant, op, payload, refs=[record['evidence_ref']] if record['evidence_ref'] else [])
-
-    def send(self, record, grant=None, op='op_detailcheck1'):
-        return self.router.commit_outcome(self.env(record, grant, op))
-
-    def refuse(self, record):
-        before = self.state(exclude=())
-        out = self.send(record)
-        self.assertEqual(out['status'], 'rejected', out)
-        if self.RAW:
-            self.assertEqual(self.state(exclude=()), before)
-        else:
-            self.assert_audited_state(before, 1)
-        return out
-
+from gen2.tests.router_fixtures import CheckCase, KINDS, OUTCOMES
 
 class RecordMatrix:
     def test_control(self):
@@ -76,15 +33,15 @@ class RecordMatrix:
                     {'outcome': 'not_applicable', 'applicability_reason': '\u200b\u00a0'}, {'cited_spans': []}):
                 with self.subTest(kind=kind, change=change):
                     out = self.refuse(self.record(**{'kind': kind, **change}))
-                    if not self.RAW:
-                        self.assertEqual(out.get('reason'), 'payload_invalid', out)
+                    self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_missing_evidence(self):
         for kind in KINDS:
             for outcome in OUTCOMES[:3]:
                 record = self.record(kind=kind, outcome=outcome, applicability_reason='Explicit scope rationale')
                 record['evidence_ref'] = None
-                self.refuse(record)
+                out = self.refuse(record)
+                self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_bindings(self):
         for kind in KINDS:
@@ -104,7 +61,8 @@ class RecordMatrix:
             for span in ({'start': 0.5, 'end': 1}, {'start': -1, 'end': 2}, {'start': 0, 'end': 0},
                     {'start': 0, 'end': 2, 'locator': {'kind': 'invented', 'value': '1'}}):
                 for kind in KINDS:
-                    self.refuse(self.record(kind=kind, **{field: [span]}))
+                    out = self.refuse(self.record(kind=kind, **{field: [span]}))
+                    self.assertEqual(out.get('reason'), 'payload_invalid', out)
 
     def test_topic_artifact(self):
         self.x("DROP TRIGGER artifact_topics_immutable_d")
@@ -123,6 +81,50 @@ class RecordMatrix:
 
 
 class RouterCheckTest(RecordMatrix, CheckCase):
+    def test_required_nonblank_nul(self):
+        for kind in KINDS:
+            for field, outcome in (('assessment', 'succeeded'), ('assessment', 'failed'),
+                    ('assessment', 'not_applicable'), ('context_examined', 'succeeded'),
+                    ('context_examined', 'failed'), ('context_examined', 'not_applicable'),
+                    ('applicability_reason', 'not_applicable')):
+                for index, (value, expected) in enumerate((
+                        ('\0', ('rejected', 'payload_invalid')),
+                        ('Valid text', ('committed', None)),
+                        ('Valid text\0', ('committed', None)),
+                        ('\0Valid text', ('rejected', 'payload_invalid')),
+                        (' \u00a0\u200b\0Valid text', ('rejected', 'payload_invalid')),
+                        (' \u00a0\u200bValid text\0', ('committed', None)))):
+                    with self.subTest(kind=kind, field=field, outcome=outcome, value=value):
+                        report = dict(kind=kind, outcome=outcome, applicability_reason='Explicit scope rationale')
+                        report[field] = value
+                        record = self.record(**report)
+                        record['check_id'] = f'{kind}-{field}-{outcome}-{index}'
+                        before = self.state(exclude=())
+                        out = self.send(record, op='op_' + record['check_id'])
+                        self.assertEqual((out['status'], out.get('reason')), expected, out)
+                        rows = self.store.select('detailed_check_records', {'check_id': record['check_id']})
+                        if expected == ('rejected', 'payload_invalid'):
+                            self.assertEqual(rows, [])
+                            self.assert_audited_state(before, 1)
+                        else:
+                            self.assertEqual(len(rows), 1)
+                            self.assertEqual(rows[0]['assessment'], record['assessment'])
+
+    def test_optional_nonblank_nul(self):
+        for kind in KINDS:
+            for outcome in ('succeeded', 'failed', 'not_checked', 'unavailable'):
+                with self.subTest(kind=kind, outcome=outcome):
+                    report = dict(kind=kind, outcome=outcome, applicability_reason='\0')
+                    if outcome in ('not_checked', 'unavailable'):
+                        report.update(assessment='\0', context_examined='\0')
+                    record = self.record(**report)
+                    record['check_id'] = kind + '-' + outcome
+                    out = self.send(record, op='op_' + record['check_id'])
+                    self.assertEqual((out['status'], out.get('reason')), ('committed', None), out)
+                    rows = self.store.select('detailed_check_records', {'check_id': record['check_id']})
+                    self.assertEqual(len(rows), 1)
+                    self.assertEqual(rows[0]['assessment'], record['assessment'])
+
     def test_router_bindings(self):
         self.x("DROP TRIGGER detailed_check_records_binding")
         self.test_bindings()

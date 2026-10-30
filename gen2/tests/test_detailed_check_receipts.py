@@ -1,32 +1,26 @@
 """Optional /2 references bind recorded relationships, never semantic truth."""
 import copy
 import json
-from unittest.mock import patch
 
 from gen2.core import canonical
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
-from gen2.tests.ddl_fixtures import restore_triggers
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.test_canonical_receipt_admission import ReceiptCase
-from gen2.tests.test_detailed_checks import CheckCase, KINDS, OUTCOMES
+from gen2.tests.router_fixtures import ReceiptCase
+from gen2.tests.router_fixtures import CheckCase, KINDS, OUTCOMES
 
 
 class ReferenceCases:
     record = CheckCase.record
 
     def setUp(self):
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            super().setUp()
-            self.admit()
-            self.doc = self.document()
-            self.doc['receipt_version'] = 'verification-receipt/2'
-            self.doc['detailed_checks'] = {k: dict(outcome='succeeded', record_id=k) for k in KINDS}
-            for k in KINDS:
-                self.doc['checks'][k] = 'checked_ok'
-            self.records = [self.make_record(k) for k in KINDS]
-            self.assertEqual(self.commit_records(self.records)['status'], 'committed')
-        restore_triggers(self, sf.DDL_TEXT)
+        super().setUp()
+        self.admit()
+        self.doc = self.document()
+        self.doc['receipt_version'] = 'verification-receipt/2'
+        self.doc['detailed_checks'] = {k: dict(outcome='succeeded', record_id=k) for k in KINDS}
+        for k in KINDS:
+            self.doc['checks'][k] = 'checked_ok'
+        self.records = [self.make_record(k) for k in KINDS]
+        self.assertEqual(self.commit_records(self.records)['status'], 'committed')
 
     def make_record(self, kind, outcome='succeeded'):
         r = self.record(kind=kind, outcome=outcome, **self.doc['claim'], cited_spans=self.doc['cited_spans'],
@@ -96,7 +90,7 @@ class ReferenceCases:
             self.corrupt('cited_spans', spans)
 
     def test_extraction_control(self):
-        from gen2.tests.test_extraction_acquisitions import extraction_document
+        from gen2.tests.router_fixtures import extraction_document
         for method in ('verifier_extraction', 'validated_extraction'):
             basis = extraction_document(self, method)['extraction']
             self.doc['extraction'] = basis
@@ -104,7 +98,7 @@ class ReferenceCases:
             self.assertEqual(self.submit()['status'], 'committed')
 
     def test_validated_equal_control(self):
-        from gen2.tests.test_extraction_acquisitions import extraction_document
+        from gen2.tests.router_fixtures import extraction_document
         self.doc['extraction'] = extraction_document(self, 'validated_extraction')['extraction']
         self.test_control()
 
@@ -164,7 +158,7 @@ class ReferenceCases:
                     self.rejected_reference()
 
     def test_extraction_artifact(self):
-        from gen2.tests.test_extraction_acquisitions import extraction_document
+        from gen2.tests.router_fixtures import extraction_document
         for method in ('verifier_extraction', 'validated_extraction'):
             self.doc['extraction'] = extraction_document(self, method)['extraction']
             self.doc['verification_receipt_id'] = 'ver_' + method
@@ -240,8 +234,12 @@ class ReferenceCases:
         self.doc['verification_receipt_id'] = 'ver_legacy001'
         self.doc['receipt_version'] = 'verification-receipt/1'
         del self.doc['detailed_checks']
-        self.assertEqual(self.submit()['status'], 'committed')
-        self.assertEqual(self.store.select('verification_receipts', {'verification_receipt_id': 'ver_legacy001'})[0]['receipt'], self.doc)
+        before = self.state(exclude=())
+        out = self.submit()
+        self.assertEqual((out['status'], out.get('reason')), ('rejected', 'payload_invalid'), out)
+        self.assertIn("/verification_receipts/0/receipt_version: not one of ['verification-receipt/2']", out['detail'])
+        self.assertEqual(self.store.select('verification_receipts', {'verification_receipt_id': 'ver_legacy001'}), [])
+        self.assert_audited_state(before, 1)
 
 
 class ReferenceRouterTest(ReferenceCases, ReceiptCase):

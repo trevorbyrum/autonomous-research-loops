@@ -5,7 +5,7 @@
     "tests": "V-1/V-3: all bindings present; reused cache bytes are acceptable for independent checking"
   },
   "instance": {
-    "receipt_version": "verification-receipt/1",
+    "receipt_version": "verification-receipt/2",
     "verification_receipt_id": "ver_01J8ZQ60V1",
     "topic_id": "fleet-a:intake-latency",
     "claim": {
@@ -66,6 +66,20 @@
     },
     "adjudication": null,
     "verdict": "supports",
-    "verified_at": "2026-09-25T11:12:00Z"
+    "verified_at": "2026-09-25T11:12:00Z",
+    "detailed_checks": {
+      "numeric_units": {
+        "outcome": "succeeded"
+      },
+      "denominators": {
+        "outcome": "succeeded"
+      },
+      "negation": {
+        "outcome": "not_applicable"
+      },
+      "qualifications": {
+        "outcome": "succeeded"
+      }
+    }
   }
 }

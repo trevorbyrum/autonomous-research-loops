@@ -1,36 +1,34 @@
 """Promotion reads actual records through the sole Router support owner."""
 import copy
 import json
+import sqlite3
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
 from gen2.core import canonical
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
 from gen2.tests.test_receipt_summary_domain import SummaryCases
-from gen2.tests.ddl_fixtures import restore_triggers, reverse_triggers
 from gen2.tests import test_detailed_check_receipts as refs
-from gen2.tests.detailed_receipt_fixtures import attach_checks, seed_checks, historical_receipt
+from gen2.tests.detailed_receipt_fixtures import attach_checks, seed_checks
 from gen2.tests.detailed_support_fixtures import history, insert_receipt
 from gen2.tests.router_fixtures import empty_outcome
 from gen2.tests.test_receipt_summary_domain import METHODS
+from gen2.tests import router_fixtures as rf
 
 
 class RouterDetailedSupportTest(unittest.TestCase):
 
-    def opened(self, method='canonical_bytes', reverse=False, *, distinct=False):
-        ddl = reverse_triggers(sf.DDL_TEXT) if reverse else sf.DDL_TEXT
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            case = SummaryCases.opened(self, method)
-            if distinct:
-                case.record = refs.ReferenceCases.record.__get__(case)
-                refs.ReferenceCases.distinct_validated(case)
-                case.doc['checks'].update({k: 'checked_ok' for k in refs.KINDS})
-                case.doc['detailed_checks'] = {k: dict(outcome='succeeded', record_id='target-' + k) for k in refs.KINDS}
-                case.doc['receipt_version'] = 'verification-receipt/2'
-            else:
-                seed_checks(case, case.doc)
-        restore_triggers(case, ddl)
+    def opened(self, method='canonical_bytes', *, distinct=False):
+        case = SummaryCases.opened(self, method)
+        if distinct:
+            case.record = refs.ReferenceCases.record.__get__(case)
+            refs.ReferenceCases.distinct_validated(case)
+            case.doc['checks'].update({k: 'checked_ok' for k in rf.KINDS})
+            case.doc['detailed_checks'] = {k: dict(outcome='succeeded', record_id='target-' + k) for k in rf.KINDS}
+            case.doc['receipt_version'] = 'verification-receipt/2'
+        else:
+            seed_checks(case, case.doc)
         return case
 
     def store(self, case):
@@ -57,85 +55,108 @@ class RouterDetailedSupportTest(unittest.TestCase):
                 canonical.canonical_bytes(doc).decode(), case.doc['verification_receipt_id'])
 
     def test_control(self):
-        for reverse in (False, True):
-            for method in METHODS:
-                with self.subTest(reverse=reverse, method=method):
-                    case = self.opened(method, reverse)
-                    self.store(case)
-                    self.promote(case, True)
-                    self.assertEqual(case.value("SELECT status FROM claims WHERE claim_id='clm_loadbear1'"), 'accepted_support')
-                    self.doCleanups()
+        for method in METHODS:
+            with self.subTest(method=method):
+                case = self.opened(method)
+                self.store(case)
+                self.promote(case, True)
+                self.assertEqual(case.value("SELECT status FROM claims WHERE claim_id='clm_loadbear1'"), 'accepted_support')
+                self.doCleanups()
+
+    def test_stored_v1_readback_and_non_support(self):
+        from gen2.router.history import HistoryReader
+        for attributed in (False, True):
+            with self.subTest(attributed=attributed):
+                case = self.opened()
+                case.doc['receipt_version'] = 'verification-receipt/1'
+                if not attributed:
+                    del case.doc['detailed_checks']
+                # The attributed variant keeps every /2 operand qualifying,
+                # so the version discriminator itself must deny support.
+                self.store(case)
+                self.assertEqual(case.store.select('verification_receipts')[0]['receipt'], case.doc)
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / 'retained.sqlite3'
+                    with sqlite3.connect(path) as snapshot:
+                        case.db.backup(snapshot)
+                        snapshot.execute('PRAGMA journal_mode=WAL')
+                    snapshot.close()
+                    before = path.read_bytes()
+                    reader = HistoryReader.open(path)
+                    retained = reader.records('verification_receipts')
+                    self.assertEqual(retained['interpretation'], 'historical_records')
+                    self.assertEqual(retained['records'][0]['receipt'], case.doc)
+                    self.assertEqual(path.read_bytes(), before)
+                self.promote(case)
+                self.doCleanups()
+        # Otherwise identical current-format stored-row control.
+        case = self.opened()
+        self.store(case)
+        self.promote(case, True)
 
     def test_historical_shapes(self):
-        for reverse in (False, True):
-            for method in METHODS:
-                case = self.opened(method, reverse)
-                self.store(case)
-                for shape in ('legacy', 'old_domain', 'empty', 'null', 'partial', 'extra'):
-                    with self.subTest(reverse=reverse, method=method, shape=shape):
-                        doc = copy.deepcopy(case.doc)
-                        if shape == 'legacy':
-                            doc['receipt_version'] = 'verification-receipt/1'
-                        elif shape == 'old_domain':
-                            historical_receipt(doc)
-                            doc['checks'].update({k: 'invented' for k in refs.KINDS})
-                            doc['adjudication'] = dict(adjudication_ref='adj-history', resolved_at=doc['verified_at'],
-                                resolution='Retained old-domain assessment, never detailed authority.')
-                        elif shape == 'empty':
-                            historical_receipt(doc)
-                            doc['receipt_version'] = 'verification-receipt/2'
-                            doc['detailed_checks'] = {}
-                            doc['checks'].update({k: 'invented' for k in refs.KINDS})
-                        elif shape == 'null': doc['detailed_checks'] = None
-                        elif shape == 'partial':
-                            doc['detailed_checks'].pop('qualifications')
-                            doc['checks']['qualifications'] = 'invented'
-                        else:
-                            doc['checks']['foreign'] = 'checked_ok'
-                            doc['detailed_checks']['foreign'] = dict(outcome='succeeded',
-                                record_id=doc['detailed_checks']['qualifications']['record_id'])
-                        self.replace_doc(case, doc)
-                        self.promote(case)
-                self.doCleanups()
+        for method in METHODS:
+            case = self.opened(method)
+            self.store(case)
+            for shape in ('old_domain', 'empty', 'null', 'partial', 'extra'):
+                with self.subTest(method=method, shape=shape):
+                    doc = copy.deepcopy(case.doc)
+                    if shape == 'old_domain':
+                        doc['checks'].update({k: 'invented' for k in rf.KINDS})
+                        doc['adjudication'] = dict(adjudication_ref='adj-history', resolved_at=doc['verified_at'],
+                            resolution='Retained old-domain assessment, never detailed authority.')
+                    elif shape == 'empty':
+                        doc['detailed_checks'] = {}
+                        doc['checks'].update({k: 'invented' for k in rf.KINDS})
+                    elif shape == 'null': doc['detailed_checks'] = None
+                    elif shape == 'partial':
+                        doc['detailed_checks'].pop('qualifications')
+                        doc['checks']['qualifications'] = 'invented'
+                    else:
+                        doc['checks']['foreign'] = 'checked_ok'
+                        doc['detailed_checks']['foreign'] = dict(outcome='succeeded',
+                            record_id=doc['detailed_checks']['qualifications']['record_id'])
+                    self.replace_doc(case, doc)
+                    self.promote(case)
+            self.doCleanups()
 
     def test_bindings(self):
-        for reverse in (False, True):
-            for method in METHODS:
-                case = self.opened(method, reverse, distinct=method == 'validated_extraction')
-                self.store(case)
-                for kind in refs.KINDS:
-                    rid = case.doc['detailed_checks'][kind]['record_id']
-                    original = case.store.select('detailed_check_records', {'check_id': rid})[0]
-                    fields = dict(kind='foreign', outcome='failed', claim_id='clm_foreign01', claim_revision=2,
-                        cited_spans=[*case.doc['cited_spans'], case.doc['cited_spans'][0]], work_id='wrk_foreign01',
-                        source_version='v2', source_artifact_hash='sha256:' + '0' * 64,
-                        **{'examined_artifact_ref.content_hash': 'sha256:' + '1' * 64})
-                    for field, value in fields.items():
-                        with self.subTest(reverse=reverse, method=method, kind=kind, field=field):
-                            with history(case):
-                                case.x('UPDATE detailed_check_records SET assessment=json_set(assessment,?,json(?)) WHERE check_id=?',
-                                    '$.' + field, json.dumps(value), rid)
-                            self.promote(case)
-                            with history(case):
-                                case.x('UPDATE detailed_check_records SET assessment=? WHERE check_id=?', json.dumps(original['assessment']), rid)
-                    for column, value in (('topic_id', 'topic_other01'),
-                            ('performer_invocation_id', case.producer['invocation_id'])):
-                        with self.subTest(reverse=reverse, method=method, kind=kind, column=column):
-                            # Use an existing foreign topic to preserve the FK contract.
-                            if column == 'topic_id':
-                                value = case.value("SELECT topic_id FROM queue_entries WHERE topic_id<>? LIMIT 1", case.doc['topic_id'])
-                            with history(case):
-                                case.x('UPDATE detailed_check_records SET ' + column + '=? WHERE check_id=?', value, rid)
-                            self.promote(case)
-                            with history(case):
-                                case.x('UPDATE detailed_check_records SET ' + column + '=? WHERE check_id=?', original[column], rid)
-                self.doCleanups()
+        for method in METHODS:
+            case = self.opened(method, distinct=method == 'validated_extraction')
+            self.store(case)
+            for kind in rf.KINDS:
+                rid = case.doc['detailed_checks'][kind]['record_id']
+                original = case.store.select('detailed_check_records', {'check_id': rid})[0]
+                fields = dict(kind='foreign', outcome='failed', claim_id='clm_foreign01', claim_revision=2,
+                    cited_spans=[*case.doc['cited_spans'], case.doc['cited_spans'][0]], work_id='wrk_foreign01',
+                    source_version='v2', source_artifact_hash='sha256:' + '0' * 64,
+                    **{'examined_artifact_ref.content_hash': 'sha256:' + '1' * 64})
+                for field, value in fields.items():
+                    with self.subTest(method=method, kind=kind, field=field):
+                        with history(case):
+                            case.x('UPDATE detailed_check_records SET assessment=json_set(assessment,?,json(?)) WHERE check_id=?',
+                                '$.' + field, json.dumps(value), rid)
+                        self.promote(case)
+                        with history(case):
+                            case.x('UPDATE detailed_check_records SET assessment=? WHERE check_id=?', json.dumps(original['assessment']), rid)
+                for column, value in (('topic_id', 'topic_other01'),
+                        ('performer_invocation_id', case.producer['invocation_id'])):
+                    with self.subTest(method=method, kind=kind, column=column):
+                        # Use an existing foreign topic to preserve the FK contract.
+                        if column == 'topic_id':
+                            value = case.value("SELECT topic_id FROM queue_entries WHERE topic_id<>? LIMIT 1", case.doc['topic_id'])
+                        with history(case):
+                            case.x('UPDATE detailed_check_records SET ' + column + '=? WHERE check_id=?', value, rid)
+                        self.promote(case)
+                        with history(case):
+                            case.x('UPDATE detailed_check_records SET ' + column + '=? WHERE check_id=?', original[column], rid)
+            self.doCleanups()
 
     def test_missing_and_outcomes(self):
         for method in METHODS:
             case = self.opened(method)
             self.store(case)
-            for kind in refs.KINDS:
+            for kind in rf.KINDS:
                 for outcome in ('missing', 'absent', 'not_checked', 'unavailable', 'projection', 'outcome'):
                     with self.subTest(method=method, kind=kind, outcome=outcome):
                         doc = copy.deepcopy(case.doc)
@@ -165,7 +186,7 @@ class RouterDetailedSupportTest(unittest.TestCase):
             for summary in ('checked_ok', 'checked_problem', 'not_applicable'):
                 with self.subTest(method=method, summary=summary):
                     case = self.opened(method)
-                    case.doc['checks'].update({k: summary for k in refs.KINDS})
+                    case.doc['checks'].update({k: summary for k in rf.KINDS})
                     attach_checks(case, case.doc)
                     case.doc['adjudication'] = dict(adjudication_ref='adj-performed', resolved_at=case.doc['verified_at'],
                         resolution='Attributed performed assessment retained.')

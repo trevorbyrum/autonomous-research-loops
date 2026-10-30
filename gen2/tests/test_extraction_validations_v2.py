@@ -2,10 +2,10 @@
 import sqlite3
 
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.test_extraction_records import RecordCase
+from gen2.tests.router_fixtures import RecordCase
 
 
-class V2Case(RecordCase):
+class RouterV2Test(RecordCase):
     def validation(self, **changes):
         return {**super().validation(), "policy_version": 2, **changes}
 
@@ -167,8 +167,6 @@ class V2Case(RecordCase):
                 self.x(statement)
             self.assertEqual(self.state(exclude=()), before)
 
-
-class RouterV2Test(V2Case):
     def test_replay_conflict(self):
         self.basis()
         payload = {**empty_outcome(self.verifier["invocation_id"], "interim_transition"), "extraction_validations_v2": [self.validation()]}

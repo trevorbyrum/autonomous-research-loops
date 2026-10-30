@@ -121,7 +121,7 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
 - **Connector destination/options and feed cadence/ownership** are operator configuration under the approved contract, not engine defaults.
 
 **Slice 4 (verification admission)**
-- **Independent extraction** (2026-10-12, `tasks/2d-4b3e.md`): only an independent extraction validates an extraction for load-bearing support (a separate validator invocation re-extracts from the same admitted acquisition bytes with a different tool or method, and the outputs are compared); same-extractor replay is an integrity result only. Closed policy `extraction-validation/1` with exactly two methods, `independent_extraction` and `same_extractor_replay`.
+- **Independent extraction** (2026-10-12, `history: tasks/2d-4b3e.md`, moved to the dossier-history evidence directory on 2026-10-27): only an independent extraction validates an extraction for load-bearing support (a separate validator invocation re-extracts from the same admitted acquisition bytes with a different tool or method, and the outputs are compared); same-extractor replay is an integrity result only. Closed policy `extraction-validation/1` with exactly two methods, `independent_extraction` and `same_extractor_replay`.
 - **Extractor identity through a tool registry** (2026-10-14, settles Astra N1): an operator-maintained, versioned registry of approved extractor tools with families; extraction records must name a registered tool; independent validation needs a different family; registry changes are versioned, audited and never caller-supplied.
 - **Latest registry revision governs new validations** (2026-10-15): new `/2` validations compare under the revision current at admission; reclassification takes effect immediately; retained validations keep their recorded interpretation.
 - **Store-wide JSON member domain** (2026-10-13): logical member names must be NUL-free; string values may contain NUL; incompatible attempted requests still count, retaining exact original bytes and hash; no rewriting of names (history: "2d-4b3e1-repair-1 continuation").
@@ -160,6 +160,25 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
   - **S2-6 (option A):** INVARIANTS §13 changes so the live S1–S3 intake conversation is Phase 3. 2f runs under an operator-authored contract (DEBT-049). The INVARIANTS text changes in R2.
   - **S2-7:** charter rules on harness changes and on measuring cost before review.
   - **Also approved:** S6 widened to the value-domain DDL retained by S5 (SQL 22 `source_extractions_tier`, SQL 35 `detailed_check_records_domain`/`_spans`, their helper views), and deletion of the unused `.github/workflows/gen2-check.yml`.
+- **2026-10-29, Trevor's rulings on the open items** (asked in the loop on 2026-10-28):
+  1. **Mutation scope for refactors:** recognize moved code. Pure moves leave the blocking changed-line scope and are recorded in the report; the advisory full campaign stays the backstop. Stage 1 runs on parallel workers. This is an exception to S2-7.
+  2. **Batch F:** option A. The operator-token boundary is checked on the final serialized response bytes.
+  3. **CI-DESIGN:** R2's amendment proposals are approved, with the trigger-order line deleted (S2-2).
+  4. **INVARIANTS C-4:** "evidence revision" becomes "the resulting topic state revision", per Astra's 6b1′ design review. No other meaning changes.
+  5. **O-10:** approved. New `verification-receipt/1` admissions stop, readback of recorded `/1` receipts stays, and 2f runs on a fresh store.
+  6. **Test pruning (PLAN-v2, `private/reviews/test-portfolio/`):**
+     - Merges into one keeper test are allowed at every tier when no assertion is lost. Exact duplicates land mechanically; near-duplicate parametrization goes through Gate C.
+     - The no-Astra landing covers removals only; edits keep Gate C.
+     - Tests with a catch record stay in place, and any change to them comes to Trevor.
+     - The production-code rows leave the pruning table (Gate S keeps them).
+     - The 13 unlisted T1 protector groups become traceability locators.
+     - The tier table is **not yet approved**: Trevor asked how it was tiered and on what research basis.
+- **2026-10-29, later rulings (Trevor):**
+  - **Batch F F2: option A.** Operator replies stop reflecting caller-supplied text. Refusals use fixed typed descriptions. JSON-RPC ids are admitted only from a closed plain grammar. The final-bytes check stays as a backstop.
+  - **The tier table is approved:** `private/reviews/test-portfolio/TIERS-v2.md`, with Astra's two-way review taking precedence (L1 2,831 · L2 3 · L3 40 · L4 9).
+    - No nightly-only lane is built.
+    - The nightly review's focus moves to duplicates, near-duplicate parametrization, per-KIND repetition, weakened tests, and dead tests and helpers.
+    - A one-off consolidation sweep runs under ruling 7.
 
 ## Current contract
 

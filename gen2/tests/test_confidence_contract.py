@@ -9,7 +9,7 @@ import unittest
 
 from gen2.core import canonical
 from gen2.router import amendments
-from gen2.tests import test_router_amendments as am
+from gen2.tests import router_fixtures as am
 from gen2.tests.router_fixtures import RouterTestCase
 
 # Example only: no production module defines a scale.

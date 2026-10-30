@@ -68,7 +68,7 @@ def tables(path: Path) -> dict:
         conn.close()
 
 
-class World(rf.RouterTestCase):
+class World(rf.DurableRouterTestCase):
     """The fixture builders, pointed at a durable store."""
 
     def __init__(self, directory: Path) -> None:

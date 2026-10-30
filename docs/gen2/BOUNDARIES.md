@@ -42,9 +42,9 @@ re-evaluates every accepted load-bearing claim under a snapshot on every open,
 including both Router constructors and station start, and refuses unsupported
 history before startup effects. The DDL keeps keys, FKs, immutability/delete
 guards, role separation, existence-level bindings and state transitions,
-including SQL 03's original promotion gates. By the S5 dependency ruling,
-SQL 22's extraction-tier guard and SQL 35's detailed-record domain guard also
-remain; their shared content/nonblank views move unchanged into SQL 22.
+including SQL 03's original promotion gates. `ExtractionRecords.write` checks
+extraction tiers against `DetailedChecks._content_rank`; detailed-record schemas
+and `DetailedChecks.authenticate` own report and span domains.
 
 
 `AcquisitionAdmission` in `acquisitions.py` (2d-4b2) admits fixture re-access
@@ -102,17 +102,13 @@ Same-family replay permits byte equality or disagreement and remains integrity o
 identities/versions. Exact acquisition, independent validator/producer lineage,
 retained evidence and byte-hash comparisons remain enforced in Router commits
 and raw DDL. The optional successor outcome array authenticates evidence outside
-the writer lock and derives attribution from the committing capability. SQL 30
-guards its new comparison JSON column under the closed member-name family.
+the writer lock and derives attribution from the committing capability.
 
-SQL 23 begins the store-wide JSON member-name domain: decoded names are unique
-within each actual object under binary equality and contain no U+0000. NUL
-in string values remains allowed. This first repair part covers extraction
-output/comparison references and `quote_checks.match_result`, with INSERT and
-UPDATE guards generated from one checked template. Router outcome admission
-and Store preparation refuse these names before logical serialization/writes;
-the matcher emits fixed result names. JSON2 part 1 adds both guards on the
-three search_observations JSON columns. Its Observations collaborator in
+Router outcome admission and `Store._prepare` enforce the store-wide JSON
+member-name domain before logical serialization/writes: decoded names are
+unique within each actual object under binary equality and contain no U+0000.
+NUL in string values remains allowed; the matcher emits fixed result names.
+The Observations collaborator in
 observations.py admits logical names before hashing, through the same Router
 transaction and existing capability/lease fences; service.py supplies only
 construction and public delegation. ObservationCore declares the schema,
@@ -120,8 +116,8 @@ transaction, audit and existing observation-write members it uses. The compositi
 tests include this collaborator. A failed attempt whose request is not admissible
 as logical JSON for any strict-parse reason retains the supplied request text as
 exact UTF-8 bytes plus their SHA-256, alongside an explicit logical byte
-reference, in the existing failed-attempt ledger. Router and Store recompute
-the byte hash; SQL 24 binds its labels/exact member sets and failed/unobserved
+reference, in the existing failed-attempt ledger. The Router recomputes
+the byte hash (the Store does not; operator ruling O-3, 2026-10-27); SQL 24 binds its labels/exact member sets and failed/unobserved
 shape, and SQL 25 requires the descriptor's own same-row bytes even when both
 byte fields would otherwise be absent. Ordinary Router requests cannot carry
 the reserved top-level retained_request member. Raw DDL does this without
@@ -218,7 +214,7 @@ The original writer-capture D1 trial failed; the full assembly path is not ready
 
 - **Registry histories (2c-2b2a):** `Assessments.write_dispositions` appends contradiction/branch records in `registry_dispositions`, using the same primary authority, protocol/framing pins and retained evidence. Registry identities are topic-local and kind-specific; a predecessor must match that identity and precede its successor in Router recording time. The typed inventory retains every judgment in its existing snapshot, including unresolved contradictions and disagreement. Branch promotion is a recorded proposal, granting no authority. Current-label/accrual selection and G-1/E-9 are the remaining 2c-2b2b slice (ACCOUNTING.md).
 
-- **Accrual operands (2c-2b2b):** That inventory snapshot also reads the approved contract revision, recorded contract amendment standing and reopened exclusions, and reason-coded screening history. Pure `semantic_accrual` joins exact assessment lineage and work/version lifecycle; `branch_accrual` retains promote/park/drop history and dated explicit replacements, including reversals and competing judgments. `label_standing` consumes recorded standing only: compatibility permits reuse, invalidation remains stale across cycling, and missing standing yields unknown effective operands. `rescreening_view` exposes only recorded reopened exclusions with their original framing, reasons and attribution. No writes, protocol comparison, inferred impact, judgment production or scheduling authority. Existing accounting/adapter and instant-helper ledger admissions apply without a new budget (ML-0009–ML-0013, ML-0027/0030/0031).
+- **Accrual operands (2c-2b2b):** That inventory snapshot also reads the approved contract revision, recorded contract amendment standing and reopened exclusions, and reason-coded screening history. Pure `semantic_accrual` joins exact assessment lineage and work/version lifecycle; `views.RegistryHistory` retains promote/park/drop history and dated explicit replacements, including reversals and competing judgments (Batch E, 2026-10-27: the uncalled `branch_accrual` family was deleted). `label_standing` consumes recorded standing only: compatibility permits reuse, invalidation remains stale across cycling, and missing standing yields unknown effective operands. `rescreening_view` exposes only recorded reopened exclusions with their original framing, reasons and attribution. No writes, protocol comparison, inferred impact, judgment production or scheduling authority. Existing accounting/adapter and instant-helper ledger admissions apply without a new budget (ML-0009–ML-0013, ML-0027/0030/0031).
 
 - **Stopping signals (2c-3a):** Pure `gen2/accounting/stopping.py` retains typed per-rule operands with topic/contract/protocol pins and `stopping-result/1`. Descriptive yield makes no stopping predicate; coverage uses certain-answer bounds over scoped attempted windows, counting only E-4 distinct completed windows with usable recorded G-1 standing as eligible and retaining ineligible/indeterminate windows with reasons (`window_standings`, ACCOUNTING.md); known-item retrieval checks declared sentinel work identities against deduplicated works. Explicit recursive all/any and separately conjoined declared gates preserve unknown and refuse mismatched result pins for composition. Gate status/evidence are assembly inputs, not evidence generated here; no evaluator supplies scientific sufficiency. Ledger ML-0033–0036 admits the file and its existing accounting/core dependencies.
 

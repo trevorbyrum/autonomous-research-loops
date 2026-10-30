@@ -1,0 +1,21 @@
+{
+  "fixture": {
+    "schema": "contract-v2.schema.json",
+    "expect": "invalid",
+    "tests": "2c-4a: declaration must be an object, isolated from its members",
+    "base": "valid-confidence-contract-probe.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/confidence_scheme",
+        "value": "a scale"
+      }
+    ],
+    "errors": [
+      {
+        "keyword": "type",
+        "path": "/confidence_scheme"
+      }
+    ]
+  }
+}

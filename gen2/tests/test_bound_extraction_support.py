@@ -1,36 +1,28 @@
 """Promotion consumes one durable basis; historical declarations stay fenced."""
 import json
 import unittest
-from unittest.mock import patch
 
-from gen2.store import db
-from gen2.tests import store_fixtures as sf
-from gen2.tests.ddl_fixtures import TRIGGERS, restore_triggers
 from gen2.tests.detailed_support_fixtures import insert_receipt
-from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks, historical_receipt
+from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
 
 from gen2.tests.router_fixtures import empty_outcome
-from gen2.tests.test_canonical_content_tiers import FULL, fixture
-from gen2.tests.test_pending_extraction_support import METHODS, load_claim, support_document
-from gen2.tests.test_own_extraction_receipts import OwnCases
+from gen2.tests.router_fixtures import FULL, fixture
+from gen2.tests.router_fixtures import EXTRACTION_METHODS as METHODS, load_claim, support_document
+from gen2.tests.store_fixtures import OwnCases
 from gen2.tests.test_validated_extraction_receipts import ValidatedCases
 from gen2.tests.independent_tier_fixtures import independent_basis
-
-
 
 
 class PromotionCases:
 
     def context(self, method, tier='full_text'):
-        with patch.object(sf, 'DDL_TEXT', db.schema_text()):
-            context = fixture({**FULL, 'abstract': 'Recorded abstract'})
-            self.case = context.__enter__()
-            load_claim(self.case, tier)
-            self.doc = support_document(self.case, method, tier)
-            seed_checks(self.case, self.doc)
+        context = fixture({**FULL, 'abstract': 'Recorded abstract'})
+        self.case = context.__enter__()
+        load_claim(self.case, tier)
+        self.doc = support_document(self.case, method, tier)
+        seed_checks(self.case, self.doc)
         self.addCleanup(context.__exit__, None, None, None)
         self.target, self.independent = self.case.rows('SELECT target_extraction_id, validator_extraction_id FROM extraction_validations_v2')[0]
-        restore_triggers(self.case, sf.DDL_TEXT)
 
     def clone(self, table, changes, where=''):
         if table == 'source_acquisitions' and changes.get('provider_record_id') == 'other-record':
@@ -46,7 +38,6 @@ class PromotionCases:
 
     def store(self, legacy=False):
         if legacy:
-            historical_receipt(self.doc)
             out = insert_receipt(self.case, self.doc)
         else:
             attach_checks(self.case, self.doc)
@@ -82,7 +73,7 @@ class PromotionCases:
                 self.context('validated_extraction', required)
                 independent_basis(self.case, self.doc, independent)
                 self.assertEqual(self.case.value('SELECT supported_tier FROM source_extractions WHERE extraction_id=?', self.target), 'full_text')
-                self.assertEqual(self.case.value('SELECT recorded_tier_rank FROM source_acquisition_content_tiers'), 3)
+                self.assertEqual(self.case.router._detailed_checks._content_rank(self.case.store.select('source_acquisitions')[0]), 3)
                 # Retained receipts must be rechecked even when admission was
                 # formerly allowed. Raw admission still retains this history.
                 self.store(legacy=True)

@@ -13,7 +13,7 @@ sharing the jobs directory.
 What is checked, for each kind that may have delegates:
 - Overlapping advances (Astra's regression, with the expectation it
   asserted): advance A of a job whose router is down is paused holding the
-  job — in the chokepoint's read of its journal (Astra's schedule), or just
+  job — at the chokepoint before its call (Astra's schedule), or just
   after its own snapshot read — while six advances of B are started, on the
   same supervisor in another thread or on another supervisor over the same
   jobs directory. While A is paused, B sends and writes nothing. Then six
@@ -75,9 +75,8 @@ from gen2.supervisor import jobs
 from gen2.supervisor.supervisor import ControlFailure, StaleJournal, Supervisor
 from gen2.tests import children
 from gen2.tests import router_fixtures as rf
-from gen2.tests.supervisor_fixtures import FAST, MAIN, PARENT, SupervisedTestCase, Unreachable, succeed
+from gen2.tests.supervisor_fixtures import HANG, FAST, MAIN, PARENT, SupervisedTestCase, Unreachable, succeed
 
-HANG = [{"op": "hang"}]
 FAILS_AT_THE_GATE = [{"op": "wait_for", "name": "gate", "seconds": 60}, {"op": "exit", "code": 3}]
 PAUSE_S = 10.0    # a paused caller gives up after this, raising (a mutant that never lets it go costs this)
 WATCH_S = 0.3     # how long a waiting caller is watched to show that it waits
@@ -115,16 +114,14 @@ def after_snapshot(pause: Pause, inv: str):
 
 
 def in_the_chokepoint(pause: Pause, inv: str):
-    """Astra's schedule: pause in the chokepoint's read of the journal of
-    the job called for, after the caller's snapshot, before its call."""
-    real = jobs.Job.read
+    """Pause at the chokepoint after the caller's snapshot, before its call."""
+    real = Supervisor._call
 
-    def read(job, name):
-        value = real(job, name)
-        if name == "journal.json" and job.handle == "job-" + inv and sys._getframe(1).f_code.co_name == "_call":
+    def call(self, job, journal, method, request):
+        if job.handle == "job-" + inv:
             pause.here()
-        return value
-    return mock.patch.object(jobs.Job, "read", read)
+        return real(self, job, journal, method, request)
+    return mock.patch.object(Supervisor, "_call", call)
 
 
 class Relay(Unreachable):
