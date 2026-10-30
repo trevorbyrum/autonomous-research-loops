@@ -30,12 +30,6 @@ class RegistryTest(Workflow):
         self.env = self.envelope(grant, self.ids("op_"), payload, refs=[self.ref] if refs is None else refs)
         return self.router.commit_outcome(self.env)
 
-    def reject(self, records, reason="payload_invalid", **kwargs):
-        before = self.state()
-        out = self.send(records, **kwargs)
-        self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
-        self.assert_audited_state(before, 1)
-
     def test_control_histories(self):
         for index, label in enumerate(("unresolved", "resolved", "contested", "promote", "park", "drop")):
             kind = "contradiction" if index < 3 else "branch"

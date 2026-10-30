@@ -76,22 +76,6 @@ class FailedAttemptTest(RouterTestCase):
         self.assertEqual(self.send(changed)['reason'], 'observation_id_conflict')
         self.assertEqual(self.state(exclude=()), before)
 
-    def test_integer_and_nested_nul_both_orders(self):
-        cases = (
-            ('{"request":{"request_type":"find","n":9007199254740992,"filters":{"field\\u0000suffix":1}},"lane":"crossref","page":1}', 'logical_json_invalid'),
-            ('{"request":{"request_type":"find","filters":{"field\\u0000suffix":1},"n":9007199254740992},"lane":"crossref","page":1}', 'member_name_domain'))
-        for raw, label in cases:
-            with self.subTest(raw=raw):
-                self.assert_retained(raw, label)
-
-    def test_integer_and_structural_nul_both_orders(self):
-        cases = (
-            ('{"n":9007199254740992,"request_type\\u0000suffix":"find"}', 'logical_json_invalid'),
-            ('{"request_type\\u0000suffix":"find","n":9007199254740992}', 'member_name_domain'))
-        for raw, label in cases:
-            with self.subTest(raw=raw):
-                self.assert_retained(raw, label)
-
     def test_integer_and_duplicate_both_orders(self):
         cases = ('{"n":9007199254740992,"request":{"request_type":"find","request_type":"bad"}}',
                  '{"request":{"request_type":"find","request_type":"bad"},"n":9007199254740992}')
@@ -108,8 +92,13 @@ class FailedAttemptTest(RouterTestCase):
             with self.subTest(raw=raw):
                 self.assert_retained(raw)
 
-    def test_float_and_duplicate_both_orders(self):
+    def test_numeric_and_name_faults_both_orders(self):
+        # Each pair: the same numeric fault and name fault in both member orders; the first met names the class.
         cases = (
+            ('{"request":{"request_type":"find","n":9007199254740992,"filters":{"field\\u0000suffix":1}},"lane":"crossref","page":1}', 'logical_json_invalid'),
+            ('{"request":{"request_type":"find","filters":{"field\\u0000suffix":1},"n":9007199254740992},"lane":"crossref","page":1}', 'member_name_domain'),
+            ('{"n":9007199254740992,"request_type\\u0000suffix":"find"}', 'logical_json_invalid'),
+            ('{"request_type\\u0000suffix":"find","n":9007199254740992}', 'member_name_domain'),
             ('{"n":0.10000000000000001,"request":{"request_type":"find","request_type":"bad"}}', 'logical_json_invalid'),
             ('{"request":{"request_type":"find","request_type":"bad"},"n":0.10000000000000001}', 'member_name_domain'))
         for raw, label in cases:

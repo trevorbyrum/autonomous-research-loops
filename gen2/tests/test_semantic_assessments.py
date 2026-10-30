@@ -65,12 +65,6 @@ class SemanticTest(Workflow):
         self.env = self.envelope(grant, self.ids("op_"), outcome, refs=[self.ref] if refs is None else refs)
         return self.router.commit_outcome(self.env)
 
-    def reject(self, records, reason="payload_invalid", **kwargs):
-        before = self.state()
-        out = self.send(records, **kwargs)
-        self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
-        self.assert_audited_state(before, 1)
-
     def test_control_records_labels_and_shared_origin(self):
         out = self.send([self.record(), self.record(1)])
         self.assertEqual(out["status"], "committed", out)
