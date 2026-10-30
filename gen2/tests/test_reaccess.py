@@ -99,9 +99,11 @@ class ReaccessTest(unittest.TestCase):
         ):
             with self.subTest(field=field):
                 kept = self.args[section][field]
-                self.args[section][field] = value
-                self.refused(reason)
-                self.args[section][field] = kept
+                try:
+                    self.args[section][field] = value
+                    self.refused(reason)
+                finally:
+                    self.args[section][field] = kept
 
     def test_source_identity(self):
         self.args["source"]["content_hash"] = "sha256:" + "0" * 64
