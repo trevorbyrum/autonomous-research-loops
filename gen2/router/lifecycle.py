@@ -207,12 +207,12 @@ class Lifecycle:
         RG-3)."""
         station = self._core._lease_of(inv)["station_id"]
         window = self._core._router_policy(inv["config_bundle_hash"])["hold_window_s"]
-        self._core._store.insert("holds", {
-            "hold_id": self._core._new_id("hold_"), "topic_id": inv["topic_id"], "subject_ref": unknown_hold_subject(inv["invocation_id"], episode),
-            "hold_class": "unknown", "cause": f"outcome_unknown ({cause})", "recoverability": "unknown", "required_authority": "router",
-            "owner": f"supervisor:{station}", "deadline_at": _after(now, window),
-            "clears_when": f"the reconciliation record of episode {episode}: a job-handle lookup or the termination of the execution group",
-            "capability_fact_id": None, "created_at": now, "created_by_operation_id": None})
+        self._core._store.insert("holds", boundary.hold_row(
+            hold_id=self._core._new_id("hold_"), topic_id=inv["topic_id"], subject_ref=unknown_hold_subject(inv["invocation_id"], episode),
+            hold_class="unknown", cause=f"outcome_unknown ({cause})", recoverability="unknown", required_authority="router",
+            owner=f"supervisor:{station}", deadline_at=_after(now, window),
+            clears_when=f"the reconciliation record of episode {episode}: a job-handle lookup or the termination of the execution group",
+            created_at=now))
 
     # -- cancellation --------------------------------------------------------
     def request_cancel(self, request: Mapping) -> dict:

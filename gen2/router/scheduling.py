@@ -191,13 +191,13 @@ class Scheduling:
                 raise Refusal("not_policy_retryable", f"{inv['invocation_id']} ended {inv['state']} ({inv['failure_class'] or inv['cancel_requested_by']}): the operator's to diagnose (L-6)")
             if policy is None or attempt - 1 > policy["attempts"]:
                 hold_id = self._core._new_id("hold_")
-                self._core._store.insert("holds", {
-                    "hold_id": hold_id, "topic_id": inv["topic_id"], "subject_ref": subject, "hold_class": "transient",
-                    "cause": f"retry budget exhausted at attempt {attempt - 1} of {inv['invocation_id']}", "recoverability": "needs_decision",
-                    "required_authority": "operator", "owner": "operator",
-                    "deadline_at": _after(now, self._core._router_policy(inv["config_bundle_hash"])["hold_window_s"]),
-                    "clears_when": "an operator hold_clearance; then the operator re-queues the work or leaves it ended",
-                    "capability_fact_id": None, "created_at": now, "created_by_operation_id": None})
+                self._core._store.insert("holds", boundary.hold_row(
+                    hold_id=hold_id, topic_id=inv["topic_id"], subject_ref=subject, hold_class="transient",
+                    cause=f"retry budget exhausted at attempt {attempt - 1} of {inv['invocation_id']}", recoverability="needs_decision",
+                    required_authority="operator", owner="operator",
+                    deadline_at=_after(now, self._core._router_policy(inv["config_bundle_hash"])["hold_window_s"]),
+                    clears_when="an operator hold_clearance; then the operator re-queues the work or leaves it ended",
+                    created_at=now))
                 self._core._audit("retry_budget_exhausted", now, {"hold_id": hold_id, "attempt": attempt - 1}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
                 return {"status": "exhausted", "invocation_id": inv["invocation_id"], "hold_id": hold_id}
         self._core._store.insert("retries", {"invocation_id": inv["invocation_id"], "topic_id": inv["topic_id"], "attempt": attempt, "requested_by": req["requested_by"],

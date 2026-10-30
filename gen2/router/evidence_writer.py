@@ -13,9 +13,8 @@ from dataclasses import asdict
 from typing import Callable, Mapping, Protocol
 
 from gen2.core import canonical
-from gen2.router import boundary, quote_matching
+from gen2.router import boundary, quote_matching, support
 from gen2.router.boundary import Refusal
-from gen2.router.detailed_checks import DetailedChecks
 
 
 class Rows(Protocol):
@@ -47,8 +46,6 @@ class EvidenceWriter:
     def check_quotes(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> list[dict]:
         """V-6 computation outside the lock; labels and attribution are not operands."""
         records = payload.get("quote_checks", [])
-        if records and (inv["kind"] != "verification" or inv["admission_context"] != "contract/1"):
-            raise Refusal("kind_not_permitted", "quote checks require contract-admitted verification")
         checked = []
         for record in records:
             claim = self._core._one("claims", {"claim_id": record["claim_id"], "revision": record["claim_revision"]})
@@ -90,12 +87,12 @@ class EvidenceWriter:
         claim = self._core._one("claims", {"claim_id": check["claim_id"], "revision": check["claim_revision"]})
         producer = self._core._one("invocations", {"invocation_id": claim["producer_invocation_id"]})
         lease = self._core._one("leases", {"lease_id": producer["lease_id"]})
-        self._core._store.insert("holds", {
-            "hold_id": "hold_quote_" + check["check_id"], "topic_id": check["topic_id"], "subject_ref": "quote:" + check["check_id"],
-            "hold_class": "judgment", "cause": "quote quarantine: " + check["match_result"]["reason"],
-            "recoverability": "needs_remediation", "required_authority": "primary", "owner": "primary:" + lease["station_id"],
-            "deadline_at": producer["deadline_at"], "clears_when": "matching re-capture as a new claim revision; the old capture remains quarantined",
-            "created_at": now, "created_by_operation_id": op_id})
+        self._core._store.insert("holds", boundary.hold_row(
+            hold_id="hold_quote_" + check["check_id"], topic_id=check["topic_id"], subject_ref="quote:" + check["check_id"],
+            hold_class="judgment", cause="quote quarantine: " + check["match_result"]["reason"],
+            recoverability="needs_remediation", required_authority="primary", owner="primary:" + lease["station_id"],
+            deadline_at=producer["deadline_at"], clears_when="matching re-capture as a new claim revision; the old capture remains quarantined",
+            created_at=now, created_by_operation_id=op_id))
 
     def _require_quote_adjudication(self, doc: dict) -> None:
         if doc.get("adjudication") is not None and (doc["checks"]["exact_quote"]["status"] == "mismatch" or any(
@@ -113,38 +110,13 @@ class EvidenceWriter:
                 if check is not None and check["quote_quarantined"] and (check["exact_match"] != "matched" or check["nli_signal"] != "alarm"):
                     raise Refusal("decision_refused", "byte-mismatch quarantine cannot be adjudicated (V-6)")
 
-    def _capture_checks(self, claim_id: str, revision: int) -> list[dict]:
-        """A claim revision is a capture; re-capture never replaces its checks."""
-        return [q for q in self._core._store.select("quote_checks", {"claim_id": claim_id, "claim_revision": revision})
-                if q["match_result"] is not None]
-
-    def _quote_receipt_valid(self, doc: dict) -> bool:
-        checks = self._capture_checks(doc["claim"]["claim_id"], doc["claim"]["claim_revision"])
-        if not checks:
-            return True
-        support = doc["verdict"] in ("supports", "partially_supports")
-        if support and any(q["quote_quarantined"] for q in checks):
-            return False
-        exact = doc["checks"]["exact_quote"]
-        bound = [q for q in checks if (q["topic_id"], q["work_id"], q["source_version"], q["source_artifact_hash"],
-            q["match_result"]["artifact_hash"], q["normalization_version"], q["exact_match"]) ==
-            (doc["topic_id"], doc["source"]["work_id"], doc["source"]["source_version"], exact["source_artifact_hash"],
-             doc["obtained_content_hash"], exact["normalization_version"], exact["status"])
-            and (not support or (q["exact_match"] == "matched" and not q["quote_quarantined"]))]
-        spans = {(s["start"], s["end"]) for s in doc["cited_spans"]}
-        return (any(q["check_id"] == doc["quote_check_id"] and (q["span_start"], q["span_end"]) in spans for q in bound)
-                and spans <= {(q["span_start"], q["span_end"]) for q in bound})
-
     def _require_quote_support(self, claim: dict) -> None:
-        checks = self._capture_checks(claim["claim_id"], claim["revision"])
+        checks = support.capture_checks(self._core._store, claim["claim_id"], claim["revision"])
         if any(q["quote_quarantined"] for q in checks):
             raise Refusal("payload_invalid", "governed quarantined quote cannot supply support (V-6)")
 
     def _quote_support_valid(self, doc: dict) -> bool:
-        """DetailedChecks applies this to its same, stored-column candidate."""
-        if not self._capture_checks(doc["claim"]["claim_id"], doc["claim"]["claim_revision"]):
-            return True
-        return doc["extraction"]["method"] == "canonical_bytes" and self._quote_receipt_valid(doc)
+        return support.quote_support_valid(self._core._store, doc)
 
     def refence_captures(self, operation_id: str) -> None:
         """SQL12 parity at completed commit, inside the existing writer fence."""
@@ -163,8 +135,6 @@ class EvidenceWriter:
 
     def bind_source_artifacts(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> None:
         records = payload.get("source_artifacts", [])
-        if records and (inv["kind"] not in ("research_pass", "checkpoint") or inv["admission_context"] != "contract/1"):
-            raise Refusal("kind_not_permitted", "source artifacts require contract-admitted primary work")
         for record in records:
             if not self._core._work_of_topic(record["work_id"], inv["topic_id"]):
                 raise Refusal("cross_topic", "source artifact work was not retrieved by this topic")
@@ -256,10 +226,10 @@ class EvidenceWriter:
         claims = self._write_claims(payload, topic_id, inv, now)
         quotes = self._write_quote_checks(checked, inv, op_id, now)
         for hold in payload["holds"]:
-            self._core._store.insert("holds", {**hold, "topic_id": topic_id, "created_at": now, "created_by_operation_id": op_id})
+            self._core._store.insert("holds", boundary.hold_row(**hold, topic_id=topic_id, created_at=now, created_by_operation_id=op_id))
         for doc in payload["verification_receipts"]:
             self._require_quote_adjudication(doc)
-            if not self._quote_receipt_valid(doc):
+            if not support.quote_receipt_valid(self._core._store, doc):
                 raise Refusal("payload_invalid", "receipt is detached from its governed capture; governed quarantined quote cannot supply support (V-1, V-6)")
             self._core._store.insert("verification_receipts", {
                 "verification_receipt_id": doc["verification_receipt_id"], "topic_id": doc["topic_id"], "claim_id": doc["claim"]["claim_id"],
@@ -414,7 +384,6 @@ class EvidenceWriter:
 
     def _require_acquired_content(self, doc: dict) -> None:
         """V-2/V-3 insertion checks, inside the existing writer fence (SQL 15/16/19/20)."""
-        checks = DetailedChecks(self._core)
         method = doc["extraction"]["method"]
         acquisitions = self._core._store.select("source_acquisitions", {
             "topic_id": doc["topic_id"], **doc["source"], "verifier_invocation_id": doc["verifier_invocation_id"],
@@ -422,12 +391,12 @@ class EvidenceWriter:
             "retrieved_at": doc["acquisition"]["retrieved_at"]})
         # Authenticated capture identity fixes lane/acquirer; later basis checks bind their receipt labels.
         # Missing acquisitions retain their binding refusal, as in SQL 16/19/20.
-        recorded_rank = max((checks._content_rank(a) for a in acquisitions), default=boundary.TIER["reproduced"])
+        recorded_rank = max((support.content_rank(self._core._store, a) for a in acquisitions), default=boundary.TIER["reproduced"])
         if boundary.TIER[doc["access_tier"]] > recorded_rank:
             label = "canonical" if method in ("canonical_bytes",) else "extraction"
             raise Refusal("payload_invalid", label + " receipt tier exceeds recorded content")
         row = self._core._one("verification_receipts", {"verification_receipt_id": doc["verification_receipt_id"]})
-        if method in ("canonical_bytes",) and not checks._has_basis(row, boundary.TIER):
+        if method in ("canonical_bytes",) and not support.has_basis(self._core._store, row, boundary.TIER):
             raise Refusal("payload_invalid", "canonical receipt must consume its admitted acquisition")
         if (doc["verdict"] in ("supports", "partially_supports", "does_not_support")
                 and any(s["locator"]["kind"] in ("table",) for s in doc["cited_spans"])
@@ -438,7 +407,6 @@ class EvidenceWriter:
         # Inside the existing writer fence, after same-outcome extractions.
         if doc["extraction"]["method"] != "verifier_extraction":
             return
-        rank = {"bibliographic": 1, "abstract": 2, "full_text": 3, "reproduced": 4}
         acquisitions = [a for a in self._core._store.select("source_acquisitions", {
             **doc["source"], "verifier_invocation_id": doc["verifier_invocation_id"], "content_hash": doc["obtained_content_hash"]})
             if a["gateway_call_ref"] == doc["acquisition"]["gateway_call_ref"]
@@ -448,7 +416,7 @@ class EvidenceWriter:
                 ("topic_id", "work_id", "source_version", "event_id", "verifier_invocation_id")) for a in acquisitions) or (
                 extraction["topic_id"] != doc["topic_id"] or extraction["extracting_invocation_id"] != doc["extraction"]["produced_by_invocation_id"]
                 or extraction["extractor_identity"] != doc["extraction"]["extractor"] or extraction["extractor_registry_version"] is None
-                or rank[extraction["supported_tier"]] < rank[doc["access_tier"]]):
+                or boundary.TIER[extraction["supported_tier"]] < boundary.TIER[doc["access_tier"]]):
             raise Refusal("payload_invalid", "receipt needs its verifier durable extraction")
 
     def _require_validated_extraction(self, receipt: dict) -> None:
@@ -458,18 +426,17 @@ class EvidenceWriter:
         validation = self._core._one("extraction_validations_v2", {"validation_id": receipt["extraction"]["validation_ref"]})
         if validation is None or validation["method"] != "independent_extraction" or validation["policy_version"] != 2 or validation["outcome"] != "succeeded" or validation["validator_invocation_id"] != receipt["verifier_invocation_id"]:
             raise Refusal("payload_invalid", "receipt needs its successful durable /2 validation")
-        rank = {"bibliographic": 1, "abstract": 2, "full_text": 3, "reproduced": 4}
         acquisitions = [a for a in self._core._store.select("source_acquisitions", {
             **receipt["source"], "verifier_invocation_id": receipt["verifier_invocation_id"], "content_hash": receipt["obtained_content_hash"]})
             if a["gateway_call_ref"] == receipt["acquisition"]["gateway_call_ref"]
             and a["retrieved_at"] == receipt["acquisition"]["retrieved_at"] and "gateway:" + a["lane"] == receipt["acquisition"]["route"]]
         basis = self._core._one("source_extractions", {"extraction_id": validation["target_extraction_id"]})
-        self._require_independent_extraction_tier(validation, receipt, rank)
+        self._require_independent_extraction_tier(validation, receipt, boundary.TIER)
         if basis is None or not any(all(basis[k] == a[k] for k in
                 ('topic_id', 'work_id', 'source_version', 'event_id', 'verifier_invocation_id')) for a in acquisitions) or (
                 basis["topic_id"] != receipt["topic_id"] or basis["extracting_invocation_id"] != receipt["extraction"]["produced_by_invocation_id"]
                 or basis["extractor_identity"] != receipt["extraction"]["extractor"] or basis["extractor_registry_version"] is None
-                or rank[basis["supported_tier"]] < rank[receipt["access_tier"]]):
+                or boundary.TIER[basis["supported_tier"]] < boundary.TIER[receipt["access_tier"]]):
             raise Refusal("payload_invalid", "receipt needs its successful durable /2 validation")
 
     def _require_independent_extraction_tier(self, validation: dict, receipt: dict, rank: dict) -> None:

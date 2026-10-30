@@ -6,8 +6,7 @@ Writes run in the commit's existing writer fence; 2e2 owns deadline escalation.
 from typing import Mapping, Protocol
 
 from gen2.core import canonical
-from gen2.router import boundary
-from gen2.router.detailed_checks import DetailedChecks
+from gen2.router import boundary, support
 
 
 class Rows(Protocol):
@@ -41,7 +40,7 @@ class Verification:
         if admitted:
             return False
         row = self._core._one("verification_receipts", {"verification_receipt_id": doc["verification_receipt_id"]})
-        return row is None or not DetailedChecks(self._core)._basis_member(row, boundary.TIER)
+        return row is None or not support.basis_member(self._core._store, row, boundary.TIER)
 
     def _hold_id(self, doc: dict) -> str:
         return "hold_" + canonical.logical_hash({"verification_receipt_id": doc["verification_receipt_id"]})[7:]
@@ -57,12 +56,12 @@ class Verification:
             missing = doc["verdict"] == "cannot_assess_at_required_tier"
             pending = doc["verdict"] == "supports" and doc["extraction"]["method"] != "canonical_bytes"
             missing = missing or pending
-            self._core._store.insert("holds", {
-                "hold_id": self._hold_id(doc), "topic_id": doc["topic_id"], "subject_ref": "verification:" + doc["verification_receipt_id"],
-                "hold_class": "judgment", "cause": ("verification missing content: " if missing else "verification disagreement: ") +
+            self._core._store.insert("holds", boundary.hold_row(
+                hold_id=self._hold_id(doc), topic_id=doc["topic_id"], subject_ref="verification:" + doc["verification_receipt_id"],
+                hold_class="judgment", cause=("verification missing content: " if missing else "verification disagreement: ") +
                     ("extraction evidence not durably bound" if pending else doc["verdict"]),
-                "recoverability": "needs_remediation" if missing else "needs_decision", "required_authority": "primary",
-                "owner": "primary:" + lease["station_id"], "deadline_at": producer["deadline_at"],
-                "clears_when": "independent verification with the required content" if missing else "primary adjudication of this verification disagreement",
-                "created_at": now, "created_by_operation_id": op_id})
+                recoverability="needs_remediation" if missing else "needs_decision", required_authority="primary",
+                owner="primary:" + lease["station_id"], deadline_at=producer["deadline_at"],
+                clears_when="independent verification with the required content" if missing else "primary adjudication of this verification disagreement",
+                created_at=now, created_by_operation_id=op_id))
         return {"verification_holds": self.hold_ids(payload)} if payload["verification_receipts"] else {}

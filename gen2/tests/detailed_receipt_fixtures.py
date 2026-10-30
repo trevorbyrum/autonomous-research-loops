@@ -7,6 +7,7 @@ import copy
 from contextlib import contextmanager
 from unittest.mock import patch
 
+from gen2.router import support
 from gen2.core import canonical
 from gen2.tests.router_fixtures import empty_outcome
 
@@ -86,5 +87,5 @@ def unreferenced_checks(doc):
 @contextmanager
 def reference_isolation(case):
     """Isolate refusal guards from performed-reference admission, using /2."""
-    with patch.object(case.router._detailed_checks, '_require_performed_references', return_value=None):
+    with patch.object(support, 'require_performed_references', return_value=None):
         yield

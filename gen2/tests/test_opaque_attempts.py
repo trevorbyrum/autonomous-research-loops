@@ -8,7 +8,7 @@ from gen2 import accounting
 from gen2.core import canonical
 from gen2.gateway_client import observe
 from gen2.gateway_client.client import GatewayClient
-from gen2.router.accounting import read_inventory
+from gen2.router.accounting import convert_inventory
 from gen2.tests import test_attempted_request_bytes as attempted
 from gen2.tests.router_fixtures import EXPIRES, RouterTestCase
 
@@ -40,7 +40,7 @@ class OpaqueAttemptTest(RouterTestCase):
         self.assertEqual((row['coverage_state'], row['completeness'], row['error_class'], row['page_outcome'],
                           row['result_count'], row['continuation']), ('unknown', 'unobserved', 'payload_invalid', 'failed', None, None))
         self.assertEqual(self.store.select('retrieval_events'), [])
-        inventory = read_inventory(self.store, self.grant['topic_id'], 'native')
+        inventory = convert_inventory(self.grant['topic_id'], self.store.capture_topic(self.grant['topic_id']), 'native')
         self.assertEqual(len(inventory.observations), 1)
         observation = inventory.observations[0]
         self.assertEqual((observation.request_type, observation.page, observation.result_count), (None, None, None))
@@ -74,7 +74,7 @@ class OpaqueAttemptTest(RouterTestCase):
             command['observation']['attempt'] = number
             self.assertEqual(self.send(command)['status'], 'recorded')
             self.assertEqual(self.store.select('search_observations')[-1]['request_bytes'], raw.encode())
-        inventory = read_inventory(self.store, self.grant['topic_id'], 'native')
+        inventory = convert_inventory(self.grant['topic_id'], self.store.capture_topic(self.grant['topic_id']), 'native')
         self.assertEqual(len(inventory.observations), 3)
         self.assertTrue(all(o.request_type is None and o.page is None for o in inventory.observations))
 
@@ -117,7 +117,7 @@ class OpaqueAttemptTest(RouterTestCase):
                         'retained_request': {'bytes_hash': digest, 'reason': 'member_name_domain'}}}
         with self.store.transaction():
             self.store.insert('search_observations', row)
-        inventory = read_inventory(self.store, self.grant['topic_id'], 'native')
+        inventory = convert_inventory(self.grant['topic_id'], self.store.capture_topic(self.grant['topic_id']), 'native')
         self.assertEqual([o.request_type for o in inventory.observations], ['find'])
         self.assertTrue(all(o.page is None for o in inventory.observations))
 

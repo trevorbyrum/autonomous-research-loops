@@ -267,7 +267,7 @@ enforced_at = [
   "router: gen2/router/amendments.py::_amendment_in_transaction",
   "router: gen2/router/service.py",
   "router: gen2/router/boundary.py",
-  "router: gen2/router/boundary.py::PRE_CONTRACT_ONLY",
+  "router: gen2/router/boundary.py::SECTION_KINDS",
   "ddl: gen2/store/schema/01-queue-and-contracts.sql::scoping_reports_by_pre_contract_work",
   "ddl: gen2/store/schema/04-registries-and-export.sql::brief_replacements",
   "router: gen2/router/amendments.py::_record_replacements",
@@ -581,8 +581,8 @@ enforced_at = [
   "router: gen2/router/evidence_writer.py::EvidenceWriter",
   "ddl: gen2/store/schema/22-extraction-records.sql::source_extractions",
   "router: gen2/router/detailed_checks.py::DetailedChecks.require_support",
-  "router: gen2/router/detailed_checks.py::DetailedChecks._basis_member",
-  "router: gen2/router/detailed_checks.py::DetailedChecks._extraction_basis",
+  "router: gen2/router/support.py::basis_member",
+  "router: gen2/router/support.py::extraction_basis",
   "router: gen2/router/evidence_writer.py::EvidenceWriter._require_acquired_content",
   "router: gen2/router/evidence_writer.py::EvidenceWriter._require_own_extraction",
   "router: gen2/router/evidence_writer.py::EvidenceWriter._require_validated_extraction",
@@ -602,7 +602,7 @@ enforced_at = [
   "router: gen2/router/detailed_checks.py::DetailedChecks",
   "router: gen2/router/evidence_writer.py::EvidenceWriter",
   "router: gen2/router/detailed_checks.py::DetailedChecks.require_support",
-  "router: gen2/router/detailed_checks.py::DetailedChecks._has_basis",
+  "router: gen2/router/support.py::has_basis",
 ]
 tests = [
   "gen2/tests/test_router_detailed_support.py::RouterDetailedSupportTest.test_claim_owned_gates",
@@ -640,8 +640,8 @@ enforced_at = [
   "ddl: gen2/store/schema/03-evidence-and-decisions.sql::verification_receipts",
   "router: gen2/router/detailed_checks.py::DetailedChecks",
   "router: gen2/router/evidence_writer.py::EvidenceWriter",
-  "router: gen2/router/detailed_checks.py::DetailedChecks.require_receipt",
-  "router: gen2/router/detailed_checks.py::DetailedChecks._require_performed_references",
+  "router: gen2/router/support.py::require_receipt",
+  "router: gen2/router/support.py::require_performed_references",
 ]
 tests = [
   "gen2/tests/test_detailed_check_receipts.py::ReferenceCases.test_domain",

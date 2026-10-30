@@ -812,8 +812,7 @@ class Router:
             raise Refusal("payload_invalid", "the outcome document is for another operation kind")
         if payload["next_queue_state"] is not None and inv["kind"] != "research_pass":
             raise Refusal("kind_not_permitted", "only a research pass proposes its topic's next queue state")
-        boundary.check_sections(payload, inv["kind"], inv["admission_context"])
-        self._assessments.validate(payload, inv)
+        boundary.check_sections(payload, inv["kind"], inv["admission_context"], inv["parent_invocation_id"])
         artifacts = {env["payload_digest"]: {"size_bytes": len(raw), "media_type": "application/json"}}
         staged = {env["payload_digest"]: raw}
         for ref in env["result_refs"]:
@@ -1026,11 +1025,7 @@ class Router:
 
     def _write_evidence(self, env: dict, inv: dict, checked: dict, now: str, new_triggers: list, outbox: list) -> dict:
         written = self._evidence_writer._write_evidence(env, inv, checked, now, new_triggers, outbox)
-        assessments = self._assessments.write(checked["payload"], inv, env["operation_id"], now)
-        if assessments:
-            written["semantic_assessments"] = assessments
-        written.update(self._assessments.write_lifecycle(checked["payload"], inv, env["operation_id"], now))
-        written.update(self._assessments.write_dispositions(checked["payload"], inv, env["operation_id"], now))
+        written.update(self._assessments.write(checked["payload"], inv, env["operation_id"], now))
         return written
 
     # -- operator decisions ------------------------------------------------------

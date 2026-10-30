@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from gen2.core import canonical
+from gen2.router import support
 from gen2.tests.test_receipt_summary_domain import SummaryCases
 from gen2.tests import test_detailed_check_receipts as refs
 from gen2.tests.detailed_receipt_fixtures import attach_checks, seed_checks
@@ -228,7 +229,7 @@ class RouterDetailedSupportTest(unittest.TestCase):
                 with history(case, unchecked=True):
                     case.x('UPDATE verification_receipts SET ' + column + '=?', value)
                 # Isolate detailed-column consumption from the newer basis gate.
-                with patch.object(case.router._detailed_checks, '_has_basis', return_value=True):
+                with patch.object(support, 'has_basis', return_value=True):
                     self.promote(case)
                 with history(case, unchecked=True):
                     value = canonical.canonical_bytes(row[column]).decode() if column == 'cited_spans' else row[column]
