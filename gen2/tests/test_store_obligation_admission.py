@@ -1,5 +1,6 @@
 """Raw integrity guards for obligation admission; in-memory fixtures only."""
 import json
+import re
 import sqlite3
 
 from gen2.tests.router_fixtures import TOPIC, OTHER
@@ -96,14 +97,23 @@ class DDLTest(StoreTestCase):
     def test_ddl_guards(self):
         columns = [r[1] for r in self.rows("PRAGMA table_info(obligation_assessments)")]
         original = dict(zip(columns, self.rows("SELECT * FROM obligation_assessments")[0]))
-        changes = [{"actor_kind": "operator"}, {"contract_content_hash": "forged"}, {"recorded_by_operation_id": "op_missing001"},
-            {"topic_id": OTHER}, {"contract_revision": 1}, {"framing_version": 2}, {"eligibility_protocol_version": 2},
-            {"invocation_id": "inv_vvvvvvvv"}, {"obligation_id": "missing"}, {"supersedes_id": "oa-fixture", "obligation_id": "O-2"}]
-        for confidence in ({"basis": "recorded_assessment", "scheme": {"scheme_id": "absent", "version": 1}, "label": "off-scheme", "assessed_by_invocation_id": "inv_pppppppp"}, {"basis": "unknown", "reason": " "}):
-            changes.append({"confidence": json.dumps(confidence)})
-        for change in changes:
-            with self.subTest(change=change), self.assertRaises(sqlite3.IntegrityError):
+        pins = "obligation assessment needs its primary commit and exact approved contract pins"
+        scheme = "confidence must name the approved scheme, label and committing invocation"
+        changes = [({"actor_kind": "operator"}, "actor_kind = 'primary'"), ({"contract_content_hash": "forged"}, pins),
+            ({"recorded_by_operation_id": "op_missing001"}, pins), ({"topic_id": OTHER}, pins), ({"contract_revision": 1}, pins),
+            ({"framing_version": 2}, pins), ({"eligibility_protocol_version": 2}, pins), ({"invocation_id": "inv_vvvvvvvv"}, pins),
+            # The foreign key is the rule here: no obligation named "missing" exists.
+            ({"obligation_id": "missing"}, "FOREIGN KEY constraint failed"),
+            ({"supersedes_id": "oa-fixture", "obligation_id": "O-2"}, "obligation predecessor belongs to this topic and obligation")]
+        for confidence, fragment in (({"basis": "recorded_assessment", "scheme": {"scheme_id": "absent", "version": 1}, "label": "off-scheme", "assessed_by_invocation_id": "inv_pppppppp"}, scheme),
+                                     ({"basis": "unknown", "reason": " "}, "(json_extract(confidence, '$.basis') IS 'unknown'")):
+            changes.append(({"confidence": json.dumps(confidence)}, fragment))
+        before = self.snapshot("obligation_assessments")
+        for change, fragment in changes:
+            with self.subTest(change=change), self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(fragment)):
                 self.x(f"INSERT INTO obligation_assessments ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", *{**original, "record_id": "oa-raw", **change}.values())
-        for sql in ("UPDATE obligation_assessments SET reason = 'rewritten'", "DELETE FROM obligation_assessments"):
-            with self.assertRaises(sqlite3.IntegrityError):
-                self.x(sql)
+            self.assertEqual(self.snapshot("obligation_assessments"), before)
+        for sql, fragment in (("UPDATE obligation_assessments SET reason = 'rewritten'", "obligation assessments are append-only"),
+                              ("DELETE FROM obligation_assessments", "obligation assessments are retained")):
+            self.rejects(fragment, sql)
+            self.assertEqual(self.snapshot("obligation_assessments"), before)

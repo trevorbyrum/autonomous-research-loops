@@ -1,9 +1,12 @@
 """Store transaction invalidation and the retained generation integrity guards."""
+import re
 import sqlite3
 import unittest
 
 from gen2.store import api, db
 from gen2.tests import store_fixtures as fx
+
+STEP = "store generation must advance once or renew epoch; exhaustion refuses writes"
 
 
 class GenerationTest(unittest.TestCase):
@@ -24,35 +27,60 @@ class GenerationTest(unittest.TestCase):
     def test_insert_protection(self):
         self.db.execute('DROP TRIGGER IF EXISTS store_generation_no_delete')
         self.db.execute('DELETE FROM store_generation')
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "store generation singleton cannot be inserted"):
             self.db.execute("INSERT INTO store_generation VALUES ('store',?,0)", ('a' * 32,))
+        self.assertEqual(self.db.execute('SELECT * FROM store_generation').fetchall(), [])
 
     def test_delete_protection(self):
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.db.execute('SELECT * FROM store_generation').fetchall()
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "store generation singleton cannot be deleted"):
             self.db.execute('DELETE FROM store_generation')
+        self.assertEqual(self.db.execute('SELECT * FROM store_generation').fetchall(), before)
 
     def test_step_protection(self):
-        for assignment in ('generation=generation', 'generation=generation-1', 'generation=generation+2', "singleton='other'"):
+        self.db.execute('SAVEPOINT s')  # the admitted ordinary increment, which the singleton refusal below pairs with
+        self.db.execute('UPDATE store_generation SET generation=generation+1')
+        self.assertEqual(self.db.execute('SELECT * FROM store_generation').fetchall(), [('store', None, 1)])
+        self.db.execute('ROLLBACK TO s')
+        self.db.execute('RELEASE s')
+        for assignment in ('generation=generation', 'generation=generation-1', 'generation=generation+2', "singleton='other'",
+                           "singleton='other', generation=generation+1"):
             with self.subTest(assignment=assignment):
                 self.db.execute('SAVEPOINT s')
+                before = self.db.execute('SELECT * FROM store_generation').fetchall()
                 try:
-                    with self.assertRaises(sqlite3.IntegrityError):
+                    with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(STEP)):
                         self.db.execute('UPDATE store_generation SET ' + assignment)
+                    self.assertEqual(self.db.execute('SELECT * FROM store_generation').fetchall(), before)
                 finally:
                     self.db.execute('ROLLBACK TO s')
                     self.db.execute('RELEASE s')
         self.db.execute("UPDATE store_generation SET epoch=?", ('a' * 32,))
-        with self.assertRaises(sqlite3.IntegrityError):
+        # epoch=NULL refuses under the step trigger, not under NOT NULL.
+        before = self.db.execute('SELECT * FROM store_generation').fetchall()
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(STEP)):
             self.db.execute('UPDATE store_generation SET epoch=NULL')
+        self.assertEqual(self.db.execute('SELECT * FROM store_generation').fetchall(), before)
 
     def test_constraints(self):
         self.db.execute('DROP TRIGGER IF EXISTS store_generation_step')
         self.db.execute('DROP TRIGGER IF EXISTS store_generation_no_insert')
-        for sql in ("INSERT INTO store_generation VALUES ('other','" + 'a' * 32 + "',0)",
-                    'UPDATE store_generation SET generation=-1', 'UPDATE store_generation SET generation=9007199254740992',
-                    "UPDATE store_generation SET epoch=''", "UPDATE store_generation SET epoch='" + 'G' * 32 + "'"):
-            with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
+        self.db.execute('SAVEPOINT s')  # the admitted singleton: same epoch and generation as the refused insert, into an emptied table
+        self.db.execute('DROP TRIGGER store_generation_no_delete')
+        self.db.execute('DELETE FROM store_generation')
+        self.db.execute("INSERT INTO store_generation VALUES ('store',?,0)", ('a' * 32,))
+        self.assertEqual(self.db.execute('SELECT * FROM store_generation').fetchall(), [('store', 'a' * 32, 0)])
+        self.db.execute('ROLLBACK TO s')
+        self.db.execute('RELEASE s')
+        for sql, fragment in (("INSERT INTO store_generation VALUES ('other','" + 'a' * 32 + "',0)", "singleton = 'store'"),
+                    ('UPDATE store_generation SET generation=-1', "generation BETWEEN 0 AND 9007199254740991"),
+                    ('UPDATE store_generation SET generation=9007199254740992', "generation BETWEEN 0 AND 9007199254740991"),
+                    ("UPDATE store_generation SET epoch=''", "length(epoch) = 32"),
+                    ("UPDATE store_generation SET epoch='" + 'G' * 32 + "'", "length(epoch) = 32")):
+            before = self.db.execute('SELECT * FROM store_generation').fetchall()
+            with self.subTest(sql=sql), self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(fragment)):
                 self.db.execute(sql)
+            self.assertEqual(self.db.execute('SELECT * FROM store_generation').fetchall(), before)
 
 
 
@@ -142,6 +170,6 @@ class CounterTest(unittest.TestCase):
         self.db.execute('UPDATE store_generation SET generation=9007199254740991')
         self.db.execute(step)
         before = self.state()
-        with self.assertRaises(sqlite3.IntegrityError), self.store.transaction():
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(STEP)), self.store.transaction():
             self.store.update('queue_entries', {'topic_id': fx.TOPIC}, {'priority': 2})
         self.assertEqual(self.state(), before)
