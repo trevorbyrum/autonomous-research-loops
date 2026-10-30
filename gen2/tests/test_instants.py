@@ -8,6 +8,7 @@ from the Unix epoch.
 """
 from __future__ import annotations
 
+import inspect
 import unittest
 from datetime import datetime, timezone
 from unittest import mock
@@ -29,8 +30,10 @@ class UtcNowFormatTest(unittest.TestCase):
 
         with mock.patch("gen2.core.instants.datetime", Frozen):
             self.assertEqual(utc_now(), "2026-10-27T01:02:03.040506Z")
-            self.assertEqual(Router.__init__.__kwdefaults__["clock"](), "2026-10-27T01:02:03.040506Z")
-            self.assertEqual(GatewayClient.__init__.__kwdefaults__["clock"](), "2026-10-27T01:02:03.040506Z")
+            for owner in (Router, GatewayClient):
+                clock = inspect.signature(owner.__init__).parameters["clock"]
+                self.assertIs(clock.kind, inspect.Parameter.KEYWORD_ONLY)
+                self.assertEqual(clock.default(), "2026-10-27T01:02:03.040506Z")
             self.assertEqual(engine.utc_now(), "2026-10-27T01:02:03.040506Z")
             self.assertEqual(compat.capability_fact("ok", "", {})["since"], "2026-10-27T01:02:03Z")
 
