@@ -3,7 +3,8 @@ module the interface it takes of the core (a `typing.Protocol` the Router implem
 composition"). A protocol is not enforced at run time, so these keep it true: every member a collaborator reads off `self._core` is
 declared, every declared member is one the collaborator uses and the Router has, the collaborator reaches the store only through the
 core, and the Router's public methods are the ones it had when they were mixins. Direct sibling paths name a declared concrete
-collaborator and a callable member on it; signatures, aliases, and full Protocol conformance remain outside these checks."""
+collaborator and a callable member on it. Shared handle parameter surfaces and capture variance are literal checks; sibling signatures,
+aliases, argument/return types and full Protocol conformance remain outside these checks."""
 import ast
 import inspect
 import unittest
@@ -139,11 +140,28 @@ class CollaboratorInterfaceTest(RouterTestCase):
         for handle, members in ((protocols.Rows, {"select", "insert", "update", "capture_topic"}),
                                 (protocols.Schemas, {"errors"}), (protocols.Spool, {"read", "media_type"})):
             self.assertEqual(declared(handle), members)
-        capture_type, = protocols.Rows.__parameters__
-        self.assertTrue(capture_type.__covariant__)
-        self.assertIs(protocols.Rows.capture_topic.__annotations__["return"], capture_type)
         self.assertEqual([n.module if isinstance(n, ast.ImportFrom) else None for n in ast.walk(tree(protocols))
                           if isinstance(n, (ast.Import, ast.ImportFrom))], ["typing"])
+
+    def test_shared_handle_parameter_surfaces_and_capture_variance(self):
+        empty = inspect.Parameter.empty
+        expected = {
+            protocols.Rows.select: (("self", "table", "where"), ("POSITIONAL_OR_KEYWORD",) * 3, (empty, empty, None)),
+            protocols.Rows.insert: (("self", "table", "row"), ("POSITIONAL_OR_KEYWORD",) * 3, (empty, empty, empty)),
+            protocols.Rows.update: (("self", "table", "key", "changes"), ("POSITIONAL_OR_KEYWORD",) * 4, (empty, empty, empty, empty)),
+            protocols.Rows.capture_topic: (("self", "topic_id"), ("POSITIONAL_OR_KEYWORD",) * 2, (empty, empty)),
+            protocols.Schemas.errors: (("self", "instance", "target"), ("POSITIONAL_OR_KEYWORD",) * 3, (empty, empty, empty)),
+            protocols.Spool.read: (("self", "content_hash", "topic_id"), ("POSITIONAL_OR_KEYWORD", "POSITIONAL_OR_KEYWORD", "KEYWORD_ONLY"), (empty, empty, empty)),
+            protocols.Spool.media_type: (("self", "content_hash", "topic_id"), ("POSITIONAL_OR_KEYWORD", "POSITIONAL_OR_KEYWORD", "KEYWORD_ONLY"), (empty, empty, empty)),
+        }
+        for method, (names, kinds, defaults) in expected.items():
+            with self.subTest(method=method.__qualname__):
+                parameters = tuple(inspect.signature(method).parameters.values())
+                self.assertEqual(tuple(p.name for p in parameters), names)
+                self.assertEqual(tuple(p.kind.name for p in parameters), kinds)
+                self.assertEqual(tuple(p.default for p in parameters), defaults)
+        self.assertIs(protocols.CaptureT_co.__covariant__, True)
+        self.assertIs(protocols.CaptureT_co.__contravariant__, False)
 
     def test_private_forwarders_are_removed(self):
         deleted = {"_dossier_inputs", "_require_extractor_tool", "_active_bundle", "_bundle", "_router_policy", "_templates",
