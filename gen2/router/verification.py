@@ -7,15 +7,11 @@ from typing import Mapping, Protocol
 
 from gen2.core import canonical
 from gen2.router import boundary, support
-
-
-class Rows(Protocol):
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
-    def select(self, table: str, where: "Mapping[str, object] | None" = None) -> list[dict]: ...
+from gen2.router.protocols import Rows
 
 
 class VerificationCore(Protocol):
-    _store: Rows
+    _store: Rows[object]
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
 
 

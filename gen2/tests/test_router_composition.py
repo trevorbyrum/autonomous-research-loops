@@ -2,14 +2,16 @@
 module the interface it takes of the core (a `typing.Protocol` the Router implements without inheriting it; BOUNDARIES.md, "Router
 composition"). A protocol is not enforced at run time, so these keep it true: every member a collaborator reads off `self._core` is
 declared, every declared member is one the collaborator uses and the Router has, the collaborator reaches the store only through the
-core, and the Router's public methods are the ones it had when they were mixins."""
+core, and the Router's public methods are the ones it had when they were mixins. Direct sibling paths name a declared concrete
+collaborator and a callable member on it; signatures, aliases, and full Protocol conformance remain outside these checks."""
 import ast
 import inspect
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from gen2.router import acquisitions, amendments, assessments, capabilities, evidence_writer, lifecycle, observations, registries, scheduling, service, status, verification
-from gen2.router import accounting, extractor_registry, extractions
+from gen2.router import accounting, detailed_checks, extractor_registry, extractions, history, protocols, support
 from gen2.tests.router_fixtures import RouterTestCase
 
 COLLABORATORS = ((accounting, accounting.Accounting, accounting.AccountingCore, "_accounting"),
@@ -22,7 +24,8 @@ COLLABORATORS = ((accounting, accounting.Accounting, accounting.AccountingCore, 
                  (acquisitions, acquisitions.AcquisitionAdmission, acquisitions.AcquisitionCore, "_acquisitions"),
                  (observations, observations.Observations, observations.ObservationCore, "_observations"),
                  (extractor_registry, extractor_registry.ExtractorRegistry, extractor_registry.ExtractorRegistryCore, "_extractor_registry"),
-                 (extractions, extractions.ExtractionRecords, extractions.ExtractionCore, "_extractions"))
+                 (extractions, extractions.ExtractionRecords, extractions.ExtractionCore, "_extractions"),
+                 (detailed_checks, detailed_checks.DetailedChecks, detailed_checks.DetailedChecksCore, "_detailed_checks"))
 PUBLIC_API = {  # Router's public methods at be5b2f1 plus intentional additions (evidence_inventory, task 2c-2a)
     "ack_delivery", "activate_config_bundle", "admit_reaccess", "apply_operator_decision", "claim", "close", "close_brief", "commit_outcome", "config_bundle", "create_topic", "draft_contract",
     "candidate_units", "coverage_snapshot", "evidence_inventory", "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",
@@ -78,6 +81,65 @@ class CollaboratorInterfaceTest(RouterTestCase):
         for module, _, _, _ in COLLABORATORS:
             with self.subTest(module=module.__name__):
                 self.assertEqual("_snapshot" in used(module), module in (status, acquisitions))
+
+    def check_siblings(self, module, core, syntax):
+        registry = {attribute: cls for _, cls, _, attribute in COLLABORATORS}
+        imports = {a.asname or a.name: (n.module, a.name) for n in ast.walk(tree(module))
+                   if isinstance(n, ast.ImportFrom) for a in n.names}
+        for node in ast.walk(syntax):
+            if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) and is_core(node.value.value)):
+                continue
+            attribute = node.value.attr
+            if attribute in ("_store", "_schemas", "_spool", "_gateway_captures"):
+                continue
+            self.assertIn(attribute, declared(core))
+            target = registry[attribute]
+            annotation = core.__annotations__[attribute].strip("\"'")
+            self.assertEqual(annotation, target.__name__)
+            self.assertEqual(imports[annotation], (target.__module__, target.__name__))
+            self.assertIs(type(getattr(self.router, attribute)), target)
+            self.assertTrue(callable(getattr(target, node.attr, None)), f"{attribute}.{node.attr}")
+
+    def test_sibling_members_exist_on_the_declared_concrete_target(self):
+        for module, _, core, _ in COLLABORATORS:
+            with self.subTest(module=module.__name__):
+                self.check_siblings(module, core, tree(module))
+
+    def test_sibling_check_rejects_undeclared_wrong_and_missing_targets(self):
+        for expression in ("self._core._lifecycle.reconcile", "self._core._registries.missing", "self._core._registries.__module__"):
+            with self.subTest(expression=expression), self.assertRaises(AssertionError):
+                self.check_siblings(status, status.StatusCore, ast.parse(expression))
+        with patch.dict(status.StatusCore.__annotations__, {"_registries": "Lifecycle"}), self.assertRaises(AssertionError):
+            self.check_siblings(status, status.StatusCore, ast.parse("self._core._registries._active_bundle"))
+
+    def test_registry_covers_every_constructed_collaborator(self):
+        constructed = {n.targets[0].attr: vars(service)[n.value.func.id] for n in ast.walk(tree(service))
+                       if isinstance(n, ast.Assign) and len(n.targets) in (1,) and isinstance(n.targets[0], ast.Attribute)
+                       and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Name)
+                       and len(n.value.args) in (1,) and isinstance(n.value.args[0], ast.Name) and n.value.args[0].id in ("self",)}
+        self.assertEqual(constructed, {attribute: cls for _, cls, _, attribute in COLLABORATORS})
+
+    def test_shared_handles_have_one_origin_and_restricted_members(self):
+        for module in [m for m, _, _, _ in COLLABORATORS] + [history, support]:
+            for name in ("Rows", "Schemas", "Spool"):
+                if hasattr(module, name):
+                    self.assertIs(getattr(module, name), getattr(protocols, name))
+        for handle, members in ((protocols.Rows, {"select", "insert", "update", "capture_topic"}),
+                                (protocols.Schemas, {"errors"}), (protocols.Spool, {"read", "media_type"})):
+            self.assertEqual(declared(handle), members)
+        capture_type, = protocols.Rows.__parameters__
+        self.assertTrue(capture_type.__covariant__)
+        self.assertIs(protocols.Rows.capture_topic.__annotations__["return"], capture_type)
+        self.assertEqual([n.module if isinstance(n, ast.ImportFrom) else None for n in ast.walk(tree(protocols))
+                          if isinstance(n, (ast.Import, ast.ImportFrom))], ["typing"])
+
+    def test_private_forwarders_are_removed(self):
+        deleted = {"_dossier_inputs", "_require_extractor_tool", "_active_bundle", "_bundle", "_router_policy", "_templates",
+                   "_evidence", "_bind_evidence", "_record_artifact", "_require_delegates_ended", "_release_capacity",
+                   "_open_unknown_hold", "_cancel_in_transaction", "_lane_last", "_admit_lane", "_draw", "_open_topic",
+                   "_pin_status", "_brief_standing", "_record_impact", "_record_replacements", "_recorded_references",
+                   "_require_current_pins", "_require_detailed_support", "_write_verification_holds"}
+        self.assertFalse(deleted.intersection(vars(service.Router)))
 
     def test_the_router_composes_its_collaborators_and_keeps_its_public_methods(self):
         self.assertFalse(isinstance(self.router, (status.Status, capabilities.Capabilities, registries.Registries, lifecycle.Lifecycle, scheduling.Scheduling, amendments.Amendments, evidence_writer.EvidenceWriter, assessments.Assessments)))

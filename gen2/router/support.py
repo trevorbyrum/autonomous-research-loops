@@ -3,20 +3,17 @@
 Callers own the snapshot or writer fence. No core, transaction or write handle
 is needed, including for detached completion-gate operands.
 """
-from typing import Callable, Mapping, Protocol
+from typing import Callable
 
 from gen2.core import canonical
 from gen2.router import boundary
 from gen2.router.boundary import Refusal
+from gen2.router.protocols import Rows
 
 CANONICAL = frozenset({"canonical_bytes"})  # the extraction method that reads the artifact bytes themselves
 
 
-class Rows(Protocol):
-    def select(self, table: str, where: "Mapping[str, object] | None" = None) -> list[dict]: ...
-
-
-def require_support(rows: Rows, claim: dict, capture_valid: Callable[[dict], bool]) -> None:
+def require_support(rows: Rows[object], claim: dict, capture_valid: Callable[[dict], bool]) -> None:
     """V-4/V-8 consumption in the existing writer transaction.
 
     Detailed records, basis and governed capture qualify on one candidate,
@@ -61,7 +58,7 @@ def require_support(rows: Rows, claim: dict, capture_valid: Callable[[dict], boo
     raise Refusal("payload_invalid", "support requires exactly bound performed detailed checks (V-4, V-8)")
 
 
-def has_basis(rows: Rows, row: dict, rank: dict) -> bool:
+def has_basis(rows: Rows[object], row: dict, rank: dict) -> bool:
     """Promotion also excludes extraction alarms; membership alone does not."""
     if (row["extraction_method"] in ("verifier_extraction", "validated_extraction")
             and row["receipt"]["checks"].get("tier0", {}).get("signal") in ("alarm",)):
@@ -69,7 +66,7 @@ def has_basis(rows: Rows, row: dict, rank: dict) -> bool:
     return basis_member(rows, row, rank)
 
 
-def basis_member(rows: Rows, row: dict, rank: dict) -> bool:
+def basis_member(rows: Rows[object], row: dict, rank: dict) -> bool:
     """Re-read SQL 15/32/33/34 operands; admission owns their authentication."""
     method = row["extraction_method"]
     basis = None if method in CANONICAL else extraction_basis(rows, row, rank)
@@ -93,7 +90,7 @@ def basis_member(rows: Rows, row: dict, rank: dict) -> bool:
     return False
 
 
-def extraction_basis(rows: Rows, row: dict, rank: dict) -> "dict | None":
+def extraction_basis(rows: Rows[object], row: dict, rank: dict) -> "dict | None":
     method = row["extraction_method"]
     validation = None
     if method == "validated_extraction":
@@ -127,7 +124,7 @@ def extraction_basis(rows: Rows, row: dict, rank: dict) -> "dict | None":
     return basis
 
 
-def content_rank(rows: Rows, acquired: dict) -> int:
+def content_rank(rows: Rows[object], acquired: dict) -> int:
     try:
         response = canonical.parse_json_strict(acquired["response_bytes"])
     except (ValueError, UnicodeDecodeError):
@@ -159,7 +156,7 @@ def nonblank(value: object) -> bool:
         for c in value.split("\0", 1)[0])
 
 
-def require_receipt(rows: Rows, doc: dict) -> None:
+def require_receipt(rows: Rows[object], doc: dict) -> None:
     """Current admission policy plus exact, explicitly projected bindings."""
     require_performed_references(doc)
     projection = {"succeeded": "checked_ok", "failed": "checked_problem",
@@ -199,13 +196,13 @@ def require_performed_references(doc: dict) -> None:
             raise Refusal("payload_invalid", "load-bearing support requires detailed check records")
 
 
-def capture_checks(rows: Rows, claim_id: str, revision: int) -> list[dict]:
+def capture_checks(rows: Rows[object], claim_id: str, revision: int) -> list[dict]:
     """A claim revision is a capture; re-capture never replaces its checks."""
     return [q for q in rows.select("quote_checks", {"claim_id": claim_id, "claim_revision": revision})
             if q["match_result"] is not None]
 
 
-def quote_receipt_valid(rows: Rows, doc: dict) -> bool:
+def quote_receipt_valid(rows: Rows[object], doc: dict) -> bool:
     checks = capture_checks(rows, doc["claim"]["claim_id"], doc["claim"]["claim_revision"])
     if not checks:
         return True
@@ -223,7 +220,7 @@ def quote_receipt_valid(rows: Rows, doc: dict) -> bool:
             and spans <= {(q["span_start"], q["span_end"]) for q in bound})
 
 
-def quote_support_valid(rows: Rows, doc: dict) -> bool:
+def quote_support_valid(rows: Rows[object], doc: dict) -> bool:
     """DetailedChecks applies this to its same, stored-column candidate."""
     if not capture_checks(rows, doc["claim"]["claim_id"], doc["claim"]["claim_revision"]):
         return True

@@ -171,9 +171,6 @@ class Router:
         """Capture admitted links and invocation-derived pins; compute views after returning."""
         return self._accounting.coverage_snapshot(topic_id, history=history)
 
-    def _dossier_inputs(self, topic_id: str, *, history: accounting.History) -> DossierInput:
-        return self._accounting.dossier_inputs(topic_id, history=history)
-
     def _commit_dossier_inputs(self, topic_id: str, *, invocation_id: str, history: accounting.History, prepare: Callable, commit: Callable) -> object:
         inv = self._one("invocations", {"invocation_id": invocation_id})
         if inv is None or inv["topic_id"] != topic_id:
@@ -198,9 +195,6 @@ class Router:
     def register_extractor_registry(self, request: Mapping) -> dict:
         return self._extractor_registry.register(request)
 
-    def _require_extractor_tool(self, record: dict) -> None:
-        self._extractor_registry.require_tool(record)
-
     def config_bundle(self, bundle_hash: str) -> dict | None:
         return self._registries.config_bundle(bundle_hash)
 
@@ -216,18 +210,6 @@ class Router:
     def is_qualified(self, *, provider: str, decision_class: str, spec_hash: str, qualification_ref: str | None) -> bool:
         return self._registries.is_qualified(provider=provider, decision_class=decision_class, spec_hash=spec_hash, qualification_ref=qualification_ref)
 
-    def _active_bundle(self) -> dict | None:
-        return self._registries._active_bundle()
-
-    def _bundle(self, bundle_hash: str) -> dict:
-        return self._registries._bundle(bundle_hash)
-
-    def _router_policy(self, bundle_hash: str) -> dict:
-        return self._registries._router_policy(bundle_hash)
-
-    def _templates(self) -> dict:
-        return self._registries._templates()
-
     # -- the lifecycle's public routes and the members the rest of the Router reads (lifecycle.py) -----
     def request_cancel(self, request: Mapping) -> dict:
         return self._lifecycle.request_cancel(request)
@@ -237,27 +219,6 @@ class Router:
 
     def invocation_status(self, request: Mapping) -> dict:
         return self._lifecycle.invocation_status(request)
-
-    def _evidence(self, inv: dict, content_hash: str) -> dict:
-        return self._lifecycle._evidence(inv, content_hash)
-
-    def _bind_evidence(self, inv: dict, evidence: dict | None, *, failure_class: str | None = None, terminal: bool = True) -> None:
-        return self._lifecycle._bind_evidence(inv, evidence, failure_class=failure_class, terminal=terminal)
-
-    def _record_artifact(self, inv: dict, evidence: dict, now: str) -> None:
-        return self._lifecycle._record_artifact(inv, evidence, now)
-
-    def _require_delegates_ended(self, inv: dict) -> None:
-        return self._lifecycle._require_delegates_ended(inv)
-
-    def _release_capacity(self, inv: dict, now: str, reason: str) -> None:
-        return self._lifecycle._release_capacity(inv, now, reason)
-
-    def _open_unknown_hold(self, inv: dict, episode: int, cause: str, now: str) -> None:
-        return self._lifecycle._open_unknown_hold(inv, episode, cause, now)
-
-    def _cancel_in_transaction(self, req: dict, now: str) -> dict:
-        return self._lifecycle._cancel_in_transaction(req, now)
 
     # -- scheduling's public routes and the members the rest of the Router reads (scheduling.py) -----
     def requeue(self, request: Mapping) -> dict:
@@ -274,15 +235,6 @@ class Router:
 
     def raise_signal(self, request: Mapping) -> dict:
         return self._scheduling.raise_signal(request)
-
-    def _lane_last(self, topic_id: str, scope: str) -> str | None:
-        return self._scheduling._lane_last(topic_id, scope)
-
-    def _admit_lane(self, req: dict, topic_id: str, scope: str) -> dict | None:
-        return self._scheduling._admit_lane(req, topic_id, scope)
-
-    def _draw(self, draw: dict, inv_id: str, topic_id: str, now: str) -> None:
-        return self._scheduling._draw(draw, inv_id, topic_id, now)
 
     # -- amendments' public routes and the members the rest of the Router reads (amendments.py) -----
     def version_brief(self, request: Mapping) -> dict:
@@ -302,27 +254,6 @@ class Router:
 
     def close_brief(self, request: Mapping) -> dict:
         return self._amendments.close_brief(request)
-
-    def _open_topic(self, topic_id: str) -> dict:
-        return self._amendments._open_topic(topic_id)
-
-    def _pin_status(self, inv: dict) -> str:
-        return self._amendments._pin_status(inv)
-
-    def _brief_standing(self, topic_id: str, brief_id: str, version: int) -> str:
-        return self._amendments._brief_standing(topic_id, brief_id, version)
-
-    def _record_impact(self, d: dict, kind: str, superseded: dict, current: dict, now: str) -> dict:
-        return self._amendments._record_impact(d, kind, superseded, current, now)
-
-    def _record_replacements(self, d: dict, current: dict, now: str) -> None:
-        return self._amendments._record_replacements(d, current, now)
-
-    def _recorded_references(self, doc: dict) -> str | None:
-        return self._amendments._recorded_references(doc)
-
-    def _require_current_pins(self, inv: dict) -> None:
-        return self._amendments._require_current_pins(inv)
 
     # -- small helpers -----------------------------------------------------
     def _snapshot(self):
@@ -474,7 +405,7 @@ class Router:
             raise Refusal("topic_paused", f"paused at {topic['paused_at']}")
         if req["kind"] == "delegate":
             return self._admit_delegate(req, topic, now)
-        active = self._active_bundle()  # new work pins the active bundle; admitted work keeps its own (RG-9, C-12)
+        active = self._registries._active_bundle()  # new work pins the active bundle; admitted work keeps its own (RG-9, C-12)
         if active is None or active["bundle_hash"] != req["config_bundle_hash"]:
             raise Refusal("config_bundle_not_active", f"new work is admitted under the active config bundle ({None if active is None else active['bundle_hash']})")
         pins = self._derive_admission(topic["topic_id"], req["kind"])
@@ -483,7 +414,7 @@ class Router:
             {"queued", "resting"} if scope == "research" else {"queued", "active", "resting"})
         if topic["status"] not in claimable:
             raise Refusal("topic_not_claimable", f"a {scope} lease under {pins['admission_context']} needs the topic {sorted(claimable)}, not {topic['status']}")
-        retry = self._admit_lane(req, topic["topic_id"], scope)
+        retry = self._scheduling._admit_lane(req, topic["topic_id"], scope)
         for live in (row for row in self._store.select("leases", {"topic_id": topic["topic_id"], "scope": scope}) if row["released_at"] is None):
             if instant(now) < instant(live["expires_at"]):
                 raise Refusal("lease_held", f"{live['lease_id']} (generation {live['generation']}) is live until {live['expires_at']}")
@@ -496,7 +427,7 @@ class Router:
         if retry is not None:
             self._store.update("retries", {"invocation_id": retry["invocation_id"]}, {"retry_invocation_id": req["invocation_id"]})
         if "reservation" in req:
-            self._draw(req["reservation"], req["invocation_id"], topic["topic_id"], now)
+            self._scheduling._draw(req["reservation"], req["invocation_id"], topic["topic_id"], now)
         if scope == "research" and pins["admission_context"] == "contract/1":
             self._set_topic(topic, now, "active")
         self._audit("claim", now, {"lease_id": lease_id, "generation": generation, "scope": scope},
@@ -594,7 +525,7 @@ class Router:
             if target == "result_ready":  # C-9: the new result the supervisor retained is really staged, as JSON, for this topic
                 boundary.staged(self._spool, facts["result_payload_digest"], topic_id=inv["topic_id"], media_type="application/json")
             elif facts.get("end_evidence_ref") is not None:
-                evidence = self._evidence(inv, facts["end_evidence_ref"])
+                evidence = self._lifecycle._evidence(inv, facts["end_evidence_ref"])
             return self._guarded("transition_not_allowed", lambda now: self._transition_in_transaction(req, facts, evidence, now))
         except Refusal as refusal:
             return {"status": "refused", "reason": refusal.reason, "detail": _short(refusal.detail)}
@@ -653,8 +584,8 @@ class Router:
                 raise Refusal("cancel_requested", f"cancellation was requested at {inv['cancel_requested_at']}")
             changes["result_staged_at"] = now
         if target in ("failed", "cancelled"):
-            self._bind_evidence(inv, evidence, failure_class=facts.get("failure_class"))
-            self._record_artifact(inv, evidence, now)
+            self._lifecycle._bind_evidence(inv, evidence, failure_class=facts.get("failure_class"))
+            self._lifecycle._record_artifact(inv, evidence, now)
         if target == "cancelled":
             if inv["cancel_requested_at"] is None:
                 raise Refusal("transition_not_allowed", f"no cancellation of {inv['invocation_id']} was requested")
@@ -665,9 +596,9 @@ class Router:
         self._transition_row(inv["invocation_id"], inv["state"], target, now, LIFECYCLE_CAUSE[target],
                              {**facts, **({"unknown_cause": req["unknown_cause"]} if target == "outcome_unknown" else {})})
         if target in ("failed", "cancelled"):
-            self._release_capacity(inv, now, target)
+            self._lifecycle._release_capacity(inv, now, target)
         if target == "outcome_unknown":
-            self._open_unknown_hold(inv, facts["unknown_episode"], req["unknown_cause"], now)
+            self._lifecycle._open_unknown_hold(inv, facts["unknown_episode"], req["unknown_cause"], now)
         self._audit("transition", now, {"from": inv["state"], "to": target, **({"cause": req["unknown_cause"]} if target == "outcome_unknown" else {})},
                     topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
         return {"status": "recorded", "invocation_id": inv["invocation_id"], "state": target}
@@ -738,9 +669,6 @@ class Router:
                    for link in self._store.select("record_work_links", {"work_id": work_id}))
 
     # -- commit_outcome ----------------------------------------------------------
-    def _require_detailed_support(self, claim: dict) -> None:
-        self._detailed_checks.require_support(claim, self._evidence_writer._quote_support_valid)
-
     def commit_outcome(self, envelope: Mapping) -> dict:
         op_id = envelope.get("operation_id") if isinstance(envelope, Mapping) else None
         if not isinstance(op_id, str) or self._schemas.errors(op_id, "common.schema.json#/$defs/operation_id"):
@@ -860,7 +788,7 @@ class Router:
             boundary.check_verification_receipt(doc, inv["invocation_id"], env["capability_id"], inv["topic_id"])
             if doc["extraction"]["method"] == "canonical_bytes" and not available(doc["obtained_content_hash"]):
                 raise Refusal("payload_missing", f"{doc['verification_receipt_id']}: its canonical bytes are not staged (V-3)")
-        bundle = self._bundle(inv["config_bundle_hash"])  # immutable: the question registry the invocation was admitted under (D-1)
+        bundle = self._registries._bundle(inv["config_bundle_hash"])  # immutable: the question registry the invocation was admitted under (D-1)
         protocol = self._evidence_writer.validate_decisions(payload, inv, env, bind, bundle)
         manifests = self._evidence_writer.validate_exports(payload, inv, staged)
         self._evidence_writer.validate_holds(payload)
@@ -918,7 +846,7 @@ class Router:
             raise Refusal("config_bundle_mismatch", "the envelope's config bundle is not the invocation's pinned one")
         if topic["paused_at"] is not None:
             raise Refusal("topic_paused", f"paused at {topic['paused_at']}")
-        self._require_current_pins(inv)
+        self._amendments._require_current_pins(inv)
         if inv["cancel_requested_at"] is not None:  # a cancellation, once requested, admits no further effect (L-7; task 1c)
             raise Refusal("invocation_state_invalid", f"cancellation of {inv['invocation_id']} was requested at {inv['cancel_requested_at']}")
         return lease, admission
@@ -932,7 +860,7 @@ class Router:
                 raise Refusal("invocation_state_invalid", f"a final outcome commits the result staged by a result_ready invocation ({inv['state']})")
             if inv["kind"] != "delegate":  # the lease a final outcome releases is its delegates' too (L-7, L-8; task 1c-repair A3)
                 try:
-                    self._require_delegates_ended(inv)
+                    self._lifecycle._require_delegates_ended(inv)
                 except Refusal as refusal:
                     raise Refusal("invocation_state_invalid", refusal.detail) from None
         elif inv["state"] != "running":
@@ -1020,9 +948,6 @@ class Router:
             self._store.update("invocations", {"invocation_id": inv["invocation_id"]}, {"state": "committed", "state_changed_at": now})
             self._transition_row(inv["invocation_id"], "result_ready", "committed", now, "commit_outcome")
 
-    def _write_verification_holds(self, payload: dict, op_id: str, now: str) -> dict:
-        return self._verification.write_holds(payload, op_id, now)
-
     def _write_evidence(self, env: dict, inv: dict, checked: dict, now: str, new_triggers: list, outbox: list) -> dict:
         written = self._evidence_writer._write_evidence(env, inv, checked, now, new_triggers, outbox)
         written.update(self._assessments.write(checked["payload"], inv, env["operation_id"], now))
@@ -1095,12 +1020,12 @@ class Router:
             effects = {**self._move(topic, now, {"awaiting_brief_confirmation": "scoping", **rescope}), "brief_confirmed": [d["subject_ref"], d["subject_revision"]]}
             current = self._one("intake_briefs", {**key, "version": d["subject_revision"]})
             for row in older:  # G-1: work pinned to the version this one supersedes (amendments.py)
-                effects.update(self._record_impact(d, "brief", row, current, now))
-            self._record_replacements(d, current, now)  # task 2a-repair-3: what a contract may still name
+                effects.update(self._amendments._record_impact(d, "brief", row, current, now))
+            self._amendments._record_replacements(d, current, now)  # task 2a-repair-3: what a contract may still name
             return effects
         if kind == "scope_approval":
             report = self._require_current_report(d)
-            standing = self._brief_standing(d["topic_id"], report["brief_id"], report["brief_version"])
+            standing = self._amendments._brief_standing(d["topic_id"], report["brief_id"], report["brief_version"])
             if standing not in COMPATIBLE:  # task 2a-repair F1
                 raise Refusal("decision_refused", f"{report['report_id']} v{report['version']} was scoped under brief {report['brief_id']} "
                                                   f"v{report['brief_version']}, which no longer stands ({standing})")
@@ -1154,7 +1079,7 @@ class Router:
         key = {"topic_id": d["topic_id"]}
         revision = self._one("contract_revisions", {**key, "revision": d["subject_revision"]})
         previous = self._one("contract_revisions", {**key, "status": "approved"})
-        defect = stopping_defect(revision["document"], self._schemas) or self._recorded_references(revision["document"])  # G-11 and brief standing at approval
+        defect = stopping_defect(revision["document"], self._schemas) or self._amendments._recorded_references(revision["document"])  # G-11 and brief standing at approval
         if defect is not None:
             raise Refusal("decision_refused", defect)
         if previous is not None and revision["parent_revision"] != previous["revision"]:
@@ -1170,7 +1095,7 @@ class Router:
                              active_contract_revision=d["subject_revision"], status_decision_id=None)
         effects.update(contract_approved=d["subject_revision"], contract_superseded=[] if previous is None else [previous["revision"]])
         if previous is not None:
-            effects.update(self._record_impact(d, "contract", self._one("contract_revisions", {**key, "revision": previous["revision"]}),
+            effects.update(self._amendments._record_impact(d, "contract", self._one("contract_revisions", {**key, "revision": previous["revision"]}),
                                                self._one("contract_revisions", {**key, "revision": d["subject_revision"]}), now))
         return effects
 

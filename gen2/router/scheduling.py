@@ -53,11 +53,16 @@ Topics (task 2a). create_topic enters a topic into the queue at intake
 """
 from __future__ import annotations
 
-from typing import Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Callable, Mapping, Protocol
 
 from gen2.router import boundary
 from gen2.router.boundary import Refusal, instant
 from gen2.router.lifecycle import _after
+from gen2.router.protocols import Rows, Schemas
+
+if TYPE_CHECKING:
+    from gen2.router.amendments import Amendments
+    from gen2.router.registries import Registries
 
 MANDATORY = ("retraction", "decision_record_change")
 BAND = {"critical": 3, "important": 2, "limited": 1}
@@ -90,34 +95,16 @@ SCHEDULING_COMMANDS = {
 }
 
 
-class Rows(Protocol):
-    """The router's store as scheduling uses it (store/api.py Store): inside the core's transaction."""
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
-    def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object]) -> None: ...
-
-
-class Schemas(Protocol):
-    """The router's schema set as boundary.require_schema uses it (schemas.py SchemaSet)."""
-    def errors(self, instance: object, target: str) -> list[str]: ...
-
-
 class SchedulingCore(Protocol):
-    """What scheduling takes of the router core, and nothing else; service.Router
-    implements it without inheriting it. A member with no comment is the core's own
-    (service.py); comments naming collaborators identify core delegates that forward
-    cross-collaborator access. Scheduling's own members the rest of the Router
-    reads (`_lane_last`, `_admit_lane`, `_draw`) are the core's delegating members, so
-    no other collaborator reaches scheduling but through the core."""
-    _store: Rows
+    """Members used through Router; sibling attributes name composed collaborators."""
+    _store: Rows[object]
     _schemas: Schemas
     _new_id: Callable[[str], str]
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
     def _guarded(self, reason: str, body: Callable[[str], object]) -> object: ...  # the one transaction an operation runs in
     def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None, invocation_id=None, operation_id=None) -> str: ...
-    def _router_policy(self, bundle_hash: str) -> dict: ...
-    def _active_bundle(self) -> dict | None: ...
-    def _open_topic(self, topic_id: str) -> dict: ...
+    _registries: "Registries"
+    _amendments: "Amendments"
 
 
 class Scheduling:
@@ -185,7 +172,7 @@ class Scheduling:
         made = prior["attempt"] if prior is not None else 1  # attempts already made
         attempt = made + 1
         if req["requested_by"] == "policy":
-            policy = self._core._router_policy(inv["config_bundle_hash"]).get("retry")
+            policy = self._core._registries._router_policy(inv["config_bundle_hash"]).get("retry")
             retryable = inv["cancel_requested_by"] in ("supervisor", "router") if inv["state"] == "cancelled" else \
                 policy is not None and inv["failure_class"] in policy["failure_classes"]
             if not retryable:
@@ -196,7 +183,7 @@ class Scheduling:
                     hold_id=hold_id, topic_id=inv["topic_id"], subject_ref=subject, hold_class="transient",
                     cause=f"retry budget exhausted at attempt {made} of {inv['invocation_id']}", recoverability="needs_decision",
                     required_authority="operator", owner="operator",
-                    deadline_at=_after(now, self._core._router_policy(inv["config_bundle_hash"])["hold_window_s"]),
+                    deadline_at=_after(now, self._core._registries._router_policy(inv["config_bundle_hash"])["hold_window_s"]),
                     clears_when="an operator hold_clearance; then the operator re-queues the work or leaves it ended",
                     created_at=now))
                 self._core._audit("retry_budget_exhausted", now, {"hold_id": hold_id, "attempt": made}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
@@ -233,12 +220,12 @@ class Scheduling:
             if (stored["topic_id"], stored["purpose"]) != (req["topic_id"], req["purpose"]):
                 raise Refusal("reservation_conflict", f"{req['reservation_id']} is another reservation")
             return {"status": "replayed", "reservation_id": req["reservation_id"], "units": stored["units"]}
-        self._core._open_topic(req["topic_id"])
+        self._core._amendments._open_topic(req["topic_id"])
         approved = self._core._one("contract_revisions", {"topic_id": req["topic_id"], "status": "approved"})
         if approved is None:
             raise Refusal("no_approved_contract", "a reservation is bound to an approved contract revision (G-5)")
-        bundle = self._core._active_bundle()
-        sized = None if bundle is None else (self._core._router_policy(bundle["bundle_hash"]).get("reservations") or {}).get(req["purpose"])
+        bundle = self._core._registries._active_bundle()
+        sized = None if bundle is None else (self._core._registries._router_policy(bundle["bundle_hash"]).get("reservations") or {}).get(req["purpose"])
         if sized is None:
             raise Refusal("not_configured", f"the active bundle sizes no {req['purpose']} reservation (G-10)")
         current = next((r for r in self._core._store.select("reservations", {"topic_id": req["topic_id"], "purpose": req["purpose"]}) if r["closed_at"] is None), None)
@@ -275,13 +262,13 @@ class Scheduling:
             if (stored["topic_id"], stored["kind"]) != (req["topic_id"], req["kind"]):
                 raise Refusal("review_conflict", f"{req['episode_id']} is another review")
             return {"status": "replayed", "episode_id": req["episode_id"]}
-        self._core._open_topic(req["topic_id"])
+        self._core._amendments._open_topic(req["topic_id"])
         pending = [t for t in self._core._store.select("review_triggers", {"topic_id": req["topic_id"]}) if t["episode_id"] is None and t["handled_at"] is None]
         if req["kind"] != "fixed_cadence" and not any(t["reason_code"] in MANDATORY for t in pending):
             if not pending:
                 raise Refusal("no_pending_signal", "a signal-driven review takes pending signals; the cadence floor is fixed_cadence")
-            bundle = self._core._active_bundle()
-            queue = None if bundle is None else self._core._router_policy(bundle["bundle_hash"]).get("signal_queue")
+            bundle = self._core._registries._active_bundle()
+            queue = None if bundle is None else self._core._registries._router_policy(bundle["bundle_hash"]).get("signal_queue")
             if queue is None:
                 raise Refusal("not_configured", "the active bundle sets no signal-queue budget; the signals stay queued (G-10)")
             opened = sorted(instant(e["opened_at"]) for e in self._core._store.select("review_episodes", {"topic_id": req["topic_id"]}) if e["kind"] != "fixed_cadence")
@@ -312,7 +299,7 @@ class Scheduling:
         stored = self._core._one("review_triggers", {"trigger_identity": identity})
         if stored is not None:
             return {"status": "replayed", "trigger_identity": identity, "episode_id": stored["episode_id"], "handled_at": stored["handled_at"]}
-        self._core._open_topic(req["topic_id"])
+        self._core._amendments._open_topic(req["topic_id"])
         if instant(req["observed_at"]) > instant(now):
             raise Refusal("request_invalid", f"a signal is observed by now ({now}), not at {req['observed_at']}")
         self._core._store.insert("review_triggers", {"trigger_identity": identity, **{k: req[k] for k in ("topic_id", "reason_code", "signal_source", "cause_ref", "observed_at")}})

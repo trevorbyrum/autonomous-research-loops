@@ -4,12 +4,16 @@ Flow S4 step 8, BOUNDARIES Router, V-1/V-3, C-8. Capture reads and pure
 validation precede the writer fence. SQL 14 retains exact operands and lineage.
 """
 from dataclasses import asdict
-from typing import Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Callable, Mapping, Protocol
 
 from gen2.core import canonical
 from gen2.core.gateway_capture import CaptureReader, RetainedExchange
 from gen2.router import boundary, reaccess
 from gen2.router.boundary import Refusal
+from gen2.router.protocols import Rows, Schemas
+
+if TYPE_CHECKING:
+    from gen2.router.amendments import Amendments
 
 ACQUISITION_COMMANDS = {"reaccess": {"type": "object", "additionalProperties": False,
     "required": ["capability_id", "invocation_id", "work_id", "source_version", "event_id"],
@@ -17,20 +21,16 @@ ACQUISITION_COMMANDS = {"reaccess": {"type": "object", "additionalProperties": F
         for key in ("capability_id", "invocation_id", "work_id", "source_version", "event_id")}}}
 
 
-class Rows(Protocol):
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
-
-
 class AcquisitionCore(Protocol):
-    _store: Rows
-    _schemas: object
+    _store: Rows[object]
+    _schemas: Schemas
     _gateway_captures: CaptureReader | None
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
     def _snapshot(self): ...
     def _capability(self, capability_id: str, invocation_id: str) -> dict: ...
     def _guarded(self, reason: str, body: Callable[[str], object]) -> object: ...
     def _require_current_lease(self, inv: dict, now: str) -> dict: ...
-    def _require_current_pins(self, inv: dict) -> None: ...
+    _amendments: "Amendments"
     def _fault(self, point: str) -> None: ...
     def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None, invocation_id=None) -> str: ...
 
@@ -96,7 +96,7 @@ class AcquisitionAdmission:
         require(inv["kind"] == "verification" and inv["admission_context"] == "contract/1", "contract-admitted verifier required")
         require(inv["state"] == "running" and inv["cancel_requested_at"] is None, "live verifier required")
         self._core._require_current_lease(inv, now)
-        self._core._require_current_pins(inv)
+        self._core._amendments._require_current_pins(inv)
         topic = self._row("queue_entries", topic_id=inv["topic_id"])
         require(topic["paused_at"] is None, "topic paused")
         self._core._store.insert("source_acquisitions", {**row, "admitted_at": now})

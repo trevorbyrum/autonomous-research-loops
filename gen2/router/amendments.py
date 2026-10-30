@@ -132,12 +132,17 @@ incompatible (`unrecorded`).
 """
 from __future__ import annotations
 
-from typing import Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Callable, Mapping, Protocol
 
 from gen2.core import canonical
 from gen2.accounting.stopping import bind_profile
 from gen2.router import boundary
 from gen2.router.boundary import Refusal, instant
+from gen2.router.protocols import Rows, Schemas
+
+if TYPE_CHECKING:
+    from gen2.router.lifecycle import Lifecycle
+    from gen2.router.registries import Registries
 
 PROTOCOL_SECTIONS = ("eligibility_protocol", "stopping_profiles", "applicability_rules", "confidence_scheme")
 BRIEF_LINEAGE = ("version", "parent_version", "created_at", "content_hash")
@@ -309,18 +314,6 @@ def _importance(entry: dict) -> dict:
             "operator_importance_score": rating.get("score"), "operator_rating_decision_id": rating.get("operator_decision_id")}
 
 
-class Rows(Protocol):
-    """The router's store as amendments uses it (store/api.py Store): inside the core's transaction."""
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
-    def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object]) -> None: ...
-
-
-class Schemas(Protocol):
-    """The router's schema set as boundary.require_schema uses it (schemas.py SchemaSet)."""
-    def errors(self, instance: object, target: str) -> list[str]: ...
-
-
 def stopping_defect(doc: dict, schemas: Schemas) -> str | None:
     """Schema owns rule shape; accounting owns implemented evaluator support."""
     profiles = doc.get("stopping_profiles", [])
@@ -344,20 +337,14 @@ def stopping_defect(doc: dict, schemas: Schemas) -> str | None:
 
 
 class AmendmentsCore(Protocol):
-    """What amendments takes of the router core, and nothing else; service.Router
-    implements it without inheriting it. Every member is the core's own (service.py:
-    `_templates` and `_cancel_in_transaction` delegate to the registries and the
-    lifecycle). Amendments' own members the rest of the Router reads
-    (`_open_topic`, `_pin_status`, `_brief_standing`, `_record_impact`,
-    `_record_replacements`, `_recorded_references`, `_require_current_pins`) are the
-    core's delegating members, so no other collaborator reaches amendments but through the core."""
-    _store: Rows
+    """Members used through Router; sibling attributes name composed collaborators."""
+    _store: Rows[object]
     _schemas: Schemas
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
     def _guarded(self, reason: str, body: Callable[[str], object]) -> object: ...  # the one transaction an operation runs in
     def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None, invocation_id=None, operation_id=None) -> str: ...
-    def _templates(self) -> dict: ...
-    def _cancel_in_transaction(self, req: dict, now: str) -> dict: ...
+    _registries: "Registries"
+    _lifecycle: "Lifecycle"
 
 
 class Amendments:
@@ -508,7 +495,7 @@ class Amendments:
                     raise Refusal("request_invalid", f"the {what} is the {'revised' if draft else 'approved'} revision's, so it keeps {name} {kept} (G-6)")
             elif label(doc) <= recorded:
                 raise Refusal("request_invalid", f"a changed {what} takes a new {name}, above every recorded one ({recorded}): a label never names two (G-6)")
-        defect = references(doc, self._core._templates()) or self._recorded_references(doc)
+        defect = references(doc, self._core._registries._templates()) or self._recorded_references(doc)
         if defect is not None:  # task 2a: every draft the router writes, a first one or an amendment
             raise Refusal("contract_inconsistent", defect)
         self._core._store.insert("contract_revisions", {"topic_id": tid, "revision": doc["revision"], "parent_revision": doc["parent_revision"],
@@ -677,6 +664,6 @@ class Amendments:
         entry = {"invocation_id": inv["invocation_id"], "state": inv["state"], "disposition": "completes_under_pins" if status in COMPATIBLE else "fenced",
                  "cancel_requested": False}
         if entry["disposition"] == "fenced" and inv["cancel_requested_at"] is None and inv["state"] in ("admitted", "launching", "running", "outcome_unknown"):
-            self._core._cancel_in_transaction({"invocation_id": inv["invocation_id"], "requested_by": "router", "reason": f"pins superseded by {d['decision_id']}"}, now)
+            self._core._lifecycle._cancel_in_transaction({"invocation_id": inv["invocation_id"], "requested_by": "router", "reason": f"pins superseded by {d['decision_id']}"}, now)
             entry["cancel_requested"] = True
         return entry

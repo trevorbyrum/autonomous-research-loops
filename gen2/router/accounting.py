@@ -8,14 +8,11 @@ from gen2.core import canonical, pagination
 from gen2.router.boundary import Refusal
 from gen2.store import api
 from gen2.store.capture import Freshness, TopicCapture, input_hash
-
-
-class Rows(Protocol):
-    def capture_topic(self, topic_id: str) -> TopicCapture: ...
+from gen2.router.protocols import Rows
 
 
 class AccountingCore(Protocol):
-    _store: Rows
+    _store: Rows[TopicCapture]
     def _guarded(self, reason: str, body: Callable, *, freshness: Freshness | None = None) -> object: ...  # pragma: no mutate - Protocol declaration has no execution behavior
     def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None) -> str: ...  # pragma: no mutate - Protocol declaration has no execution behavior
 

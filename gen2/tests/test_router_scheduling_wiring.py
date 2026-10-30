@@ -32,7 +32,7 @@ class DelegateTest(RouterTestCase):
         for name, args in DELEGATES:
             with self.subTest(name=name):
                 spy = self.router._scheduling = Spy()
-                self.assertEqual(getattr(self.router, name)(*args), ("answered", name))
+                self.assertEqual(getattr(self.router if not name.startswith("_") else self.router._scheduling, name)(*args), ("answered", name))
                 self.assertEqual(spy.calls, [(name, args, {})])
 
 

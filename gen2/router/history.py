@@ -5,17 +5,13 @@ reuses the independent same-receipt consumer, never SQL authority views.
 """
 from copy import deepcopy
 from pathlib import Path
-from typing import Mapping, Protocol
 
 from gen2.router import boundary, support
 from gen2.store import api
+from gen2.router.protocols import Rows
 
 
-class Rows(Protocol):
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-
-
-def support_diagnostics(store: Rows) -> list[dict]:
+def support_diagnostics(store: Rows[object]) -> list[dict]:
     """Caller holds one snapshot over all claims, receipts, checks and bases."""
     deficiencies = []
     for claim in store.select("claims", {"status": "accepted_support", "load_bearing": 1}):
@@ -35,7 +31,7 @@ class ReconciliationRequired(RuntimeError):
             f"{d['topic_id']} {d['claim_id']} revision {d['claim_revision']}: {d['deficiency']}" for d in deficiencies))
 
 
-def require_retained_support(store: Rows) -> None:
+def require_retained_support(store: Rows[object]) -> None:
     deficiencies = support_diagnostics(store)
     if deficiencies:
         raise ReconciliationRequired(deficiencies)

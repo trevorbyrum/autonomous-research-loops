@@ -66,13 +66,17 @@ opens no hold: what a failing gateway capability holds is 2c/2e's to decide.
 """
 from __future__ import annotations
 
-from typing import Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Callable, Mapping, Protocol
 
 from gen2.core import canonical
 from gen2.router import boundary
 from gen2.router.boundary import Refusal, instant
 from gen2.router.lifecycle import _after
 from gen2.router.registries import ROUTER_DEFAULTS
+from gen2.router.protocols import Rows, Schemas
+
+if TYPE_CHECKING:
+    from gen2.router.registries import Registries
 
 OUTCOME_STATE = {"usable": "healthy", "declared_expired": "degraded", "unusable_credential": "failing", "runner_error": "unknown"}
 AUDIT_KIND = "capability_probe"
@@ -122,24 +126,9 @@ def _successor(fact: Mapping) -> dict:
     return {"successor_since": fact["since"], "successor_state": fact["state"], "successor_revision": fact["revision"]}
 
 
-class Rows(Protocol):
-    """The router's store as the capability record uses it (store/api.py Store): inside the core's transaction."""
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
-    def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object]) -> None: ...
-
-
-class Schemas(Protocol):
-    """The router's schema set as boundary.require_schema uses it (schemas.py SchemaSet)."""
-    def errors(self, instance: object, target: str) -> list[str]: ...
-
-
 class CapabilityCore(Protocol):
-    """What the capability record takes of the router core, and nothing else;
-    service.Router implements it without inheriting it. A member with no comment
-    is the core's own (service.py); comments naming collaborators identify core
-    delegates that forward cross-collaborator access. The Router has no mixins."""
-    _store: Rows
+    """Members used through Router; sibling attributes name composed collaborators."""
+    _store: Rows[object]
     _schemas: Schemas
     _new_id: Callable[[str], str]
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
@@ -147,8 +136,7 @@ class CapabilityCore(Protocol):
     def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None, invocation_id=None, operation_id=None) -> str: ...
     def _capability(self, capability_id: str, invocation_id: str) -> dict: ...
     def _require_current_lease(self, inv: dict, now: str, lease_ref: Mapping | None = None) -> dict: ...
-    def _active_bundle(self) -> dict | None: ...
-    def _router_policy(self, bundle_hash: str) -> dict: ...
+    _registries: "Registries"
 
 
 class Capabilities:
@@ -197,8 +185,8 @@ class Capabilities:
         if applied and state != "healthy":
             hold = next((h for h in self._core._store.select("holds", {"subject_ref": hold_subject(capability)}) if h["cleared_at"] is None), None)
             if hold is None:
-                active = self._core._active_bundle()
-                policy = self._core._router_policy(active["bundle_hash"]) if active is not None else ROUTER_DEFAULTS
+                active = self._core._registries._active_bundle()
+                policy = self._core._registries._router_policy(active["bundle_hash"]) if active is not None else ROUTER_DEFAULTS
                 hold = boundary.hold_row(hold_id=self._core._new_id("hold_"), topic_id=None, subject_ref=hold_subject(capability), hold_class="capability",
                         cause=f"{capability} {req['outcome']}: {req['detail']}"[:500],
                         recoverability="needs_remediation" if req["outcome"] in ("unusable_credential", "declared_expired") else "unknown",
