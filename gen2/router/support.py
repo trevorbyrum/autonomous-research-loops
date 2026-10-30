@@ -11,7 +11,7 @@ from gen2.router.boundary import Refusal
 
 
 class Rows(Protocol):
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
+    def select(self, table: str, where: "Mapping[str, object] | None" = None) -> list[dict]: ...
 
 
 def require_support(rows: Rows, claim: dict, capture_valid: Callable[[dict], bool]) -> None:
@@ -91,7 +91,7 @@ def basis_member(rows: Rows, row: dict, rank: dict) -> bool:
     return False
 
 
-def extraction_basis(rows: Rows, row: dict, rank: dict) -> dict | None:
+def extraction_basis(rows: Rows, row: dict, rank: dict) -> "dict | None":
     method = row["extraction_method"]
     validation = None
     if method == "validated_extraction":

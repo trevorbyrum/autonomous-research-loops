@@ -61,7 +61,9 @@ RECORDS = (
     Record("semantic_assessments", "assessment_id", (), "", PRIMARY, CONTRACT, True, {}),
     Record("source_lifecycle", "disposition_id", ("work_id", "source_version"), "lifecycle", PRIMARY, CONTRACT, True, {}),
     Record("registry_dispositions", "disposition_id", ("registry_kind", "registry_id"), "registry", PRIMARY, CONTRACT, True, {}),
-    Record("obligation_assessments", "record_id", ("obligation_id",), "obligation", PRIMARY, CONTRACT, False, {"disposition": None, "state": None}),
+    Record("obligation_assessments", "record_id", ("obligation_id",), "obligation", PRIMARY, CONTRACT,
+        False,  # pragma: no mutate - equivalent: obligation validation runs first and checks every common pin; the closed schema has no work_id or lineage (Astra, Batch A r3)
+        {"disposition": None, "state": None}),
     Record("branch_windows", "association_id", (), "", PRIMARY, CONTRACT, False, {}),
 )
 # The other sections; RECORDS' sections are admitted by their own entries.
@@ -143,7 +145,7 @@ def instant(value: str) -> int:
     return instants.utc_instant_ns(value)
 
 
-def check_sections(payload: dict, kind: str, admission_context: str, parent_invocation_id: str | None) -> None:
+def check_sections(payload: dict, kind: str, admission_context: str, parent_invocation_id: "str | None") -> None:
     sections = {**SECTION_KINDS, **{r.section: (r.kinds, r.contexts) for r in RECORDS}}
     for section, (kinds, contexts) in sections.items():
         if not payload.get(section):
@@ -377,10 +379,10 @@ def trigger_identity(topic_id: str, trigger: dict) -> str:
                                    "cause_ref": trigger["cause_ref"], "source_revision": trigger["source_revision"]})
 
 
-def hold_row(*, hold_id: str, topic_id: str | None, subject_ref: str, hold_class: str,
+def hold_row(*, hold_id: str, topic_id: "str | None", subject_ref: str, hold_class: str,
              cause: str, recoverability: str, required_authority: str, owner: str,
              deadline_at: str, clears_when: str, created_at: str,
-             capability_fact_id: str | None = None, created_by_operation_id: str | None = None) -> dict:
+             capability_fact_id: "str | None" = None, created_by_operation_id: "str | None" = None) -> dict:
     return {"hold_id": hold_id, "topic_id": topic_id, "subject_ref": subject_ref, "hold_class": hold_class,
         "cause": cause, "recoverability": recoverability, "required_authority": required_authority, "owner": owner,
         "deadline_at": deadline_at, "clears_when": clears_when, "created_at": created_at,
