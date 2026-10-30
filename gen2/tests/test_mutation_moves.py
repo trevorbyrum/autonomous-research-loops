@@ -141,6 +141,65 @@ class MutationMovesTest(unittest.TestCase):
         self.assertNotIn("shards", fallback)
         self.assertTrue(all(row["valid"] for row in report["qualifications"]))
 
+    def test_qualified_production_error_passes_and_test_code_error_fails(self):
+        self.base({"gen2/probe.py": "def answer():\n value = 0\n return {1: 'ok'}[value]\n"})
+        source = self.root / "gen2/probe.py"
+        source.write_text("def answer():\n value = 1\n return {1: 'ok'}[value]\n")
+        test = self.root / "gen2/tests/test_probe.py"
+        test.write_text("import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n"
+                        " def test_answer(self): answer()\n")
+        report = self.campaign()
+        self.assertEqual(report["counts"], {"ERROR_KILL": 2})
+        self.assertFalse(report["failed"])
+        self.assertEqual(report["stage_verdicts"], {"1:ERROR_KILL": 2})
+        self.assertTrue(report["qualifications"])
+        self.assertTrue(all(q["valid"] for q in report["qualifications"]))
+        for row in report["mutants"]:
+            event, = scope.marker(row["native"]["output"])["events"]
+            self.assertEqual(event["exception_type"], "builtins.KeyError")
+            self.assertIn(event["message"], ("0", "2"))
+            self.assertEqual(event.get("innermost_frame"), dict(path="gen2/probe.py", line=3))
+        shutil.rmtree(self.root / "build/mutation-evidence")
+        source.write_text("def answer():\n value = 1\n return value\n")
+        test.write_text("import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n"
+                        " def test_answer(self): {1: 'ok'}[answer()]\n")
+        report = self.campaign(expected=1)
+        self.assertEqual(report["counts"], {"TEST_ERROR": 2})
+        self.assertTrue(report["failed"])
+        self.assertTrue(all(q["valid"] for q in report["qualifications"]))
+        for row in report["mutants"]:
+            event, = scope.marker(row["native"]["output"])["events"]
+            self.assertEqual(event.get("innermost_frame"), dict(path="gen2/tests/test_probe.py", line=4))
+
+    def test_production_error_still_requires_clean_qualification(self):
+        self.base({"gen2/probe.py": "state = {}\ndef answer():\n value = 0\n return state['ready']\n"})
+        (self.root / "gen2/probe.py").write_text("state = {}\ndef answer():\n value = 1\n return state['ready']\n")
+        (self.root / "gen2/tests/test_probe.py").write_text(
+            "import unittest\nfrom gen2.probe import answer, state\nclass Case(unittest.TestCase):\n"
+            " def test_a_setup(self): state['ready'] = True\n"
+            " def test_z_consumer(self): answer()\n")
+        report = self.campaign(expected=1)
+        self.assertEqual(report["counts"], {"SURVIVED": 2})
+        self.assertTrue(report["failed"])
+        self.assertEqual(report["stage_verdicts"], {"2:SURVIVED": 2})
+        self.assertTrue(report["qualifications"])
+        self.assertTrue(all(q["verdict"] == "ERROR_KILL" for q in report["qualifications"]))
+        self.assertTrue(all(not q["valid"] for q in report["qualifications"]))
+
+    def test_unqualified_full_stage_production_error_is_invalid(self):
+        self.base({"gen2/probe.py": "def answer(fail):\n value = 0\n if fail: return {}[value]\n return value\n"})
+        (self.root / "gen2/probe.py").write_text(
+            "def answer(fail):\n value = 1\n if fail: return {}[value]\n return value\n")
+        (self.root / "gen2/tests/test_probe.py").write_text(
+            "import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n"
+            " def test_answer(self): answer(self._outcome.result.failfast)\n")
+        report = self.campaign(expected=1)
+        self.assertEqual(report["counts"], {"INVALID": 2})
+        self.assertTrue(report["failed"])
+        self.assertEqual(report["stage_verdicts"], {"2:ERROR_KILL": 2})
+        self.assertTrue(report["qualifications"])
+        self.assertTrue(all(q["verdict"] == "ERROR_KILL" and not q["valid"] for q in report["qualifications"]))
+
     def test_selected_test_timeout_is_not_a_kill(self):
         self.base({"gen2/probe.py": "def answer(): return 0\n"})
         (self.root / "gen2/probe.py").write_text("def answer(): return 1\n")

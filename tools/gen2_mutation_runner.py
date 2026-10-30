@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from types import SimpleNamespace
 import unittest
 
@@ -43,10 +44,13 @@ class EvidenceResult(unittest.TextTestResult):
             self.stop()
 
     def event(self, kind, test, err):
+        frames = traceback.extract_tb(err[2])
+        frame = ({"innermost_frame": dict(path=os.path.relpath(Path(frames[-1].filename).resolve(), ROOT),
+                                        line=frames[-1].lineno)} if frames else {})
         self.events.append(dict(kind=kind, test=test.id(),
             exception_type=f"{err[0].__module__}.{err[0].__qualname__}", message=str(err[1]),
             executed=not isinstance(test, unittest.loader._FailedTest),
-            boundary=self.boundary if isinstance(test, unittest.TestCase) else None))
+            boundary=self.boundary if isinstance(test, unittest.TestCase) else None, **frame))
 
     def addError(self, test, err):
         self.event("error", test, err)
@@ -92,10 +96,15 @@ def normalize(result):
         if any(event.get("exception_type") in {"subprocess.TimeoutExpired", "builtins.TimeoutError"}
                for event in errors):
             return "TIMEOUT"
-        # A successful clean control cannot establish that an exception was
-        # caused by the mutant. Preserve errors for review, never as kills.
-        return "TEST_ERROR" if (rc == 1 and result.test_outcome == "killed" and
-            len(errors) == data["errors"] and all(event.get("executed") for event in errors)) else "INVALID"
+        if not (rc == 1 and result.test_outcome == "killed" and
+                len(errors) == data["errors"] and all(event.get("executed") for event in errors)):
+            return "INVALID"
+        # The campaign must still qualify this result against restored source.
+        paths = [event.get("innermost_frame", {}).get("path", "") for event in errors]
+        if all(path.startswith("gen2/") and not path.startswith("gen2/tests/") and
+               ".." not in Path(path).parts for path in paths):
+            return "ERROR_KILL"
+        return "TEST_ERROR"
     if not data["tests_run"] and not (data.get("shard") and data.get("expected") and data.get("selected") == []):
         return "INVALID"
     if rc == 1 and data.get("failures", 0) > 0 and result.test_outcome == "killed":
@@ -175,8 +184,10 @@ def run(config):
             verdicts = [normalize(SimpleNamespace(worker_outcome="normal", output=MARKER + json.dumps(row),
                 test_outcome="survived" if row["exit"] == 0 else "killed")) for row in shards]
             # Infrastructure/error outcomes must not be hidden by another
-            # shard's assertion kill. All shard evidence remains in the result.
-            chosen = next((i for i, verdict in enumerate(verdicts) if verdict not in {"SURVIVED", "ASSERTION_KILL"}), None)
+            # shard's qualified kill. All shard evidence remains in the result.
+            chosen = next((i for i, verdict in enumerate(verdicts) if verdict not in {"SURVIVED", "ASSERTION_KILL", "ERROR_KILL"}), None)
+            if chosen is None:
+                chosen = next((i for i, verdict in enumerate(verdicts) if verdict == "ERROR_KILL"), None)
             if chosen is None:
                 chosen = next((i for i, verdict in enumerate(verdicts) if verdict == "ASSERTION_KILL"), None)
             if chosen is None and all(verdict == "SURVIVED" for verdict in verdicts):
