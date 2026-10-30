@@ -88,9 +88,9 @@ class EvidenceWriter:
         producer = self._core._one("invocations", {"invocation_id": claim["producer_invocation_id"]})
         lease = self._core._one("leases", {"lease_id": producer["lease_id"]})
         self._core._store.insert("holds", boundary.hold_row(
-            hold_id="hold_quote_" + check["check_id"], topic_id=check["topic_id"], subject_ref="quote:" + check["check_id"],
-            hold_class="judgment", cause="quote quarantine: " + check["match_result"]["reason"],
-            recoverability="needs_remediation", required_authority="primary", owner="primary:" + lease["station_id"],
+            hold_id=f"hold_quote_{check['check_id']}", topic_id=check["topic_id"], subject_ref=f"quote:{check['check_id']}",
+            hold_class="judgment", cause=f"quote quarantine: {check['match_result']['reason']}",
+            recoverability="needs_remediation", required_authority="primary", owner=f"primary:{lease['station_id']}",
             deadline_at=producer["deadline_at"], clears_when="matching re-capture as a new claim revision; the old capture remains quarantined",
             created_at=now, created_by_operation_id=op_id))
 

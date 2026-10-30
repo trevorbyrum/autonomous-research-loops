@@ -153,7 +153,7 @@ def check_sections(payload: dict, kind: str, admission_context: str, parent_invo
         if kind not in kinds:
             raise Refusal("kind_not_permitted", f"a {kind} invocation cannot commit {section}")
         if admission_context not in contexts:
-            if admission_context == "pre-contract/1":
+            if admission_context in SCOPING:
                 raise Refusal("kind_not_permitted", f"pre-contract/1 work records scoping material only, not {section} (C-12)")
             raise Refusal("kind_not_permitted", f"{section} are pre-contract work's (flow S2), not {admission_context}'s")
         if section in INDEPENDENT and parent_invocation_id is not None:

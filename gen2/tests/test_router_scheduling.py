@@ -93,6 +93,8 @@ class RequeueTest(PolicyCase):
                 self.assertEqual(out["status"], "exhausted", out)
                 self.assertEqual(self.rows("SELECT subject_ref, hold_class, required_authority, owner, cleared_at FROM holds WHERE hold_id = ?", out.get("hold_id")),
                                  [(f"invocation:{second['invocation_id']}#requeue", "transient", "operator", "operator", None)])
+                self.assertEqual(self.rows("SELECT cause FROM holds WHERE hold_id = ?", out.get("hold_id")),
+                                 [(f"retry budget exhausted at attempt 2 of {second['invocation_id']}",)])
                 self.assertEqual(self.rows("SELECT count(*) FROM retries WHERE invocation_id = ?", second["invocation_id"]), [(0,)])
                 before = self.state()
                 self.refused(self.requeue(second["invocation_id"]), "incident_open", before)  # one hold; nothing more is re-queued

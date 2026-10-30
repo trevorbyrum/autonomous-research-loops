@@ -9,6 +9,8 @@ from gen2.core import canonical
 from gen2.router import boundary
 from gen2.router.boundary import Refusal
 
+CANONICAL = frozenset({"canonical_bytes"})  # the extraction method that reads the artifact bytes themselves
+
 
 class Rows(Protocol):
     def select(self, table: str, where: "Mapping[str, object] | None" = None) -> list[dict]: ...
@@ -70,8 +72,8 @@ def has_basis(rows: Rows, row: dict, rank: dict) -> bool:
 def basis_member(rows: Rows, row: dict, rank: dict) -> bool:
     """Re-read SQL 15/32/33/34 operands; admission owns their authentication."""
     method = row["extraction_method"]
-    basis = None if method == "canonical_bytes" else extraction_basis(rows, row, rank)
-    if method != "canonical_bytes" and basis is None:
+    basis = None if method in CANONICAL else extraction_basis(rows, row, rank)
+    if method not in CANONICAL and basis is None:
         return False
     acquisitions = rows.select("source_acquisitions", {k: row[k] for k in
         ("topic_id", "work_id", "source_version", "verifier_invocation_id")})
@@ -79,10 +81,10 @@ def basis_member(rows: Rows, row: dict, rank: dict) -> bool:
         if (acquired["content_hash"] != row["obtained_content_hash"]
                 or acquired["gateway_call_ref"] != row["acquisition"]["gateway_call_ref"]
                 or acquired["retrieved_at"] != row["acquisition"]["retrieved_at"]
-                or "gateway:" + acquired["lane"] != row["acquisition"]["route"]
+                or f"gateway:{acquired['lane']}" != row["acquisition"]["route"]
                 or content_rank(rows, acquired) < rank[row["access_tier"]]):
             continue
-        if method == "canonical_bytes":
+        if method in CANONICAL:
             if acquired["acquired_by_invocation_id"] == row["extraction_invocation_id"]:
                 return True
         elif all(basis[k] == acquired[k] for k in
@@ -172,7 +174,7 @@ def require_receipt(rows: Rows, doc: dict) -> None:
 
         row, report = checks[0], checks[0]["assessment"]
         artifact_hash = doc["obtained_content_hash"]
-        if doc["extraction"]["method"] != "canonical_bytes":
+        if doc["extraction"]["method"] not in CANONICAL:
             extraction_id = doc["extraction"].get("extraction_id")
             if doc["extraction"]["method"] == "validated_extraction":
                 validations = rows.select("extraction_validations_v2", {"validation_id": doc["extraction"]["validation_ref"]})
@@ -223,4 +225,4 @@ def quote_support_valid(rows: Rows, doc: dict) -> bool:
     """DetailedChecks applies this to its same, stored-column candidate."""
     if not capture_checks(rows, doc["claim"]["claim_id"], doc["claim"]["claim_revision"]):
         return True
-    return doc["extraction"]["method"] == "canonical_bytes" and quote_receipt_valid(rows, doc)
+    return doc["extraction"]["method"] in CANONICAL and quote_receipt_valid(rows, doc)

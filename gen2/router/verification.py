@@ -57,11 +57,11 @@ class Verification:
             pending = doc["verdict"] == "supports" and doc["extraction"]["method"] != "canonical_bytes"
             missing = missing or pending
             self._core._store.insert("holds", boundary.hold_row(
-                hold_id=self._hold_id(doc), topic_id=doc["topic_id"], subject_ref="verification:" + doc["verification_receipt_id"],
-                hold_class="judgment", cause=("verification missing content: " if missing else "verification disagreement: ") +
-                    ("extraction evidence not durably bound" if pending else doc["verdict"]),
+                hold_id=self._hold_id(doc), topic_id=doc["topic_id"], subject_ref=f"verification:{doc['verification_receipt_id']}",
+                hold_class="judgment", cause=f"{'verification missing content' if missing else 'verification disagreement'}: "
+                    f"{'extraction evidence not durably bound' if pending else doc['verdict']}",
                 recoverability="needs_remediation" if missing else "needs_decision", required_authority="primary",
-                owner="primary:" + lease["station_id"], deadline_at=producer["deadline_at"],
+                owner=f"primary:{lease['station_id']}", deadline_at=producer["deadline_at"],
                 clears_when="independent verification with the required content" if missing else "primary adjudication of this verification disagreement",
                 created_at=now, created_by_operation_id=op_id))
         return {"verification_holds": self.hold_ids(payload)} if payload["verification_receipts"] else {}
