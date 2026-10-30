@@ -62,8 +62,10 @@ class AcceptanceSelectionTest(unittest.TestCase):
         env = {key: value for key, value in os.environ.items()
                if key not in {"MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GEN2_BASE", "GEN2_COVERAGE", "GEN2_VENV",
                               "GEN2_TEST_WORKERS", "GEN2_MUTATION_ARGS", "GEN2_TEST_ARGS"}}
+        # Real recursive units initialize coverage and mutation workers. This
+        # fixture checks scheduling and reuse, not a 15-second speed target.
         return subprocess.run(command, cwd=self.root, env={**env, "PWD": str(self.root), "STUB_MUTATION_EXIT": str(mutation_exit)},
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=15)
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60 if run_units else 15)
 
     def test_units_and_mutation_share_the_acceptance_coverage_path(self):
         (self.root / "tools/gen2_test.py").write_text(

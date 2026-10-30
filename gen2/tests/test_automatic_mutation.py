@@ -83,7 +83,7 @@ class AutomaticMutationTest(unittest.TestCase):
             (result(output=""), "INVALID"), (result(output=MARKER + "{"), "INVALID"),
             (result({**clean, "exit": 3}), "INVALID"), (result({**clean, "exit": -9}), "CRASH"),
             (result({**clean, "errors": 1}), "INVALID"),
-            (result({**clean, "errors": 1, "events": [{"kind": "error", "executed": True}]}), "ERROR_KILL"),
+            (result({**clean, "errors": 1, "events": [{"kind": "error", "executed": True}]}), "TEST_ERROR"),
             (result({**clean, "errors": 1, "events": [{"kind": "error", "executed": False}]}), "INVALID"),
             (result(dict(kind="SYNTAX_INVALID")), "SYNTAX_INVALID"),
             (result(clean), "ASSERTION_KILL"),
@@ -120,7 +120,7 @@ class AutomaticMutationTest(unittest.TestCase):
             def test_unused(self): pass
         fixture = runner.run(unittest.defaultTestLoader.loadTestsFromTestCase(FixtureError))
         native.output = MARKER + json.dumps(dict(exit=1, tests_run=0, errors=1, failures=0, events=fixture.events))
-        self.assertEqual(normalize(native), "ERROR_KILL")
+        self.assertEqual(normalize(native), "TEST_ERROR")
 
     def test_native_filters_and_incomplete_campaign(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -181,8 +181,9 @@ class AutomaticMutationTest(unittest.TestCase):
             self.assertTrue(selected)
             self.assertTrue(all(len(json.dumps(names)) > 131072 and len(names) == 3000 for names in selected))
             test.write_text(original.replace("self.assertEqual(answer(), 1)", "\n  if answer() != 1: raise ValueError('mutant error')"))
-            result, report = campaign()
-            self.assertIn("ERROR_KILL", report["counts"])
+            result, report = campaign(expected=1)
+            self.assertIn("TEST_ERROR", report["counts"])
+            self.assertTrue(report["failed"])
             self.assertFalse(report["baseline_reused"])
             test.write_text(original.replace("answer(), 1", "answer(), 2"))
             result, report = campaign(expected=1)
@@ -195,7 +196,7 @@ class AutomaticMutationTest(unittest.TestCase):
             saved_source = source.read_text()
             for stage in (1, "1b"):
                 for kind, check in (("ASSERTION_KILL", "self.assertTrue(state.get('ready'))"),
-                                    ("ERROR_KILL", "state['ready']")):
+                                    ("TEST_ERROR", "state['ready']")):
                     with self.subTest(stage=stage, clean_failure=kind):
                         source.write_text("untouched = 100\ndef answer(): return " + ("1" if stage == 1 else "0") +
                             "\ndef equivalent(): return 5\n" + ("uncovered = 7\n" if stage == "1b" else ""))
@@ -215,7 +216,7 @@ class AutomaticMutationTest(unittest.TestCase):
 
             source.write_text(saved_source)
             for kind, check in (("ASSERTION_KILL", "self.assertEqual(os.environ['TEST_RESOURCE'], 'available')"),
-                                ("ERROR_KILL", "{'available': True}[os.environ['TEST_RESOURCE']]")):
+                                ("TEST_ERROR", "{'available': True}[os.environ['TEST_RESOURCE']]")):
                 with self.subTest(environment_failure=kind):
                     write_test(" def test_answer(self): answer(); " + check + "\n", "import os")
                     available = {**os.environ, "TEST_RESOURCE": "available"}
@@ -279,7 +280,7 @@ class AutomaticMutationTest(unittest.TestCase):
             decorators = [row for row in report["mutants"] if row["mutation"]["operator_name"] == "core/RemoveDecorator"]
             self.assertTrue(decorators)
             for row in decorators:
-                self.assertEqual(row["verdict"], "ERROR_KILL")
+                self.assertEqual(row["verdict"], "TEST_ERROR")
                 self.assertEqual(runner.marker(row["native"]["output"])["stages"][0]["stage"], "1b")
             lonely = [row for row in report["mutants"] if row["mutation"]["module_path"] == "gen2/lonely.py"]
             self.assertTrue(lonely)
