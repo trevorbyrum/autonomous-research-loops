@@ -52,8 +52,9 @@ refused before anything but the route is read:
      re-queue or recovery, a brief closure's closed_by) and capability_id are
      refused if the body names them (400 authority_in_request), and the
      others are then set from the principal.
-  6. The router's operation answers (200): its reply is the answer, whatever
-     it decided — its `status` says what happened, a refusal included.
+  6. The backend answers (200): its status and required result facts say
+     what happened. Refusal text and rejected record ids are replaced with
+     fixed descriptions; a recovery's caller-supplied reason is omitted.
 
 Capability-bearing calls (claim, record_transition, record_observation,
 commit_outcome, reconcile, invocation_status, a supervisor's cancellation)
@@ -70,30 +71,25 @@ Every request is logged as one line — principal, method, route, HTTP status
 and the reply's status — and nothing else: never a header, a token, a query
 or a body. The method and route are the service's own labels (label()): a
 route it serves by its name, anything else "?" — never the request's own
-text, which may carry a credential (Astra 1e review finding 3). And every
-reply and log line passes through Credentials.redact() before it leaves, so
-no configured token a request carries — in its path, its query or its body,
-echoed by a refusal — is written back or logged; a tool's reply over MCP
-passes through it before it is nested as text, and an MCP id carrying one is
-refused (_mcp; Astra 1e-repair re-review finding 2). Serialization can
-re-form a token no value holds, so each JSON text is checked as the text it
-is — a tool's nested text as it is nested (_mcp), every answer as the
-transport writes it (encode()) — and an id whose answer would be written
-with one is refused before anything is dispatched (Credentials.dumps and
-writes; Astra 1e-repair-2 re-review finding 1). No later pass changes what an
-earlier one let through: an id taken is echoed as it came, and a tool's text
-stays the JSON it was nested as, or the answer is the fixed fault (_mcp;
-Astra 1e-repair-3 re-review finding 1).
+text, which may carry a credential (Astra 1e review finding 3). Every final
+serialized reply passes the token boundary in wire.py (Trevor's option A,
+2026-10-29). It repairs offending field values and rechecks the bytes;
+failure becomes the transport's fixed generic error. A tool's own serialized
+JSON passes before nesting, and the complete envelope passes again. MCP ids
+must first match a closed plain-ASCII grammar or the safe integer range,
+then pass the serialized-byte check before dispatch. Unsafe ids are refused
+rather than changed. Plain access diagnostics use the same byte predicate.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Callable
 from urllib.parse import parse_qs
 
 from gen2.core import canonical
 from gen2.operator import status as status_view
-from gen2.operator.auth import Credentials, Principal, Unwritable
+from gen2.operator.auth import Credentials, Principal
 
 MAX_BODY = 1024 * 1024
 LENGTH = re.compile(r"[0-9]{1,12}")
@@ -145,8 +141,37 @@ MAX_ID = 2**53 - 1
 
 def _request_id(ident: object) -> bool:
     """A JSON-RPC id as MCP allows it: a string, or an integer (never a
-    boolean, a float, null or a structure), bounded."""
-    return (isinstance(ident, str) and 0 < len(ident) <= 200) or (type(ident) is int and -MAX_ID <= ident <= MAX_ID)
+    boolean, a float, null or a structure). Strings have a closed ASCII
+    grammar: the protocol requires this one caller value to be echoed."""
+    return (isinstance(ident, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", ident) is not None) \
+        or (isinstance(ident, int) and not isinstance(ident, bool) and -MAX_ID <= ident <= MAX_ID)
+
+
+def _backend_reply(reply: dict) -> dict:
+    """Map backend diagnostics, never reflect unvalidated request text.
+
+    Refusal reasons are server-defined codes; detail and rejected record ids
+    can quote arbitrary request keys, values or paths. Keep only the code and
+    the station's termination fact. Successful records retain their required
+    identities and results, but not recovery's caller-supplied reason.
+    """
+    if reply.get("status") in ("refused", "rejected"):
+        mapped = {key: reply[key] for key in ("status", "reason", "termination") if key in reply}
+        mapped["detail"] = "operation refused"
+        return mapped
+    mapped = {key: value for key, value in reply.items() if key != "reason"}
+    if "incident" in mapped:
+        mapped["incident"] = status_view.incident_view(mapped["incident"])
+    return mapped
+
+
+def _unique_members(pairs: list[tuple[str, object]]) -> dict:
+    members = {}
+    for key, value in pairs:
+        if key in members:
+            raise ValueError("duplicate member")
+        members[key] = value
+    return members
 
 
 def _status_query(query: str) -> dict | None:
@@ -186,7 +211,7 @@ class OperatorService:
         if path == "/v1/status" and method == "GET":
             return self._answer(principal, method_label, route, *self._status(principal, _status_query(query)))
         if path == "/mcp" and method == "POST":
-            body, error = self._body(length, read)
+            body, error = self._body(length, read, mcp=True)
             if error is not None:
                 return self._answer(principal, method_label, route, error[0], {"status": "refused", "reason": error[1]})
             code, reply, route = self._mcp(principal, body)
@@ -210,7 +235,14 @@ class OperatorService:
         if arguments is None or set(arguments) - {"topic"} or not isinstance(arguments.get("topic", ""), str):
             return 400, {"status": "refused", "reason": "request_invalid"}
         facts = self._backend.status({} if "topic" not in arguments else {"topic_id": arguments["topic"]})
-        return 200, status_view.compose(facts, self._incidents()) if facts.get("status") == "ok" else facts
+        if facts.get("status") in ("ok",):
+            for fact in facts["capability_facts"]:
+                # Rejected bundle diagnostics can retain unvalidated keys.
+                # Map the reply view; the recorded fact stays unchanged.
+                if (fact["capability"], fact["state"]) in (("config-bundle", "failing"),):
+                    fact["detail"] = "configuration rejected"
+            return 200, status_view.compose(facts, self._incidents())
+        return 200, _backend_reply(facts)
 
     def _command(self, principal: Principal, name: str, body: dict) -> tuple[int, dict]:
         """One command, the same for every transport: the role it needs, who
@@ -223,7 +255,7 @@ class OperatorService:
             return 400, {"status": "refused", "reason": "authority_in_request",
                          "detail": f"{', '.join(named)}: who acts is the authenticated principal, never the request"}
         request = {**body, **{field: value(principal) for field, value in supplied.items()}}
-        return 200, getattr(self._backend, name)(request)
+        return 200, _backend_reply(getattr(self._backend, name)(request))
 
     def _mcp(self, principal: Principal, message: dict) -> tuple[int, dict, str]:
         """Stateless MCP over HTTP (DEPLOYMENT-CONTRACT.md §1.1: one JSON-RPC
@@ -235,24 +267,13 @@ class OperatorService:
         strictly as a command's body (Astra 1e review finding 4; JSON-RPC 2.0,
         MCP): members only jsonrpc, id, method and params; jsonrpc exactly
         "2.0"; method a string; id, where present, a string or an integer
-        (never null, a float, a boolean or a structure); params, where
+        (strings matching [A-Za-z0-9_.-]{1,64}, integers in the safe range;
+        never null, a float, a boolean or a structure); params, where
         present, an object (-32600 Invalid Request otherwise). An id that
-        carries a configured token, in any form redaction takes out (auth.py
-        Credentials.redact: as it is, JSON-escaped, percent-decoded or
-        JSON-unescaped, an integer's digits), or that is written with one —
-        its answer's text showing one the id alone does not, where the id
-        stands after `"id": ` and before `, "jsonrpc"` (Credentials.writes:
-        the quote written before an id `abc...` completes a token `"abc...`)
-        — is refused the same way, before anything is dispatched, and
-        answered with a null id: echoing it
-        would repeat the credential, and replacing it would answer another
-        request's id (Astra 1e-repair re-review finding 2, 1e-repair-2
-        re-review finding 1). Both are checked, redaction's (whose pass the
-        answer then takes, and must leave the id as it came) and the written
-        text's: the quote written after an id can end the escape a decoding
-        of it leaves, keeping from its text a token the id shows (Astra
-        1e-repair-3 re-review finding 1). A message
-        without an id is a notification: a notifications/ method is accepted
+        carries a configured token in its serialized bytes is refused
+        before dispatch and answered with a null id: echoing it would repeat
+        the credential, and replacing it would answer another request's id.
+        A message without an id is a notification: a notifications/ method is accepted
         (202) and does nothing; any other method needs an id (-32600). Each
         method's params carry only its members, each of its type, the
         required ones present (MCP_PARAMS; -32602 Invalid params otherwise):
@@ -262,16 +283,11 @@ class OperatorService:
         "request_invalid"}) as their data, and nothing is dispatched. A
         well-formed call's refusal, at any later step — the role, who acts
         named, an unknown or capability-bearing tool, the arguments, the
-        router's own — is an in-band tool error carrying its reply, redacted
-        before it is serialized into the tool's text (redaction after would
-        see the token JSON-escaped, and miss it), and that text checked as it
-        is nested (Credentials.dumps). The answer is then checked as the
-        transport writes it: a token the text shows only beside the quote
-        MCP writes before or after it would have the whole text replaced
-        there, leaving no JSON in it — that answer is Unwritable, the fixed
-        fault (Astra 1e-repair-3 re-review finding 1)."""
+        router's own — is an in-band tool error carrying its reply. Its JSON
+        bytes are checked and repaired before embedding them as tool text;
+        the final envelope's bytes are checked again at encode()."""
         has_id, ident = "id" in message, message.get("id")
-        usable = has_id and _request_id(ident) and self._credentials.redact(ident) == ident and self._credentials.writes({"id": ident, "jsonrpc": "2.0"})
+        usable = has_id and _request_id(ident) and not self._credentials.boundary.forbidden(json.dumps(ident).encode("utf-8"))
         if set(message) - JSONRPC_MEMBERS or message.get("jsonrpc") != "2.0" or not isinstance(message.get("method"), str) \
                 or (has_id and not usable) or ("params" in message and not isinstance(message["params"], dict)):
             return self._rpc_refusal(ident if usable else None, -32600, "invalid request")
@@ -303,16 +319,14 @@ class OperatorService:
         else:
             code, reply = 404, {"status": "refused", "reason": "no_such_route"}
         failed = code != 200 or reply.get("status") in ("refused", "rejected")
-        nested = answer({"content": [{"type": "text", "text": self._credentials.dumps(self._credentials.redact(reply), nested=True)}], "isError": failed})
-        if not self._credentials.writes(nested):
-            raise Unwritable("the tool's text is written in MCP's answer with a configured token")
+        nested = answer({"content": [{"type": "text", "text": self._credentials.boundary.encode(reply, sort_keys=False).decode("utf-8")}], "isError": failed})
         return 200, nested, f"/mcp:{tool if tool in (*COMMANDS, 'status') else '?'}"
 
     @staticmethod
     def _rpc_refusal(ident, code: int, message: str) -> tuple[int, dict, str]:
         return 400, {"jsonrpc": "2.0", "id": ident, "error": {"code": code, "message": message, "data": {"status": "refused", "reason": "request_invalid"}}}, "/mcp"
 
-    def _body(self, length: str | None, read: Callable[[int], bytes]) -> tuple[dict | None, tuple[int, str] | None]:
+    def _body(self, length, read: Callable[[int], bytes], mcp: bool = False):
         if length is None:
             return None, (411, "length_required")
         if not LENGTH.fullmatch(length):
@@ -320,21 +334,28 @@ class OperatorService:
         if int(length) > MAX_BODY:
             return None, (413, "body_too_large")
         try:
-            body = canonical.parse_json_strict(read(int(length)))
+            raw = read(int(length))
+            if mcp:
+                # Admit the envelope id separately, so an out-of-range id
+                # gets -32600/null rather than a body-level parse refusal.
+                # Keep C-13's duplicate/number/Unicode checks on all other data.
+                body = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_members,
+                                  parse_float=canonical.parse_json_strict, parse_constant=canonical.parse_json_strict)
+                canonical.parse_json_strict(json.dumps({key: value for key, value in body.items() if key != "id"}
+                                                       if isinstance(body, dict) else body))
+            else:
+                body = canonical.parse_json_strict(raw)
         except (ValueError, TypeError):  # CanonicalizationError is a ValueError
             return None, (400, "request_invalid")
         return (body, None) if isinstance(body, dict) else (None, (400, "request_invalid"))
 
     def _answer(self, principal: Principal | None, method: str, route: str, code: int, reply: dict) -> tuple[int, dict]:
-        """Log the request's line (labels only: label()) and answer; both with
-        every configured token redacted."""
+        """Log checked label bytes; leave the reply structure for encode()."""
         who = "-" if principal is None else f"{principal.role}:{principal.name}"
         outcome = reply.get("status") if isinstance(reply, dict) else None
-        self._log(self._credentials.redact(f"{who} {method} {route} -> {code} {outcome}"))
-        return code, self._credentials.redact(reply)
+        self._log(self._credentials.boundary.diagnostic(f"{who} {method} {route} -> {code} {outcome}"))
+        return code, reply
 
     def encode(self, reply: dict) -> bytes:
-        """An answer as the transport writes it: its JSON text, checked as
-        that text (Credentials.dumps: a value its serialization would make
-        a token of is replaced whole), in UTF-8."""
-        return self._credentials.dumps(reply).encode("utf-8")
+        """The final checked JSON bytes, shared by every transport reply path."""
+        return self._credentials.boundary.encode(reply)

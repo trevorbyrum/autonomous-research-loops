@@ -116,7 +116,7 @@ listener carries operator authority, so every route on it except
 `GET /v1/health` requires a bearer token, and its publication stays on host
 loopback. Exposing it on a private network is an operator decision recorded at
 deployment, never a default. Two kinds of token reach it.
-`GEN2_OPERATOR_TOKENS` are the operator's. `GEN2_SECRET_EXPORTER_TOKEN` is the
+`GEN2_OPERATOR_TOKENS` are the operator's; each token must match `[A-Za-z0-9_-]{16,}` (letters, digits, underscore or hyphen; at least 16 characters). `GEN2_SECRET_EXPORTER_TOKEN` is the
 exporter's, and the engine accepts it only for the exporter's `ControlBackend`
 calls (claiming outbox events, acknowledging deliveries); it never carries
 operator authority.
