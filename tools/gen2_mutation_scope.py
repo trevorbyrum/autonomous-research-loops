@@ -148,7 +148,7 @@ def main():
                 name = f"qualification-{root.name}-{len(qualified)}"
                 shard = stage.get("shard")
                 outcome, output = run_tests(shlex.join(runner(dict(targets=targets, tests=tests,
-                    cutoff=cutoff, shard=shard, identity=True), name, root)), 7200)
+                    cutoff=cutoff, shard=shard, identity=True, module_path=stage.get("module_path")), name, root)), 7200)
                 (out / f"{name}.log").write_text(output)
                 verdict = normalize(SimpleNamespace(worker_outcome="normal", output=output, test_outcome=outcome))
                 control = marker(output)

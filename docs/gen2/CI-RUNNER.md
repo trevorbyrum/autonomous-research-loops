@@ -31,9 +31,12 @@ can exclude changed-line survivors; Astra reviews them. `ASSERTION_KILL` and
 qualified `ERROR_KILL` pass. An `ERROR_KILL` requires
 all three conditions: (1) the result would otherwise be `TEST_ERROR` (exit 1,
 native killed, every error executed, no timeout types); (2) every error event's
-innermost traceback frame is under `gen2/`, excluding `gen2/tests/`; and (3) the
+actual innermost traceback frame resolves to the current mutant's own target
+module under `gen2/`, excluding `gen2/tests/`; and (3) the
 existing restored-source clean qualification succeeds. Mixed failures and errors
-require every error to meet the frame condition. Test/fixture, tools, runner,
+require every error to meet the frame condition. A frame in an unchanged
+production helper remains non-passing `TEST_ERROR`, even after a passing clean
+control. Test/fixture, tools, runner,
 stdlib and site-packages errors remain non-passing `TEST_ERROR`. Timeouts,
 crashes, loader/harness/internal errors and missing or unclassified outcomes fail.
 Import-time production errors represented by a loader `_FailedTest` remain
@@ -41,6 +44,12 @@ Import-time production errors represented by a loader `_FailedTest` remain
 `ERROR_KILL` separately and retains exception type, message and repo-relative
 innermost frame path/line in its error events. Syntax-invalid variants are
 separate non-kills.
+This applies Trevor's 2026-10-30 "Count them" ruling as narrowed by Astra's EK-1
+review. Resolved worker-relative mutation identity is carried into the runner
+and each stage/shard result. Attribution and a clean control are not proof of
+semantic causation: a test can still misuse the mutated module itself, and a
+transient error can occur only during the mutant run. Genuine downstream errors
+in unchanged production modules do not automatically count as kills.
 Unit discovery is a multiset: existing re-exported TestCase occurrences retain
 their original multiplicities, and all occurrences of a class stay together.
 Comparison requires those counts exactly. Mutation IDs remain unique.

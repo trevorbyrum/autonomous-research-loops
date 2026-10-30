@@ -100,9 +100,11 @@ def normalize(result):
                 len(errors) == data["errors"] and all(event.get("executed") for event in errors)):
             return "INVALID"
         # The campaign must still qualify this result against restored source.
-        paths = [event.get("innermost_frame", {}).get("path", "") for event in errors]
-        if all(path.startswith("gen2/") and not path.startswith("gen2/tests/") and
-               ".." not in Path(path).parts for path in paths):
+        def resolved(name):
+            return os.path.relpath((ROOT / name).resolve(), ROOT) if name else ""
+        target = resolved(data.get("module_path"))
+        paths = [resolved(event.get("innermost_frame", {}).get("path")) for event in errors]
+        if target.startswith("gen2/") and not target.startswith("gen2/tests/") and all(path == target for path in paths):
             return "ERROR_KILL"
         return "TEST_ERROR"
     if not data["tests_run"] and not (data.get("shard") and data.get("expected") and data.get("selected") == []):
@@ -118,6 +120,8 @@ def run(config):
     if mutations := config.pop("mutations", None):
         # This process owns a separate checkout. Every test still starts fresh.
         before = source_state()
+        modules = {os.path.relpath((ROOT / m["module_path"]).resolve(), ROOT) for m in mutations}
+        config["module_path"] = next(iter(modules)) if len(modules) == 1 else None
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json") as request:
             json.dump(config, request)
             request.flush()
@@ -157,6 +161,7 @@ def run(config):
         data = dict(tests_run=result.testsRun, errors=len(result.errors), failures=len(result.failures),
                     skipped=len(result.skipped), unexpected_successes=len(result.unexpectedSuccesses),
                     events=result.events, boundary=result.boundary, expected=expected, selected=selected,
+                    module_path=config.get("module_path"),
                     shard=config.get("shard"), success=result.wasSuccessful(), test_pid=os.getpid())
         print(MARKER + json.dumps(data), flush=True)
         return 0 if result.wasSuccessful() else 1
