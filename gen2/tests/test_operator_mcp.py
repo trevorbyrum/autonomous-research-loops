@@ -115,6 +115,7 @@ class McpWireTest(WireClient, of.OperatorTestCase):
             b'"plain"',
             b'{"jsonrpc":"2.0","id":NaN,"method":"ping"}',
             b'{"jsonrpc":"2.0","id":1,"id":2,"method":"ping"}',
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","extra":9007199254740992}',
             b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":1,"x":2}}}',
             b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":1.0000000000000001}}}',
             b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":1e-999}}}',

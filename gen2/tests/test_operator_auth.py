@@ -586,7 +586,10 @@ class CredentialsTest(unittest.TestCase):
                     Credentials({"alice": token})
                 self.assertEqual(str(refused.exception), "GEN2_OPERATOR_TOKENS and GEN2_SECRET_EXPORTER_TOKEN require tokens matching [A-Za-z0-9_-]{16,}")
                 self.assertNotIn(token, str(refused.exception))
-        creds = Credentials.from_environ({"GEN2_OPERATOR_TOKENS": "alice=Aa0_-Bb1Cc2Dd3Ee"})
+        try:
+            creds = Credentials.from_environ({"GEN2_OPERATOR_TOKENS": "alice=Aa0_-Bb1Cc2Dd3Ee"})
+        except CredentialsRefused:
+            self.fail("a token with all admitted character classes at the 16-character minimum must be accepted")
         self.assertEqual(creds.authenticate("Bearer Aa0_-Bb1Cc2Dd3Ee"), Principal("alice", "operator"))
 
     def test_unusable_secrets_refuse_the_start(self) -> None:
