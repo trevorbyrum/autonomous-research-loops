@@ -50,5 +50,9 @@ class HoldDDLTest(StoreTestCase):
                 self.rejects(fragment, sql)
             self.assertEqual(self.snapshot("holds"), before)
         self.decision("opd_clear00001", "hold_clearance", ref=HOLD)
+        before = self.snapshot("holds")
+        self.rejects("cleared_at IS NULL OR cleared_by_decision_id IS NOT NULL OR cleared_by_operation_id IS NOT NULL",
+            "UPDATE holds SET cleared_at = ? WHERE hold_id = ?", "2026-09-27T10:00:00Z", HOLD)
+        self.assertEqual(self.snapshot("holds"), before)
         self.x("UPDATE holds SET cleared_at = ?, cleared_by_decision_id = 'opd_clear00001' WHERE hold_id = ?", "2026-09-27T10:00:00Z", HOLD)
         self.assertEqual(self.rows("SELECT cleared_by_decision_id FROM holds"), [("opd_clear00001",)])
