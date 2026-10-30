@@ -12,7 +12,9 @@ from unittest.mock import patch
 
 from gen2.router import acquisitions, amendments, assessments, capabilities, evidence_writer, lifecycle, observations, registries, scheduling, service, status, verification
 from gen2.router import accounting, detailed_checks, extractor_registry, extractions, history, protocols, support
+from gen2.core.instants import utc_instant_ns
 from gen2.tests.router_fixtures import RouterTestCase
+from gen2.tests.test_capability_probe import observation
 
 COLLABORATORS = ((accounting, accounting.Accounting, accounting.AccountingCore, "_accounting"),
                  (status, status.Status, status.StatusCore, "_status"), (capabilities, capabilities.Capabilities, capabilities.CapabilityCore, "_capabilities"),
@@ -113,6 +115,14 @@ class CollaboratorInterfaceTest(RouterTestCase):
                 self.check_siblings(status, status.StatusCore, ast.parse(expression))
         with patch.dict(status.StatusCore.__annotations__, {"_registries": "Lifecycle"}), self.assertRaises(AssertionError):
             self.check_siblings(status, status.StatusCore, ast.parse("self._core._registries._active_bundle"))
+
+    def test_capability_hold_uses_the_composed_registry_policy(self):
+        with patch.object(self.router._registries, "_router_policy", return_value={"hold_window_s": 123}) as policy:
+            reply = self.router.record_capability_probe(observation("05", "unusable_credential", "2026-09-27T10:00:05Z"))
+            self.assertEqual(reply["status"], "recorded")
+            policy.assert_called_once_with(self.router._registries._active_bundle()["bundle_hash"])
+        deadline, created = self.rows("SELECT deadline_at,created_at FROM holds WHERE capability_fact_id = ?", reply["fact"]["fact_id"])[0]
+        self.assertEqual(utc_instant_ns(deadline) - utc_instant_ns(created), 123_000_000_000)
 
     def test_registry_covers_every_constructed_collaborator(self):
         constructed = {n.targets[0].attr: vars(service)[n.value.func.id] for n in ast.walk(tree(service))
