@@ -1,4 +1,5 @@
 """Isolated SQL 22 / Router guards; fixture execution only, no receipt changes."""
+import re
 import sqlite3
 from unittest.mock import patch
 
@@ -135,13 +136,15 @@ class RecordTest(RecordCase):
 
     def test_immutable(self):
         self.test_control()
-        for table in ("source_extractions", "extraction_validations"):
-            for statement in (f"UPDATE {table} SET created_at = created_at", f"DELETE FROM {table}",
-                    f"INSERT OR REPLACE INTO {table} SELECT * FROM {table}", f"UPDATE OR REPLACE {table} SET created_at = created_at",
-                    f"INSERT INTO {table} SELECT * FROM {table} WHERE true ON CONFLICT DO UPDATE SET created_at = excluded.created_at"):
+        for table, noun in (("source_extractions", "extractions"), ("extraction_validations", "validations")):
+            for statement, fragment in ((f"UPDATE {table} SET created_at = created_at", f"{noun} are immutable"),
+                    (f"DELETE FROM {table}", f"{noun} are retained"),
+                    (f"INSERT OR REPLACE INTO {table} SELECT * FROM {table}", f"{noun} are retained"),
+                    (f"UPDATE OR REPLACE {table} SET created_at = created_at", f"{noun} are immutable"),
+                    (f"INSERT INTO {table} SELECT * FROM {table} WHERE true ON CONFLICT DO UPDATE SET created_at = excluded.created_at", f"{noun} are immutable")):
                 with self.subTest(statement=statement):
                     before = self.state(exclude=())
-                    with self.assertRaises(sqlite3.IntegrityError):
+                    with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(fragment)):
                         self.x(statement)
                     self.assertEqual(self.state(exclude=()), before)
 
