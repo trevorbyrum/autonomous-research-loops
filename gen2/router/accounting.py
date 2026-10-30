@@ -136,9 +136,6 @@ def convert_window_pins(rows: TopicCapture, topic_id: str) -> tuple[v.WindowPin,
     return tuple(pins)
 
 
-def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory:
-    return convert_inventory(topic_id, rows.capture_topic(topic_id), history)
-
 def convert_inventory(topic_id: str, rows: TopicCapture, history: a.History) -> a.Inventory:
     where = {"topic_id": topic_id}
     observations = tuple(a.Observation(o["observation_id"], o["invocation_id"], o["lane"], o["request_identity"],
