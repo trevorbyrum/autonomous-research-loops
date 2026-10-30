@@ -149,12 +149,12 @@ class MutationMovesTest(unittest.TestCase):
         test.write_text("import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n"
                         " def test_answer(self): answer()\n")
         report = self.campaign()
-        self.assertEqual(report["counts"], {"ERROR_KILL": 2})
+        self.assertEqual(report["counts"], {"ERROR_KILL": 2, "FILTERED_GIT": 2})
         self.assertFalse(report["failed"])
         self.assertEqual(report["stage_verdicts"], {"1:ERROR_KILL": 2})
         self.assertTrue(report["qualifications"])
         self.assertTrue(all(q["valid"] for q in report["qualifications"]))
-        for row in report["mutants"]:
+        for row in (row for row in report["mutants"] if row["verdict"] == "ERROR_KILL"):
             event, = scope.marker(row["native"]["output"])["events"]
             self.assertEqual(event["exception_type"], "builtins.KeyError")
             self.assertIn(event["message"], ("0", "2"))
@@ -194,7 +194,7 @@ class MutationMovesTest(unittest.TestCase):
             "import unittest\nfrom gen2.probe import answer\nclass Case(unittest.TestCase):\n"
             " def test_answer(self): answer(self._outcome.result.failfast)\n")
         report = self.campaign(expected=1)
-        self.assertEqual(report["counts"], {"INVALID": 2})
+        self.assertEqual(report["counts"], {"INVALID": 2, "FILTERED_GIT": 1})
         self.assertTrue(report["failed"])
         self.assertEqual(report["stage_verdicts"], {"2:ERROR_KILL": 2})
         self.assertTrue(report["qualifications"])
