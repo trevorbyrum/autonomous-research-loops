@@ -1,4 +1,5 @@
 """Raw integrity guards for verification attention; in-memory fixtures only."""
+import re
 import sqlite3
 
 from gen2.tests.store_fixtures import StoreTestCase, TOPIC, T
@@ -19,8 +20,10 @@ class HoldDDLTest(StoreTestCase):
             [("judgment", "primary:station-1", "2026-09-27T11:00:00Z", None)])
 
     def test_shape(self):
-        for change in ({"owner": ""}, {"deadline_at": None}, {"hold_class": "agreement"}):
-            with self.subTest(change=change), self.assertRaises(sqlite3.IntegrityError):
+        for change, fragment in (({"owner": ""}, "length(owner) > 0"),
+                                 ({"deadline_at": None}, "NOT NULL constraint failed: holds.deadline_at"),
+                                 ({"hold_class": "agreement"}, "hold_class IN ('transient', 'capability', 'scope', 'judgment', 'unknown')")):
+            with self.subTest(change=change), self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(fragment)):
                 self.record(**change)
             self.assertEqual(self.rows("SELECT * FROM holds"), [])
         self.record()
@@ -36,10 +39,16 @@ class HoldDDLTest(StoreTestCase):
 
     def test_identity_and_clearance(self):
         self.record()
-        for sql in ("UPDATE holds SET subject_ref = 'different'", "UPDATE holds SET hold_class = 'transient'",
-                    "UPDATE holds SET cleared_at = '2026-09-27T10:00:00Z'", "DELETE FROM holds"):
-            with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
-                self.x(sql)
+        self.x("UPDATE holds SET subject_ref = 'verification:ver_quote00001'")
+        self.x("UPDATE holds SET hold_class = 'judgment'")
+        before = self.snapshot("holds")
+        for sql, fragment in (("UPDATE holds SET subject_ref = 'different'", "a cleared hold is final; hold identity, class and authority are immutable"),
+                    ("UPDATE holds SET hold_class = 'transient'", "a cleared hold is final; hold identity, class and authority are immutable"),
+                    ("UPDATE holds SET cleared_at = '2026-09-27T10:00:00Z'", "cleared_at IS NULL OR cleared_by_decision_id IS NOT NULL OR cleared_by_operation_id IS NOT NULL"),
+                    ("DELETE FROM holds", "holds are never deleted")):
+            with self.subTest(sql=sql):
+                self.rejects(fragment, sql)
+            self.assertEqual(self.snapshot("holds"), before)
         self.decision("opd_clear00001", "hold_clearance", ref=HOLD)
-        self.x("UPDATE holds SET cleared_at = ?, cleared_by_decision_id = 'opd_clear00001' WHERE hold_id = ?", T, HOLD)
+        self.x("UPDATE holds SET cleared_at = ?, cleared_by_decision_id = 'opd_clear00001' WHERE hold_id = ?", "2026-09-27T10:00:00Z", HOLD)
         self.assertEqual(self.rows("SELECT cleared_by_decision_id FROM holds"), [("opd_clear00001",)])
