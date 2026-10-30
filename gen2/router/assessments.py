@@ -9,6 +9,9 @@ from typing import Callable, Mapping, Protocol
 from gen2.core.instants import utc_instant_ns
 from gen2.router.boundary import RECORDS, Refusal
 
+# Confidence bases whose record the invocation attributes to itself.
+ATTRIBUTED_BASES = frozenset({"recorded_assessment"})
+
 
 class Rows(Protocol):
     def insert(self, table: str, row: Mapping[str, object]) -> None: ...
@@ -52,11 +55,9 @@ class Assessments:
     def write(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
         # One validation of retained operands, under the existing writer fence.
         self.validate(payload, inv)
-        written = {}
         for spec in RECORDS:
             table, identity, predecessor_key, label = spec.section, spec.identity, spec.predecessor_key, spec.label
-            records = payload.get(table, [])
-            for record in records:
+            for record in payload.get(table, []):
                 if predecessor_key and record["supersedes_id"] is not None:
                     prior = self._core._one(table, {identity: record["supersedes_id"]})
                     if prior is None or any(prior[k] != v for k, v in
@@ -64,20 +65,17 @@ class Assessments:
                         raise Refusal("payload_invalid", f"{label} predecessor must exist for this topic and identity")
                     if utc_instant_ns(prior["created_at"]) >= utc_instant_ns(now):
                         raise Refusal("payload_invalid", f"{label} successor must be dated after its predecessor")
-                row = {k: v for k, v in record.items() if k != "lineage"}
-                if table == "source_lifecycle" and record["related_work_id"] is not None and not self._core._work_of_topic(record["related_work_id"], inv["topic_id"]):
+                # Any record naming related work must name work of this topic.
+                if record.get("related_work_id") is not None and not self._core._work_of_topic(record["related_work_id"], inv["topic_id"]):
                     raise Refusal("cross_topic", "related lifecycle work was not retrieved by this topic")
-                if table == "obligation_assessments":
-                    row = {"disposition": None, "state": None, **row, "confidence": dict(record["confidence"])}
-                    if row["confidence"]["basis"] == "recorded_assessment":
-                        row["confidence"]["assessed_by_invocation_id"] = inv["invocation_id"]
+                row = {**spec.defaults, **{k: v for k, v in record.items() if k != "lineage"}}
+                if record.get("confidence", {}).get("basis") in ATTRIBUTED_BASES:
+                    row["confidence"] = {**record["confidence"], "assessed_by_invocation_id": inv["invocation_id"]}
                 self._core._store.insert(table, {**row, "topic_id": inv["topic_id"], "actor_kind": "primary",
                     "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
                 if record.get("lineage") is not None:
                     self._core._store.insert("source_lineage", {"assessment_id": record["assessment_id"], **record["lineage"]})
-            if records:
-                written[table] = [r[identity] for r in records]
-        return written
+        return {spec.section: [r[spec.identity] for r in payload.get(spec.section, [])] for spec in RECORDS if payload.get(spec.section)}
 
     def _validate_branch_windows(self, payload: dict, inv: dict) -> None:
         records = payload.get("branch_windows", [])

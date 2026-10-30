@@ -16,7 +16,7 @@ with one of the response vocabulary's reasons; nothing here writes.
 """
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import Mapping, NamedTuple
 
 from gen2.core import canonical, instants, pagination
 from gen2.core.canonical import CanonicalizationError
@@ -37,14 +37,16 @@ SCOPE_OF_KIND = {"research_pass": "research", "discovery": "discovery", "verific
 PRIMARY = frozenset({"research_pass", "checkpoint"})
 CONTRACT = frozenset({"contract/1"})
 SCOPING = frozenset({"pre-contract/1"})
+EITHER = frozenset({"contract/1", "pre-contract/1"})
 
 
 class Record(NamedTuple):
     """One assessment-shaped record kind: its storage, predecessor rule and
     admission policy in one entry. Every field is required, so an entry that
     omits its policy cannot be built; `common` says whether the shared pin,
-    topic and lineage validation covers it (the two kinds with their own
-    obligation/window validation say False)."""
+    topic and lineage validation covers it (a kind with its own obligation or window
+    validation says False).
+    `defaults` are the columns an inserted row gets when its record omits them."""
     section: str
     identity: str
     predecessor_key: tuple[str, ...]
@@ -52,36 +54,41 @@ class Record(NamedTuple):
     kinds: frozenset[str]
     contexts: frozenset[str]
     common: bool
+    defaults: Mapping[str, object]
 
 
 RECORDS = (
-    Record("semantic_assessments", "assessment_id", (), "", PRIMARY, CONTRACT, True),
-    Record("source_lifecycle", "disposition_id", ("work_id", "source_version"), "lifecycle", PRIMARY, CONTRACT, True),
-    Record("registry_dispositions", "disposition_id", ("registry_kind", "registry_id"), "registry", PRIMARY, CONTRACT, True),
-    Record("obligation_assessments", "record_id", ("obligation_id",), "obligation", PRIMARY, CONTRACT, False),
-    Record("branch_windows", "association_id", (), "", PRIMARY, CONTRACT, False),
+    Record("semantic_assessments", "assessment_id", (), "", PRIMARY, CONTRACT, True, {}),
+    Record("source_lifecycle", "disposition_id", ("work_id", "source_version"), "lifecycle", PRIMARY, CONTRACT, True, {}),
+    Record("registry_dispositions", "disposition_id", ("registry_kind", "registry_id"), "registry", PRIMARY, CONTRACT, True, {}),
+    Record("obligation_assessments", "record_id", ("obligation_id",), "obligation", PRIMARY, CONTRACT, False, {"disposition": None, "state": None}),
+    Record("branch_windows", "association_id", (), "", PRIMARY, CONTRACT, False, {}),
 )
 # The other sections; RECORDS' sections are admitted by their own entries.
 SECTION_KINDS = {
-    "claims": (PRIMARY, CONTRACT | SCOPING, False),
-    "claim_promotions": (PRIMARY, CONTRACT, False),
-    "claim_source_links": (PRIMARY, CONTRACT, False),
-    "decision_receipts": (PRIMARY, CONTRACT, False),
-    "screening_assessments": (PRIMARY, CONTRACT, False),
-    "review_triggers": (PRIMARY, CONTRACT | SCOPING, False),
-    "review_closures": ({"checkpoint"}, CONTRACT, False),
-    "scoping_reports": ({"research_pass"}, SCOPING, False),
-    "source_proposals": (PRIMARY | {"discovery", "delegate"}, CONTRACT | SCOPING, False),
-    "exports": (PRIMARY, CONTRACT, False),
-    "holds": (PRIMARY | {"verification"}, CONTRACT | SCOPING, False),
-    "verification_receipts": ({"verification"}, CONTRACT, False),
-    "source_artifacts": (PRIMARY, CONTRACT, False),
-    "quote_checks": ({"verification"}, CONTRACT, False),
-    "detailed_check_records": ({"verification"}, CONTRACT, True),
-    "source_extractions": (PRIMARY | {"verification", "discovery", "delegate"}, CONTRACT, False),
-    "extraction_validations": ({"verification"}, CONTRACT, True),
-    "extraction_validations_v2": ({"verification"}, CONTRACT, True),
+    "claims": (PRIMARY, EITHER),
+    "claim_promotions": (PRIMARY, CONTRACT),
+    "claim_source_links": (PRIMARY, CONTRACT),
+    "decision_receipts": (PRIMARY, CONTRACT),
+    "screening_assessments": (PRIMARY, CONTRACT),
+    "review_triggers": (PRIMARY, EITHER),
+    "review_closures": ({"checkpoint"}, CONTRACT),
+    "scoping_reports": ({"research_pass"}, SCOPING),
+    "source_proposals": (frozenset({"research_pass", "checkpoint", "discovery", "delegate"}), EITHER),
+    "exports": (PRIMARY, CONTRACT),
+    "holds": (frozenset({"research_pass", "checkpoint", "verification"}), EITHER),
+    "verification_receipts": ({"verification"}, CONTRACT),
+    "source_artifacts": (PRIMARY, CONTRACT),
+    "quote_checks": ({"verification"}, CONTRACT),
+    "detailed_check_records": ({"verification"}, CONTRACT),
+    "source_extractions": (frozenset({"research_pass", "checkpoint", "verification", "discovery", "delegate"}), CONTRACT),
+    "extraction_validations": ({"verification"}, CONTRACT),
+    "extraction_validations_v2": ({"verification"}, CONTRACT),
 }
+
+# Sections only an independent (parentless) invocation may commit.
+INDEPENDENT = frozenset({"detailed_check_records", "extraction_validations", "extraction_validations_v2"})
+
 
 class Refusal(Exception):
     """A request the router refuses before (or instead of) any change."""
@@ -137,8 +144,8 @@ def instant(value: str) -> int:
 
 
 def check_sections(payload: dict, kind: str, admission_context: str, parent_invocation_id: str | None) -> None:
-    sections = {**SECTION_KINDS, **{r.section: (r.kinds, r.contexts, False) for r in RECORDS}}
-    for section, (kinds, contexts, independent_only) in sections.items():
+    sections = {**SECTION_KINDS, **{r.section: (r.kinds, r.contexts) for r in RECORDS}}
+    for section, (kinds, contexts) in sections.items():
         if not payload.get(section):
             continue
         if kind not in kinds:
@@ -147,7 +154,7 @@ def check_sections(payload: dict, kind: str, admission_context: str, parent_invo
             if admission_context == "pre-contract/1":
                 raise Refusal("kind_not_permitted", f"pre-contract/1 work records scoping material only, not {section} (C-12)")
             raise Refusal("kind_not_permitted", f"{section} are pre-contract work's (flow S2), not {admission_context}'s")
-        if independent_only and parent_invocation_id is not None:
+        if section in INDEPENDENT and parent_invocation_id is not None:
             raise Refusal("kind_not_permitted", f"{section} requires independent verification")
 
 
