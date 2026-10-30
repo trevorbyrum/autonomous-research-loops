@@ -41,7 +41,7 @@ class Assessments:
             return
         contract = self._core._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
         for record in records:
-            pins = (record["contract_revision"], record["framing_version"], record["eligibility_protocol_version"])
+            pins = (record.get("contract_revision"), record.get("framing_version"), record.get("eligibility_protocol_version"))  # an absent pin is refused below
             if pins != (inv["contract_revision"], contract["framing_version"], contract["document"]["eligibility_protocol"]["protocol_version"]):
                 raise Refusal("payload_invalid", "semantic assessment protocol/framing differs from the invocation's pins")
             if "work_id" in record:

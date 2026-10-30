@@ -93,6 +93,8 @@ class RecordSpecificationTest(unittest.TestCase):
         self.assertEqual(validated({"new_assessments": [new_record()]}), None)
         self.assertEqual(validated({"new_assessments": [new_record(contract_revision=999)]}), PIN_REFUSAL)
         self.assertEqual(validated({"new_assessments": [new_record(work_id="wrk_foreign")]}), SUBJECT_REFUSAL)
+        for pin in PINS:  # a record lacking a pin is refused, not a crash
+            self.assertEqual(validated({"new_assessments": [{k: v for k, v in new_record().items() if k != pin}]}), PIN_REFUSAL, pin)
 
     def test_new_entry_receives_its_admission_check(self):
         self.assertEqual(admitted("new_assessments", "research_pass"), None)

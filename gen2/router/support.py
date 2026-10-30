@@ -140,8 +140,10 @@ def content_rank(rows: Rows, acquired: dict) -> int:
     tiers = [1]
     for record in records:
         if isinstance(record, dict) and record.get("identity") == acquired["provider_record_id"]:
-            tiers.append(3 if searched and record.get("kind") == "full_text" and nonblank(record.get("text"))
-                else 2 if nonblank(record.get("abstract")) else 1)
+            if searched and record.get("kind") == "full_text" and nonblank(record.get("text")):
+                tiers.append(3)
+            elif nonblank(record.get("abstract")):
+                tiers.append(2)
     return max(tiers)
 
 

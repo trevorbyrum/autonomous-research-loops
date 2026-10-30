@@ -20,6 +20,7 @@ def seed(case, verifier=None, producer=None):
             "SELECT coverage_state FROM search_observations WHERE observation_id=?", a['observation_id'])]
         core = SimpleNamespace(_store=SimpleNamespace(select=lambda *args: observations))
         tier = DetailedChecks(core)._content_rank(a)
+        case.assertIn(tier, (1, 2, 3), 'the fixture seeds a bibliographic, abstract or full-text extraction')
         key = {k: a[k] for k in ("topic_id", "work_id", "source_version", "event_id", "verifier_invocation_id")}
         eid = "receipt-" + canonical.logical_hash(key)[7:]
         if case.rows("SELECT 1 FROM source_extractions WHERE extraction_id = ?", eid):
