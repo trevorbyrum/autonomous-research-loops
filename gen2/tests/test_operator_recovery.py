@@ -427,7 +427,7 @@ class RecoveryFaults(RecoveryWorld):
         listed = [(i["since"], "recovery" in i) for i in self.status_doc()["incidents"] if i["invocation_id"] == MAIN]
         self.assertEqual(listed, [(stalled["since"], True), (second["since"], False)])
         code, reply = self.command("recover_incident", self.request(incident_since=second["since"]))
-        self.assertEqual((code, reply.get("status"), reply.get("outcome"), reply.get("incident")), (200, "resumed", "failed", second))
+        self.assertEqual((code, reply.get("status"), reply.get("outcome"), reply.get("incident")), (200, "resumed", "failed", {**second, "last_refusal": {"reason": "reconciliation_conflict"}}))
         self.reconciled(retained)
         journal = self.journal()
         self.assertEqual([(r["incident"]["since"], r.get("outcome")) for r in journal.get("recoveries", [])], [(stalled["since"], "stalled"), (second["since"], "failed")])

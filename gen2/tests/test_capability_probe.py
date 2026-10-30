@@ -30,6 +30,7 @@ the runner's own session only.
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import os
 import signal
@@ -45,6 +46,7 @@ from pathlib import Path
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import probe
 from gen2.supervisor.probe import CapabilityProbe, Runner, codex_declared, codex_status, epoch_instant, jwt_exp
+from gen2.operator.auth import CredentialsRefused
 from gen2.tests import operator_fixtures as of
 from gen2.tests import router_fixtures as rf
 
@@ -628,16 +630,40 @@ class EngineProbeTest(of.OperatorTestCase):
         self._probe_tmp.cleanup()
 
     def start_engine(self, creds=None, **station):
+        if creds is None:
+            try:
+                creds = of.credentials()
+            except (CredentialsRefused, TypeError) as error:
+                self.fail(f"the valid operator fixture credentials must construct: {type(error).__name__}")
         return super().start_engine(creds, auth_root=self.auth, probe_options={"path": str(self.bin)}, **station)
+
+    def http(self, *args, **kwargs):
+        try:
+            code, reply, headers = super().http(*args, **kwargs)
+        except (http.client.HTTPException, json.JSONDecodeError) as error:
+            self.fail(f"expected a complete JSON response: {type(error).__name__}")
+        self.assertIsInstance(reply, dict)
+        return code, reply, headers
+
+    def assert_probe_reply(self, code, reply):
+        self.assertEqual((code, reply.get("status")), (200, "recorded"), reply)
+        self.assertTrue({"outcome", "fact", "hold", "probe_id", "observed_at", "declared_expiry"} <= reply.keys(), reply)
+
+    def assert_status_reply(self, code, reply):
+        self.assertEqual((code, reply.get("status")), (200, "ok"), reply)
+        self.assertIsInstance(reply.get("waiting"), list)
+        self.assertIsInstance(reply.get("capability_facts"), list)
 
     def test_the_operator_probe_is_recorded_and_status_shows_the_fact_and_the_hold(self):
         (self.home / "behaviour.json").write_text(json.dumps({"stderr": "Not logged in\n", "code": 1}))
         code, reply, _ = self.http("POST", "/v1/commands/probe_capability", {"provider": "codex"})
+        self.assert_probe_reply(code, reply)
         self.assertEqual((code, reply["status"]), (200, "recorded"), reply)
         self.assertEqual((reply["outcome"], reply["fact"]["state"], reply["hold"]["opened"]), ("unusable_credential", "failing", True))
         requested = json.loads(self.value("SELECT detail FROM audit_events WHERE audit_event_id = ?", "aud_" + reply["probe_id"]))["observation"]["requested_by"]
         self.assertEqual(requested, "alice")  # the principal's name, from the token
         code, status, _ = self.http("GET", "/v1/status")
+        self.assert_status_reply(code, status)
         self.assertEqual(code, 200)
         self.assertEqual([(w["reason"], w["hold_id"], w["hold_class"], w["owner"], w["capability_fact_id"]) for w in status["waiting"]],
                          [("hold", reply["hold"]["hold_id"], "capability", "operator", reply["fact"]["fact_id"])])
@@ -648,10 +674,12 @@ class EngineProbeTest(of.OperatorTestCase):
         (self.home / "behaviour.json").write_text(json.dumps({"stderr": "Logged in using ChatGPT\n"}))
         (self.home / "auth.json").write_text(json.dumps(chatgpt(EXP_2001, EXP_2001)))
         code, reply, _ = self.http("POST", "/v1/commands/probe_capability", {"provider": "codex"})
+        self.assert_probe_reply(code, reply)
         self.assertEqual((code, reply["status"], reply["outcome"], reply["fact"]["state"], reply["hold"] and reply["hold"]["opened"]),
                          (200, "recorded", "declared_expired", "degraded", True), reply)
         self.assertEqual(reply["declared_expiry"], {"access_token": "2001-09-09T01:46:40Z", "id_token": "2001-09-09T01:46:40Z", "refresh_credential": True})
         code, status, _ = self.http("GET", "/v1/status")
+        self.assert_status_reply(code, status)
         [fact] = [f for f in status["capability_facts"] if f["capability"] == CAP]
         self.assertEqual((fact["fact_id"], fact["state"]), (reply["fact"]["fact_id"], "degraded"))
         self.assertTrue(fact["detail"].startswith("declared_expired: the runner reads the credential, but its access token declares it expired at "
@@ -678,6 +706,10 @@ class EngineProbeTest(of.OperatorTestCase):
             thread.start()
         for thread in threads:
             thread.join(60)
+        for reply in replies:
+            self.assertIsInstance(reply, dict)
+            self.assertEqual(reply.get("status"), "recorded", reply)
+            self.assertTrue({"outcome", "started_at", "observed_at"} <= reply.keys(), reply)
         self.assertEqual([r["outcome"] for r in replies], ["usable", "usable"])  # serialized, the first would have waited alone: a runner_error
         windows = [(utc_instant_ns(r["started_at"]), utc_instant_ns(r["observed_at"])) for r in replies]
         self.assertLess(max(w[0] for w in windows), min(w[1] for w in windows))
@@ -686,7 +718,12 @@ class EngineProbeTest(of.OperatorTestCase):
     def test_the_probe_is_a_tool_over_mcp(self):
         code, reply, _ = self.http("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                                                     "params": {"name": "probe_capability", "arguments": {"provider": "codex"}}})
-        self.assertEqual((code, reply["result"]["isError"]), (200, False), reply)
+        self.assertEqual(code, 200, reply)
+        self.assertIsInstance(reply.get("result"), dict, reply)
+        self.assertEqual(reply["result"].get("isError"), False, reply)
+        self.assertIsInstance(reply["result"].get("content"), list, reply)
+        self.assertEqual(len(reply["result"]["content"]), 1, reply)
+        self.assertIsInstance(reply["result"]["content"][0].get("text"), str, reply)
         self.assertEqual(json.loads(reply["result"]["content"][0]["text"]).get("outcome"), "usable")
 
 

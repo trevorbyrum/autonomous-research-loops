@@ -3859,3 +3859,45 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - Awaiting Trevor's approval.
 - **Mutation scope** (PR #73, Sol `0406d97b`): the move-aware scope takes the Batch B campaign from 258 to 94 mutants. Parallel stage 1 is implemented. The measurement is still running, with stage-2 survivors costing hours.
 
+
+## 2026-10-30: move-aware mutation, Batch B, Str-A to Str-C and CS-1 merged; Batch F accepted (rerun pending); Batch A accepted after B1
+- **Move-aware mutation** (PR #73, `2c11a03`, Sol `0406d97b`): pure moves (git `--color-moved`) are excluded from the blocking changed-line scope. Stage 1 runs in parallel, bounded by case workers × shards.
+  - **Astra round 1 BLOCK B1:** timeouts and infrastructure errors were counted as kills (25 in the Batch B replay).
+  - **Fix:** timeouts and errors no longer kill. TEST_ERROR kills only after qualification. SYNTAX_INVALID is non-blocking.
+  - Astra PASS at `ab46f92`. Verifier exit 0. Merged.
+  - **Recorded limit:** a textual move into a different scope can change meaning without being mutated.
+- **Host reboot (about 01:55):** the agents closed. Batch F round 3 was committed locally and resumed.
+- **Batch B** (PR #80, `5e878e1`, Sonnet `3468c51e` then `c87e9280`): the COMMANDS schemas moved to `commands.py`, plus R4, R5 and P4 `core.instants.utc_now`. `service.py` went from 1,463 to 1,285 lines.
+  - Astra PASS. Verifier green. Merged.
+- **Str-A to Str-D** (TP-20261028-9, strengthening weak T1 oracles; Gate C). Each was BLOCKed in round 1 and PASSed in round 2. Astra set the standard, now in `TASK-fable.md`:
+  - every fragment is unique to its rule within the table's whole constraint set;
+  - every admission refusal has a committed admitted counterpart on identical operands and setup;
+  - D3 before/after snapshots are taken before rollback.
+  - **Str-A:** PR #79, `2ce40cc`.
+  - **Str-B:** PR #82, `1f15e92`.
+  - **Str-C:** PR #83, `facf551`.
+  - Each verifier passed on 2,868 tests, with mutation `no-applicable-files` (test-only).
+  - **Str-D:** PR #84, accepted; its verifier is running.
+- **CS-1** (PR #81, `a1c2e21`, Sonnet `34b6091f`): the near-duplicate folds N01, N02, N08 and F03, taking collected ids from 131 to 111 in six files.
+  - **Astra round 1 BLOCK:** N08's isolation.
+  - Round 2 PASS. Verifier exit 0 in 852 s (2,848 tests). Merged.
+- **Batch F rounds 3 and 4** (PR #54, Sol `6dc32759`), option A:
+  - **Round 3 BLOCK F3:** an unfinished recovery's caller reason was still reflected through status and MCP text.
+  - **Round 4** (`e08e34b`) projects only the persisted incident facts before status fan-out. Astra PASS: F3 closed and independently reproduced, and the 10-family projection sweep reviewed. Mutation: 143 assertion kills and 0 survivors, timeouts or errors.
+  - **Recorded limit:** the final-byte backstop is adequate for its documented role. It is not a complete sanitizer for arbitrary encoded producer prose, and remains limited to its documented spelling grammar.
+  - **Retained facts:** Astra approved retaining `holds.cause` and `clears_when` as required operational facts.
+- **Batch F verifier r4 red (orchestrator-caused):**
+  - **What happened:** the orchestrator symlinked the main checkout's `.venv-gen2` into a merged-tree clone. `make` rebuilt it with `venv --clear`, wiping the main venv for about 2 minutes (09:27:49). Verifier clones' `cp -a` venvs keep `bin/cosmic-ray` shebangs pointing at the main venv, so the nested-campaign test `test_native_filters_and_incomplete_campaign` failed during the gap.
+  - **Evidence:** the test passes in isolation on both the candidate (496 s) and gen2 (501 s).
+  - **Fix:** the main venv is rebuilt, and the verifier rerun is queued.
+  - **Rule:** never symlink, rebuild or alter the main venv while a verifier runs. Verifier and pre-check copies build or copy their own.
+- **Batch A** (PR #85, Sol `b02888bd`), Router admission consolidation (R1, R3, R2, R7, R9, R10):
+  - **Approved scope additions:** 13 locator-only doc edits, and two test patch-target moves.
+  - **Astra BLOCK B1 (Gate B):** RECORDS did not carry validation or admission policy. Two parallel lists had to stay in sync, so a new kind could silently skip both checks.
+  - **Fix** (Sonnet `24f0af1b`, `fc93bfc`): `boundary.RECORDS` holds `Record` tuples with required policy fields. Common validation and record-section admission are derived from them. Five witnesses were added in `test_record_specification.py`, and the 460-case admission matrix is identical to before.
+  - Astra PASS, classed ROOT-CAUSE. Mutation pre-check and verifier queued.
+  - **Size:** production −35 net (−49, then +14 for the fix); the PR is 931 touched lines.
+  - **Estimate gap:** against ~−140, judged honest. R2 and R7 add metadata and keep explicit call sites; do not compress spacing to chase it.
+- **Process:**
+  - all heavy runs (verifiers, coder pre-checks) take `flock /home/trevor/.cache/gen2-heavy.lock` with systemd-run and `MemoryMax=20G`, replacing polling waits that starved or deadlocked;
+  - before merging, the orchestrator runs `gen2_ci.py --mode push` plus the PR's changed test modules on the merged tree, because verifiers test against the PR's own base.

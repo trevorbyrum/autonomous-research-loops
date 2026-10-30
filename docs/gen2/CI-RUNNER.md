@@ -27,10 +27,29 @@ Unit partitioning is exhaustive: every index must finish before acceptance.
 Mutation is unsharded and records every generated identity, filtered outcome,
 normalized verdict, raw diagnostics and diff in `mutation-report.json` and its
 native session database. Only inline `# pragma: no mutate` comments with a reason
-can exclude changed-line survivors; Astra reviews them. After a passing clean
-baseline, test execution errors count as `ERROR_KILL`, separately from
-`ASSERTION_KILL`. Timeouts, crashes, loader/harness/internal errors and missing
-or unclassified outcomes fail. Syntax-invalid variants are separate non-kills.
+can exclude changed-line survivors; Astra reviews them. `ASSERTION_KILL` and
+qualified `ERROR_KILL` pass. An `ERROR_KILL` requires
+all three conditions: (1) the result would otherwise be `TEST_ERROR` (exit 1,
+native killed, every error executed, no timeout types); (2) every error event's
+actual innermost traceback frame resolves to the current mutant's own target
+module under `gen2/`, excluding `gen2/tests/`; and (3) the
+existing restored-source clean qualification succeeds. Mixed failures and errors
+require every error to meet the frame condition. A frame in an unchanged
+production helper remains non-passing `TEST_ERROR`, even after a passing clean
+control. Test/fixture, tools, runner,
+stdlib and site-packages errors remain non-passing `TEST_ERROR`. Timeouts,
+crashes, loader/harness/internal errors and missing or unclassified outcomes fail.
+Import-time production errors represented by a loader `_FailedTest` remain
+`INVALID`, even when the innermost frame is production code. The report counts
+`ERROR_KILL` separately and retains exception type, message and repo-relative
+innermost frame path/line in its error events. Syntax-invalid variants are
+separate non-kills.
+This applies Trevor's 2026-10-30 "Count them" ruling as narrowed by Astra's EK-1
+review. Resolved worker-relative mutation identity is carried into the runner
+and each stage/shard result. Attribution and a clean control are not proof of
+semantic causation: a test can still misuse the mutated module itself, and a
+transient error can occur only during the mutant run. Genuine downstream errors
+in unchanged production modules do not automatically count as kills.
 Unit discovery is a multiset: existing re-exported TestCase occurrences retain
 their original multiplicities, and all occurrences of a class stay together.
 Comparison requires those counts exactly. Mutation IDs remain unique.
@@ -215,8 +234,8 @@ full baseline; nondefault interpreter options force recollection. Plain `gen2-ch
 Stage 1 runs tests covering the mutated source span. If none exist, stage 1b
 runs tests covering any line of that module. A survivor of either selection
 runs the full suite in fresh shard processes (stage 2); an entirely uncovered module
-goes directly to stage 2. Assertion and test-error kills retain fail-fast
-semantics. Typed errors during test or fixture execution become `ERROR_KILL`;
+goes directly to stage 2. Assertion and qualified production-error kills retain
+fail-fast semantics. Test/fixture-code errors remain `TEST_ERROR` and fail;
 failed discovery/imports represented by unittest's loader remain invalid.
 No survivor passes on a partial suite.
 Kills need clean controls on restored source, constructing the complete selection/discovery

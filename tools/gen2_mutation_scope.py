@@ -148,7 +148,7 @@ def main():
                 name = f"qualification-{root.name}-{len(qualified)}"
                 shard = stage.get("shard")
                 outcome, output = run_tests(shlex.join(runner(dict(targets=targets, tests=tests,
-                    cutoff=cutoff, shard=shard, identity=True), name, root)), 7200)
+                    cutoff=cutoff, shard=shard, identity=True, module_path=stage.get("module_path")), name, root)), 7200)
                 (out / f"{name}.log").write_text(output)
                 verdict = normalize(SimpleNamespace(worker_outcome="normal", output=output, test_outcome=outcome))
                 control = marker(output)
@@ -242,7 +242,7 @@ def main():
                         evidence = marker(result.output)
                         stages.extend(evidence.get("stages", []))
                         diagnostics.extend(line for line in (result.output or "").splitlines() if not line.startswith(MARKER))
-                        if normalize(result) in {"ASSERTION_KILL", "TEST_ERROR"}:
+                        if normalize(result) in {"ASSERTION_KILL", "ERROR_KILL", "TEST_ERROR"}:
                             valid = qualify(evidence["stages"][-1], receipt["before"], local.root)
                             if not valid and stage != 2:
                                 stages, diagnostics = [], []
@@ -274,7 +274,7 @@ def main():
                     verdict = ("FILTERED_GIT" if item.job_id in locals().get("git_skipped", set()) else
                                "FILTERED_MOVE" if item.job_id in locals().get("move_skipped", set()) else
                                "PRAGMA" if result and result.worker_outcome == "skipped" else normalize(result))
-                    if verdict in {"ASSERTION_KILL", "TEST_ERROR"} and item.job_id not in accepted:
+                    if verdict in {"ASSERTION_KILL", "ERROR_KILL", "TEST_ERROR"} and item.job_id not in accepted:
                         verdict = "INVALID"
                     mutation = item.mutations[0]
                     pragma = None
@@ -300,7 +300,7 @@ def main():
         if report["counts"].get("PENDING"):
             report["status"] = "incomplete"
         report["failed"] = report["status"] not in ("complete", "no-applicable-files") or any(
-            row["verdict"] not in {"FILTERED_GIT", "FILTERED_MOVE", "PRAGMA", "ASSERTION_KILL", "SYNTAX_INVALID"} for row in report["mutants"])
+            row["verdict"] not in {"FILTERED_GIT", "FILTERED_MOVE", "PRAGMA", "ASSERTION_KILL", "ERROR_KILL", "SYNTAX_INVALID"} for row in report["mutants"])
         (out / "mutation-report.json").write_text(json.dumps(report, indent=2) + "\n")
         print(f"gen2-mutation: {out / 'mutation-report.json'}: {report['status']} {report['counts']}", flush=True)
     return int(report["failed"] and not args.report_only)

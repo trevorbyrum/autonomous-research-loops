@@ -93,6 +93,136 @@ class AutomaticMutationTest(unittest.TestCase):
             with self.subTest(expected=expected):
                 self.assertEqual(normalize(native), expected)
 
+    def test_error_kill_requires_every_executed_error_to_end_in_production(self):
+        production = dict(kind="error", executed=True, exception_type="builtins.KeyError",
+                          message="missing", innermost_frame=dict(path="gen2/probe.py", line=3))
+        other_production = {**production, "innermost_frame": dict(path="gen2/helper.py", line=2)}
+        test_error = {**production, "innermost_frame": dict(path="gen2/tests/test_probe.py", line=9)}
+        failure = dict(kind="failure", executed=True, exception_type="builtins.AssertionError")
+        cases = [
+            ("production", [production], 0, "ERROR_KILL"),
+            ("non-target production", [other_production], 0, "TEST_ERROR"),
+            ("mixed non-target production", [failure, other_production], 1, "TEST_ERROR"),
+            ("one non-target among target", [production, other_production], 0, "TEST_ERROR"),
+            ("target after non-target", [other_production, production], 0, "TEST_ERROR"),
+            ("test", [test_error], 0, "TEST_ERROR"),
+            ("fixture", [{**test_error, "boundary": None}], 0, "TEST_ERROR"),
+            ("timeout", [{**production, "exception_type": "builtins.TimeoutError"}], 0, "TIMEOUT"),
+            ("subprocess timeout", [{**production, "exception_type": "subprocess.TimeoutExpired"}], 0, "TIMEOUT"),
+            ("production loader", [{**production, "executed": False}], 0, "INVALID"),
+            ("mixed production", [failure, production], 1, "ERROR_KILL"),
+            ("mixed test", [failure, test_error], 1, "TEST_ERROR"),
+            ("two production", [production, production], 0, "ERROR_KILL"),
+            ("one test among production", [production, test_error], 0, "TEST_ERROR"),
+            ("no frame", [{k: v for k, v in production.items() if k != "innermost_frame"}], 0, "TEST_ERROR"),
+            *((path, [{**production, "innermost_frame": dict(path=path, line=3)}], 0, "TEST_ERROR")
+              for path in ("tools/probe.py", "../lib/python/unittest/case.py",
+                           "../site-packages/fixture.py", "gateway/research_gateway/probe.py",
+                           "gen2/../tools/probe.py", "/tmp/gen2/probe.py")),
+        ]
+        for name, events, failures, expected in cases:
+            with self.subTest(name=name):
+                data = dict(exit=1, tests_run=1, errors=sum(e["kind"] == "error" for e in events),
+                            failures=failures, events=events, module_path="gen2/probe.py")
+                native = SimpleNamespace(worker_outcome="normal", test_outcome="killed",
+                                         output=MARKER + json.dumps(data))
+                self.assertEqual(normalize(native), expected)
+                if expected == "ERROR_KILL":
+                    for field, value in (("exit", 0), ("errors", data["errors"] + 1)):
+                        native.output = MARKER + json.dumps({**data, field: value})
+                        self.assertEqual(normalize(native), "INVALID")
+                    native.output = MARKER + json.dumps(data)
+                    native.test_outcome = "survived"
+                    self.assertEqual(normalize(native), "INVALID")
+
+    def test_error_kill_target_identity_is_required_and_paths_are_resolved(self):
+        event = dict(kind="error", executed=True, exception_type="builtins.KeyError",
+                     innermost_frame=dict(path="gen2/probe.py", line=3))
+        cases = [(None, "gen2/probe.py", "TEST_ERROR"),
+                 ("gen2/helper.py", "gen2/probe.py", "TEST_ERROR"),
+                 ("gen2/./probe.py", "gen2/probe.py", "ERROR_KILL"),
+                 ("gen2/probe.py", "gen2/../gen2/probe.py", "ERROR_KILL"),
+                 (str(ROOT / "gen2/probe.py"), "gen2/probe.py", "ERROR_KILL"),
+                 ("gen2/probe.py", str(ROOT / "gen2/probe.py"), "ERROR_KILL"),
+                 ("gen2/tests/test_probe.py", "gen2/tests/test_probe.py", "TEST_ERROR"),
+                 ("tools/probe.py", "tools/probe.py", "TEST_ERROR")]
+        for target, path, expected in cases:
+            with self.subTest(target=target, path=path):
+                data = dict(exit=1, tests_run=1, errors=1, failures=0, module_path=target,
+                            events=[{**event, "innermost_frame": dict(path=path, line=3)}])
+                native = SimpleNamespace(worker_outcome="normal", test_outcome="killed", output=MARKER + json.dumps(data))
+                self.assertEqual(normalize(native), expected)
+
+    def test_recorder_keeps_innermost_frame_and_missing_traceback(self):
+        recorder = EvidenceResult(io.StringIO(), True, 0)
+        test = unittest.FunctionTestCase(lambda: None)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(runner, "ROOT", Path(tmp)):
+            for path in ("gen2/probe.py", "gen2/tests/test_probe.py", "tools/probe.py"):
+                with self.subTest(path=path):
+                    source = Path(tmp) / path
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    source.write_text("def fail():\n raise KeyError('missing')\n")
+                    spec = importlib.util.spec_from_file_location("frame_fixture", source)
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    try:
+                        module.fail()
+                    except KeyError:
+                        recorder.event("error", test, sys.exc_info())
+                    event = recorder.events[-1]
+                    self.assertEqual(event.get("innermost_frame"), dict(path=path, line=2))
+                    self.assertEqual(event["exception_type"], "builtins.KeyError")
+                    self.assertEqual(event["message"], "'missing'")
+        recorder.event("error", test, (KeyError, KeyError("missing"), None))
+        self.assertNotIn("innermost_frame", recorder.events[-1])
+
+    def test_import_time_production_error_remains_loader_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "gen2").mkdir()
+            (root / "gen2/probe.py").write_text("value: str ^ None\n")
+            (root / "test_import.py").write_text("import runpy\nrunpy.run_path(" + repr(str(root / "gen2/probe.py")) + ")\n")
+            with mock.patch.object(runner, "ROOT", root):
+                suite = unittest.TestLoader().discover(tmp, pattern="test_import.py")
+                result = unittest.TextTestRunner(stream=io.StringIO(), resultclass=EvidenceResult).run(suite)
+            event, = result.events
+            # unittest wraps the original import traceback inside ImportError's message.
+            self.assertEqual(event["exception_type"], "builtins.ImportError")
+            self.assertIn("TypeError", event["message"])
+            self.assertIn(str(root / "gen2/probe.py"), event["message"])
+            self.assertEqual(event.get("innermost_frame", {}).get("path"), os.path.relpath(unittest.loader.__file__, root))
+            self.assertGreater(event.get("innermost_frame", {}).get("line", 0), 0)
+            self.assertFalse(event["executed"])
+            self.assertIn("_FailedTest", event["test"])
+            native = SimpleNamespace(worker_outcome="normal", test_outcome="killed", output=MARKER + json.dumps(
+                dict(exit=1, tests_run=1, errors=1, failures=0, events=result.events)))
+            self.assertEqual(normalize(native), "INVALID")
+
+    def test_stage2_error_kill_does_not_hide_other_shard_errors(self):
+        production = dict(kind="error", executed=True, exception_type="builtins.KeyError",
+                          innermost_frame=dict(path="gen2/probe.py", line=2))
+        killed = dict(exit=1, tests_run=1, errors=1, failures=0, events=[production], module_path="gen2/probe.py")
+        assertion = dict(exit=1, tests_run=1, errors=0, failures=1, events=[])
+        for other, expected in ((assertion, "ERROR_KILL"),
+                ({**killed, "events": [{**production, "innermost_frame": dict(path="gen2/tests/test_probe.py", line=2)}]}, "TEST_ERROR"),
+                ({**killed, "events": [{**production, "innermost_frame": dict(path="gen2/helper.py", line=2)}]}, "TEST_ERROR"),
+                ({**killed, "events": [{**production, "exception_type": "builtins.TimeoutError"}]}, "TIMEOUT")):
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as tmp:
+                paths = [Path(tmp) / str(i) for i in range(2)]
+                for path, data in zip(paths, (killed, other)):
+                    path.mkdir()
+                    (path / "console.log").write_text(MARKER + json.dumps(data))
+                output = io.StringIO()
+                with mock.patch.object(runner, "parallel", return_value=[(1, path) for path in paths]), mock.patch("sys.stdout", output):
+                    runner.run(dict(targets=[], tests=None, stage=2, workers=2))
+                native = SimpleNamespace(worker_outcome="normal", test_outcome="killed", output=output.getvalue())
+                self.assertEqual(normalize(native), expected)
+                self.assertEqual(len(runner.marker(output.getvalue())["shards"]), 2)
+                with mock.patch.object(runner, "parallel", return_value=[(1, path) for path in reversed(paths)]), mock.patch("sys.stdout", output := io.StringIO()):
+                    runner.run(dict(targets=[], tests=None, stage=2, workers=2))
+                native.output = output.getvalue()
+                self.assertEqual(normalize(native), expected)
+
     def test_subtests_stop_on_first_failure_and_preserve_typed_errors(self):
         visited = []
         class Case(unittest.TestCase):
@@ -180,9 +310,13 @@ class AutomaticMutationTest(unittest.TestCase):
                         for row in report["mutants"] if row["verdict"] == "ASSERTION_KILL"]
             self.assertTrue(selected)
             self.assertTrue(all(len(json.dumps(names)) > 131072 and len(names) == 3000 for names in selected))
-            test.write_text(original.replace("self.assertEqual(answer(), 1)", "\n  if answer() != 1: raise ValueError('mutant error')"))
+            test.write_text(original.replace("self.assertEqual(answer(), 1)", "\n  if answer() != 1: raise ValueError('test-code mutant error')"))
             result, report = campaign(expected=1)
             self.assertIn("TEST_ERROR", report["counts"])
+            for row in report["mutants"]:
+                if row["verdict"] == "TEST_ERROR":
+                    event, = runner.marker(row["native"]["output"])["events"]
+                    self.assertEqual(event.get("innermost_frame", {}).get("path"), "gen2/tests/test_probe.py")
             self.assertTrue(report["failed"])
             self.assertFalse(report["baseline_reused"])
             test.write_text(original.replace("answer(), 1", "answer(), 2"))

@@ -1,8 +1,12 @@
 """Raw DDL second-layer guards; literal documents are independent of Router."""
 import json
+import re
 import sqlite3
 
 from gen2.tests.store_fixtures import TOPIC, T, StoreTestCase, h
+
+# SQLite prints the one match_result CHECK across lines; this is its contiguous first clause.
+MATCH_RESULT = "match_result IS NULL OR ("
 
 
 class DDLTest(StoreTestCase):
@@ -37,14 +41,23 @@ class DDLTest(StoreTestCase):
                 self.raw(**changes)
 
     def test_result_summary(self):
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("quote_checks")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(MATCH_RESULT)):
             self.raw("mismatch", exact_match="matched")
+        self.assertEqual(self.snapshot("quote_checks"), before)
 
     def test_missing_status(self):
         document = {"expected_artifact_hash": self.source_hash, "artifact_hash": self.source_hash, "span_start": 0, "span_end": 5,
             "normalization": ["quote-nfc-safe", "2+ucd15.0.0"]}
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.x("SAVEPOINT counterpart")  # admitted: this exact document plus its status
+        self.raw(match_result=json.dumps({**document, "status": "match"}))
+        self.assertEqual(self.rows("SELECT exact_match FROM quote_checks WHERE check_id = 'qck_governed001'"), [("matched",)])
+        self.x("ROLLBACK TO counterpart")
+        self.x("RELEASE counterpart")
+        before = self.snapshot("quote_checks")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(MATCH_RESULT)):
             self.raw(match_result=json.dumps(document))
+        self.assertEqual(self.snapshot("quote_checks"), before)
 
     def test_quarantine(self):
         self.raw("mismatch")
@@ -53,7 +66,8 @@ class DDLTest(StoreTestCase):
 
     def test_immutable(self):
         self.raw()
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x("UPDATE quote_checks SET match_result = NULL WHERE check_id = 'qck_governed001'")
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x("DELETE FROM quote_checks WHERE check_id = 'qck_governed001'")
+        before = self.snapshot("quote_checks")
+        self.rejects("quote checks are immutable; re-capture writes a new check", "UPDATE quote_checks SET match_result = NULL WHERE check_id = 'qck_governed001'")
+        self.assertEqual(self.snapshot("quote_checks"), before)
+        self.rejects("quote checks are never deleted; a quarantine stays on record (C-11)", "DELETE FROM quote_checks WHERE check_id = 'qck_governed001'")
+        self.assertEqual(self.snapshot("quote_checks"), before)
