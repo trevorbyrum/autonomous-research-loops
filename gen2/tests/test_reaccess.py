@@ -90,17 +90,18 @@ class ReaccessTest(unittest.TestCase):
                 self.refused("acquisition topic")
                 self.args[row]["topic_id"] = "fleet-a:t1"
 
-    def test_work(self):
-        self.args["link"]["work_id"] = "wrk_other0001"
-        self.refused("acquisition work")
-
-    def test_work_link(self):
-        self.args["link"]["event_id"] = "rev_other001"
-        self.refused("acquisition work link")
-
-    def test_observation(self):
-        self.args["event"]["observation_id"] = "obs_other001"
-        self.refused("acquisition observation")
+    def test_lineage_and_media_fields(self):
+        for section, field, value, reason in (
+            ("link", "work_id", "wrk_other0001", "acquisition work"),
+            ("link", "event_id", "rev_other001", "acquisition work link"),
+            ("event", "observation_id", "obs_other001", "acquisition observation"),
+            ("artifact", "media_type", "text/plain", "canonical gateway media type"),
+        ):
+            with self.subTest(field=field):
+                kept = self.args[section][field]
+                self.args[section][field] = value
+                self.refused(reason)
+                self.args[section][field] = kept
 
     def test_source_identity(self):
         self.args["source"]["content_hash"] = "sha256:" + "0" * 64
@@ -113,10 +114,6 @@ class ReaccessTest(unittest.TestCase):
     def test_bytes_size(self):
         self.args["artifact"]["size_bytes"] += 1
         self.refused("acquisition bytes size")
-
-    def test_media(self):
-        self.args["artifact"]["media_type"] = "text/plain"
-        self.refused("canonical gateway media type")
 
     def test_unobserved(self):
         self.args["observation"]["coverage_state"] = "unknown"

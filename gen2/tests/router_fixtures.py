@@ -653,6 +653,13 @@ class Workflow(RouterTestCase):
         self.assertIn(detail, out.get("detail", ""))
         self.assert_audited_state(before, 1)
 
+    def reject(self, records, reason="payload_invalid", **kwargs):
+        """The subclass's send() of `records` is rejected for `reason`: one audit row, nothing else written."""
+        before = self.state()
+        out = self.send(records, **kwargs)
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", reason), out)
+        self.assert_audited_state(before, 1)
+
 
 class ContractWorld(RouterTestCase):
     def setUp(self) -> None:
