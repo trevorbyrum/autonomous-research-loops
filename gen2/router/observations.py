@@ -11,6 +11,7 @@ from typing import Mapping, Protocol
 from gen2.core import canonical
 from gen2.router import boundary
 from gen2.router.boundary import Refusal
+from gen2.router.evidence_writer import Rows
 
 
 class Schemas(Protocol):
@@ -20,8 +21,11 @@ class Schemas(Protocol):
 class ObservationCore(Protocol):
     _schemas: Schemas
     def _guarded(self, reason, body): ...
-    def _observation_in_transaction(self, req: dict, now: str) -> dict: ...
-    def _audit(self, kind: str, at: str, detail: dict, *, invocation_id=None) -> str: ...
+    _store: Rows
+    def _one(self, table: str, where: Mapping[str, object]) -> "dict | None": ...
+    def _capability(self, capability_id: str, invocation_id: str) -> dict: ...
+    def _require_current_lease(self, inv: dict, now: str, lease_ref: "Mapping | None" = None) -> dict: ...
+    def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None, invocation_id=None) -> str: ...
 
 
 class Observations:
@@ -78,10 +82,37 @@ class Observations:
             return {"status": "refused", "reason": refusal.reason, "detail": refusal.detail[:500]}
 
     def _record(self, req: dict, now: str, refusal_class: str | None) -> dict:
-        result = self._core._observation_in_transaction(req, now)
+        result = self._in_transaction(req, now)
         if result["status"] == "recorded" and refusal_class is not None:
             self._core._audit("observation_request_refused", now, {
                 "observation_id": req["observation"]["observation_id"],
                 "request_bytes_hash": req["observation"]["request_bytes_hash"],
                 "refusal_class": refusal_class}, invocation_id=req["invocation_id"])
         return result
+
+    def _in_transaction(self, req: dict, now: str) -> dict:
+        obs, events = req["observation"], req["retrieval_events"]
+        existing = self._core._one("search_observations", {"observation_id": obs["observation_id"]})
+        if existing is not None:
+            stored_events = self._core._store.select("retrieval_events", {"observation_id": obs["observation_id"]})
+            same = (existing["invocation_id"] == req["invocation_id"] and all(existing[k] == v for k, v in obs.items())
+                    and sorted((e["event_id"], e["provider_record_id"], e["rank"], e["captured_at"]) for e in stored_events)
+                    == sorted((e["event_id"], e["provider_record_id"], e["rank"], e["captured_at"]) for e in events))
+            if not same:
+                raise Refusal("observation_id_conflict", f"{obs['observation_id']} was recorded with different content")
+            return {"status": "replayed", "observation_id": obs["observation_id"], "retrieval_events": len(stored_events)}
+        inv = self._core._capability(req["capability_id"], req["invocation_id"])
+        if inv["state"] != "running":
+            raise Refusal("invocation_state_invalid", f"observations are recorded while running, not {inv['state']}")
+        if inv["cancel_requested_at"] is not None:
+            raise Refusal("invocation_state_invalid", f"cancellation was requested at {inv['cancel_requested_at']}")
+        self._core._require_current_lease(inv, now)
+        topic = self._core._one("queue_entries", {"topic_id": inv["topic_id"]})
+        if topic["paused_at"] is not None:
+            raise Refusal("topic_paused", f"paused at {topic['paused_at']}")
+        self._core._store.insert("search_observations", {**obs, "invocation_id": inv["invocation_id"], "topic_id": inv["topic_id"]})
+        for event in events:
+            self._core._store.insert("retrieval_events", {**event, "observation_id": obs["observation_id"], "topic_id": inv["topic_id"]})
+        self._core._audit("observation", now, {"observation_id": obs["observation_id"], "retrieval_events": len(events)},
+                    topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
+        return {"status": "recorded", "observation_id": obs["observation_id"], "retrieval_events": len(events)}

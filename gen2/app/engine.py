@@ -47,9 +47,9 @@ from pathlib import Path
 from typing import Callable
 
 from gen2.app.station import Station, StationRefused, open_station
+from gen2.core.instants import utc_now
 from gen2.operator.auth import Credentials, CredentialsRefused
 from gen2.operator.service import COMMANDS, OperatorService, label
-from gen2.router.service import utc_now
 
 ANSWER_TIMEOUT_S = 60.0
 DRAIN_MAX = 64 * 1024  # the most of an unread body the listener discards after its answer

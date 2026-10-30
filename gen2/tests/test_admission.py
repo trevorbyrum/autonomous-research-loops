@@ -153,6 +153,16 @@ class AtTheRouter(Cases, RouterTestCase):
             for cursor in (0, 1, 2 ** 53 - 1):
                 self.verdicts(f"{outcome}: integer {cursor}", page(outcome=outcome, cursor=cursor), True)
 
+    def test_a_retrieval_event_with_an_extra_member_is_refused_whole(self) -> None:
+        """The command schema closes a retrieval event's members (router/commands.py): an extra one is refused at the router's schema, before any write, and the same event without it is the valid control."""
+        full, events = self.parts(page())
+        request = {"capability_id": self.grant["capability_id"], "invocation_id": INV, "observation": full, "retrieval_events": events}
+        before = self.state(exclude=())
+        out = self.router.record_observation({**request, "retrieval_events": [{**events[0], "unexpected": "x"}]})
+        self.assertEqual((out["status"], out["reason"]), ("refused", "request_invalid"), out)
+        self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.router.record_observation(request)["status"], "recorded")
+
     def verdicts(self, label: str, doc: dict, admitted: bool) -> None:
         full, events = self.parts(doc)
         out = self.router.record_observation({"capability_id": self.grant["capability_id"], "invocation_id": INV, "observation": full, "retrieval_events": events})

@@ -35,6 +35,9 @@ class EvidenceCore(Protocol):
     def _work_of_topic(self, work_id: str, topic_id: str) -> bool: ...
     def _write_verification_holds(self, payload: dict, op_id: str, now: str) -> dict: ...  # delegate to Verification
     def _require_detailed_support(self, claim: dict) -> None: ...  # delegate to DetailedChecks
+    _extensions: object
+    _schemas: object
+    # validate_decisions also hands the core itself to boundary.check_decision_receipt as its qualification source (is_qualified); not a member read
 
 
 class EvidenceWriter:
@@ -166,6 +169,68 @@ class EvidenceWriter:
             if not self._core._work_of_topic(record["work_id"], inv["topic_id"]):
                 raise Refusal("cross_topic", "source artifact work was not retrieved by this topic")
             bind(record["artifact_ref"], "source artifact")
+
+    def validate_proposals(self, payload: dict, inv: dict) -> None:
+        """Scoping reports and source proposals are the committing invocation's own (C-12, C-13)."""
+        for report in payload["scoping_reports"]:  # task 2a: flow S2's hand-off, by the work whose admission it names (C-12)
+            if report["topic_id"] != inv["topic_id"]:
+                raise Refusal("cross_topic", f"{report['report_id']} is about topic {report['topic_id']}")
+            if canonical.content_hash(report) != report["content_hash"]:
+                raise Refusal("payload_invalid", f"{report['report_id']} v{report['version']} does not hash to its content hash (C-13)")
+            if report["brief"] != {"brief_id": inv["brief_ref"], "version": inv["brief_version"], "content_hash": inv["brief_hash"]}:
+                raise Refusal("payload_invalid", f"{report['report_id']} names brief {report['brief']['brief_id']} v{report['brief']['version']}, not its work's admission pin (C-12)")
+            if not {c["facet_id"] for c in report["gap_map"]} <= {f["facet_id"] for f in report["candidate_facets"]}:
+                raise Refusal("payload_invalid", f"{report['report_id']}: its gap map names a facet it does not propose")
+        for proposal in payload["source_proposals"]:  # task 2a: proposed by the committing invocation, never a document's say-so
+            if proposal["topic_id"] != inv["topic_id"]:
+                raise Refusal("cross_topic", f"{proposal['proposal_id']} is about topic {proposal['topic_id']}")
+            if proposal["proposed_by"] != {"invocation_id": inv["invocation_id"], "invocation_kind": inv["kind"]}:
+                raise Refusal("capability_invocation_mismatch", f"{proposal['proposal_id']} names proposer {proposal['proposed_by']['invocation_id']}: a proposal is its committer's")
+
+    def validate_decisions(self, payload: dict, inv: dict, env: dict, bind: Callable[[dict, str], None], bundle: dict) -> "dict | None":
+        """Decision receipts against their specs and the admitted question registry, then the screening assessments against the receipts; returns the eligibility protocol, if any."""
+        receipts = {}
+        specs = {}
+        hold_ids = {hold["hold_id"] for hold in payload["holds"]}
+        questions = {(q["question_id"], q["version"], q["content_hash"]) for q in bundle["questions"]}
+        for doc in payload["decision_receipts"]:
+            spec = self._core._one("decision_specs", {"spec_hash": doc["spec"]["spec_hash"]})
+            specs[doc["decision_receipt_id"]] = None if spec is None else spec["document"]
+            boundary.check_decision_receipt(doc, specs[doc["decision_receipt_id"]], invocation_id=inv["invocation_id"], topic_id=inv["topic_id"],
+                                            operation_id=env["operation_id"], qualifications=self._core, questions=questions)
+            response = doc["provider_response"]
+            if response["raw_response_artifact"] is not None:  # D-1: response bytes are retained, and the reference is to them
+                if response["raw_response_digest"] != response["raw_response_artifact"]["content_hash"]:
+                    raise Refusal("payload_invalid", f"{doc['decision_receipt_id']}: its raw response digest is not its raw response artifact's hash")
+                bind(response["raw_response_artifact"], f"{doc['decision_receipt_id']}: its raw response")
+            hold = doc["outcome"]["hold_id"]
+            if hold is not None and hold not in hold_ids and self._core._one("holds", {"hold_id": hold}) is None:
+                raise Refusal("payload_invalid", f"{doc['decision_receipt_id']}: its hold {hold} is neither created here nor recorded")
+            receipts[doc["decision_receipt_id"]] = doc
+        protocol = None
+        if payload["screening_assessments"]:
+            contract = self._core._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
+            protocol = contract["document"]["eligibility_protocol"]
+            admitted = {"topic_id": inv["topic_id"], "contract": {"revision": inv["contract_revision"], "content_hash": contract["content_hash"]}}
+            for assessment in payload["screening_assessments"]:
+                rid = assessment["decision_receipt_id"]
+                boundary.check_screening(assessment, protocol, receipts.get(rid), specs.get(rid), admitted)
+        return protocol
+
+    def validate_exports(self, payload: dict, inv: dict, staged: Mapping[str, bytes]) -> list:
+        manifests = []
+        for manifest in payload["exports"]:
+            bundle_hash = manifest["bundle"]["content_hash"]
+            if bundle_hash not in staged:
+                raise Refusal("payload_missing", f"{manifest['manifest_id']}: its bundle {bundle_hash} is not staged with this commit")
+            manifests.append((manifest, boundary.check_manifest(manifest, inv["topic_id"], self._core._extensions, staged[bundle_hash], self._core._schemas)))
+        return manifests
+
+    def validate_holds(self, payload: dict) -> None:
+        for hold in payload["holds"]:
+            fact = hold["capability_fact_id"]
+            if fact is not None and self._core._one("capability_facts", {"fact_id": fact}) is None:
+                raise Refusal("payload_invalid", f"{hold['hold_id']}: capability fact {fact} is not recorded")
 
     def _write_source_artifacts(self, payload: dict, inv: dict, op_id: str, now: str) -> dict:
         recorded = []

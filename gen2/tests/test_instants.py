@@ -8,9 +8,39 @@ from the Unix epoch.
 """
 from __future__ import annotations
 
+import inspect
 import unittest
+from datetime import datetime, timezone
+from unittest import mock
 
-from gen2.core.instants import is_utc_instant, utc_instant_ns
+from gen2.app import engine
+from gen2.core.instants import is_utc_instant, utc_instant_ns, utc_now
+from gen2.gateway_client.client import GatewayClient
+from gen2.router.service import Router
+from gen2.store import compat
+
+
+class UtcNowFormatTest(unittest.TestCase):
+    """P4 moved four clocks onto utc_now; each consumer's literal output format is pinned (Z suffix, six-digit fraction except the SQLite gate's seconds)."""
+    def test_each_consumers_format_is_the_one_it_had(self):
+        class Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 10, 27, 1, 2, 3, 40506, tzinfo=tz)
+
+        with mock.patch("gen2.core.instants.datetime", Frozen):
+            self.assertEqual(utc_now(), "2026-10-27T01:02:03.040506Z")
+            for owner in (Router, GatewayClient):
+                clock = inspect.signature(owner.__init__).parameters["clock"]
+                self.assertIs(clock.kind, inspect.Parameter.KEYWORD_ONLY)
+                self.assertEqual(clock.default(), "2026-10-27T01:02:03.040506Z")
+            self.assertEqual(engine.utc_now(), "2026-10-27T01:02:03.040506Z")
+            self.assertEqual(compat.capability_fact("ok", "", {})["since"], "2026-10-27T01:02:03Z")
+
+    def test_a_timespec_outside_the_two_is_refused(self):
+        for timespec in ("milliseconds", "", "Seconds"):
+            with self.subTest(timespec=timespec), self.assertRaises(KeyError):
+                utc_now(timespec)
 
 
 class UtcInstantTest(unittest.TestCase):
