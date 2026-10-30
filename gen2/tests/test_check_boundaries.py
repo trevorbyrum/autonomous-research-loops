@@ -70,15 +70,17 @@ def render_config(modules: dict[str, dict], unmapped: dict[str, str] | None = No
 
 class BoundaryCheckerTest(unittest.TestCase):
     def setUp(self) -> None:
+        self.fresh()
+
+    def fresh(self) -> None:
+        """A new throwaway repository; a folded test calls it once per row."""
         self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name)
         self.modules = json.loads(json.dumps(BASE_MODULES))
         self.headings = list(DOC_HEADINGS)
         self.unmapped: dict[str, str] | None = None
         self.store_rule: list[str] | None = None
-
-    def tearDown(self) -> None:
-        self._tmp.cleanup()
 
     def write(self, rel: str, text: str) -> None:
         path = self.root / rel
@@ -112,28 +114,36 @@ class BoundaryCheckerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("no code yet", result.stdout)
 
+    # -- one file, one violation: each row is written into its own tree ----------
+    def test_each_single_violation_is_reported(self) -> None:
+        for path, source, report in (
+            # gen2 dependency rules
+            ("gen2/router/commit.py", "from gen2.supervisor import run\n", "gen2/router/commit.py:1: router imports supervisor"),
+            ("gen2/router/commit.py", "from gen2 import supervisor\n", "router imports supervisor"),
+            ("gen2/router/commit.py", "from ..supervisor import run\n", "router imports supervisor (gen2.supervisor.run)"),
+            ("gen2/router/commit.py", "from ... import anything\n", "relative import escapes the package root"),
+            ("gen2/store/db.py", "import gen2.router.commit\n", "store imports router"),  # router may import store; not the reverse
+            ("gen2/misc/thing.py", "", "gen2/misc/thing.py: not inside any declared module"),
+            ("gen2/core/types.py", "import gen2.misc\n", "imports 'gen2.misc', which is not inside any declared module"),
+            # capability-bearing stdlib and third-party
+            ("gen2/router/commit.py", "import sqlite3\n", "router uses restricted stdlib 'sqlite3'"),
+            ("gen2/core/types.py", "import os\nos.system('true')\n", "gen2/core/types.py:2: core uses restricted stdlib 'os.system'"),
+            ("gen2/core/types.py", "from os import execvp\n", "core uses restricted stdlib 'os.exec*' (via os.execvp)"),
+            ("gen2/core/types.py", "import urllib\nurllib.request.urlopen('http://x.invalid')\n", "core uses restricted stdlib 'urllib.request'"),
+            ("gen2/core/types.py", "import requests\n", "core imports third-party package 'requests'"),
+            # dynamic code
+            ("gen2/core/types.py", "import importlib\nm = importlib.import_module('gen2.supervisor')\n", "core uses restricted stdlib 'importlib.import_module'"),
+            ("gen2/router/commit.py", "from gen2.store import *\n", "star import from 'gen2.store' hides its dependencies"),
+            # files the checker cannot analyse fail rather than pass
+            ("gen2/core/bad.py", "def (:\n", "gen2/core/bad.py: cannot be parsed"),
+            ("gen2/core/run.sh", "sqlite3 state.db 'delete from leases'\n", "gen2/core/run.sh: non-Python code"),
+        ):
+            with self.subTest(report=report):
+                self.fresh()
+                self.write(path, source)
+                self.assertViolation(self.run_checker(), report)
+
     # -- gen2 dependency rules --------------------------------------------
-    def test_undeclared_dependency_absolute(self) -> None:
-        self.write("gen2/router/commit.py", "from gen2.supervisor import run\n")
-        self.assertViolation(self.run_checker(), "gen2/router/commit.py:1: router imports supervisor")
-
-    def test_undeclared_dependency_via_namespace_root_form(self) -> None:
-        self.write("gen2/router/commit.py", "from gen2 import supervisor\n")
-        self.assertViolation(self.run_checker(), "router imports supervisor")
-
-    def test_undeclared_dependency_via_relative_import(self) -> None:
-        self.write("gen2/router/commit.py", "from ..supervisor import run\n")
-        self.assertViolation(self.run_checker(), "router imports supervisor (gen2.supervisor.run)")
-
-    def test_relative_import_escaping_package_root(self) -> None:
-        self.write("gen2/router/commit.py", "from ... import anything\n")
-        self.assertViolation(self.run_checker(), "relative import escapes the package root")
-
-    def test_reverse_direction_is_not_implied(self) -> None:
-        # router may import store; store may not import router.
-        self.write("gen2/store/db.py", "import gen2.router.commit\n")
-        self.assertViolation(self.run_checker(), "store imports router")
-
     def test_imports_hidden_in_functions_and_type_checking_blocks_count(self) -> None:
         self.write(
             "gen2/router/commit.py",
@@ -149,14 +159,6 @@ class BoundaryCheckerTest(unittest.TestCase):
         self.assertViolation(result, "gen2/router/commit.py:3: router imports supervisor")
         self.assertIn("gen2/router/commit.py:5: router imports supervisor", result.stderr)
 
-    def test_file_outside_every_declared_module(self) -> None:
-        self.write("gen2/misc/thing.py", "")
-        self.assertViolation(self.run_checker(), "gen2/misc/thing.py: not inside any declared module")
-
-    def test_import_of_undeclared_gen2_package(self) -> None:
-        self.write("gen2/core/types.py", "import gen2.misc\n")
-        self.assertViolation(self.run_checker(), "imports 'gen2.misc', which is not inside any declared module")
-
     # -- gen-1 is off limits everywhere ------------------------------------
     def test_gen1_engine_import_forbidden_even_for_tests(self) -> None:
         self.write("gen2/tests/test_x.py", "import research_loops.queue\n")
@@ -167,36 +169,11 @@ class BoundaryCheckerTest(unittest.TestCase):
         self.assertViolation(self.run_checker(), "core imports forbidden 'research_gateway.app.thing'")
 
     # -- capability-bearing stdlib and third-party --------------------------
-    def test_restricted_stdlib_not_granted(self) -> None:
-        self.write("gen2/router/commit.py", "import sqlite3\n")
-        self.assertViolation(self.run_checker(), "router uses restricted stdlib 'sqlite3'")
-
     def test_restricted_entry_covers_members_and_submodules(self) -> None:
         self.write("gen2/router/commit.py", "from subprocess import run\nimport sqlite3.dbapi2\n")
         result = self.run_checker()
         self.assertViolation(result, "gen2/router/commit.py:1: router uses restricted stdlib 'subprocess' (via subprocess.run)")
         self.assertIn("gen2/router/commit.py:2: router uses restricted stdlib 'sqlite3' (via sqlite3.dbapi2)", result.stderr)
-
-    def test_restricted_attribute_on_unrestricted_import(self) -> None:
-        self.write("gen2/core/types.py", "import os\nos.system('true')\n")
-        self.assertViolation(self.run_checker(), "gen2/core/types.py:2: core uses restricted stdlib 'os.system'")
-
-    def test_restricted_prefix_entry(self) -> None:
-        self.write("gen2/core/types.py", "from os import execvp\n")
-        self.assertViolation(self.run_checker(), "core uses restricted stdlib 'os.exec*' (via os.execvp)")
-
-    def test_restricted_submodule_via_attribute_chain(self) -> None:
-        self.write("gen2/core/types.py", "import urllib\nurllib.request.urlopen('http://x.invalid')\n")
-        self.assertViolation(self.run_checker(), "core uses restricted stdlib 'urllib.request'")
-
-    def test_third_party_import_undeclared(self) -> None:
-        self.write("gen2/core/types.py", "import requests\n")
-        self.assertViolation(self.run_checker(), "core imports third-party package 'requests'")
-
-    # -- dynamic code ------------------------------------------------------
-    def test_dynamic_import_via_importlib(self) -> None:
-        self.write("gen2/core/types.py", "import importlib\nm = importlib.import_module('gen2.supervisor')\n")
-        self.assertViolation(self.run_checker(), "core uses restricted stdlib 'importlib.import_module'")
 
     def test_forbidden_builtin_calls(self) -> None:
         """B20 rewrite (A8), extended for RA7: every ordinary static spelling
@@ -399,10 +376,6 @@ class BoundaryCheckerTest(unittest.TestCase):
                 self.assertIn(fragment, result.stderr)
         self.assertNotIn("probe.py:5:", result.stderr)
 
-    def test_star_import_rejected(self) -> None:
-        self.write("gen2/router/commit.py", "from gen2.store import *\n")
-        self.assertViolation(self.run_checker(), "star import from 'gen2.store' hides its dependencies")
-
     # -- REPLACE in store write paths (INVARIANTS C-11) ---------------------
     def test_replace_sql_in_a_store_write_path_fails(self) -> None:
         self.write("gen2/store/db.py", 'import sqlite3\nQ = "insert or replace into operation_receipts values (?)"\nR = f"REPLACE INTO {Q}"\n')
@@ -415,15 +388,6 @@ class BoundaryCheckerTest(unittest.TestCase):
         self.write("gen2/store/db.py", '"""Never uses INSERT OR REPLACE."""\ndef f():\n    """Nor REPLACE INTO."""\n    return "INSERT INTO t VALUES (1)"\n')
         result = self.run_checker()
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-
-    # -- files the checker cannot analyse fail rather than pass ------------
-    def test_unparseable_file_fails_loudly(self) -> None:
-        self.write("gen2/core/bad.py", "def (:\n")
-        self.assertViolation(self.run_checker(), "gen2/core/bad.py: cannot be parsed")
-
-    def test_shell_code_under_package_fails(self) -> None:
-        self.write("gen2/core/run.sh", "sqlite3 state.db 'delete from leases'\n")
-        self.assertViolation(self.run_checker(), "gen2/core/run.sh: non-Python code")
 
     # -- configuration and BOUNDARIES.md drift (exit 2) ---------------------
     def test_config_names_undeclared_dependency(self) -> None:
