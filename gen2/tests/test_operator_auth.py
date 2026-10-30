@@ -24,6 +24,7 @@ from urllib.parse import quote
 from gen2.operator.auth import Credentials, CredentialsRefused, Principal
 from gen2.tests import operator_fixtures as of
 from gen2.tests import router_fixtures as rf
+from gen2.tests.test_operator_recovery import RecoveryWorld
 from gen2.tests.router_fixtures import TOPIC
 
 OPERATOR_COMMANDS = ("apply_operator_decision", "request_cancel", "requeue", "close_brief", "activate_config_bundle", "version_brief",
@@ -423,6 +424,30 @@ class WireClient:
 
 
 class WireReplyTest(WireClient, of.OperatorTestCase):
+    def test_incident_views_omit_diagnostics_but_keep_the_refusal_code(self) -> None:
+        incident = {"invocation_id": "inv_ended1234", "topic_id": TOPIC, "blocking": True,
+            "kind": "lifecycle_write_refused", "since": "2026-09-27T10:00:00Z", "owner": "supervisor:station-1",
+            "deadline_at": "2026-09-28T10:00:00Z", "budget": "refusal", "write": "reconcile", "final": True,
+            "error": "caller diagnostic path", "notes": "caller diagnostic notes",
+            "last_refusal": {"reason": "reconciliation_conflict", "detail": "caller diagnostic detail"}}
+        with mock.patch.object(self.engine.service, "_incidents", return_value=[incident]):
+            raw = self.wire("GET", "/v1/status")
+        self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 200 OK")
+        self.assertNotIn(b"caller diagnostic", raw)
+        self.assertIn(b'"last_refusal": {"reason": "reconciliation_conflict"}', raw)
+        reply = json.loads(raw.partition(b"\r\n\r\n")[2])
+        listed = reply["incidents"][0]
+        self.assertEqual(listed["last_refusal"], {"reason": "reconciliation_conflict"})
+        waiting = next(w["incident"] for t in reply["topics"] if t["topic_id"] == TOPIC
+                       for w in t["waiting"] if w["reason"] == "incident")
+        self.assertEqual(waiting, {k: v for k, v in listed.items() if k != "topic_id"})
+        self.assertEqual(incident["last_refusal"]["detail"], "caller diagnostic detail")
+        with mock.patch.object(self.engine.service._backend, "recover_incident", return_value={"status": "resumed", "incident": incident}):
+            raw = self.wire("POST", "/v1/commands/recover_incident", {})
+        self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 200 OK")
+        self.assertNotIn(b"caller diagnostic", raw)
+        self.assertIn(b'"last_refusal": {"reason": "reconciliation_conflict"}', raw)
+
     def test_router_refusal_does_not_repeat_unknown_members(self) -> None:
         raw = self.wire("POST", "/v1/commands/request_cancel", {"\nABCDEFGHIJKLMNO": 1})
         self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 200 OK")
@@ -565,6 +590,46 @@ def raw_exchange(engine, request: bytes) -> bytes:
         except (TimeoutError, ConnectionResetError):
             pass
     return answer
+
+
+class RecoveryStatusWireTest(RecoveryWorld, of.OperatorTestCase):
+    KIND = "research_pass"
+    wire = WireClient.wire
+
+    def test_interrupted_recovery_status_omits_the_callers_reason(self) -> None:
+        self.engine.service._credentials = Credentials({"alice": of.OPERATOR_TOKEN, "bob": "nABCDEFGHIJKLMNO"})
+        self.stall_on_the_collected_end()
+        with mock.patch.object(self.engine.station.supervisor, "_advance", side_effect=RuntimeError("cut before the advance")):
+            raw = self.wire("POST", "/v1/commands/recover_incident", self.request(reason="%5Cu006eABCDEFGHIJKLMNO"))
+        self.assertEqual(raw.partition(b"\r\n\r\n")[2], b'{"reason": "internal", "status": "error"}')
+        journal_path = self.root / "jobs" / "job-inv_subject001" / "journal.json"
+        journal_bytes, before = journal_path.read_bytes(), self.state(exclude=())
+        recovery = json.loads(journal_bytes)["recovering"]
+        self.assertEqual(recovery["reason"], "%5Cu006eABCDEFGHIJKLMNO")
+        expected = {"status": "unfinished", "requested_by": "alice", "at": recovery["at"], "termination": recovery["termination"]}
+        self.assertEqual(expected["termination"]["descendants"]["handling"], "terminated")
+        expected_incident = {**recovery["incident"], "invocation_id": "inv_subject001", "topic_id": TOPIC,
+                             "blocking": True, "recovery": expected, "clears_when": "recover_incident"}
+        for path, message in (("/v1/status", None), ("/v1/status?topic=" + TOPIC, None),
+            ("/mcp", {"jsonrpc": "2.0", "id": "status-7", "method": "tools/call", "params": {"name": "status"}}),
+            ("/mcp", {"jsonrpc": "2.0", "id": "status-7", "method": "tools/call", "params": {"name": "status", "arguments": {"topic": TOPIC}}})):
+            with self.subTest(path=path, message=message):
+                raw = self.wire("GET" if message is None else "POST", path, message)
+                self.assertEqual(raw.split(b"\r\n", 1)[0], b"HTTP/1.0 200 OK")
+                self.assertNotIn(b"%5Cu006eABCDEFGHIJKLMNO", raw)
+                self.assertNotIn(b"nABCDEFGHIJKLMNO", raw)
+                reply = json.loads(raw.partition(b"\r\n\r\n")[2])
+                if message is not None:
+                    inner = reply["result"]["content"][0]["text"].encode()
+                    self.assertNotIn(b"%5Cu006eABCDEFGHIJKLMNO", inner)
+                    reply = json.loads(inner)
+                self.assertEqual(reply["incidents"], [expected_incident])
+                waiting = [w["incident"] for t in reply["topics"] for inv in t["invocations"]
+                           for w in inv["waiting"] if w["reason"] == "incident"]
+                self.assertEqual([w.get("recovery") for w in waiting], [expected])
+        self.assertEqual(journal_path.read_bytes(), journal_bytes)
+        self.assertEqual(self.state(exclude=()), before)
+        self.assertEqual(self.wire("GET", "/v1/health").partition(b"\r\n\r\n")[2], b'{"status": "ok"}')
 
 
 class CredentialsTest(unittest.TestCase):

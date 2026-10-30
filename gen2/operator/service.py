@@ -159,7 +159,10 @@ def _backend_reply(reply: dict) -> dict:
         mapped = {key: reply[key] for key in ("status", "reason", "termination") if key in reply}
         mapped["detail"] = "operation refused"
         return mapped
-    return {key: value for key, value in reply.items() if key != "reason"}
+    mapped = {key: value for key, value in reply.items() if key != "reason"}
+    if "incident" in mapped:
+        mapped["incident"] = status_view.incident_view(mapped["incident"])
+    return mapped
 
 
 def _unique_members(pairs: list[tuple[str, object]]) -> dict:

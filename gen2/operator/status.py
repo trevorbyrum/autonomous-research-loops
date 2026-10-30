@@ -53,8 +53,25 @@ STATUS_WAITS = {
 STATE_WAITS = {"admitted": "launch", "launching": "start", "running": "end", "result_ready": "commit", "outcome_unknown": "reconciliation"}
 
 
+def incident_view(incident: dict) -> dict:
+    """Required incident facts, without journal prose or refusal diagnostics.
+
+    Project before fan-out; copying a durable caller reason does not make it
+    a server fact. last_finding is the supervisor's own reconciliation finding.
+    """
+    view = {key: incident[key] for key in (
+        "invocation_id", "topic_id", "blocking", "kind", "since", "owner", "deadline_at", "budget", "write", "final",
+        "result_ref", "phase", "method", "outage_since", "unknown_episode", "unresolved_since", "last_finding", "last_refusal") if key in incident}
+    if incident.get("last_refusal"):
+        view["last_refusal"] = {"reason": incident["last_refusal"]["reason"]}
+    if "recovery" in incident:
+        recovery = incident["recovery"]
+        view["recovery"] = {key: recovery[key] for key in ("status", "requested_by", "at", "termination") if key in recovery}
+    return view
+
+
 def compose(facts: dict, incidents: list[dict]) -> dict:
-    listed = [{**incident, **({"clears_when": "recover_incident"} if incident["blocking"] else {})} for incident in incidents]
+    listed = [{**incident_view(incident), **({"clears_when": "recover_incident"} if incident["blocking"] else {})} for incident in incidents]
     return {"status": "ok", "at": facts["at"], "topics": [_topic(topic, listed) for topic in facts["topics"]], "incidents": listed,
             "config_bundles": facts["config_bundles"], "capability_facts": facts["capability_facts"],
             "waiting": [{"reason": "hold", **hold} for hold in facts["holds"]]}

@@ -66,6 +66,10 @@ The router's `status` read (`gen2/router/status.py`) gives the committed rows in
 
 Reading status changes nothing: the router's read writes no row, audit events included, and the journals are only read (`test_operator_status.ReadOnlyTest`).
 
+Incident facts are projected before they enter the engine-wide list or any waiting view. Recovery status retains the requester, timestamps and termination facts, omitting the caller's reason. Incidental journal errors, notes and nested refusal details are omitted; typed refusal codes and the supervisor's own unresolved findings remain. Direct recovery replies use the same incident projection. Durable journals are unchanged.
+
+Persisted free text retained by status is explicit: holds keep their cause and clearance criteria (H-3-required operational facts from outcome producers, along with owner and deadline); capability facts keep the probe's fixed server descriptions. A rejected configuration's caller-bearing schema detail still becomes `configuration rejected`. Decision/amendment notes, closure/cancellation/requeue reasons and document prose are not selected by the router's status projection. The final-byte backstop continues to screen all retained facts.
+
 ## Recovering a stalled job (`recover_incident`; Astra 1e review finding 2)
 
 The carried 1c ruling: a collected end whose descendants were never confirmed ended stalls as `outcome_unknown_unresolved`; ending the processes and calling `recover()` stalls again at once, because the retained unconfirmed observation is what the job holds. The trusted route is fresh termination evidence → the episode reconciled → recovery. `POST /v1/commands/recover_incident` with `{"invocation_id", "incident_since", "reason"}` — the invocation and the open incident status shows for it — asks the station for exactly that (`gen2/supervisor/supervisor.py` `Supervisor.recover_incident`):
