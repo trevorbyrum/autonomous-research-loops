@@ -108,9 +108,12 @@ class DDLTest(StoreTestCase):
         for confidence, fragment in (({"basis": "recorded_assessment", "scheme": {"scheme_id": "absent", "version": 1}, "label": "off-scheme", "assessed_by_invocation_id": "inv_pppppppp"}, scheme),
                                      ({"basis": "unknown", "reason": " "}, "(json_extract(confidence, '$.basis') IS 'unknown'")):
             changes.append(({"confidence": json.dumps(confidence)}, fragment))
+        before = self.snapshot("obligation_assessments")
         for change, fragment in changes:
             with self.subTest(change=change), self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(fragment)):
                 self.x(f"INSERT INTO obligation_assessments ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", *{**original, "record_id": "oa-raw", **change}.values())
+            self.assertEqual(self.snapshot("obligation_assessments"), before)
         for sql, fragment in (("UPDATE obligation_assessments SET reason = 'rewritten'", "obligation assessments are append-only"),
                               ("DELETE FROM obligation_assessments", "obligation assessments are retained")):
             self.rejects(fragment, sql)
+            self.assertEqual(self.snapshot("obligation_assessments"), before)
