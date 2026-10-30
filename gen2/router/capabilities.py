@@ -199,13 +199,13 @@ class Capabilities:
             if hold is None:
                 active = self._core._active_bundle()
                 policy = self._core._router_policy(active["bundle_hash"]) if active is not None else ROUTER_DEFAULTS
-                hold = {"hold_id": self._core._new_id("hold_"), "topic_id": None, "subject_ref": hold_subject(capability), "hold_class": "capability",
-                        "cause": f"{capability} {req['outcome']}: {req['detail']}"[:500],
-                        "recoverability": "needs_remediation" if req["outcome"] in ("unusable_credential", "declared_expired") else "unknown",
-                        "required_authority": "operator", "owner": "operator", "deadline_at": _after(now, policy["hold_window_s"]),
-                        "clears_when": f"an operator hold_clearance, once a probe records {capability} usable (for a credential: refreshed "
+                hold = boundary.hold_row(hold_id=self._core._new_id("hold_"), topic_id=None, subject_ref=hold_subject(capability), hold_class="capability",
+                        cause=f"{capability} {req['outcome']}: {req['detail']}"[:500],
+                        recoverability="needs_remediation" if req["outcome"] in ("unusable_credential", "declared_expired") else "unknown",
+                        required_authority="operator", owner="operator", deadline_at=_after(now, policy["hold_window_s"]),
+                        clears_when=f"an operator hold_clearance, once a probe records {capability} usable (for a credential: refreshed "
                                        "in its auth volume; for the runner: repaired by an image release)",
-                        "capability_fact_id": current["fact_id"], "created_at": now, "created_by_operation_id": None}
+                        capability_fact_id=current["fact_id"], created_at=now)
                 self._core._store.insert("holds", hold)
                 hold = {"hold_id": hold["hold_id"], "opened": True}
             else:

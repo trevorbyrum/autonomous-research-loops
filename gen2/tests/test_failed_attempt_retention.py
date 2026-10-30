@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from gen2 import accounting
 from gen2.core import canonical
-from gen2.router.accounting import read_inventory
+from gen2.router.accounting import convert_inventory
 from gen2.tests import test_attempted_request_bytes as attempted
 from gen2.tests.router_fixtures import EXPIRES, RouterTestCase
 
@@ -56,7 +56,7 @@ class FailedAttemptTest(RouterTestCase):
         self.assertEqual(audits[-1]['invocation_id'], 'inv_discover1')
         self.assertEqual(audits[-1]['detail'], {'observation_id': row['observation_id'],
             'request_bytes_hash': digest, 'refusal_class': refusal_class})
-        inventory = read_inventory(self.store, self.grant['topic_id'], 'native')
+        inventory = convert_inventory(self.grant['topic_id'], self.store.capture_topic(self.grant['topic_id']), 'native')
         self.assertEqual(len(inventory.observations), prior + 1)
         for obs in inventory.observations:
             self.assertEqual((obs.request_type, obs.page, obs.result_count), (None, None, None))
@@ -148,7 +148,7 @@ class FailedAttemptTest(RouterTestCase):
             self.assertIsNone(row['request_bytes'])
             self.assertIsNone(row['request_bytes_hash'])
         self.assertEqual(self.refusal_audits(), [])
-        inventory = read_inventory(self.store, self.grant['topic_id'], 'native')
+        inventory = convert_inventory(self.grant['topic_id'], self.store.capture_topic(self.grant['topic_id']), 'native')
         self.assertEqual(len(inventory.observations), 4)
         self.assertTrue(all(o.request_type == 'find' and o.page is not None for o in inventory.observations))
 

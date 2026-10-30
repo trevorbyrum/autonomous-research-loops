@@ -182,23 +182,24 @@ class Scheduling:
         if any(h["cleared_at"] is None for h in self._core._store.select("holds", {"topic_id": inv["topic_id"], "subject_ref": subject})):
             raise Refusal("incident_open", f"the hold on {inv['invocation_id']}'s retries is open; an operator decision clears it first (RG-3)")
         prior = self._core._one("retries", {"retry_invocation_id": inv["invocation_id"]})
-        attempt = (prior["attempt"] if prior is not None else 1) + 1
+        made = prior["attempt"] if prior is not None else 1  # attempts already made
+        attempt = made + 1
         if req["requested_by"] == "policy":
             policy = self._core._router_policy(inv["config_bundle_hash"]).get("retry")
             retryable = inv["cancel_requested_by"] in ("supervisor", "router") if inv["state"] == "cancelled" else \
                 policy is not None and inv["failure_class"] in policy["failure_classes"]
             if not retryable:
                 raise Refusal("not_policy_retryable", f"{inv['invocation_id']} ended {inv['state']} ({inv['failure_class'] or inv['cancel_requested_by']}): the operator's to diagnose (L-6)")
-            if policy is None or attempt - 1 > policy["attempts"]:
+            if policy is None or made > policy["attempts"]:
                 hold_id = self._core._new_id("hold_")
-                self._core._store.insert("holds", {
-                    "hold_id": hold_id, "topic_id": inv["topic_id"], "subject_ref": subject, "hold_class": "transient",
-                    "cause": f"retry budget exhausted at attempt {attempt - 1} of {inv['invocation_id']}", "recoverability": "needs_decision",
-                    "required_authority": "operator", "owner": "operator",
-                    "deadline_at": _after(now, self._core._router_policy(inv["config_bundle_hash"])["hold_window_s"]),
-                    "clears_when": "an operator hold_clearance; then the operator re-queues the work or leaves it ended",
-                    "capability_fact_id": None, "created_at": now, "created_by_operation_id": None})
-                self._core._audit("retry_budget_exhausted", now, {"hold_id": hold_id, "attempt": attempt - 1}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
+                self._core._store.insert("holds", boundary.hold_row(
+                    hold_id=hold_id, topic_id=inv["topic_id"], subject_ref=subject, hold_class="transient",
+                    cause=f"retry budget exhausted at attempt {made} of {inv['invocation_id']}", recoverability="needs_decision",
+                    required_authority="operator", owner="operator",
+                    deadline_at=_after(now, self._core._router_policy(inv["config_bundle_hash"])["hold_window_s"]),
+                    clears_when="an operator hold_clearance; then the operator re-queues the work or leaves it ended",
+                    created_at=now))
+                self._core._audit("retry_budget_exhausted", now, {"hold_id": hold_id, "attempt": made}, topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
                 return {"status": "exhausted", "invocation_id": inv["invocation_id"], "hold_id": hold_id}
         self._core._store.insert("retries", {"invocation_id": inv["invocation_id"], "topic_id": inv["topic_id"], "attempt": attempt, "requested_by": req["requested_by"],
                                        "reason": req["reason"], "requested_at": now})

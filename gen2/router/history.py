@@ -7,9 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Mapping, Protocol
 
-from gen2.router import boundary
-from gen2.router.detailed_checks import DetailedChecks
-from gen2.router.evidence_writer import EvidenceWriter
+from gen2.router import boundary, support
 from gen2.store import api
 
 
@@ -17,20 +15,12 @@ class Rows(Protocol):
     def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
 
 
-class _ReadCore:
-    """Only row reads are used by the two existing support predicates."""
-    def __init__(self, store: Rows) -> None:
-        self._store = store
-
-
 def support_diagnostics(store: Rows) -> list[dict]:
     """Caller holds one snapshot over all claims, receipts, checks and bases."""
-    core = _ReadCore(store)
-    checks, captures = DetailedChecks(core), EvidenceWriter(core)
     deficiencies = []
     for claim in store.select("claims", {"status": "accepted_support", "load_bearing": 1}):
         try:
-            checks.require_support(claim, captures._quote_support_valid)
+            support.require_support(store, claim, lambda doc: support.quote_support_valid(store, doc))
         except boundary.Refusal as exc:
             deficiencies.append({"topic_id": claim["topic_id"], "claim_id": claim["claim_id"],
                 "claim_revision": claim["revision"], "deficiency": "no qualifying receipt for the complete "

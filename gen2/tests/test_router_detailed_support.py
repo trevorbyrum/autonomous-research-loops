@@ -8,6 +8,8 @@ import unittest
 from unittest.mock import patch
 
 from gen2.core import canonical
+from gen2.router import support
+from gen2.router.boundary import Refusal
 from gen2.tests.test_receipt_summary_domain import SummaryCases
 from gen2.tests import test_detailed_check_receipts as refs
 from gen2.tests.detailed_receipt_fixtures import attach_checks, seed_checks
@@ -228,7 +230,7 @@ class RouterDetailedSupportTest(unittest.TestCase):
                 with history(case, unchecked=True):
                     case.x('UPDATE verification_receipts SET ' + column + '=?', value)
                 # Isolate detailed-column consumption from the newer basis gate.
-                with patch.object(case.router._detailed_checks, '_has_basis', return_value=True):
+                with patch.object(support, 'has_basis', return_value=True):
                     self.promote(case)
                 with history(case, unchecked=True):
                     value = canonical.canonical_bytes(row[column]).decode() if column == 'cited_spans' else row[column]
@@ -255,3 +257,67 @@ class RouterDetailedSupportTest(unittest.TestCase):
         self.assertEqual(case.state(exclude=()), before)
         other = case.envelope(case.producer, 'op_promote_details', empty_outcome(case.producer['invocation_id'], 'interim_transition'))
         self.assertEqual(case.router.commit_outcome(other)['reason'], 'operation_id_conflict')
+
+
+def outcome(call):
+    try:
+        return call()
+    except Refusal as refusal:
+        return (refusal.reason, refusal.detail)
+    except Exception as fault:  # a crash is a wrong outcome, not an unhandled test error
+        return (type(fault).__name__, str(fault))
+
+
+class SelectRows:
+    """Select-only rows keyed by table, as support.py reads them."""
+    def __init__(self, **tables):
+        self.tables = tables
+
+    def select(self, table, where=None):
+        return self.tables.get(table, [])
+
+
+def tier(coverage, record):
+    other = {"identity": "doi:other", "kind": "full_text", "text": "t", "abstract": "a"}
+    body = json.dumps({"records": [other, {"identity": "doi:1", **record}]}).encode()
+    rows = SelectRows(search_observations=[{"coverage_state": coverage}])
+    return support.content_rank(rows, {"response_bytes": body, "observation_id": "o1", "provider_record_id": "doi:1"})
+
+
+class ContentTierTest(unittest.TestCase):
+    def test_tier_of_a_searched_full_text_abstract_only_and_bare_record(self):
+        self.assertEqual(tier("searched_ok", {"kind": "full_text", "text": "body"}), 3)
+        self.assertEqual(tier("searched_ok", {"kind": "full_text", "text": "body", "abstract": "a"}), 3)
+        self.assertEqual(tier("searched_ok", {"kind": "full_text", "text": " ", "abstract": "a"}), 2)
+        self.assertEqual(tier("searched_ok", {"kind": "full_text", "text": " "}), 1)
+        self.assertEqual(tier("searched_ok", {"abstract": "a"}), 2)
+        self.assertEqual(tier("searched_ok", {"kind": "abstract", "text": "body"}), 1)
+        self.assertEqual(tier("searched_ok", {}), 1)
+
+    def test_full_text_needs_a_searched_observation(self):
+        self.assertEqual(tier("searched_partial", {"kind": "full_text", "text": "body", "abstract": "a"}), 2)
+        self.assertEqual(tier("searched_partial", {"kind": "full_text", "text": "body"}), 1)
+
+
+class DetailedBindingTest(unittest.TestCase):
+    DOC = {"topic_id": "top_a", "verifier_invocation_id": "inv_v", "obtained_content_hash": "sha256:o", "verdict": "supports",
+        "requested_for": {"use": "sampled"}, "extraction": {"method": "canonical_bytes"}, "cited_spans": [{"start": 0, "end": 4}],
+        "claim": {"claim_id": "clm_1", "claim_revision": 1}, "source": {"work_id": "wrk_1", "source_version": "v1"},
+        "checks": {"negation": "checked_ok"}, "detailed_checks": {"negation": {"outcome": "succeeded", "record_id": "chk_1"}}}
+
+    def check(self, *records):  # each record: (its topic, the outcome its assessment reports)
+        report = {**self.DOC["claim"], **self.DOC["source"], "kind": "negation", "outcome": "succeeded",
+            "cited_spans": self.DOC["cited_spans"], "source_artifact_hash": "sha256:s", "examined_artifact_ref": {"content_hash": "sha256:o"}}
+        rows = SelectRows(source_artifacts=[{"content_hash": "sha256:s"}],
+            detailed_check_records=[{"topic_id": t, "performer_invocation_id": "inv_v", "assessment": {**report, "outcome": o}} for t, o in records])
+        return outcome(lambda: support.require_receipt(rows, self.DOC))
+
+    def test_the_first_stored_check_is_the_one_bound(self):
+        refusal = ("payload_invalid", "receipt detailed check binding")
+        good, foreign, other = ("top_a", "succeeded"), ("top_foreign", "succeeded"), ("top_a", "failed")
+        self.assertEqual(self.check(good), None)
+        self.assertEqual(self.check(good, foreign), None)
+        self.assertEqual(self.check(good, other), None)
+        self.assertEqual(self.check(foreign, good), refusal)
+        self.assertEqual(self.check(other, good), refusal)
+        self.assertEqual(self.check(), refusal)

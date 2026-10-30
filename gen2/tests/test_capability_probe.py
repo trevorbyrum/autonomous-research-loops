@@ -166,6 +166,11 @@ class ProbeRecordTest(rf.RouterTestCase):
         self.assertEqual(utc_instant_ns(hold["deadline_at"]) - utc_instant_ns(created), 3600 * 10**9)  # the router's shipped hold window
         self.assertIn("hold_clearance", hold["clears_when"])
 
+    def test_a_long_detail_is_cut_to_500_characters_in_the_hold_cause(self):
+        self.record(observation("c3", "unusable_credential", "2026-09-27T10:00:05Z", detail="x" * 500))
+        self.assertEqual([h["cause"] for h in self.holds()], [(CAP + " unusable_credential: " + "x" * 500)[:500]])
+        self.assertEqual([len(h["cause"]) for h in self.holds()], [500])
+
     def test_a_runner_error_is_an_unknown_fact_and_a_hold_whose_remedy_is_unknown(self):
         reply = self.record(observation("d1", "runner_error", "2026-09-27T10:00:05Z", detail="login status ran past the probe timeout"))
         self.assertEqual(reply["fact"]["state"], "unknown")

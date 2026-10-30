@@ -12,7 +12,6 @@ from gen2.store.capture import Freshness, TopicCapture, input_hash
 
 class Rows(Protocol):
     def capture_topic(self, topic_id: str) -> TopicCapture: ...
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
 
 
 class AccountingCore(Protocol):
@@ -108,9 +107,6 @@ class DossierInput:
     input_hash: str
 
 
-def read_coverage_snapshot(rows: Rows, topic_id: str, history: a.History) -> CoverageSnapshot:
-    return convert_coverage_snapshot(rows.capture_topic(topic_id), topic_id, history)
-
 def convert_coverage_snapshot(rows: TopicCapture, topic_id: str, history: a.History) -> CoverageSnapshot:
     inventory = convert_inventory(topic_id, rows, history)
     pins = convert_window_pins(rows, topic_id)
@@ -128,9 +124,6 @@ def convert_coverage_snapshot(rows: TopicCapture, topic_id: str, history: a.Hist
     return CoverageSnapshot(inventory, pins, tuple(v.BranchLink(*link) for link in sorted(links)))
 
 
-def read_window_pins(rows: Rows, topic_id: str) -> tuple[v.WindowPin, ...]:
-    return convert_window_pins(rows.capture_topic(topic_id), topic_id)
-
 def convert_window_pins(rows: TopicCapture, topic_id: str) -> tuple[v.WindowPin, ...]:
     pins = []
     for window in (r for r in records(rows, "invocations") if r["kind"] == "research_pass" and r["admission_context"] == "contract/1"):
@@ -142,9 +135,6 @@ def convert_window_pins(rows: TopicCapture, topic_id: str) -> tuple[v.WindowPin,
         pins.append(v.WindowPin(window["invocation_id"], contracts[0]["revision"]))
     return tuple(pins)
 
-
-def read_inventory(rows: Rows, topic_id: str, history: a.History) -> a.Inventory:
-    return convert_inventory(topic_id, rows.capture_topic(topic_id), history)
 
 def convert_inventory(topic_id: str, rows: TopicCapture, history: a.History) -> a.Inventory:
     where = {"topic_id": topic_id}
@@ -172,14 +162,6 @@ def convert_inventory(topic_id: str, rows: TopicCapture, history: a.History) -> 
     return a.Inventory(history, observations, retrievals, links, assessments, claims, passes, semantic, lineage, lifecycle, dispositions,
                        current, impacts, screening)
 
-
-def read_context(rows: Rows, where: Mapping[str, object]) -> tuple[int | None, tuple[a.AmendmentImpact, ...], tuple[a.ScreeningAssessment, ...]]:
-    approved = rows.select("contract_revisions", {**where, "status": "approved"})
-    current = approved[0]["revision"] if approved else None
-    impacts = tuple(read_impact(r) for r in rows.select("amendment_impacts", {**where, "kind": "contract"}))
-    screening = tuple(a.ScreeningAssessment(**{k: v for k, v in r.items() if k not in {"topic_id", "criterion_results"}})
-                      for r in rows.select("screening_assessments", where))
-    return current, impacts, screening
 
 def convert_context(rows: TopicCapture, where: Mapping[str, object]):
     approved = [r for r in records(rows, "contract_revisions") if r["status"] == "approved"]

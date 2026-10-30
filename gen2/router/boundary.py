@@ -16,6 +16,8 @@ with one of the response vocabulary's reasons; nothing here writes.
 """
 from __future__ import annotations
 
+from typing import Mapping, NamedTuple
+
 from gen2.core import canonical, instants, pagination
 from gen2.core.canonical import CanonicalizationError
 
@@ -33,25 +35,61 @@ SCOPE_OF_KIND = {"research_pass": "research", "discovery": "discovery", "verific
 # — its observations go through record_observation, its packets through
 # result_refs.
 PRIMARY = frozenset({"research_pass", "checkpoint"})
+CONTRACT = frozenset({"contract/1"})
+SCOPING = frozenset({"pre-contract/1"})
+EITHER = frozenset({"contract/1", "pre-contract/1"})
+
+
+class Record(NamedTuple):
+    """One assessment-shaped record kind: its storage, predecessor rule and
+    admission policy in one entry. Every field is required, so an entry that
+    omits its policy cannot be built; `common` says whether the shared pin,
+    topic and lineage validation covers it (a kind with its own obligation or window
+    validation says False).
+    `defaults` are the columns an inserted row gets when its record omits them."""
+    section: str
+    identity: str
+    predecessor_key: tuple[str, ...]
+    label: str
+    kinds: frozenset[str]
+    contexts: frozenset[str]
+    common: bool
+    defaults: Mapping[str, object]
+
+
+RECORDS = (
+    Record("semantic_assessments", "assessment_id", (), "", PRIMARY, CONTRACT, True, {}),
+    Record("source_lifecycle", "disposition_id", ("work_id", "source_version"), "lifecycle", PRIMARY, CONTRACT, True, {}),
+    Record("registry_dispositions", "disposition_id", ("registry_kind", "registry_id"), "registry", PRIMARY, CONTRACT, True, {}),
+    Record("obligation_assessments", "record_id", ("obligation_id",), "obligation", PRIMARY, CONTRACT,
+        False,  # pragma: no mutate - equivalent: obligation validation runs first and checks every common pin; the closed schema has no work_id or lineage (Astra, Batch A r3)
+        {"disposition": None, "state": None}),
+    Record("branch_windows", "association_id", (), "", PRIMARY, CONTRACT, False, {}),
+)
+# The other sections; RECORDS' sections are admitted by their own entries.
 SECTION_KINDS = {
-    "claims": PRIMARY,
-    "claim_promotions": PRIMARY,
-    "claim_source_links": PRIMARY,  # task 2a
-    "decision_receipts": PRIMARY,
-    "screening_assessments": PRIMARY,
-    "review_triggers": PRIMARY,
-    "review_closures": frozenset({"checkpoint"}),  # task 2a: closing an episode is the checkpoint workflow's (flow S5)
-    "scoping_reports": frozenset({"research_pass"}),  # task 2a: the primary assembles the scoping report (flow S2), pre-contract only
-    "source_proposals": PRIMARY | {"discovery", "delegate"},  # task 2a: a proposal authorizes nothing (SOURCE-GOVERNANCE.md step 1)
-    "exports": PRIMARY,
-    "holds": PRIMARY | {"verification"},
-    "verification_receipts": frozenset({"verification"}),
+    "claims": (PRIMARY, EITHER),
+    "claim_promotions": (PRIMARY, CONTRACT),
+    "claim_source_links": (PRIMARY, CONTRACT),
+    "decision_receipts": (PRIMARY, CONTRACT),
+    "screening_assessments": (PRIMARY, CONTRACT),
+    "review_triggers": (PRIMARY, EITHER),
+    "review_closures": ({"checkpoint"}, CONTRACT),
+    "scoping_reports": ({"research_pass"}, SCOPING),
+    "source_proposals": (frozenset({"research_pass", "checkpoint", "discovery", "delegate"}), EITHER),
+    "exports": (PRIMARY, CONTRACT),
+    "holds": (frozenset({"research_pass", "checkpoint", "verification"}), EITHER),
+    "verification_receipts": ({"verification"}, CONTRACT),
+    "source_artifacts": (PRIMARY, CONTRACT),
+    "quote_checks": ({"verification"}, CONTRACT),
+    "detailed_check_records": ({"verification"}, CONTRACT),
+    "source_extractions": (frozenset({"research_pass", "checkpoint", "verification", "discovery", "delegate"}), CONTRACT),
+    "extraction_validations": ({"verification"}, CONTRACT),
+    "extraction_validations_v2": ({"verification"}, CONTRACT),
 }
-# C-12: pre-contract (scoping) work records scoping material only —
-# provisional claims (and the holds and trigger observations of its own
-# pass); nothing that needs the approved protocol.
-PRE_CONTRACT_SECTIONS = frozenset({"claims", "review_triggers", "holds", "scoping_reports", "source_proposals"})
-PRE_CONTRACT_ONLY = frozenset({"scoping_reports"})  # task 2a: scoping is S2's, before any approved contract
+
+# Sections only an independent (parentless) invocation may commit.
+INDEPENDENT = frozenset({"detailed_check_records", "extraction_validations", "extraction_validations_v2"})
 
 
 class Refusal(Exception):
@@ -107,16 +145,19 @@ def instant(value: str) -> int:
     return instants.utc_instant_ns(value)
 
 
-def check_sections(payload: dict, kind: str, admission_context: str) -> None:
-    for section, kinds in SECTION_KINDS.items():
-        if not payload[section]:
+def check_sections(payload: dict, kind: str, admission_context: str, parent_invocation_id: "str | None") -> None:
+    sections = {**SECTION_KINDS, **{r.section: (r.kinds, r.contexts) for r in RECORDS}}
+    for section, (kinds, contexts) in sections.items():
+        if not payload.get(section):
             continue
         if kind not in kinds:
             raise Refusal("kind_not_permitted", f"a {kind} invocation cannot commit {section}")
-        if admission_context == "pre-contract/1" and section not in PRE_CONTRACT_SECTIONS:
-            raise Refusal("kind_not_permitted", f"pre-contract/1 work records scoping material only, not {section} (C-12)")
-        if admission_context != "pre-contract/1" and section in PRE_CONTRACT_ONLY:
+        if admission_context not in contexts:
+            if admission_context in SCOPING:
+                raise Refusal("kind_not_permitted", f"pre-contract/1 work records scoping material only, not {section} (C-12)")
             raise Refusal("kind_not_permitted", f"{section} are pre-contract work's (flow S2), not {admission_context}'s")
+        if section in INDEPENDENT and parent_invocation_id is not None:
+            raise Refusal("kind_not_permitted", f"{section} requires independent verification")
 
 
 def check_span_offsets(spans: list[dict]) -> None:
@@ -336,3 +377,13 @@ def trigger_identity(topic_id: str, trigger: dict) -> str:
     collides with the first instead of opening anything new (RG-1b(e))."""
     return canonical.logical_hash({"topic_id": topic_id, "reason_code": trigger["reason_code"],
                                    "cause_ref": trigger["cause_ref"], "source_revision": trigger["source_revision"]})
+
+
+def hold_row(*, hold_id: str, topic_id: "str | None", subject_ref: str, hold_class: str,
+             cause: str, recoverability: str, required_authority: str, owner: str,
+             deadline_at: str, clears_when: str, created_at: str,
+             capability_fact_id: "str | None" = None, created_by_operation_id: "str | None" = None) -> dict:
+    return {"hold_id": hold_id, "topic_id": topic_id, "subject_ref": subject_ref, "hold_class": hold_class,
+        "cause": cause, "recoverability": recoverability, "required_authority": required_authority, "owner": owner,
+        "deadline_at": deadline_at, "clears_when": clears_when, "created_at": created_at,
+        "capability_fact_id": capability_fact_id, "created_by_operation_id": created_by_operation_id}

@@ -7,7 +7,10 @@ to the Router. Only its primary-class invocations supply semantic labels.
 from typing import Callable, Mapping, Protocol
 
 from gen2.core.instants import utc_instant_ns
-from gen2.router.boundary import PRIMARY, Refusal
+from gen2.router.boundary import RECORDS, Refusal
+
+# Confidence bases whose record the invocation attributes to itself.
+ATTRIBUTED_BASES = frozenset({"recorded_assessment"})
 
 
 class Rows(Protocol):
@@ -25,30 +28,20 @@ class Assessments:
         self._core = core
 
     def bind_evidence(self, payload: dict, bind: Callable[[dict, str], None]) -> None:
-        for record in payload.get("obligation_assessments", []):
-            for ref in record["evidence_refs"]:
-                bind(ref, f"{record['record_id']}: its evidence")
-        for record in payload.get("semantic_assessments", []):
-            for ref in record["evidence_refs"]:
-                bind(ref, f"{record['assessment_id']}: its evidence")
-        for record in payload.get("source_lifecycle", []):
-            for ref in record["evidence_refs"]:
-                bind(ref, f"{record['disposition_id']}: its evidence")
-        for record in payload.get("registry_dispositions", []):
-            for ref in record["evidence_refs"]:
-                bind(ref, f"registry {record['disposition_id']}: its evidence")
+        for spec in RECORDS:
+            for record in payload.get(spec.section, []):
+                for ref in record.get("evidence_refs", []):
+                    bind(ref, f"{record[spec.identity]}: its evidence")
 
     def validate(self, payload: dict, inv: dict) -> None:
         self._validate_branch_windows(payload, inv)
         self._validate_obligations(payload, inv)
-        records = payload.get("semantic_assessments", []) + payload.get("source_lifecycle", []) + payload.get("registry_dispositions", [])
+        records = [r for spec in RECORDS if spec.common for r in payload.get(spec.section, [])]
         if not records:
             return
-        if inv["kind"] not in PRIMARY or inv["admission_context"] != "contract/1":
-            raise Refusal("kind_not_permitted", "semantic assessments require contract-admitted primary work")
         contract = self._core._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
         for record in records:
-            pins = (record["contract_revision"], record["framing_version"], record["eligibility_protocol_version"])
+            pins = (record.get("contract_revision"), record.get("framing_version"), record.get("eligibility_protocol_version"))  # an absent pin is refused below
             if pins != (inv["contract_revision"], contract["framing_version"], contract["document"]["eligibility_protocol"]["protocol_version"]):
                 raise Refusal("payload_invalid", "semantic assessment protocol/framing differs from the invocation's pins")
             if "work_id" in record:
@@ -59,66 +52,35 @@ class Assessments:
                 if not self._core._work_of_topic(lineage["related_work_id"], inv["topic_id"]):
                     raise Refusal("cross_topic", "related lineage work was not retrieved by this topic")
 
-    def write_lifecycle(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
+    def write(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
+        # One validation of retained operands, under the existing writer fence.
         self.validate(payload, inv)
-        written = []
-        for record in payload.get("source_lifecycle", []):
-            if record["related_work_id"] is not None and not self._core._work_of_topic(record["related_work_id"], inv["topic_id"]):
-                raise Refusal("cross_topic", "related lifecycle work was not retrieved by this topic")
-            if record["supersedes_id"] is not None:
-                prior = self._core._one("source_lifecycle", {"disposition_id": record["supersedes_id"]})
-                if prior is None or (prior["topic_id"], prior["work_id"], prior["source_version"]) != (inv["topic_id"], record["work_id"], record["source_version"]):
-                    raise Refusal("payload_invalid", "lifecycle predecessor must exist for this topic and source version")
-                if utc_instant_ns(prior["created_at"]) >= utc_instant_ns(now):
-                    raise Refusal("payload_invalid", "lifecycle successor must be dated after its predecessor")
-            self._core._store.insert("source_lifecycle", {**record, "topic_id": inv["topic_id"], "actor_kind": "primary",
-                "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
-            written.append(record["disposition_id"])
-        return {"source_lifecycle": written} if written else {}
-
-    def write_dispositions(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
-        self.validate(payload, inv)
-        written = []
-        for record in payload.get("registry_dispositions", []):
-            if record["supersedes_id"] is not None:
-                prior = self._core._one("registry_dispositions", {"disposition_id": record["supersedes_id"]})
-                if prior is None or (prior["topic_id"], prior["registry_kind"], prior["registry_id"]) != (inv["topic_id"], record["registry_kind"], record["registry_id"]):
-                    raise Refusal("payload_invalid", "registry predecessor must exist for this topic, kind and identity")
-                if utc_instant_ns(now) <= utc_instant_ns(prior["created_at"]):
-                    raise Refusal("payload_invalid", "registry successor must be dated after its predecessor")
-            self._core._store.insert("registry_dispositions", {**record, "topic_id": inv["topic_id"], "actor_kind": "primary",
-                "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
-            written.append(record["disposition_id"])
-        result = self._write_obligations(payload, inv, operation_id, now)
-        associations = []
-        for record in payload.get("branch_windows", []):
-            self._core._store.insert("branch_windows", {**record, "topic_id": inv["topic_id"], "actor_kind": "primary",
-                "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
-            associations.append(record["association_id"])
-        if associations:
-            result["branch_windows"] = associations
-        if written:
-            result["registry_dispositions"] = written
-        return result
-
-    def write(self, payload: dict, inv: dict, operation_id: str, now: str) -> list[str]:
-        self.validate(payload, inv)
-        written = []
-        for record in payload.get("semantic_assessments", []):
-            row = {k: v for k, v in record.items() if k != "lineage"}
-            self._core._store.insert("semantic_assessments", {**row, "topic_id": inv["topic_id"], "actor_kind": "primary",
-                "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
-            if record["lineage"] is not None:
-                self._core._store.insert("source_lineage", {"assessment_id": record["assessment_id"], **record["lineage"]})
-            written.append(record["assessment_id"])
-        return written
+        for spec in RECORDS:
+            table, identity, predecessor_key, label = spec.section, spec.identity, spec.predecessor_key, spec.label
+            for record in payload.get(table, []):
+                if predecessor_key and record["supersedes_id"] is not None:
+                    prior = self._core._one(table, {identity: record["supersedes_id"]})
+                    if prior is None or any(prior[k] != v for k, v in
+                            {"topic_id": inv["topic_id"], **{k: record[k] for k in predecessor_key}}.items()):
+                        raise Refusal("payload_invalid", f"{label} predecessor must exist for this topic and identity")
+                    if utc_instant_ns(prior["created_at"]) >= utc_instant_ns(now):
+                        raise Refusal("payload_invalid", f"{label} successor must be dated after its predecessor")
+                # Any record naming related work must name work of this topic.
+                if record.get("related_work_id") is not None and not self._core._work_of_topic(record["related_work_id"], inv["topic_id"]):
+                    raise Refusal("cross_topic", "related lifecycle work was not retrieved by this topic")
+                row = {**spec.defaults, **{k: v for k, v in record.items() if k != "lineage"}}
+                if record.get("confidence", {}).get("basis") in ATTRIBUTED_BASES:
+                    row["confidence"] = {**record["confidence"], "assessed_by_invocation_id": inv["invocation_id"]}
+                self._core._store.insert(table, {**row, "topic_id": inv["topic_id"], "actor_kind": "primary",
+                    "invocation_id": inv["invocation_id"], "recorded_by_operation_id": operation_id, "created_at": now})
+                if record.get("lineage") is not None:
+                    self._core._store.insert("source_lineage", {"assessment_id": record["assessment_id"], **record["lineage"]})
+        return {spec.section: [r[spec.identity] for r in payload.get(spec.section, [])] for spec in RECORDS if payload.get(spec.section)}
 
     def _validate_branch_windows(self, payload: dict, inv: dict) -> None:
         records = payload.get("branch_windows", [])
         if not records:
             return
-        if inv["kind"] not in PRIMARY or inv["admission_context"] != "contract/1":
-            raise Refusal("kind_not_permitted", "branch/window associations require contract-admitted primary work")
         for record in records:
             branch = self._core._one("registry_dispositions", {"disposition_id": record["branch_disposition_id"]})
             if branch is None or (branch["topic_id"], branch["registry_kind"], branch["registry_id"]) != (inv["topic_id"], "branch", record["registry_id"]):
@@ -134,8 +96,6 @@ class Assessments:
         records = payload.get("obligation_assessments", [])
         if not records:
             return
-        if inv["kind"] not in PRIMARY or inv["admission_context"] != "contract/1":
-            raise Refusal("kind_not_permitted", "obligation judgments require contract-admitted primary work")
         contract = self._core._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
         doc = contract["document"]
         for record in records:
@@ -151,23 +111,3 @@ class Assessments:
                     raise Refusal("payload_invalid", "confidence differs from the approved contract scheme")
             elif not confidence["reason"].strip():
                 raise Refusal("payload_invalid", "unknown confidence requires its reason")
-
-    def _write_obligations(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
-        self._validate_obligations(payload, inv)  # repeat under the writer fence
-        written = []
-        for record in payload.get("obligation_assessments", []):
-            if record["supersedes_id"] is not None:
-                prior = self._core._one("obligation_assessments", {"record_id": record["supersedes_id"]})
-                if prior is None or (prior["topic_id"], prior["obligation_id"]) != (inv["topic_id"], record["obligation_id"]):
-                    raise Refusal("payload_invalid", "obligation predecessor must exist for this topic and obligation")
-                prior_instant = utc_instant_ns(prior["created_at"])
-                if prior_instant >= utc_instant_ns(now):
-                    raise Refusal("payload_invalid", "obligation successor must be dated after its predecessor")
-            confidence = dict(record["confidence"])
-            if confidence["basis"] == "recorded_assessment":
-                confidence["assessed_by_invocation_id"] = inv["invocation_id"]
-            self._core._store.insert("obligation_assessments", {"disposition": None, "state": None, **record,
-                "confidence": confidence, "topic_id": inv["topic_id"], "actor_kind": "primary", "invocation_id": inv["invocation_id"],
-                "recorded_by_operation_id": operation_id, "created_at": now})
-            written.append(record["record_id"])
-        return {"obligation_assessments": written} if written else {}

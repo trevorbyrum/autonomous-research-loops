@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from gen2.core import canonical, pagination
 from gen2.gateway_client import observe
-from gen2.router.accounting import read_inventory, read_page
+from gen2.router.accounting import convert_inventory, read_page
 from gen2.store import api
 from gen2.tests.router_fixtures import RouterTestCase
 
@@ -52,7 +52,7 @@ class AttemptTest(RouterTestCase):
                 self.assertEqual((row['coverage_state'], row['result_count'], row['completeness']), ('unknown', None, 'unobserved'))
         self.assertEqual(len(self.store.select('search_observations')), 2)
         self.assertEqual(self.store.select('retrieval_events'), [])
-        inventory = read_inventory(self.store, self.grant['topic_id'], 'native')
+        inventory = convert_inventory(self.grant['topic_id'], self.store.capture_topic(self.grant['topic_id']), 'native')
         self.assertEqual(len(inventory.observations), 2)
         self.assertTrue(all(o.page is None and o.result_count is None for o in inventory.observations))
 
@@ -61,7 +61,7 @@ class AttemptTest(RouterTestCase):
         self.assertEqual(out['status'], 'recorded', out)
         self.assertIsNone(self.row()['request_bytes'])
         self.assertIsNone(self.row()['request_bytes_hash'])
-        inventory = read_inventory(self.store, self.grant['topic_id'], 'native')
+        inventory = convert_inventory(self.grant['topic_id'], self.store.capture_topic(self.grant['topic_id']), 'native')
         self.assertIsNotNone(inventory.observations[0].page)
 
     def test_readable_text_control(self):
@@ -165,7 +165,7 @@ class AttemptTest(RouterTestCase):
         self.assertEqual(self.send(ordinary)['status'], 'recorded')
         rows = self.store.select('search_observations')
         self.assertFalse(pagination.retained_request(rows[-1]))
-        inventory = read_inventory(self.store, self.grant['topic_id'], 'native')
+        inventory = convert_inventory(self.grant['topic_id'], self.store.capture_topic(self.grant['topic_id']), 'native')
         self.assertEqual(len(inventory.observations), 2)
         self.assertIsNone(inventory.observations[0].page)
         self.assertIsNotNone(inventory.observations[1].page)

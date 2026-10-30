@@ -5,7 +5,7 @@ SQL 22/29 check recorded relationships, never semantic correctness or execution.
 """
 from typing import Callable, Mapping, Protocol
 
-from gen2.router import boundary
+from gen2.router import boundary, support
 from gen2.router.boundary import Refusal
 
 
@@ -27,10 +27,6 @@ class ExtractionRecords:
     def authenticate(self, payload: dict, inv: dict, bind: Callable[[dict, str], None]) -> None:
         extractions = payload.get("source_extractions", [])
         validations = payload.get("extraction_validations", []) + payload.get("extraction_validations_v2", [])
-        if (extractions or validations) and inv["admission_context"] != "contract/1":
-            raise Refusal("kind_not_permitted", "extraction records require contract-admitted work")
-        if validations and (inv["kind"] != "verification" or inv["parent_invocation_id"] is not None):
-            raise Refusal("kind_not_permitted", "validation requires independent verification")
         for record in extractions:
             self._core._require_extractor_tool(record)
         for records, field in ((extractions, "output_ref"), (validations, "comparison_evidence_ref")):
@@ -41,8 +37,6 @@ class ExtractionRecords:
                     topic_id=inv["topic_id"], media_type=ref["media_type"])
 
     def write(self, payload: dict, inv: dict, operation_id: str, now: str) -> dict:
-        from gen2.router.detailed_checks import DetailedChecks
-
         written = {}
         for table, identity, attribution in (("source_extractions", "extraction_id", "extracting_invocation_id"),
                 ("extraction_validations", "validation_id", "validator_invocation_id"),
@@ -56,7 +50,7 @@ class ExtractionRecords:
                     row["topic_id"] = inv["topic_id"]
                     acquired = self._core._store.select("source_acquisitions", {key: row[key] for key in
                         ("topic_id", "work_id", "source_version", "event_id", "verifier_invocation_id")})
-                    if not acquired or boundary.TIER[row["supported_tier"]] > DetailedChecks(self._core)._content_rank(next(iter(acquired))):
+                    if not acquired or boundary.TIER[row["supported_tier"]] > support.content_rank(self._core._store, next(iter(acquired))):
                         raise Refusal("payload_invalid", "extraction tier exceeds recorded content")
                 self._core._store.insert(table, row)
             if records:
