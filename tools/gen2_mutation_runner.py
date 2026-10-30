@@ -9,7 +9,12 @@ import time
 from types import SimpleNamespace
 import unittest
 
-from gen2_coverage import Baseline
+from attrs import asdict
+from cosmic_ray.mutating import mutate_and_test
+from cosmic_ray.work_item import MutationSpec
+import shlex
+
+from gen2_coverage import Baseline, source_state
 from gen2_ci_evidence import complete_union, parallel, partition, tests
 
 MARKER = "GEN2_MUTATION_RESULT "
@@ -84,7 +89,12 @@ def normalize(result):
         return "INVALID"
     if data.get("errors"):
         errors = [event for event in data.get("events", []) if event.get("kind") == "error"]
-        return "ERROR_KILL" if (rc == 1 and result.test_outcome == "killed" and
+        if any(event.get("exception_type") in {"subprocess.TimeoutExpired", "builtins.TimeoutError"}
+               for event in errors):
+            return "TIMEOUT"
+        # A successful clean control cannot establish that an exception was
+        # caused by the mutant. Preserve errors for review, never as kills.
+        return "TEST_ERROR" if (rc == 1 and result.test_outcome == "killed" and
             len(errors) == data["errors"] and all(event.get("executed") for event in errors)) else "INVALID"
     if not data["tests_run"] and not (data.get("shard") and data.get("expected") and data.get("selected") == []):
         return "INVALID"
@@ -96,6 +106,16 @@ def normalize(result):
 
 
 def run(config):
+    if mutations := config.pop("mutations", None):
+        # This process owns a separate checkout. Every test still starts fresh.
+        before = source_state()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json") as request:
+            json.dump(config, request)
+            request.flush()
+            result = mutate_and_test([MutationSpec(**m) for m in mutations],
+                shlex.join([sys.executable, __file__, request.name]), 7200)
+        print(json.dumps(dict(result=asdict(result), before=before, after=source_state())), flush=True)
+        return 0
     if config.get("coverage") and not config["tests"] and config.get("workers", 1) > 1:
         return subprocess.call([sys.executable, str(ROOT / "tools/gen2_test.py"), "--workers", str(config["workers"])],
             env={**os.environ, "GEN2_TEST_COVERAGE": config["coverage"]})
@@ -137,6 +157,7 @@ def run(config):
     except SyntaxError as exc:
         print(MARKER + json.dumps(dict(kind="SYNTAX_INVALID", detail=str(exc))), flush=True)
         return 86
+    before = source_state() if config.get("identity") else None
     stages = []
     while True:
         started = time.monotonic()
@@ -153,7 +174,11 @@ def run(config):
                        "log": str(path / "console.log")} for code, path in runs]
             verdicts = [normalize(SimpleNamespace(worker_outcome="normal", output=MARKER + json.dumps(row),
                 test_outcome="survived" if row["exit"] == 0 else "killed")) for row in shards]
-            chosen = next((i for i, verdict in enumerate(verdicts) if verdict in {"ASSERTION_KILL", "ERROR_KILL"}), None)
+            # Infrastructure/error outcomes must not be hidden by another
+            # shard's assertion kill. All shard evidence remains in the result.
+            chosen = next((i for i, verdict in enumerate(verdicts) if verdict not in {"SURVIVED", "ASSERTION_KILL"}), None)
+            if chosen is None:
+                chosen = next((i for i, verdict in enumerate(verdicts) if verdict == "ASSERTION_KILL"), None)
             if chosen is None and all(verdict == "SURVIVED" for verdict in verdicts):
                 complete_union(shards, count)
                 data = {**shards[0], "tests_run": sum(row["tests_run"] for row in shards), "shard": None}
@@ -176,13 +201,15 @@ def run(config):
         print("\n".join(line for line in output.splitlines() if not line.startswith(MARKER)))
         stages.append(dict(stage=config.get("stage", "baseline"), tests=config["tests"],
                            seconds=time.monotonic() - started, verdict=verdict, **data))
-        if config.get("stage") not in (1, "1b") or verdict != "SURVIVED":
+        if config.get("stage_only") or config.get("stage") not in (1, "1b") or verdict != "SURVIVED":
             break
         config.update(tests=config["full_tests"], stage=2)
-    print(MARKER + json.dumps({**data, "stages": stages}), flush=True)
+    identity = dict(source_before=before, source_after=source_state()) if before else {}
+    print(MARKER + json.dumps({**data, "stages": stages, **identity}), flush=True)
     return returncode if returncode in (0, 1) else 86
 
 
 if __name__ == "__main__":
     argument = sys.argv[1]
+    os.chdir(ROOT)
     sys.exit(run(json.loads(argument if argument.startswith("{") else Path(argument).read_text())))
