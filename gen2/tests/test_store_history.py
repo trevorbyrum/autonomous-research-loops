@@ -130,9 +130,14 @@ class ReplaceAndDeleteTest(StoreTestCase):
 
 class EveryTableSweepTest(StoreTestCase):
     """Attacks every table of a fully populated store; the oracle is that
-    nothing changes. Which guard fires is not asserted here (a BEFORE INSERT
-    trigger may fire before the conflict); the isolated tests above pin the
-    delete guard itself for the tables replay safety depends on."""
+    nothing changes and the refusal is a trigger guard, never a constraint
+    (see the assertNotIn below). Which guard fires is not asserted here: for REPLACE
+    into claims, config_bundles, extractor_registry_revisions, intake_briefs,
+    invocation_reconciliations, invocations, leases, outbox_events,
+    research_ordinals and store_generation an insert-admission trigger
+    refuses before the delete guard, so this sweep does not prove the delete
+    guard there; the isolated tests above pin it where replay safety
+    depends on it."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -160,8 +165,9 @@ class EveryTableSweepTest(StoreTestCase):
             with self.subTest(table=table):
                 first = self.rows(f"SELECT name FROM pragma_table_info('{table}') ORDER BY cid LIMIT 1")[0][0]
                 before = self.snapshot(table)
-                with self.assertRaises(sqlite3.IntegrityError):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
                     self.x(f"UPDATE {table} SET {first} = {first}")  # even a no-op rewrite is refused
+                self.assertNotIn("constraint failed", str(ctx.exception))  # a trigger guard, not an FK/UNIQUE/CHECK accident
                 self.assertEqual(self.snapshot(table), before)
 
     def test_unreferenced_rows_cannot_be_deleted_either(self) -> None:
@@ -187,8 +193,9 @@ class EveryTableSweepTest(StoreTestCase):
                              ("config_bundles", f"bundle_hash = '{h('d')}'"), ("reservations", "reservation_id = 'rsv_lonely01'")):
             with self.subTest(table=table):
                 before = self.snapshot(table)
-                with self.assertRaises(sqlite3.IntegrityError):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
                     self.x(f"DELETE FROM {table} WHERE {where}")
+                self.assertNotIn("constraint failed", str(ctx.exception))  # a trigger guard, not an FK/UNIQUE/CHECK accident
                 self.assertEqual(self.snapshot(table), before)
 
     def test_no_table_can_be_deleted_from_or_replaced_into(self) -> None:
@@ -199,11 +206,13 @@ class EveryTableSweepTest(StoreTestCase):
         for table in self.tables():
             with self.subTest(table=table):
                 before = self.snapshot(table)
-                with self.assertRaises(sqlite3.IntegrityError):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
                     self.x(f"DELETE FROM {table}")
+                self.assertNotIn("constraint failed", str(ctx.exception))  # a trigger guard, not an FK/UNIQUE/CHECK accident
                 self.assertEqual(self.snapshot(table), before)
-                with self.assertRaises(sqlite3.IntegrityError):
+                with self.assertRaises(sqlite3.IntegrityError) as ctx:
                     self.x(f"INSERT OR REPLACE INTO {table} SELECT * FROM {table} WHERE rowid = (SELECT min(rowid) FROM {table})")
+                self.assertNotIn("constraint failed", str(ctx.exception))  # a trigger guard, not an FK/UNIQUE/CHECK accident
                 self.assertEqual(self.snapshot(table), before)
 
 

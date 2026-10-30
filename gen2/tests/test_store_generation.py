@@ -1,9 +1,12 @@
 """Store transaction invalidation and the retained generation integrity guards."""
+import re
 import sqlite3
 import unittest
 
 from gen2.store import api, db
 from gen2.tests import store_fixtures as fx
+
+STEP = "store generation must advance once or renew epoch; exhaustion refuses writes"
 
 
 class GenerationTest(unittest.TestCase):
@@ -24,11 +27,11 @@ class GenerationTest(unittest.TestCase):
     def test_insert_protection(self):
         self.db.execute('DROP TRIGGER IF EXISTS store_generation_no_delete')
         self.db.execute('DELETE FROM store_generation')
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "store generation singleton cannot be inserted"):
             self.db.execute("INSERT INTO store_generation VALUES ('store',?,0)", ('a' * 32,))
 
     def test_delete_protection(self):
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "store generation singleton cannot be deleted"):
             self.db.execute('DELETE FROM store_generation')
 
     def test_step_protection(self):
@@ -36,22 +39,25 @@ class GenerationTest(unittest.TestCase):
             with self.subTest(assignment=assignment):
                 self.db.execute('SAVEPOINT s')
                 try:
-                    with self.assertRaises(sqlite3.IntegrityError):
+                    with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(STEP)):
                         self.db.execute('UPDATE store_generation SET ' + assignment)
                 finally:
                     self.db.execute('ROLLBACK TO s')
                     self.db.execute('RELEASE s')
         self.db.execute("UPDATE store_generation SET epoch=?", ('a' * 32,))
-        with self.assertRaises(sqlite3.IntegrityError):
+        # epoch=NULL refuses under the step trigger, not under NOT NULL.
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(STEP)):
             self.db.execute('UPDATE store_generation SET epoch=NULL')
 
     def test_constraints(self):
         self.db.execute('DROP TRIGGER IF EXISTS store_generation_step')
         self.db.execute('DROP TRIGGER IF EXISTS store_generation_no_insert')
-        for sql in ("INSERT INTO store_generation VALUES ('other','" + 'a' * 32 + "',0)",
-                    'UPDATE store_generation SET generation=-1', 'UPDATE store_generation SET generation=9007199254740992',
-                    "UPDATE store_generation SET epoch=''", "UPDATE store_generation SET epoch='" + 'G' * 32 + "'"):
-            with self.subTest(sql=sql), self.assertRaises(sqlite3.IntegrityError):
+        for sql, fragment in (("INSERT INTO store_generation VALUES ('other','" + 'a' * 32 + "',0)", "singleton = 'store'"),
+                    ('UPDATE store_generation SET generation=-1', "generation BETWEEN 0 AND 9007199254740991"),
+                    ('UPDATE store_generation SET generation=9007199254740992', "generation BETWEEN 0 AND 9007199254740991"),
+                    ("UPDATE store_generation SET epoch=''", "length(epoch) = 32"),
+                    ("UPDATE store_generation SET epoch='" + 'G' * 32 + "'", "length(epoch) = 32")):
+            with self.subTest(sql=sql), self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(fragment)):
                 self.db.execute(sql)
 
 
@@ -142,6 +148,6 @@ class CounterTest(unittest.TestCase):
         self.db.execute('UPDATE store_generation SET generation=9007199254740991')
         self.db.execute(step)
         before = self.state()
-        with self.assertRaises(sqlite3.IntegrityError), self.store.transaction():
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(STEP)), self.store.transaction():
             self.store.update('queue_entries', {'topic_id': fx.TOPIC}, {'priority': 2})
         self.assertEqual(self.state(), before)
