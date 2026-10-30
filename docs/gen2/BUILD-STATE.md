@@ -6,17 +6,17 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 *(This section is current state only; history is in REVIEW-LOG.md. Contract and rulings: DOSSIER.md.)*
 - **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
 - **Open task:** 2d, slice 6. 6a is complete. The checks cut-back S1–S6, S2b–S2d and the gateway-mutant and trigger-order retirements are complete.
-  - **Complete:** the Gate S full-pass batches C, C-fu, D1, D2 (a1–a3, b), E, O-9 (a, b); R2 (INVARIANTS rules plus generated traceability); 6b1′ PR 0.
-  - **In flight:**
-    - the move-aware mutation scope (PR #73, Sol, measurement running), which unblocks Batch B, then A, O-5 and 6b1′ PR 1;
+  - **Complete:** the Gate S full-pass batches C, C-fu, D1, D2 (a1–a3, b), E, O-9 (a, b), B; R2 (INVARIANTS rules plus generated traceability); 6b1′ PR 0; O-10, Docs-1, Prune-1 (2026-10-29); move-aware mutation scope (#73); Str-A, Str-B, Str-C and CS-1 (2026-10-30; collected ids 2,868 → 2,848).
+  - **In flight (2026-10-30):**
+    - Batch F (PR #54): accepted; the verifier rerun is queued after an orchestrator-caused venv fault (REVIEW-LOG);
+    - Str-D (PR #84): accepted; verifier running;
+    - Batch A (PR #85): accepted after B1; the mutation pre-check and verifier are queued;
     - the nightly test-portfolio review, in its dry-run week.
-  - **Done 2026-10-29:** O-10 (PR #75), Docs-1 (PR #74), Prune-1 (PR #76; collected ids 2,883 → 2,862).
-  - **In flight (2026-10-29 evening):** Batch F round 3, option A (Sol, PR #54); the mutation-scope round 2, B1 timeout classification (Sol, PR #73); the test consolidation sweep (Sol, read-only); the Fable ruling on the 20261028 baseline strengthenings.
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`.
-- **Last verifier result:** Prune-1 `759a42d`, gen2-accept exit 0 in 722 s (8 shards, 2,862 tests).
+- **Last verifier result:** Str-C `63ad690`, gen2-accept exit 0 in 853 s (8 shards, 2,868 tests at its base).
 - **Blockers:** none. Trevor ruled on 2026-10-29 (DOSSIER): mutation scope, Batch F option A, CI-DESIGN, C-4, O-10, and test-pruning items 7–11. The tier table is approved (TIERS-v2 plus Astra), and Batch F option A was chosen.
 - **Gate S:** last run was the **full pass at `3a579af`** (2026-10-27; rulings O-1 to O-11 approved). Gate S #2's rulings S2-1 to S2-7 were approved 2026-10-27.
-- **What's next:** after the operator decisions, Batch B → A → O-5 → 6b1′ PR 1 → 6b2′ → 2e1-minimum → 2e2-minimum → 2f. Batch F, then `raw_exchange`, on the second coder. Task 2g follows 2f.
+- **What's next:** Batch A merge → O-5 → 6b1′ PR 1 → 6b2′ → 2e1-minimum → 2e2-minimum → 2f. Batch F, then `raw_exchange`, on the second coder. Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 
