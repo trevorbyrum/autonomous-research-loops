@@ -505,7 +505,7 @@ class ObservationTest(StoreTestCase):
             self.obs("o1", "provider_unavailable", 0, "provider_outage")
         self.assertEqual(self.snapshot("search_observations"), before)
         before = self.snapshot("search_observations")
-        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('OR error_class IS NOT NULL')):
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("coverage_state NOT IN ('provider_unavailable', 'auth_failed', 'unknown') OR error_class IS NOT NULL")):
             self.obs("o1", "provider_unavailable", None, None)  # degraded needs an error class
         self.assertEqual(self.snapshot("search_observations"), before)
         self.obs("o1", "provider_unavailable", None, "payload_invalid")
@@ -754,6 +754,14 @@ class ObservationTest(StoreTestCase):
             self.obs("o1", "searched_empty", 0, "partial_pagination", completeness="partial")  # an empty page is not an empty search
         self.assertEqual(self.snapshot("search_observations"), before)
         before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("coverage_state != 'searched_empty' OR completeness = 'complete'")):
+            self.obs("o1", "searched_empty", 0, completeness="partial", call="gw-call:1")
+        self.assertEqual(self.snapshot("search_observations"), before)
+        self.x("SAVEPOINT empty_control")
+        self.obs("o1", "searched_empty", 0, completeness="complete", call="gw-call:1")
+        self.x("ROLLBACK TO empty_control")
+        self.x("RELEASE empty_control")
+        before = self.snapshot("search_observations")
         with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("= (completeness != 'unobserved')")):
             self.obs("o1", "provider_unavailable", None, "provider_outage", completeness="complete")
         self.assertEqual(self.snapshot("search_observations"), before)
@@ -761,6 +769,14 @@ class ObservationTest(StoreTestCase):
         with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("= (completeness != 'unobserved')")):
             self.obs("o1", "searched_ok", 5, completeness="unobserved")
         self.assertEqual(self.snapshot("search_observations"), before)
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("= (completeness != 'unobserved')")):
+            self.obs("o1", "searched_ok", 5, completeness="unobserved", call="gw-call:1")
+        self.assertEqual(self.snapshot("search_observations"), before)
+        self.x("SAVEPOINT observed_control")
+        self.obs("o1", "searched_ok", 5, completeness="complete", call="gw-call:1")
+        self.x("ROLLBACK TO observed_control")
+        self.x("RELEASE observed_control")
         before = self.snapshot("search_observations")
         with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("OR completeness = 'partial' OR error_class IS NULL")):
             self.obs("o1", "searched_ok", 5, "timeout", completeness="complete")  # a complete result set has no error
@@ -910,6 +926,10 @@ class ScreeningAndDecisionTest(StoreTestCase):
         # The spec-match trigger refuses this before the answer-shape CHECK.
         with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('decision receipt must match its spec')):
             self.decision_receipt("dec_00000001", "inv_pppppppp", fb, provider="llm_fallback", answer=dict(label, primitive="choice", confidence=0.9))
+        self.assertEqual(self.snapshot("decision_receipts"), before)
+        before = self.snapshot("decision_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('decision receipt must match its spec')):
+            self.decision_receipt("dec_00000001", "inv_pppppppp", fb, provider="llm_fallback", answer=dict(label, primitive="choice"))
         self.assertEqual(self.snapshot("decision_receipts"), before)
         self.decision_receipt("dec_00000001", "inv_pppppppp", fb, provider="llm_fallback", answer=label)
 
