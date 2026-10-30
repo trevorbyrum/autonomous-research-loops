@@ -1,4 +1,5 @@
 """V-6 source identities: raw DDL guards with independent accepted controls."""
+import re
 import sqlite3
 
 from gen2.tests.store_fixtures import TOPIC, T, StoreTestCase, h
@@ -20,22 +21,28 @@ class DDLTest(StoreTestCase):
                          [("v1", self.source_hash, "inv_pppppppp"), ("v2", self.source_hash, "inv_pppppppp")])
 
     def test_commit(self):
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("source_artifacts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("needs its contract-admitted primary commit")):
             self.raw(invocation_id="inv_vvvvvvvv")
+        self.assertEqual(self.snapshot("source_artifacts"), before)
 
     def test_topic(self):
         self.x("INSERT INTO artifacts (content_hash, size_bytes, media_type, topic_id, staged_at) VALUES (?, 10, 'text/plain', ?, ?)", h("e"), TOPIC, T)
         self.x("INSERT INTO works VALUES ('wrk_unretrieved', 'doi', '10.1/unretrieved', NULL, ?)", T)
+        before = self.snapshot("source_artifacts")
         for changes in ({"content_hash": h("e")}, {"work_id": "wrk_unretrieved"}):
-            with self.subTest(changes=changes), self.assertRaises(sqlite3.IntegrityError):
+            with self.subTest(changes=changes), self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("topic-authorized bytes and a topic-retrieved work")):
                 self.raw(**changes)
+            self.assertEqual(self.snapshot("source_artifacts"), before)
 
     def test_update(self):
         self.raw()  # v2 has no acquisition dependent; the FK cannot mask the guard.
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x("UPDATE source_artifacts SET source_version = 'changed' WHERE source_version = 'v2'")
+        before = self.snapshot("source_artifacts")
+        self.rejects("capture provenance are immutable", "UPDATE source_artifacts SET source_version = 'changed' WHERE source_version = 'v2'")
+        self.assertEqual(self.snapshot("source_artifacts"), before)
 
     def test_delete(self):
         self.raw()
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x("DELETE FROM source_artifacts WHERE source_version = 'v2'")
+        before = self.snapshot("source_artifacts")
+        self.rejects("capture provenance are retained", "DELETE FROM source_artifacts WHERE source_version = 'v2'")
+        self.assertEqual(self.snapshot("source_artifacts"), before)

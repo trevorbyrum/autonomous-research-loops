@@ -21,6 +21,7 @@ router), or anything about concurrency. They test the draft schema only.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import unittest
 
@@ -459,7 +460,14 @@ class CommitFencingTest(StoreTestCase):
     def test_delegate_commits_under_parent_lease(self) -> None:
         self.to_running("inv_pppppppp")
         self.invocation("inv_dddddddd", kind="delegate", lease=None, parent="inv_pppppppp")
+        self.lease("lease_vvvvvvvv", 2, scope="verification")
+        before = self.snapshot("operation_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("foreign lease, stale generation or released lease")):
+            self.receipt("op_00000001", "inv_dddddddd", lease="lease_vvvvvvvv", gen=2)
+        self.assertEqual(self.snapshot("operation_receipts"), before)
         self.receipt("op_00000001", "inv_dddddddd")
+        self.assertEqual(self.rows("SELECT invocation_id, lease_id, lease_generation FROM operation_receipts WHERE operation_id = 'op_00000001'"),
+                         [("inv_dddddddd", "lease_aaaaaaaa", 1)])
 
     def test_state_revision_advances_by_exactly_one(self) -> None:
         self.x("UPDATE queue_entries SET state_revision = 1 WHERE topic_id = ?", TOPIC)
