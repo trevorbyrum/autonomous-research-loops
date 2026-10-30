@@ -34,6 +34,11 @@ class UtcNowFormatTest(unittest.TestCase):
             self.assertEqual(engine.utc_now(), "2026-10-27T01:02:03.040506Z")
             self.assertEqual(compat.capability_fact("ok", "", {})["since"], "2026-10-27T01:02:03Z")
 
+    def test_a_timespec_outside_the_two_is_refused(self):
+        for timespec in ("milliseconds", "", "Seconds"):
+            with self.subTest(timespec=timespec), self.assertRaises(KeyError):
+                utc_now(timespec)
+
 
 class UtcInstantTest(unittest.TestCase):
     VALID = ("2026-09-25T12:00:00Z", "2028-02-29T23:59:59Z", "2000-02-29T00:00:00Z", "2026-01-31T00:00:00.5Z",

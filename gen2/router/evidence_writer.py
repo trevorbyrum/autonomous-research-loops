@@ -187,7 +187,7 @@ class EvidenceWriter:
             if proposal["proposed_by"] != {"invocation_id": inv["invocation_id"], "invocation_kind": inv["kind"]}:
                 raise Refusal("capability_invocation_mismatch", f"{proposal['proposal_id']} names proposer {proposal['proposed_by']['invocation_id']}: a proposal is its committer's")
 
-    def validate_decisions(self, payload: dict, inv: dict, env: dict, bind: Callable[[dict, str], None], bundle: dict) -> dict | None:
+    def validate_decisions(self, payload: dict, inv: dict, env: dict, bind: Callable[[dict, str], None], bundle: dict) -> "dict | None":
         """Decision receipts against their specs and the admitted question registry, then the screening assessments against the receipts; returns the eligibility protocol, if any."""
         receipts = {}
         specs = {}

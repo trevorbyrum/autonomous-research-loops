@@ -56,6 +56,9 @@ def utc_instant_ns(value: object) -> int:
     return (days * 86400 + hour * 3600 + minute * 60 + second) * 10**9 + int(fraction.ljust(9, "0"))
 
 
+_NOW_FORMATS = {"microseconds": "%Y-%m-%dT%H:%M:%S.%fZ", "seconds": "%Y-%m-%dT%H:%M:%SZ"}
+
+
 def utc_now(timespec: str = "microseconds") -> str:
-    """The current instant: `microseconds` (a six-digit fraction) or `seconds` (none), always a literal Z."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ" if timespec == "seconds" else "%Y-%m-%dT%H:%M:%S.%fZ")
+    """The current instant: `microseconds` (a six-digit fraction) or `seconds` (none), always a literal Z; KeyError for any other timespec."""
+    return datetime.now(timezone.utc).strftime(_NOW_FORMATS[timespec])
