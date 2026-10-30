@@ -1,4 +1,5 @@
 """Successor records only: registered families, retained comparisons, SQL 17 fence."""
+import re
 import sqlite3
 
 from gen2.tests.router_fixtures import empty_outcome
@@ -159,11 +160,12 @@ class RouterV2Test(RecordCase):
 
     def test_immutable(self):
         self.test_control()
-        for statement in ("UPDATE extraction_validations_v2 SET created_at=created_at", "DELETE FROM extraction_validations_v2",
-                "INSERT OR REPLACE INTO extraction_validations_v2 SELECT * FROM extraction_validations_v2",
-                "INSERT INTO extraction_validations_v2 SELECT * FROM extraction_validations_v2 WHERE true ON CONFLICT DO UPDATE SET created_at=excluded.created_at"):
+        for statement, fragment in (("UPDATE extraction_validations_v2 SET created_at=created_at", "validations are immutable"),
+                ("DELETE FROM extraction_validations_v2", "validations are retained"),
+                ("INSERT OR REPLACE INTO extraction_validations_v2 SELECT * FROM extraction_validations_v2", "validations are retained"),
+                ("INSERT INTO extraction_validations_v2 SELECT * FROM extraction_validations_v2 WHERE true ON CONFLICT DO UPDATE SET created_at=excluded.created_at", "validations are immutable")):
             before = self.state(exclude=())
-            with self.assertRaises(sqlite3.IntegrityError):
+            with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(fragment)):
                 self.x(statement)
             self.assertEqual(self.state(exclude=()), before)
 

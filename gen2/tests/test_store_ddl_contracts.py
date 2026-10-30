@@ -20,6 +20,7 @@ router), or anything about concurrency. They test the draft schema only.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import unittest
 
@@ -655,25 +656,32 @@ class FacetImportanceTest(StoreTestCase):
         self.approve(draft + 2)
 
     def test_approval_needs_complete_rows_and_every_facet_rated(self) -> None:
+        rule = "approval needs complete obligation/facet rows, every facet operator-rated"
         both = (facet("F-1", band="limited", decision="opd_rate0001"), facet("F-2", band="limited", decision="opd_rate0001"))
         d = self.rate("opd_rate0001", facets=both)
         # a document facet without its row
         self.contract(TOPIC, d + 1, facets=both, obligations=(obligation("O-1", ("F-1",)),))
         self.insert_facet(TOPIC, d + 1, both[0])
         self.insert_obligation(TOPIC, d + 1, obligation("O-1", ("F-1",)))
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("contract_revisions")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(rule)):
             self.approve(d + 1)
+        self.assertEqual(self.snapshot("contract_revisions"), before)
         # a document obligation without its row
         self.contract(TOPIC, d + 2, facets=both, obligations=(obligation("O-1", ("F-1",)), obligation("O-2", ("F-2",))))
         for entry in both:
             self.insert_facet(TOPIC, d + 2, entry)
         self.insert_obligation(TOPIC, d + 2, obligation("O-1", ("F-1",)))
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("contract_revisions")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(rule)):
             self.approve(d + 2)
+        self.assertEqual(self.snapshot("contract_revisions"), before)
         # an unrated facet (its importance could not be known critical)
         self.contract_with_rows(TOPIC, d + 3, facets=(both[0], facet("F-2")), obligations=(obligation("O-1", ("F-1",)),))
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("contract_revisions")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(rule)):
             self.approve(d + 3)
+        self.assertEqual(self.snapshot("contract_revisions"), before)
         self.contract_with_rows(TOPIC, d + 4, facets=both, obligations=(obligation("O-1", ("F-1",)),))
         self.approve(d + 4)
 
@@ -789,8 +797,10 @@ class FacetImportanceTest(StoreTestCase):
         self.contract(TOPIC, 2, facets=tuple(entries.values()))
         for rid in ("dec_screen01", "dec_otherimp"):
             with self.subTest(receipt=rid):
-                with self.assertRaises(sqlite3.IntegrityError):
+                before = self.snapshot("facets")
+                with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("must cite this topic's importance_score receipt (A3)")):
                     self.insert_facet(TOPIC, 2, entries[rid])
+                self.assertEqual(self.snapshot("facets"), before)
         self.insert_facet(TOPIC, 2, entries["dec_import01"])
 
     def test_obligation_row_equals_its_entry_and_tags_only_its_facets(self) -> None:

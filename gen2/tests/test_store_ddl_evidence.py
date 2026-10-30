@@ -19,6 +19,7 @@ router), or anything about concurrency. They test the draft schema only.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 import unittest
 
@@ -254,10 +255,14 @@ class VerificationTest(StoreTestCase):
         with no exact-quote status, is refused like an explicit null."""
         # SQL 03's original NULL-sensitive column/receipt checks remain active.
         self.recorded_verification_basis()
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("verification_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("verdict != 'supports' OR json_type(receipt, '$.adjudication') IS 'object'")):
             self.verify("ver_00000001", checks=dict(self.CHECKS_OK, numeric_units="checked_problem"), drop=("adjudication",))
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("verification_receipts"), before)
+        before = self.snapshot("verification_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("'$.checks.exact_quote.status'), 'missing') IN ('matched', 'not_applicable')")):
             self.verify("ver_00000002", quote=("not_applicable", None), drop=("checks.exact_quote.status",))
+        self.assertEqual(self.snapshot("verification_receipts"), before)
         self.verify("ver_00000001", drop=("adjudication",))  # all checks succeeded: the absent adjudication is not needed
 
     def test_truthful_unsuccessful_verdicts_may_record_unperformed_checks(self) -> None:
@@ -268,8 +273,10 @@ class VerificationTest(StoreTestCase):
         unperformed = {"numeric_units": "not_checked", "denominators": "unavailable", "negation": "not_checked", "qualifications": "unavailable"}
         self.verify("ver_00000001", tier="abstract", verdict="cannot_assess_at_required_tier", checks=unperformed, quote=("not_applicable", None))
         self.verify("ver_00000002", verdict="does_not_support", checks=unperformed)
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("verification_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("use != 'load_bearing' OR verdict NOT IN ('supports', 'partially_supports')")):
             self.verify("ver_00000003", verdict="partially_supports", checks=unperformed)
+        self.assertEqual(self.snapshot("verification_receipts"), before)
         self.verify("ver_00000004", verdict="partially_supports", checks=dict(self.CHECKS_OK, numeric_units="checked_problem"))
 
     def test_quote_check_binding(self) -> None:
@@ -493,28 +500,42 @@ class ObservationTest(StoreTestCase):
         self.x(self.INSERT, oid, TOPIC, h(ident), request, T, state, count, error, fact, completeness, outcome, cursor, call)
 
     def test_degraded_search_cannot_report_zero(self) -> None:
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('OR result_count IS NULL')):
             self.obs("o1", "provider_unavailable", 0, "provider_outage")
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("search_observations"), before)
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("coverage_state NOT IN ('provider_unavailable', 'auth_failed', 'unknown') OR error_class IS NOT NULL")):
             self.obs("o1", "provider_unavailable", None, None)  # degraded needs an error class
+        self.assertEqual(self.snapshot("search_observations"), before)
         self.obs("o1", "provider_unavailable", None, "payload_invalid")
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('OR result_count IS NULL')):
             self.obs("o2", "unknown", 0, "telemetry_missing", ident="2")
+        self.assertEqual(self.snapshot("search_observations"), before)
         self.obs("o2", "unknown", None, "telemetry_missing", ident="2")
 
     def test_searched_empty_is_exactly_zero_and_searched_ok_has_results(self) -> None:
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('result_count = 0)')):
             self.obs("o1", "searched_empty", None)
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("search_observations"), before)
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('result_count >= 1)')):
             self.obs("o1", "searched_ok", 0)
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("search_observations"), before)
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('result_count >= 1)')):
             self.obs("o1", "searched_ok", None)
+        self.assertEqual(self.snapshot("search_observations"), before)
         self.obs("o1", "searched_empty", 0)
         self.obs("o2", "searched_ok", 3, ident="2")
 
     def test_secrets_failure_is_a_dated_capability_fact(self) -> None:
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("error_class IS NOT 'secrets_backend_failing' OR capability_fact_id IS NOT NULL")):
             self.obs("o1", "auth_failed", None, "secrets_backend_failing")
+        self.assertEqual(self.snapshot("search_observations"), before)
         self.x("INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, recorded_at) VALUES ('cf-1', 'secrets_backend', 'failing', 'vault 403', '2026-09-21T19:47:00Z', '[\"semantic_scholar\"]', ?)", T)
         self.obs("o1", "auth_failed", None, "secrets_backend_failing", "cf-1")
 
@@ -724,16 +745,42 @@ class ObservationTest(StoreTestCase):
         lower bound, retrieval events captured) and says why it is partial; it is
         never searched_empty, a degraded search never claims an observed result
         set, and a complete successful search carries no error."""
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("completeness != 'partial' OR error_class IS NOT NULL")):
             self.obs("o1", "searched_ok", 5, completeness="partial")  # partial must say why
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("search_observations"), before)
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("coverage_state != 'searched_empty' OR completeness = 'complete'")):
             self.obs("o1", "searched_empty", 0, "partial_pagination", completeness="partial")  # an empty page is not an empty search
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("search_observations"), before)
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("coverage_state != 'searched_empty' OR completeness = 'complete'")):
+            self.obs("o1", "searched_empty", 0, completeness="partial", call="gw-call:1")
+        self.assertEqual(self.snapshot("search_observations"), before)
+        self.x("SAVEPOINT empty_control")
+        self.obs("o1", "searched_empty", 0, completeness="complete", call="gw-call:1")
+        self.x("ROLLBACK TO empty_control")
+        self.x("RELEASE empty_control")
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("= (completeness != 'unobserved')")):
             self.obs("o1", "provider_unavailable", None, "provider_outage", completeness="complete")
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("search_observations"), before)
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("= (completeness != 'unobserved')")):
             self.obs("o1", "searched_ok", 5, completeness="unobserved")
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("search_observations"), before)
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("= (completeness != 'unobserved')")):
+            self.obs("o1", "searched_ok", 5, completeness="unobserved", call="gw-call:1")
+        self.assertEqual(self.snapshot("search_observations"), before)
+        self.x("SAVEPOINT observed_control")
+        self.obs("o1", "searched_ok", 5, completeness="complete", call="gw-call:1")
+        self.x("ROLLBACK TO observed_control")
+        self.x("RELEASE observed_control")
+        before = self.snapshot("search_observations")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("OR completeness = 'partial' OR error_class IS NULL")):
             self.obs("o1", "searched_ok", 5, "timeout", completeness="complete")  # a complete result set has no error
+        self.assertEqual(self.snapshot("search_observations"), before)
         self.obs("o1", "searched_ok", 5, "partial_pagination", completeness="partial")
         self.x("INSERT INTO retrieval_events (event_id, observation_id, topic_id, provider_record_id, captured_at) VALUES ('e1', 'o1', ?, 'rec-1', ?)", TOPIC, T)
         self.assertEqual(self.rows("SELECT completeness, result_count, error_class FROM search_observations"), [("partial", 5, "partial_pagination")])
@@ -746,42 +793,44 @@ class ObservationTest(StoreTestCase):
         cursor = '{"cursor": "c2"}'
         n = iter(range(1, 1000))
 
-        def refused(*args, **kw) -> None:
-            with self.assertRaises(sqlite3.IntegrityError):
+        def refused(*args, rule, **kw) -> None:
+            before = self.snapshot("search_observations")
+            with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(rule)):
                 self.obs(f"x{next(n)}", *args, ident=str(next(n)), **kw)
+            self.assertEqual(self.snapshot("search_observations"), before)
 
         def accepted(*args, **kw) -> None:
             self.obs(f"y{next(n)}", *args, ident=str(next(n)), **kw)
 
-        refused("searched_ok", 3, outcome="finished")                                   # outside the vocabulary
+        refused("searched_ok", 3, outcome="finished", rule="page_outcome IN ('exhausted', 'continuation', 'end_unknown', 'limit_reached', 'failed')")  # outside the vocabulary
         accepted("searched_ok", 3, outcome="exhausted")
         for state, error in (("provider_unavailable", "provider_outage"), ("auth_failed", "credentials_rejected"), ("unknown", "telemetry_missing")):
             with self.subTest(state=state):
-                refused(state, None, error, outcome="end_unknown")                       # an unreadable page is failed
+                refused(state, None, error, outcome="end_unknown", rule="(coverage_state IN ('provider_unavailable', 'auth_failed', 'unknown')) = (page_outcome = 'failed')")  # an unreadable page is failed
                 accepted(state, None, error, outcome="failed")
         for state, count in (("searched_ok", 3), ("searched_empty", 0), ("metadata_only", 1)):
             with self.subTest(state=state):
-                refused(state, count, outcome="failed")                                  # a page that was read did not fail
-        refused("not_searched", None, outcome="failed")                                  # a lane never searched is not a failed page
+                refused(state, count, outcome="failed", rule="(coverage_state IN ('provider_unavailable', 'auth_failed', 'unknown')) = (page_outcome = 'failed')")  # a page that was read did not fail
+        refused("not_searched", None, outcome="failed", rule="(coverage_state IN ('provider_unavailable', 'auth_failed', 'unknown')) = (page_outcome = 'failed')")  # a lane never searched is not a failed page
         accepted("not_searched", None, outcome="end_unknown")
         for outcome in ("continuation", "limit_reached"):
             with self.subTest(outcome=outcome):
-                refused("searched_ok", 3, outcome=outcome)                               # a continuation without its cursor
+                refused("searched_ok", 3, outcome=outcome, rule="(page_outcome IN ('continuation', 'limit_reached')) = (continuation IS NOT NULL)")  # a continuation without its cursor
                 accepted("searched_ok", 3, outcome=outcome, cursor=cursor)
                 accepted("searched_ok", 3, "partial_pagination", completeness="partial", outcome=outcome, cursor='{"cursor": 20}')
                 accepted("searched_empty", 0, outcome=outcome, cursor=cursor)            # an empty page may still hand one back
-                refused("not_searched", None, outcome=outcome, cursor=cursor)            # nothing was read: nothing continues
+                refused("not_searched", None, outcome=outcome, cursor=cursor, rule="page_outcome NOT IN ('continuation', 'limit_reached') OR completeness != 'unobserved'")  # nothing was read: nothing continues
         for outcome in ("exhausted", "end_unknown"):
             with self.subTest(outcome=outcome):
-                refused("searched_ok", 3, outcome=outcome, cursor=cursor)                # a cursor belongs to a continuation or a cap
-        refused("provider_unavailable", None, "provider_outage", outcome="failed", cursor=cursor)
+                refused("searched_ok", 3, outcome=outcome, cursor=cursor, rule="(page_outcome IN ('continuation', 'limit_reached')) = (continuation IS NOT NULL)")  # a cursor belongs to a continuation or a cap
+        refused("provider_unavailable", None, "provider_outage", outcome="failed", cursor=cursor, rule="(page_outcome IN ('continuation', 'limit_reached')) = (continuation IS NOT NULL)")
         for bad in ('"c2"', '{"cursor": null}', '{"cursor": 1.5}', '{"cursor": true}', '{"cursor": ["c2"]}', '{"cursor": "c2", "x": 1}', '{}', '[]', 'not json'):
             with self.subTest(cursor=bad):
-                refused("searched_ok", 3, outcome="continuation", cursor=bad)            # {"cursor": <string or integer>} and nothing else
+                refused("searched_ok", 3, outcome="continuation", cursor=bad, rule='continuation IS NULL OR (json_valid(continuation)')  # {"cursor": <string or integer>} and nothing else
         with self.subTest("an end"):
-            refused("searched_ok", 3, "partial_pagination", completeness="partial", outcome="exhausted")   # a partial page ends nothing (RG-4)
-            refused("not_searched", None, outcome="exhausted")                           # nor does a lane never searched
-            refused("exhausted", None, outcome="exhausted")                              # nor does a lane restating an end it reported earlier
+            refused("searched_ok", 3, "partial_pagination", completeness="partial", outcome="exhausted", rule="page_outcome != 'exhausted' OR completeness = 'complete'")  # a partial page ends nothing (RG-4)
+            refused("not_searched", None, outcome="exhausted", rule="page_outcome != 'exhausted' OR completeness = 'complete'")  # nor does a lane never searched
+            refused("exhausted", None, outcome="exhausted", rule="page_outcome != 'exhausted' OR completeness = 'complete'")  # nor does a lane restating an end it reported earlier
             accepted("exhausted", None, outcome="end_unknown")
             accepted("searched_ok", 3, outcome="end_unknown")                            # read whole, end unknown: the page is not the population
         self.assertGreater(self.rows("SELECT count(*) FROM search_observations WHERE completeness = 'complete' AND page_outcome IN ('end_unknown', 'limit_reached', 'continuation')")[0][0], 0)
@@ -817,8 +866,9 @@ class ScreeningAndDecisionTest(StoreTestCase):
         # now refuses a shadow receipt first; the qualified-authority trigger is
         # the independent second layer.
         self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev)  # shadow
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x(self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_00000001", T)
+        before = self.snapshot("screening_assessments")
+        self.rejects('screening assessment bindings', self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_00000001", T)
+        self.assertEqual(self.snapshot("screening_assessments"), before)
         self.decision_receipt("dec_00000002", "inv_pppppppp", self.jev, authority="qualified", qualification="qual_screen01", action="commit_reversible_action", commit_op="op_00000001")
         self.x(self.SCREEN, "sa1", TOPIC, "include", None, "decision_provider", "dec_00000002", T)
 
@@ -868,33 +918,57 @@ class ScreeningAndDecisionTest(StoreTestCase):
     def test_fallback_label_cannot_carry_probability(self) -> None:
         fb = self.spec("dspec_screen02", provider="llm_fallback")
         label = {"primitive": "label", "selected_option_id": "include", "evidence_refs": ["r1"]}
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("decision_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("provider != 'llm_fallback' OR answer IS NULL")):
             self.decision_receipt("dec_00000001", "inv_pppppppp", fb, provider="llm_fallback", answer=dict(label, probability=0.9))
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("decision_receipts"), before)
+        before = self.snapshot("decision_receipts")
+        # The spec-match trigger refuses this before the answer-shape CHECK.
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('decision receipt must match its spec')):
             self.decision_receipt("dec_00000001", "inv_pppppppp", fb, provider="llm_fallback", answer=dict(label, primitive="choice", confidence=0.9))
+        self.assertEqual(self.snapshot("decision_receipts"), before)
+        before = self.snapshot("decision_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('decision receipt must match its spec')):
+            self.decision_receipt("dec_00000001", "inv_pppppppp", fb, provider="llm_fallback", answer=dict(label, primitive="choice"))
+        self.assertEqual(self.snapshot("decision_receipts"), before)
         self.decision_receipt("dec_00000001", "inv_pppppppp", fb, provider="llm_fallback", answer=label)
 
     def test_missing_confidence_or_primitive_is_rejected_not_defaulted(self) -> None:
         """D41 (MODIFY per review): the Noul positive now runs under a Noul spec."""
         noul = self.spec("dspec_noul0001", primitive="noul", options=("yes", "no"))
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("decision_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("NOT IN ('choice', 'score')")):
             self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, answer={"primitive": "choice", "selected_option_id": "include", "distribution": {"include": 0.8, "exclude": 0.2}})
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("decision_receipts"), before)
+        before = self.snapshot("decision_receipts")
+        # The spec-match trigger refuses this before the answer-shape CHECK.
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('decision receipt must match its spec')):
             self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, answer={"selected_option_id": "include", "confidence": 0.7})
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("decision_receipts"), before)
+        before = self.snapshot("decision_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("IS NOT 'noul'")):
             self.decision_receipt("dec_00000001", "inv_pppppppp", noul, answer={"primitive": "noul", "probability": 0.8, "confidence": 0.9})
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("decision_receipts"), before)
+        before = self.snapshot("decision_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("IS NOT 'noul'")):
             self.decision_receipt("dec_00000001", "inv_pppppppp", noul, answer={"primitive": "noul"})
+        self.assertEqual(self.snapshot("decision_receipts"), before)
         self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev)
         self.decision_receipt("dec_00000002", "inv_pppppppp", noul, answer={"primitive": "noul", "probability": 0.8})
 
     def test_unqualified_authority_is_capped(self) -> None:
-        with self.assertRaises(sqlite3.IntegrityError):
+        before = self.snapshot("decision_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape('qualified authority needs a live qualification')):
             self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="qualified", action="attach_proposal", proposal="prop-1")
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("decision_receipts"), before)
+        before = self.snapshot("decision_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("action != 'commit_reversible_action' OR (authority_level = 'qualified'")):
             self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="advisory", action="commit_reversible_action", commit_op="op_00000001")
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.assertEqual(self.snapshot("decision_receipts"), before)
+        before = self.snapshot("decision_receipts")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, re.escape("authority_level != 'shadow' OR action = 'shadow_log_only'")):
             self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="shadow", action="attach_proposal", proposal="prop-1")
+        self.assertEqual(self.snapshot("decision_receipts"), before)
         self.decision_receipt("dec_00000001", "inv_pppppppp", self.jev, authority="advisory", action="attach_proposal", proposal="prop-1")
 
     def test_receipt_provider_must_match_spec(self) -> None:
@@ -1042,14 +1116,18 @@ class HoldTest(StoreTestCase):
               "VALUES (?, ?, 'clm_00000001', ?, 'verifier disagreement', 'needs_decision', ?, ?, ?, ?, ?, ?)")
 
     def test_hold_needs_owner_deadline_and_clearing_condition(self) -> None:
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x(self.INSERT, "hold_00000001", TOPIC, "judgment", "primary", None, T, "adjudicated", None, T)
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x(self.INSERT, "hold_00000001", TOPIC, "judgment", "primary", "primary", None, "adjudicated", None, T)
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x(self.INSERT, "hold_00000001", TOPIC, "judgment", "primary", "primary", T, "", None, T)
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.x(self.INSERT, "hold_00000001", TOPIC, "capability", "router", "router", T, "vault healthy", None, T)
+        before = self.snapshot("holds")
+        self.rejects('NOT NULL constraint failed: holds.owner', self.INSERT, "hold_00000001", TOPIC, "judgment", "primary", None, T, "adjudicated", None, T)
+        self.assertEqual(self.snapshot("holds"), before)
+        before = self.snapshot("holds")
+        self.rejects('NOT NULL constraint failed: holds.deadline_at', self.INSERT, "hold_00000001", TOPIC, "judgment", "primary", "primary", None, "adjudicated", None, T)
+        self.assertEqual(self.snapshot("holds"), before)
+        before = self.snapshot("holds")
+        self.rejects('length(clears_when) > 0', self.INSERT, "hold_00000001", TOPIC, "judgment", "primary", "primary", T, "", None, T)
+        self.assertEqual(self.snapshot("holds"), before)
+        before = self.snapshot("holds")
+        self.rejects("hold_class != 'capability' OR capability_fact_id IS NOT NULL", self.INSERT, "hold_00000001", TOPIC, "capability", "router", "router", T, "vault healthy", None, T)
+        self.assertEqual(self.snapshot("holds"), before)
         self.x(self.INSERT, "hold_00000001", TOPIC, "judgment", "primary", "primary", T, "adjudicated", None, T)
 
     def test_operator_hold_cleared_only_by_operator_decision(self) -> None:
