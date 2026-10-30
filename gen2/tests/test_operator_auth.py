@@ -420,7 +420,7 @@ class WireClient:
         body = message if isinstance(message, bytes) else b"" if message is None else json.dumps(message).encode("utf-8")
         request = (f"{method} {path} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {token}\r\n"
                    f"Content-Length: {len(body)}\r\n\r\n").encode() + body
-        return raw_exchange(self.engine, request)
+        return of.raw_exchange(self.engine, request)
 
 
 class WireReplyTest(WireClient, of.OperatorTestCase):
@@ -575,21 +575,6 @@ class WireReplyTest(WireClient, of.OperatorTestCase):
             backend.return_value = {"status": "recorded", "detail": "\nABCDEFGHIJKLMNO"}
             sensitive = self.wire("POST", "/v1/commands/request_cancel", {})
         self.assertEqual(sensitive.partition(b"\r\n\r\n")[2], b'{"detail": "[credential]", "status": "recorded"}')
-
-
-def raw_exchange(engine, request: bytes) -> bytes:
-    """Send `request` as it is; every byte of the answer (status line, headers,
-    body) until the engine closes the connection, or 5 s pass."""
-    host, port = engine.address
-    answer = b""
-    with socket.create_connection((host, port), timeout=5) as conn:
-        conn.sendall(request)
-        try:
-            while chunk := conn.recv(65536):
-                answer += chunk
-        except (TimeoutError, ConnectionResetError):
-            pass
-    return answer
 
 
 class RecoveryStatusWireTest(RecoveryWorld, of.OperatorTestCase):

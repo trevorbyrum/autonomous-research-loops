@@ -334,8 +334,7 @@ def http_chunked(test, path: str) -> tuple[int, object]:
 
 
 def _exchange(test, request: str) -> tuple[int, object]:
-    from gen2.tests.test_operator_auth import raw_exchange
-    head, _, body = raw_exchange(test.engine, request.encode()).partition(b"\r\n\r\n")
+    head, _, body = of.raw_exchange(test.engine, request.encode()).partition(b"\r\n\r\n")
     return int(head.split()[1]), json.loads(body)
 
 
