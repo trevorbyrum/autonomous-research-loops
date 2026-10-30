@@ -84,8 +84,9 @@ class CollaboratorInterfaceTest(RouterTestCase):
 
     def check_siblings(self, module, core, syntax):
         registry = {attribute: cls for _, cls, _, attribute in COLLABORATORS}
-        imports = {a.asname or a.name: (n.module, a.name) for n in ast.walk(tree(module))
-                   if isinstance(n, ast.ImportFrom) for a in n.names}
+        imports = {a.asname or a.name: (n.module, a.name) for block in tree(module).body
+                   if isinstance(block, ast.If) and isinstance(block.test, ast.Name) and block.test.id in ("TYPE_CHECKING",)
+                   for n in block.body if isinstance(n, ast.ImportFrom) for a in n.names}
         for node in ast.walk(syntax):
             if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) and is_core(node.value.value)):
                 continue
@@ -96,6 +97,7 @@ class CollaboratorInterfaceTest(RouterTestCase):
             target = registry[attribute]
             annotation = core.__annotations__[attribute].strip("\"'")
             self.assertEqual(annotation, target.__name__)
+            self.assertIn(annotation, imports)
             self.assertEqual(imports[annotation], (target.__module__, target.__name__))
             self.assertIs(type(getattr(self.router, attribute)), target)
             self.assertTrue(callable(getattr(target, node.attr, None)), f"{attribute}.{node.attr}")
