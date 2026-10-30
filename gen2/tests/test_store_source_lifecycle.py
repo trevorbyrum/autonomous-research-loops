@@ -48,7 +48,8 @@ class LifecycleDDLTest(StoreTestCase):
         for changes, fragment in (({"action": "invalid"}, "action IN ('add', 'keep', 'supersede'"),
                                   ({"actor_kind": "operator"}, "actor_kind = 'primary'"), ({"reason_code": ""}, "length(reason_code) > 0"),
                                   ({"source_version": ""}, "length(source_version) > 0"), ({"evidence_refs": "[]"}, "json_array_length(evidence_refs) > 0"),
-                                  ({"action": "coexist"}, "action IN ('supersede', 'coexist', 'duplicate-report') AND related_work_id IS NOT NULL")):
+                                  ({"action": "coexist"}, "action IN ('supersede', 'coexist', 'duplicate-report') AND related_work_id IS NOT NULL"),
+                                  ({"action": "coexist", "source_version": "v2"}, "action IN ('supersede', 'coexist', 'duplicate-report') AND related_work_id IS NOT NULL")):
             with self.subTest(changes=changes), self.assertRaisesRegex(sqlite3.IntegrityError, re.escape(fragment)):
                 self.append(**changes)
             self.assertEqual(self.snapshot("source_lifecycle"), before)
