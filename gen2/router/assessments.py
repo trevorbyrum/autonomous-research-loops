@@ -7,17 +7,7 @@ to the Router. Only its primary-class invocations supply semantic labels.
 from typing import Callable, Mapping, Protocol
 
 from gen2.core.instants import utc_instant_ns
-from gen2.router.boundary import Refusal
-
-
-# section/table, identity, predecessor identity, predecessor description
-RECORDS = (
-    ("semantic_assessments", "assessment_id", (), ""),
-    ("source_lifecycle", "disposition_id", ("work_id", "source_version"), "lifecycle"),
-    ("registry_dispositions", "disposition_id", ("registry_kind", "registry_id"), "registry"),
-    ("obligation_assessments", "record_id", ("obligation_id",), "obligation"),
-    ("branch_windows", "association_id", (), ""),
-)
+from gen2.router.boundary import RECORDS, Refusal
 
 
 class Rows(Protocol):
@@ -35,15 +25,15 @@ class Assessments:
         self._core = core
 
     def bind_evidence(self, payload: dict, bind: Callable[[dict, str], None]) -> None:
-        for section, identity, _, _ in RECORDS:
-            for record in payload.get(section, []):
+        for spec in RECORDS:
+            for record in payload.get(spec.section, []):
                 for ref in record.get("evidence_refs", []):
-                    bind(ref, f"{record[identity]}: its evidence")
+                    bind(ref, f"{record[spec.identity]}: its evidence")
 
     def validate(self, payload: dict, inv: dict) -> None:
         self._validate_branch_windows(payload, inv)
         self._validate_obligations(payload, inv)
-        records = payload.get("semantic_assessments", []) + payload.get("source_lifecycle", []) + payload.get("registry_dispositions", [])
+        records = [r for spec in RECORDS if spec.common for r in payload.get(spec.section, [])]
         if not records:
             return
         contract = self._core._one("contract_revisions", {"topic_id": inv["topic_id"], "revision": inv["contract_revision"]})
@@ -63,7 +53,8 @@ class Assessments:
         # One validation of retained operands, under the existing writer fence.
         self.validate(payload, inv)
         written = {}
-        for table, identity, predecessor_key, label in RECORDS:
+        for spec in RECORDS:
+            table, identity, predecessor_key, label = spec.section, spec.identity, spec.predecessor_key, spec.label
             records = payload.get(table, [])
             for record in records:
                 if predecessor_key and record["supersedes_id"] is not None:

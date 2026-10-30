@@ -16,6 +16,8 @@ with one of the response vocabulary's reasons; nothing here writes.
 """
 from __future__ import annotations
 
+from typing import NamedTuple
+
 from gen2.core import canonical, instants, pagination
 from gen2.core.canonical import CanonicalizationError
 
@@ -35,6 +37,31 @@ SCOPE_OF_KIND = {"research_pass": "research", "discovery": "discovery", "verific
 PRIMARY = frozenset({"research_pass", "checkpoint"})
 CONTRACT = frozenset({"contract/1"})
 SCOPING = frozenset({"pre-contract/1"})
+
+
+class Record(NamedTuple):
+    """One assessment-shaped record kind: its storage, predecessor rule and
+    admission policy in one entry. Every field is required, so an entry that
+    omits its policy cannot be built; `common` says whether the shared pin,
+    topic and lineage validation covers it (the two kinds with their own
+    obligation/window validation say False)."""
+    section: str
+    identity: str
+    predecessor_key: tuple[str, ...]
+    label: str
+    kinds: frozenset[str]
+    contexts: frozenset[str]
+    common: bool
+
+
+RECORDS = (
+    Record("semantic_assessments", "assessment_id", (), "", PRIMARY, CONTRACT, True),
+    Record("source_lifecycle", "disposition_id", ("work_id", "source_version"), "lifecycle", PRIMARY, CONTRACT, True),
+    Record("registry_dispositions", "disposition_id", ("registry_kind", "registry_id"), "registry", PRIMARY, CONTRACT, True),
+    Record("obligation_assessments", "record_id", ("obligation_id",), "obligation", PRIMARY, CONTRACT, False),
+    Record("branch_windows", "association_id", (), "", PRIMARY, CONTRACT, False),
+)
+# The other sections; RECORDS' sections are admitted by their own entries.
 SECTION_KINDS = {
     "claims": (PRIMARY, CONTRACT | SCOPING, False),
     "claim_promotions": (PRIMARY, CONTRACT, False),
@@ -48,11 +75,6 @@ SECTION_KINDS = {
     "exports": (PRIMARY, CONTRACT, False),
     "holds": (PRIMARY | {"verification"}, CONTRACT | SCOPING, False),
     "verification_receipts": ({"verification"}, CONTRACT, False),
-    "semantic_assessments": (PRIMARY, CONTRACT, False),
-    "source_lifecycle": (PRIMARY, CONTRACT, False),
-    "registry_dispositions": (PRIMARY, CONTRACT, False),
-    "obligation_assessments": (PRIMARY, CONTRACT, False),
-    "branch_windows": (PRIMARY, CONTRACT, False),
     "source_artifacts": (PRIMARY, CONTRACT, False),
     "quote_checks": ({"verification"}, CONTRACT, False),
     "detailed_check_records": ({"verification"}, CONTRACT, True),
@@ -115,7 +137,8 @@ def instant(value: str) -> int:
 
 
 def check_sections(payload: dict, kind: str, admission_context: str, parent_invocation_id: str | None) -> None:
-    for section, (kinds, contexts, independent_only) in SECTION_KINDS.items():
+    sections = {**SECTION_KINDS, **{r.section: (r.kinds, r.contexts, False) for r in RECORDS}}
+    for section, (kinds, contexts, independent_only) in sections.items():
         if not payload.get(section):
             continue
         if kind not in kinds:
