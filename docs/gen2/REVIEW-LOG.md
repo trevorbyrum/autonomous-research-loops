@@ -3863,7 +3863,7 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 ## 2026-10-30: move-aware mutation, Batch B, Str-A to Str-C and CS-1 merged; Batch F accepted (rerun pending); Batch A accepted after B1
 - **Move-aware mutation** (PR #73, `2c11a03`, Sol `0406d97b`): pure moves (git `--color-moved`) are excluded from the blocking changed-line scope. Stage 1 runs in parallel, bounded by case workers × shards.
   - **Astra round 1 BLOCK B1:** timeouts and infrastructure errors were counted as kills (25 in the Batch B replay).
-  - **Fix:** timeouts and errors no longer kill. TEST_ERROR kills only after qualification. SYNTAX_INVALID is non-blocking.
+  - **Fix:** timeouts and errors no longer kill. TEST_ERROR is reported separately after qualification, but never passes (corrected 2026-10-30; superseded in part by ERROR_KILL, #87). SYNTAX_INVALID is non-blocking.
   - Astra PASS at `ab46f92`. Verifier exit 0. Merged.
   - **Recorded limit:** a textual move into a different scope can change meaning without being mutated.
 - **Host reboot (about 01:55):** the agents closed. Batch F round 3 was committed locally and resumed.
@@ -3901,3 +3901,26 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **Process:**
   - all heavy runs (verifiers, coder pre-checks) take `flock /home/trevor/.cache/gen2-heavy.lock` with systemd-run and `MemoryMax=20G`, replacing polling waits that starved or deadlocked;
   - before merging, the orchestrator runs `gen2_ci.py --mode push` plus the PR's changed test modules on the merged tree, because verifiers test against the PR's own base.
+
+## 2026-10-30 (later): Str-D and Batch F merged; ERROR_KILL ruling and #87; Batch A survivor rounds
+- **Str-D** (PR #84, `2b8427a`): verifier exit 0 (2,868 tests); the merged-tree push and changed tests pass. Merged.
+- **Batch F** (PR #54, `36849cb`): the verifier rerun after the venv fault passed. It ran 2,873 tests; mutation was complete with 143 assertion kills and 0 survivors, timeouts or errors. gen2 had no operator changes since its base, and 204 operator tests pass on the merged tree. Merged.
+- **Nightly suite overlap:** the test-portfolio review ran its full suite alongside a coder pre-check. It polled for `gen2-*` units while the pre-check ran as an unnamed unit. `TASK-sol.md` now requires the shared flock.
+- **Batch A (PR #85) mutation rounds:**
+  - **Round 1** (`fc93bfc`, stopped at 84/496): string dispatch in the RECORDS write loop survived. **Fix:** per-record write rules in `Record`. Astra r3 PASS (ROOT-CAUSE). It approved the same-line pragma on the obligation `common=False` equivalent, with `False` on its own line.
+  - **Round 2** (`d956c17`, stopped at 90/406): runtime `str | None` annotations on changed lines gave import-breaking TEST_ERRORs. **Fix:** quoted annotations (Batch B convention).
+  - **Round 3** (`8192fd5`, complete):
+    - Results: 24 SURVIVED and 93 TEST_ERROR.
+    - **Survivors:** gaps exposed on reformatted lines (the R7 hold causes and truncation, untested), and ordering-equivalent string compares (`== "pre-contract/1"`, `== "canonical_bytes"`). Fixed with membership, cause witnesses, content-tier and first-check witnesses.
+    - **Test errors:** 77 came from string `+` → `&` on hold lines and were fixed with f-strings. The other 16 were production exceptions under mutation, which led to Trevor's ERROR_KILL ruling.
+    - **Process lesson:** interim `session.sqlite` reads count TEST_ERROR as KILLED; read `mutation-report.json`.
+  - **Round 4** (`d1fd3d6`, complete):
+    - Results: 2 SURVIVED and 18 TEST_ERROR. Under ERROR_KILL, 16 TEST_ERROR rows pass and 2 remain.
+    - **Repairs, staged:**
+      - the retry count rewritten with no subtraction;
+      - the redundant tier `else 1` removed (equivalent);
+      - common validation refusing a missing pin with a typed `payload_invalid` instead of a KeyError (fail-closed);
+      - a fixture tier `assertIn`.
+- **ERROR_KILL** (PR #87, `2c023be`, Sol `b2f49a71`):
+  - **Astra round 1 BLOCK EK-1:** an unchanged production helper raising on test-built input passed as a kill. **Fix:** attribution narrowed to the mutant's own module, with the reproduction kept as a non-passing fixture. `CI-DESIGN.md` reconciled.
+  - Round 2 PASS. Verifier exit 0 in 901 s (2,867 tests). Merged.

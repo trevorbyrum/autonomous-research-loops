@@ -180,6 +180,14 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
     - The nightly review's focus moves to duplicates, near-duplicate parametrization, per-KIND repetition, weakened tests, and dead tests and helpers.
     - A one-off consolidation sweep runs under ruling 7.
 
+- **2026-10-30, Trevor: mutation-caused errors count as kills** (chosen over "keep the strict rule" and "exempt case by case").
+  - A test error counts as a kill (ERROR_KILL) when all three hold:
+    - it qualifies under the clean control;
+    - it is not a timeout, loader or infrastructure failure;
+    - every error's innermost frame is in **the mutant's own target module**. This is Astra's EK-1 narrowing within the ruling, so an error raised from another production module or from test code stays TEST_ERROR and fails.
+  - This supersedes, in part, the #73 rule that errors never count.
+  - Implemented in PR #87 (`2c023be`). The limit is documented in CI-DESIGN: this is not a proof of semantic causation.
+
 ## Current contract
 
 **No slice is in flight.** 6a parts 1–3 are done (part 3 merged as `dbbdced`,
