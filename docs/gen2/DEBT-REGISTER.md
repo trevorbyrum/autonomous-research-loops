@@ -550,3 +550,10 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - source: operator ruling O-7, 2026-10-27 (Gate S full pass, private/reviews/gen2-gate-s-full-reconcile-fable-20261027.md §5)
 - removal: a Phase 3 slice consumes it with a production caller, or deletes it; the Phase 3 Gate S confirms.
 
+### DEBT-051 - reaccess, acquisitions and the gateway capture reader are frozen until 2e2-minimum (Phase 2)
+- kind: obligation
+- status: open
+- owner: phase 2
+- what: `gen2/router/reaccess.py`, `gen2/router/acquisitions.py`, `gen2/core/gateway_capture.py` and `gen2/router/service.py::Router.admit_reaccess` (built ahead; no production constructor passes `gateway_captures`) are frozen: no slice before 2e2-minimum extends them. 2e2-minimum either consumes each with a production caller or deletes it.
+- source: operator ruling S3-5, 2026-10-31 (Gate S #3, private/reviews/gen2-gate-s3-fable-20261031.md §6/§9)
+- removal: 2e2-minimum consumes or deletes each module, and its review confirms it.
