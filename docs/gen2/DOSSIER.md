@@ -89,7 +89,7 @@ again before exceeding about 500 lines. Documentation is additional.
 | 5 | Done | Dated `tier-0 disabled` capability fact only (2d-5; merged `72c4ac1`). |
 | 6a parts 1–3 | Done | Checked WAL-read capture (part 1, `73a676f`, PR #8); detached conversion and dossier-input route (part 2, PR #11); Store-level generation counter (part 3, `dbbdced`, PR #14). |
 | 6a part 4 | Next | Freshness binding: token bound to the capture, writer fence, bounded recapture. ≈ 250 (was 440). Scope under "Current contract". |
-| 6b1 | After 6a part 4 | Persist the rich dossier: one closed `dossier/2` artifact through `commit_outcome` plus a `dossiers` row; DEBT-035 persistence leg. ≈ 350 (was 480). The `export-bundle/2` rich member moves to task 2g (DEBT-040). |
+| 6b1 | After 6a part 4 | **Done** (PR #93): persist the rich dossier: one closed `dossier/2` document in the `dossiers` row through the internal freshness-fenced path (`Router.record_dossier` → `_commit_dossier_inputs`), not `commit_outcome`; DEBT-035 persistence leg. ≈ 350 (was 480). The `export-bundle/2` rich member moves to task 2g (DEBT-040). |
 | 6b2 (6b3 merged) | After 6b1 | Completion gates: challenge/competing-explanation records and D3 adjudication admitted through `commit_outcome`; one Python gate evaluator over the detached capture. ≈ 450 (was 470 + 460). |
 | 7 | After 6b2 | Completion approval binding: dossier hash recomputed against the decision subject; fresh-review record prerequisite; material change refuses. ≈ 200 (was 400). |
 | 8 | Task 2g | Approved-revision /2 bundle assembly: DEBT-040. After 2f. |
@@ -187,6 +187,14 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
     - every error's innermost frame is in **the mutant's own target module**. This is Astra's EK-1 narrowing within the ruling, so an error raised from another production module or from test code stays TEST_ERROR and fails.
   - This supersedes, in part, the #73 rule that errors never count.
   - Implemented in PR #87 (`2c023be`). The limit is documented in CI-DESIGN: this is not a proof of semantic causation.
+
+- **2026-10-31, Trevor's rulings on Gate S #3** (`private/reviews/gen2-gate-s3-fable-20261031.md` §9):
+  - **S3-1, approved:** filter mutation-cost traps in the mutation tool: declaration-only lines (signatures, Protocol stubs, TypeVars) and string-literal ordering comparisons. Retire the code conventions written to dodge them.
+  - **S3-2, approved:** S2-3, the stage-2 shrink, is withdrawn. Stage 2 did flip verdicts, all on lines S3-1 filters.
+  - **S3-3, approved:** a critical-path lane (charter, Build throughput).
+  - **S3-4, approved:** the nightly test-portfolio review is paused until after 2f.
+  - **S3-5, approved:** `reaccess`, `acquisitions` and `gateway_capture` are frozen, with 2e2-minimum as their consumer or deleter (DEBT-051).
+  - **S3-6, open:** whether 2e2-minimum's queue path uses one executor-run pre-contract scoping pass. It is to be asked again with the 2e2-minimum design.
 
 ## Current contract
 

@@ -85,6 +85,10 @@ Both are re-indexed from the reviewed commit before every Gate D and are availab
 - **Design review before code.** From 6b1 onward, a new slice's design (its contract, the code it changes, and which existing predicates it reuses) gets an Astra review against the existing code before the coder writes it. This is for semantic mismatches like S4 round 1's.
 - **Coder pre-check.** For mutation-sensitive changes, the coder runs `make gen2-accept` on a disposable copy before pushing, and batches all survivors into one push. The independent verifier still runs afterwards.
 - **Two coders** on independent tasks, as in Authorities.
+- **Critical-path lane** (Trevor, S3-3, 2026-10-31):
+  - one coder slot is always on the critical path to 2f (6b2′ → 2e1-minimum → 2e2-minimum → 2f);
+  - cleanup, portfolio and tooling work use only the other slot and never pre-empt the critical path;
+  - every PR body names the 2f item it serves, or says it is off-path.
 
 ## Checking-pipeline rules (operator ruling S2-7, 2026-10-27)
 - **Harness changes.** After S2d, the mutation and acceptance pipeline changes only when a real campaign produced a wrong verdict: a survivor later shown killed, or a kill later shown false on clean code. A reviewer-constructed harness adversary is recorded as non-blocking unless the suite can produce the condition.
@@ -92,6 +96,8 @@ Both are re-indexed from the reviewed commit before every Gate D and are availab
 - **Trigger-order is retired** (S2-2). S6's final DDL baseline passed at `ed21d5a` (242 triggers, 1,868 identical outcomes), and the tool, recipe and CI mode were removed in PR #55.
 
 ## Nightly test-portfolio review (Trevor, 2026-10-28; v2 rules 2026-10-28/29)
+**Paused until after 2f** (Trevor, S3-4, 2026-10-31). Both schedules (Sol `3c43a612`, Fable `38c22433`) are paused. The rules below apply when it resumes.
+
 Every test is asked one question: is it important to the overall objective and architecture?
 
 **How it runs**

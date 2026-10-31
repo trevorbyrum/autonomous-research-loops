@@ -3949,3 +3949,27 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - The rerun passed under load about 40–50.
   - Reported to Trevor.
 - **6b1′ PR 1** (Sol `2cd9a3b6`, `task/6b1-pr1-dossier-codec`): started on O-5's branch to save its verifier time, now merged with gen2. Addendum: `gen2-6b1-pr1-addendum-20261031.md`. Pre-check running.
+
+## 2026-10-31: 6b1′ PR 1 and D-F1 merged; Gate S #3; Trevor's S3 rulings; 6b2′ design under review
+- **6b1′ PR 1** (PR #93, `a406215`, Sol `2cd9a3b6`): the `dossier/2` codec, the `document` and `invocation_id` columns, and `Router.record_dossier` through the fenced path, with hash truth.
+  - B2–B5 met. Astra PASS; no research misuse.
+  - Pre-check rounds 1–6: batched by cause after round 5.
+  - Verifier exit 0 in 1,149 s (2,910 tests; mutation ASSERTION_KILL 55, ERROR_KILL 3, 0 failures). Merged.
+  - **Records follow-ups applied:** BOUNDARIES (dropped results retained; dossier-body projection) and the DOSSIER 6b1 row.
+  - DEBT-035 stays open: its persistence leg has landed, and the approved-bundle leg is DEBT-040/2g.
+- **D-F1** (PR #94, `2c41a68`, Sonnet `3e1186c6`), reported by the software-production-harness orchestrator and reproduced here:
+  - **The defect:** `canonical_bytes` rendered doubles with 2^53 ≤ |x| < 1e21 in integer notation, which `parse_json_strict` refused.
+  - **The fix,** contract-first: Astra approved option (a) with changes. An out-of-bound integer token is admitted as a float only when `rfc8785.dumps(v)` is byte-identical to it. C-13 got Astra's sentence.
+  - **Ripple ruling:** test-only fixture repairs in the retention and operator MCP tests; no other production change.
+  - **Astra round 1 BLOCK:** incomplete signed witnesses, and the exactness mutant erroring rather than failing an assertion. Round 2 PASS.
+  - Verifier exit 0 in 964 s (2,916 tests; mutation 17 ASSERTION_KILL). Merged.
+- **Gate S #3** (Fable `96e5639f`, `gen2-gate-s3-fable-20261031.md`), run before the 6b2′ design:
+  - **Mutation gate:** 0 production defects found this week, in about 12 campaign-hours.
+  - **Nightly review:** net about +100 test lines.
+  - **PRs:** 2 of 35 code PRs advanced 2f.
+  - **6b2′ guidance:** one `completion_records` kind plus one gate evaluator, reusing `support`, `accounting`, `stopping` and RECORDS; slice 7 is about 8 lines.
+  - **Gaps for 2e:** operator commands, `ControlBackend.record_dossier`, and a scoping pass.
+  - **Trevor ruled S3-1 to S3-5** (DOSSIER); **S3-6 is open.**
+- **Applied:** the nightly schedules are paused, and the critical-path lane is in the charter. The mutation trap-filter PR (S3-1) is dispatched to Sonnet `7d19c81d`.
+- **6b2′ design** (Sonnet `d6dd4d29`, `gen2-6b2-design-20261031.md`) adopts Gate S #3 with five deviations and two newly found gaps (profile selection, sentinel format). Astra's design review is running.
+- **Cross-repo:** the harness agreed that its stress runs take the gen2 heavy lock (harness constraint 17).
