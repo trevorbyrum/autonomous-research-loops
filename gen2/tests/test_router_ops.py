@@ -22,7 +22,7 @@ from __future__ import annotations
 import copy
 
 from gen2.core import canonical
-from gen2.tests.test_dossier_record import FixtureEvaluator
+from gen2.tests.completion_fixtures import completion_world
 from gen2.tests.router_fixtures import CONFIG, DEADLINE, EXPIRES, OTHER, TOPIC, RouterTestCase, empty_outcome, find_request, h, jcs
 
 
@@ -380,7 +380,7 @@ class ObservationTest(RouterTestCase):
         self.assertEqual(self.observe(1)["status"], "recorded")
 
 
-class OperatorDecisionTest(FixtureEvaluator, RouterTestCase):
+class OperatorDecisionTest(RouterTestCase):
     def test_the_same_decision_again_replays(self) -> None:
         """The accepted replay of test_brief_confirmation_moves_intake_to_scoping,
         split out as a control of its own (task 1c-repair-3; Astra 1c re-review 2 BLOCK 2)."""
@@ -477,14 +477,12 @@ class OperatorDecisionTest(FixtureEvaluator, RouterTestCase):
         that is not stored records nothing; the approved one completes the
         topic and becomes its authorizing decision."""
         self.to_queued()
-        self.started("inv_research01")  # active
         before = self.state(exclude=())
         missing = self.decide("opd_complete01", "completion_approval", {"kind": "dossier", "revision": 1, "hash": h("3")})
         self.assertEqual((missing["status"], missing.get("reason")), ("rejected", "decision_refused"))
         self.assertIn("existing subject", missing.get("detail", ""))
         self.assertEqual(self.state(exclude=()), before)
-        from gen2.tests.test_dossier_record import admitted
-        recorded = admitted(self, self.router.record_dossier, TOPIC, invocation_id="inv_research01", history="native")
+        recorded = completion_world(self).candidate()
         out = self.decide("opd_complete01", "completion_approval", {"kind": "dossier", "revision": 1, "hash": recorded["content_hash"]})
         self.assertEqual(out["effects"]["queue_transition"], {"from": "active", "to": "completed_with_qualified_conclusions"})
         self.assertEqual(self.rows("SELECT status, status_decision_id FROM queue_entries WHERE topic_id = ?", TOPIC),
