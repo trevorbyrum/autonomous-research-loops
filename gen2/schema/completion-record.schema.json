@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/completion-record.schema.json",
+  "$comment": "flow: S6; S7 | boundaries: Router; Evidence accounting; Primary agent (per-station frontier LLM) | invariants: G-1; G-2 | note: 6b2' PR 1. Attribution is supplied by the Router. The record is versioned by the enclosing outcome document's outcome_version. An outcome of counterevidence_found or explanation_stands is performed work, not a finding that the conclusions survived it.",
+  "type": "object", "additionalProperties": false,
+  "required": ["record_id", "kind", "contract_revision", "subject_ref", "subject_revision", "subject_hash", "assessment", "evidence_refs"],
+  "properties": {
+    "record_id": {"$ref": "export-bundle-v2.schema.json#/$defs/id"},
+    "kind": {"enum": ["counterevidence_search", "competing_explanation", "sufficiency_review", "verification_adjudication"]},
+    "contract_revision": {"$ref": "common.schema.json#/$defs/revision"},
+    "subject_ref": {"type": "string"},
+    "subject_revision": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/revision"}]},
+    "subject_hash": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/sha256"}]},
+    "assessment": {
+      "type": "object", "additionalProperties": false, "required": ["outcome", "summary"],
+      "properties": {"outcome": {"type": "string"}, "summary": {"$ref": "export-bundle-v2.schema.json#/$defs/text"}}
+    },
+    "evidence_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/artifact_ref"}}
+  },
+  "oneOf": [
+    {"properties": {"kind": {"const": "counterevidence_search"}, "subject_ref": {"$ref": "common.schema.json#/$defs/claim_id"},
+        "subject_revision": {"type": "integer"}, "subject_hash": {"type": "null"},
+        "assessment": {"properties": {"outcome": {"enum": ["none_found", "counterevidence_found", "incomplete"]}}}}},
+    {"properties": {"kind": {"const": "competing_explanation"}, "subject_ref": {"$ref": "common.schema.json#/$defs/local_id"},
+        "subject_revision": {"type": "null"}, "subject_hash": {"type": "null"},
+        "assessment": {"properties": {"outcome": {"enum": ["explanation_rejected", "explanation_stands", "incomplete"]}}}}},
+    {"properties": {"kind": {"const": "sufficiency_review"}, "subject_ref": {"$ref": "common.schema.json#/$defs/topic_id"},
+        "subject_revision": {"type": "integer"}, "subject_hash": {"type": "string"},
+        "assessment": {"properties": {"outcome": {"enum": ["sufficient", "insufficient"]}}}}},
+    {"properties": {"kind": {"const": "verification_adjudication"}, "subject_ref": {"$ref": "common.schema.json#/$defs/verification_receipt_id"},
+        "subject_revision": {"type": "integer"}, "subject_hash": {"type": "null"},
+        "assessment": {"properties": {"outcome": {"enum": ["verdict_upheld", "verdict_overturned"]}}}}}
+  ]
+}

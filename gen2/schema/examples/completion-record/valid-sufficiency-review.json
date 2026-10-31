@@ -1,0 +1,13 @@
+{
+  "fixture": {"schema": "completion-record.schema.json", "expect": "valid", "tests": "G-2: the dossier review names its exact revision and hash"},
+  "instance": {
+    "record_id": "cr-example",
+    "kind": "sufficiency_review",
+    "contract_revision": 2,
+    "subject_ref": "fleet-a:topic-1",
+    "subject_revision": 3,
+    "subject_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "assessment": {"outcome": "insufficient", "summary": "Searched the retained corpus for contrary findings"},
+    "evidence_refs": [{"content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "size_bytes": 10, "media_type": "application/json"}]
+  }
+}

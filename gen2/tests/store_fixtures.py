@@ -671,6 +671,10 @@ class StoreTestCase(unittest.TestCase):
                "'{\"basis\":\"unknown\",\"reason\":\"Not assessed\"}', ?, 'primary', 'inv_pppppppp', 'op_00000001', ?, 'Access deferred', NULL "
                "FROM contract_revisions WHERE topic_id = ? AND revision = ?", json.dumps([{"content_hash": h("7"), "size_bytes": 10, "media_type": "application/json"}]), T, TOPIC, rev)
         self.x("INSERT INTO research_ordinals VALUES (?, 1, 'inv_pppppppp', 'op_00000001')", TOPIC)
+        self.x("INSERT INTO completion_records (record_id, topic_id, kind, contract_revision, subject_ref, subject_revision, subject_hash, assessment, evidence_refs, "
+               "actor_kind, invocation_id, recorded_by_operation_id, created_at) VALUES ('cr-fixture', ?, 'sufficiency_review', ?, ?, 1, ?, "
+               "'{\"outcome\":\"insufficient\",\"summary\":\"Not yet\"}', ?, 'primary', 'inv_pppppppp', 'op_00000001', ?)",
+               TOPIC, rev, TOPIC, h("3"), json.dumps([{"content_hash": h("7"), "size_bytes": 10, "media_type": "application/json"}]), T)
         self.x("INSERT INTO review_episodes (episode_id, topic_id, kind, opened_at, opened_by_operation_id) VALUES ('ep-1', ?, 'method_fit', ?, 'op_00000001')", TOPIC, T)
         self.x("INSERT INTO review_triggers (trigger_identity, topic_id, reason_code, signal_source, cause_ref, observed_at, episode_id, handled_at) VALUES (?, ?, 'persistent_contradiction', 'deterministic', 'CL-3', ?, 'ep-1', ?)", h("1"), TOPIC, T, T)
         self.x("INSERT INTO capability_facts (fact_id, capability, state, detail, since, affected_lanes, recorded_at) VALUES ('cf-1', 'secrets_backend', 'failing', 'vault 403', ?, '[\"semantic_scholar\"]', ?)", T, T)

@@ -1,0 +1,3 @@
+{
+  "fixture": {"schema": "completion-record.schema.json", "expect": "invalid", "tests": "G-2: a kind cannot carry another kind's outcome", "base": "valid-counterevidence-search.json", "patch": [{"op": "replace", "path": "/assessment/outcome", "value": "sufficient"}], "errors": [{"keyword": "oneOf", "path": ""}]}
+}

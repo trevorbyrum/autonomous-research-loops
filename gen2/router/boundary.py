@@ -65,6 +65,7 @@ RECORDS = (
         False,  # pragma: no mutate - equivalent: obligation validation runs first and checks every common pin; the closed schema has no work_id or lineage (Astra, Batch A r3)
         {"disposition": None, "state": None}),
     Record("branch_windows", "association_id", (), "", PRIMARY, CONTRACT, False, {}),
+    Record("completion_records", "record_id", (), "", PRIMARY, CONTRACT, False, {}),
 )
 # The other sections; RECORDS' sections are admitted by their own entries.
 SECTION_KINDS = {

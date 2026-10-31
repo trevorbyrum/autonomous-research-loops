@@ -26,3 +26,4 @@
 31-validation-current-registry.sql
 35-detailed-check-records.sql
 43-store-generation.sql
+44-completion-records.sql
