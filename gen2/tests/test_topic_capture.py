@@ -43,7 +43,7 @@ class CaptureTest(RecordCase):
             leases search_observations retrieval_events screening_assessments claims semantic_assessments source_lifecycle
             registry_dispositions branch_windows obligation_assessments amendment_impacts claim_source_links
             verification_receipts source_artifacts source_acquisitions source_extractions detailed_check_records holds
-            operator_decisions artifact_topics dossiers operation_receipts record_work_links works source_lineage quote_checks
+            operator_decisions artifact_topics dossiers operation_receipts completion_records record_work_links works source_lineage quote_checks
             extraction_validations extraction_validations_v2 artifacts extractor_registry_revisions extractor_tools audit_events'''.split()))
         self.assertEqual(group(snap, 'invocations').rows, tuple(self.rows('SELECT * FROM invocations WHERE topic_id=? ORDER BY rowid', TOPIC)))
         self.assertEqual(group(snap, 'source_extractions').rows, ())

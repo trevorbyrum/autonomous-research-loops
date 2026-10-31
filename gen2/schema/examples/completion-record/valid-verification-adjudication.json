@@ -1,0 +1,13 @@
+{
+  "fixture": {"schema": "completion-record.schema.json", "expect": "valid", "tests": "G-2: an adverse receipt is adjudicated at its claim revision"},
+  "instance": {
+    "record_id": "cr-example",
+    "kind": "verification_adjudication",
+    "contract_revision": 2,
+    "subject_ref": "ver_example001",
+    "subject_revision": 1,
+    "subject_hash": null,
+    "assessment": {"outcome": "verdict_upheld", "summary": "Searched the retained corpus for contrary findings"},
+    "evidence_refs": [{"content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "size_bytes": 10, "media_type": "application/json"}]
+  }
+}

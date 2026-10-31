@@ -1,0 +1,13 @@
+{
+  "fixture": {"schema": "completion-record.schema.json", "expect": "valid", "tests": "G-2: a contradiction disposition carries no revision"},
+  "instance": {
+    "record_id": "cr-example",
+    "kind": "competing_explanation",
+    "contract_revision": 2,
+    "subject_ref": "rdp_example01",
+    "subject_revision": null,
+    "subject_hash": null,
+    "assessment": {"outcome": "explanation_rejected", "summary": "Searched the retained corpus for contrary findings"},
+    "evidence_refs": [{"content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "size_bytes": 10, "media_type": "application/json"}]
+  }
+}

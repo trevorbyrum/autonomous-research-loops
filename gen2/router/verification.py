@@ -10,6 +10,14 @@ from gen2.router import boundary, support
 from gen2.router.protocols import Rows
 
 
+# Verdicts a completion record may adjudicate; the others raise no disagreement.
+ADVERSE = frozenset({"partially_supports", "does_not_support"})
+
+
+def hold_id(verification_receipt_id: str) -> str:
+    return "hold_" + canonical.logical_hash({"verification_receipt_id": verification_receipt_id})[7:]
+
+
 class VerificationCore(Protocol):
     _store: Rows[object]
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
@@ -39,7 +47,7 @@ class Verification:
         return row is None or not support.basis_member(self._core._store, row, boundary.TIER)
 
     def _hold_id(self, doc: dict) -> str:
-        return "hold_" + canonical.logical_hash({"verification_receipt_id": doc["verification_receipt_id"]})[7:]
+        return hold_id(doc["verification_receipt_id"])
 
     def write_holds(self, payload: dict, op_id: str, now: str) -> dict:
         for doc in payload["verification_receipts"]:
