@@ -58,6 +58,20 @@ class DDLTest(StoreTestCase):
                         {"contract_revision": 1}):                                              # another contract pin
             self.refused(BOUND, **changes)
 
+    def test_admission_context_binding(self):
+        # Pre-contract admission and a contract pin cannot coexist under the invocations CHECKs, so this
+        # isolates the context predicate by switching only those CHECKs off while the context is forced.
+        self.lease("lease_context01", 9, scope="checkpoint")
+        self.invocation("inv_context001", kind="checkpoint", lease="lease_context01")
+        self.receipt("op_context001", "inv_context001", lease="lease_context01", gen=9, before=self.rows("SELECT max(state_revision_after) FROM operation_receipts WHERE topic_id = ?", TOPIC)[0][0])
+        self.insert(record_id="cr-control", invocation_id="inv_context001", recorded_by_operation_id="op_context001")
+        self.x("DROP TRIGGER invocations_identity_immutable")
+        self.x("PRAGMA ignore_check_constraints = ON")
+        self.x("UPDATE invocations SET admission_context = 'pre-contract/1' WHERE invocation_id = 'inv_context001'")
+        self.x("PRAGMA ignore_check_constraints = OFF")
+        self.assertEqual(self.rows("SELECT admission_context, contract_revision FROM invocations WHERE invocation_id = 'inv_context001'"), [("pre-contract/1", self.base["contract_revision"])])
+        self.refused(BOUND, invocation_id="inv_context001", recorded_by_operation_id="op_context001")
+
     def test_append_only(self):
         before = self.snapshot("completion_records")
         self.rejects("completion records are append-only", "UPDATE completion_records SET created_at = created_at")

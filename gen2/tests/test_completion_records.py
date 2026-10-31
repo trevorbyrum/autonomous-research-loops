@@ -113,9 +113,12 @@ class AdmissionTest(World):
         self.x("DROP TRIGGER dossiers_immutable_u")  # a retained dossier of another pin; Router authority alone
         self.x("UPDATE dossiers SET contract_revision = 2")
         self.refuse(self.completion("sufficiency_review"), "sufficiency review contract pin differs from its dossier's")
-
-    def test_sufficiency_review_control_after_pin_refusal(self):
-        self.accepted("sufficiency_review")
+        self.x("UPDATE dossiers SET contract_revision = 1")  # restore only the mismatched pin: the same setup, now valid
+        self.x("PRAGMA foreign_keys = ON")
+        out = self.accepted("sufficiency_review")
+        self.assertEqual(self.stored(), [("cr-sufficiency_review", "sufficiency_review", 1, TOPIC, 1, self.dossier["content_hash"], "primary",
+            "inv_checkpoint1", self.env["operation_id"])])
+        self.assertEqual(out["receipt"]["effects"]["holds_created"], [])
 
     def test_adjudication_guards(self):
         self.foreign("verification_receipts", "ver_foreign0001", "verification_receipt_id")
@@ -165,6 +168,26 @@ class AdmissionTest(World):
     def test_empty_section_control(self):
         self.assertEqual(self.submit([])["status"], "committed")
         self.assertEqual(self.stored(), [])
+
+
+class GenerationTest(World):
+    def counter(self):
+        return self.value("SELECT generation FROM store_generation")
+
+    def test_record_only_transaction_bumps_once_and_is_captured(self):
+        self.assertEqual(self.submit([]).get("status"), "committed")  # a primary commit whose operation the rows name
+        op = self.env["operation_id"]
+        def row(n):
+            return {**self.completion("competing_explanation", record_id=f"cr-gen{n}"), "topic_id": TOPIC, "actor_kind": "primary",
+                    "invocation_id": "inv_checkpoint1", "recorded_by_operation_id": op, "created_at": "2026-09-27T10:40:00Z"}
+        for rows in ((row(1),), (row(2), row(3), row(4))):
+            before = self.counter()
+            with self.store.transaction():
+                for r in rows:
+                    self.store.insert("completion_records", r)
+            self.assertEqual(self.counter(), before + 1)
+        captured = {t.name: t for t in self.store.capture_topic(TOPIC).tables}["completion_records"]
+        self.assertEqual(sorted(r[captured.columns.index("record_id")] for r in captured.rows), ["cr-gen1", "cr-gen2", "cr-gen3", "cr-gen4"])
 
 
 class HoldTest(World):
