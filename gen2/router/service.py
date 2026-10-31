@@ -177,10 +177,11 @@ class Router:
             commit=self._accounting.write_dossier)
 
     def _commit_dossier_inputs(self, topic_id: str, *, invocation_id: str, history: accounting.History, prepare: Callable, commit: Callable) -> object:
+        inv = self._one("invocations", {"invocation_id": invocation_id})
+        if inv is None or inv["topic_id"] != topic_id:
+            raise Refusal("unknown_invocation", "dossier caller must be an admitted invocation of this topic")
         def require_live(now=None):
             inv = self._one("invocations", {"invocation_id": invocation_id})
-            if inv is None or inv["topic_id"] != topic_id:
-                raise Refusal("unknown_invocation", "dossier caller must be an admitted invocation of this topic")
             refusal = self._launch_refusal(inv, self._now() if now is None else now)
             if refusal is not None:
                 raise refusal

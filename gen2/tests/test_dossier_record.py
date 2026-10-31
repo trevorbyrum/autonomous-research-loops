@@ -80,9 +80,11 @@ class RecordTest(DossierCase):
         self.to_queued(rf.OTHER)
         other = self.started('inv_other00001', tid=rf.OTHER)['invocation_id']
         for topic, iid in ((rf.TOPIC, 'inv_missing000'), (rf.TOPIC, other), (rf.OTHER, self.grant['invocation_id'])):
+            before = self.state(exclude=())
             with self.assertRaises(Refusal) as caught:
                 self.router.record_dossier(topic, invocation_id=iid, history='native', evaluate=evaluate)
             self.assertEqual(caught.exception.reason, 'unknown_invocation')
+            self.assertEqual(self.state(exclude=()), before)
 
     def test_cancel_during_preparation_refuses_current_authority(self):
         def cancel(inputs):
