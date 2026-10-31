@@ -23,6 +23,7 @@ import http.client
 import json
 import os
 import select
+import socket
 import sqlite3
 import subprocess
 import tempfile
@@ -285,3 +286,18 @@ class CommandWorld(OperatorTestCase):
             "propose_amendment": {"document": self.amend.contract_doc(3, 2, edit=self.amend.compatible)},
             "ack_delivery": self.delivery_receipt("exr_000000000001"),
         }
+
+
+def raw_exchange(engine, request: bytes) -> bytes:
+    """Send `request` as it is; every byte of the answer (status line, headers,
+    body) until the engine closes the connection, or 5 s pass."""
+    host, port = engine.address
+    answer = b""
+    with socket.create_connection((host, port), timeout=5) as conn:
+        conn.sendall(request)
+        try:
+            while chunk := conn.recv(65536):
+                answer += chunk
+        except (TimeoutError, ConnectionResetError):
+            pass
+    return answer

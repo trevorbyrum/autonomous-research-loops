@@ -13,6 +13,10 @@ import sys
 import tempfile
 import unittest
 
+# Hang guards, not performance assertions: stage-2 qualification and verifiers run suites in parallel under load.
+ACCEPTANCE_TIMEOUT_S = 300
+ACCEPTANCE_UNITS_TIMEOUT_S = 900
+
 
 class AcceptanceSelectionTest(unittest.TestCase):
     def setUp(self):
@@ -65,7 +69,7 @@ class AcceptanceSelectionTest(unittest.TestCase):
         # Real recursive units initialize coverage and mutation workers. This
         # fixture checks scheduling and reuse, not a 15-second speed target.
         return subprocess.run(command, cwd=self.root, env={**env, "PWD": str(self.root), "STUB_MUTATION_EXIT": str(mutation_exit)},
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60 if run_units else 15)
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=ACCEPTANCE_UNITS_TIMEOUT_S if run_units else ACCEPTANCE_TIMEOUT_S)
 
     def test_units_and_mutation_share_the_acceptance_coverage_path(self):
         (self.root / "tools/gen2_test.py").write_text(
