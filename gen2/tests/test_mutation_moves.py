@@ -246,7 +246,7 @@ class MutationMovesTest(unittest.TestCase):
             self.assertEqual([stage["stage"] for stage in stages], [1])
             self.assertEqual(stages[0]["events"][0]["exception_type"], "subprocess.TimeoutExpired")
 
-    # S3-1: declaration-only lines and string-literal ordering mutants are filtered in the tool.
+    # S3-1, narrowed by Trevor on 2026-10-31: only declaration-policy spans are filtered.
     def classify(self, source, token, operator, occurrence=0):
         (self.root / "gen2/probe.py").write_text(source)
         index = -1
@@ -276,7 +276,7 @@ class MutationMovesTest(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertEqual(self.classify(source, token, operator), "FILTERED_DECLARATION")
 
-    def test_string_literal_ordering_mutants_are_filtered(self):
+    def test_string_comparisons_stay_live(self):
         for source in ('def f(x):\n    return x == "lit"\n', 'def f(x):\n    return "lit" == x\n',
                        'def f(x):\n    return x != "lit"\n', 'def f(x):\n    return x < "lit"\n'):
             original = "NotEq" if "!=" in source else "Lt" if "<" in source else "Eq"
@@ -284,8 +284,7 @@ class MutationMovesTest(unittest.TestCase):
             targets = ("Lt", "LtE", "Gt", "GtE") if original != "Lt" else ("Eq", "NotEq")
             for target in targets:
                 with self.subTest(source=source, target=target):
-                    self.assertEqual(self.classify(source, token, f"core/ReplaceComparisonOperator_{original}_{target}"),
-                                     "FILTERED_STRING_ORDER")
+                    self.assertIsNone(self.classify(source, token, f"core/ReplaceComparisonOperator_{original}_{target}"))
 
     def test_live_controls_are_not_filtered(self):
         eq = "core/ReplaceComparisonOperator_Eq_"
@@ -333,7 +332,9 @@ class MutationMovesTest(unittest.TestCase):
         (self.root / "gen2/tests/test_probe.py").write_text(
             "import unittest\nfrom gen2.probe import answer, kind\nclass Case(unittest.TestCase):\n"
             " def test_answer(self): self.assertEqual(answer(), 11)\n"
-            " def test_kind(self): self.assertTrue(kind(''.join(['canon', 'ical']))); self.assertFalse(kind('other'))\n")
+            " def test_kind(self):\n"
+            "  self.assertTrue(kind(''.join(['canon', 'ical'])))\n"
+            "  self.assertFalse(kind('other')); self.assertFalse(kind('before'))\n")
         self.git("add", "gen2/probe.py", "gen2/tests/test_probe.py")
         report = self.campaign()
         rows = {}
@@ -341,12 +342,13 @@ class MutationMovesTest(unittest.TestCase):
             rows.setdefault(row["verdict"], []).append(row["mutation"]["start_pos"][0])
         self.assertEqual(set(rows["FILTERED_DECLARATION"]), {3})
         self.assertGreaterEqual(len(rows["FILTERED_DECLARATION"]), 2)
-        self.assertEqual(set(rows["FILTERED_STRING_ORDER"]), {5})
-        self.assertEqual(len(rows["FILTERED_STRING_ORDER"]), 4)
-        self.assertEqual(set(rows["ASSERTION_KILL"]) - {4, 5}, set())
-        self.assertEqual(set(report["counts"]), {"FILTERED_DECLARATION", "FILTERED_STRING_ORDER", "ASSERTION_KILL"})
+        self.assertEqual(set(rows["ASSERTION_KILL"]), {4, 5})
+        self.assertEqual(set(report["counts"]), {"FILTERED_DECLARATION", "ASSERTION_KILL"})
+        ordering = [row for row in report["mutants"] if row["mutation"]["operator_name"].rsplit("/", 1)[-1]
+                    in {f"ReplaceComparisonOperator_Eq_{op}" for op in ("Lt", "LtE", "Gt", "GtE")}]
+        self.assertEqual(len(ordering), 4)
+        self.assertTrue(all(row["verdict"] == "ASSERTION_KILL" for row in ordering))
         self.assertEqual(report["filtered_declaration_mutants"], len(rows["FILTERED_DECLARATION"]))
-        self.assertEqual(report["filtered_string_order_mutants"], 4)
         self.assertEqual(report["selected_mutants"], len(rows["ASSERTION_KILL"]))
         self.assertFalse(report["failed"])
         for row in report["mutants"]:

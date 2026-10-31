@@ -80,9 +80,6 @@ def moved_only(item, changed, moved):
     return True
 
 
-ORDERING, EQUALITY = {"Lt", "LtE", "Gt", "GtE"}, {"Eq", "NotEq"}
-
-
 def _minus(region, cuts):
     """The (start, end) region with the cut spans removed."""
     pieces = [region]
@@ -93,7 +90,7 @@ def _minus(region, cuts):
 
 
 def declaration_scope(source):
-    """Return declaration-policy spans and string-literal comparison operator spans.
+    """Return declaration-policy spans, preserving executable-expression boundaries.
 
     These syntactic exclusions are not proofs of semantic equivalence or coverage.
     """
@@ -114,7 +111,7 @@ def declaration_scope(source):
     def named(node, name):
         node = node.value if isinstance(node, ast.Subscript) else node
         return getattr(node, "id", getattr(node, "attr", None)) == name
-    declared, ordered = [], []
+    declared = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             header = (start(node), end(node.returns) if node.returns else statement_start(node.body[0]))
@@ -129,35 +126,22 @@ def declaration_scope(source):
                         and (stmt.value.value is Ellipsis or isinstance(stmt.value.value, str))
                         for stmt in method.body):
                     declared.append((start(method.body[0]), end(method.body[-1])))
-        elif isinstance(node, ast.Compare):
-            operands = [node.left, *node.comparators]
-            ordered.extend((end(left), start(right)) for left, right in zip(operands, operands[1:])
-                if any(isinstance(item, ast.Constant) and isinstance(item.value, str) for item in (left, right)))
     for node in tree.body:
         if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and named(node.value.func, "TypeVar"):
             declared.append((start(node.value), end(node.value)))
-    return declared, ordered
-
-
-def string_order_operator(name):
-    """True for ReplaceComparisonOperator_{Eq,NotEq}_{Lt,LtE,Gt,GtE} and the reverse."""
-    pair = re.fullmatch(r"(?:\w+/)?ReplaceComparisonOperator_([A-Za-z]+)_([A-Za-z]+)", name)
-    return bool(pair) and (pair[1] in EQUALITY and pair[2] in ORDERING or pair[1] in ORDERING and pair[2] in EQUALITY)
+    return declared
 
 
 def filtered_verdict(item, regions):
-    """FILTERED_DECLARATION or FILTERED_STRING_ORDER when every mutation of the item lies
-    inside such a span (`regions` caches declaration_scope per module); otherwise None."""
+    """FILTERED_DECLARATION when every mutation lies inside a declaration-policy span
+    (`regions` caches declaration_scope per module); otherwise None."""
     def inside(mutation, spans):
         return any(first <= tuple(mutation.start_pos) and tuple(mutation.end_pos) <= last for first, last in spans)
     for mutation in item.mutations:
         if mutation.module_path not in regions:
             regions[mutation.module_path] = declaration_scope((ROOT / mutation.module_path).read_text())
-    scopes = [regions[mutation.module_path] for mutation in item.mutations]
-    if all(inside(m, declared) for m, (declared, _) in zip(item.mutations, scopes)):
+    if all(inside(m, regions[m.module_path]) for m in item.mutations):
         return "FILTERED_DECLARATION"
-    if all(string_order_operator(m.operator_name) and inside(m, ordered) for m, (_, ordered) in zip(item.mutations, scopes)):
-        return "FILTERED_STRING_ORDER"
 
 
 def item_order(item):
@@ -269,7 +253,6 @@ def main():
                         filtered[item.job_id] = verdict
                         db.set_result(item.job_id, WorkResult(worker_outcome=WorkerOutcome.SKIPPED))
             report["filtered_declaration_mutants"] = list(filtered.values()).count("FILTERED_DECLARATION")
-            report["filtered_string_order_mutants"] = list(filtered.values()).count("FILTERED_STRING_ORDER")
             command(str(Path(sys.executable).with_name("cr-filter-pragma")), str(session))
             with use_db(session) as db:
                 selected = sorted(db.pending_work_items, key=item_order)
@@ -390,7 +373,7 @@ def main():
         if report["counts"].get("PENDING"):
             report["status"] = "incomplete"
         report["failed"] = report["status"] not in ("complete", "no-applicable-files") or any(
-            row["verdict"] not in {"FILTERED_GIT", "FILTERED_MOVE", "FILTERED_DECLARATION", "FILTERED_STRING_ORDER", "PRAGMA", "ASSERTION_KILL", "ERROR_KILL", "SYNTAX_INVALID"} for row in report["mutants"])
+            row["verdict"] not in {"FILTERED_GIT", "FILTERED_MOVE", "FILTERED_DECLARATION", "PRAGMA", "ASSERTION_KILL", "ERROR_KILL", "SYNTAX_INVALID"} for row in report["mutants"])
         (out / "mutation-report.json").write_text(json.dumps(report, indent=2) + "\n")
         print(f"gen2-mutation: {out / 'mutation-report.json'}: {report['status']} {report['counts']}", flush=True)
     return int(report["failed"] and not args.report_only)
