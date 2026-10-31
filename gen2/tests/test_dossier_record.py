@@ -69,7 +69,7 @@ class RecordTest(DossierCase):
         self.assertEqual(self.record()['dossier_revision'], 6)
 
     def test_outer_topic_contract_and_protocol_binding(self):
-        for changes, reason in (({'topic_id': rf.OTHER}, 'cross_topic'), ({'contract_revision': 1}, 'stale_inputs'),
+        for changes, reason in (({'topic_id': 'fleet-a:t0'}, 'cross_topic'), ({'topic_id': rf.OTHER}, 'cross_topic'), ({'contract_revision': 1}, 'stale_inputs'),
                 ({'contract_revision': 3}, 'stale_inputs'), ({'protocol_revision': 0}, 'stale_inputs'), ({'protocol_revision': 2}, 'stale_inputs')):
             before = self.state(exclude=())
             with self.assertRaises(Refusal) as caught:
@@ -78,9 +78,10 @@ class RecordTest(DossierCase):
             self.assert_audited_state(before, 1)
         self.assertEqual(self.record()['status'], 'recorded')
         self.to_queued(rf.OTHER)
-        for iid in ('inv_missing000', self.started('inv_other00001', tid=rf.OTHER)['invocation_id']):
+        other = self.started('inv_other00001', tid=rf.OTHER)['invocation_id']
+        for topic, iid in ((rf.TOPIC, 'inv_missing000'), (rf.TOPIC, other), (rf.OTHER, self.grant['invocation_id'])):
             with self.assertRaises(Refusal) as caught:
-                self.router.record_dossier(rf.TOPIC, invocation_id=iid, history='native', evaluate=evaluate)
+                self.router.record_dossier(topic, invocation_id=iid, history='native', evaluate=evaluate)
             self.assertEqual(caught.exception.reason, 'unknown_invocation')
 
     def test_cancel_during_preparation_refuses_current_authority(self):
