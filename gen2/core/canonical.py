@@ -109,10 +109,14 @@ def _integer_token(text: str) -> "int | float":
 
 def parse_json_strict(text: str | bytes, *, member_domain: bool = False) -> object:
     """Parse JSON text (bytes are UTF-8) for hashing: duplicate keys,
-    NaN/Infinity, integer-notation numerals outside +/-(2**53-1) (unless the
-    numeral is the canonical RFC 8785 spelling of a double, see _integer_token)
-    and numerals a double cannot hold exactly (underflow to zero included) are
-    errors, never silently rounded or merged. Any other number is an IEEE binary64
+    NaN/Infinity, integer-notation numerals outside +/-(2**53-1) and numerals
+    a double cannot hold exactly (underflow to zero included) are errors,
+    never silently rounded or merged — with one exception: an out-of-bound
+    integer-notation numeral that is the canonical RFC 8785 spelling of a finite
+    double (see _integer_token) is read as that double. That recognizes a
+    spelling; it does not promise exact mathematical integer representability
+    (999999999999999900000 reads as the double whose exact value is
+    999999999999999868928). Any other number is an IEEE binary64
     value, as in JCS — 1e30 and 9007199254740992.0 are legitimate numbers —
     so identity bounds are not this parser's: see identity_integer."""
     if isinstance(text, bytes):
