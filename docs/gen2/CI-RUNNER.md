@@ -55,18 +55,20 @@ current file:
 - `FILTERED_DECLARATION`: every mutation lies inside a function header (from `def`
   to the end of the `returns` annotation, or to the first body statement when there
   is none, so parameters, annotations, `*`, `/` and constant defaults, but not decorators),
-  an `AnnAssign` annotation, the body of a class whose bases include `Protocol`
-  (also `Protocol[...]`, `typing.Protocol`), or a `TypeVar(...)` call. A default that is
+  an `AnnAssign` annotation, a method stub body containing only `...` or a docstring
+  in a class whose bases include `Protocol` (also `Protocol[...]`, `typing.Protocol`),
+  or a `TypeVar(...)` call that is the value of a module-level `Assign`. A default that is
   not a constant (a number, string, `None`, `True` or a signed numeric) stays live,
   as do decorator arguments, class-level assignments that are not annotations, and
-  everything in an ordinary function body.
+  executable statements in Protocol classes, concrete method bodies, and ordinary
+  function bodies. TypeVar calls in defaults, functions or class assignments stay live.
 - `FILTERED_STRING_ORDER`: `ReplaceComparisonOperator_{Eq,NotEq}_{Lt,LtE,Gt,GtE}`
   and the reverse, on a comparison where either operand of that operator is an
   `ast.Constant` string. `Eq`↔`NotEq`, `Eq`→`Is`, `In`↔`NotIn`, every other operator
   and every comparison of non-literal operands stay live. An f-string is not a literal.
 
 Limits: a filtered mutant is not evidence that any test exists. The filter runs
-on positions, not behaviour: a changed constant default or Protocol member body is
+on positions, not behaviour: a changed constant default or Protocol method stub is
 not mutation-checked, and review must still read those lines. A multi-mutation item is
 filtered only when all of its mutations are.
 This applies Trevor's 2026-10-30 "Count them" ruling as narrowed by Astra's EK-1

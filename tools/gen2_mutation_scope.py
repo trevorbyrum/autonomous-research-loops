@@ -93,8 +93,10 @@ def _minus(region, cuts):
 
 
 def declaration_scope(source):
-    """Spans where no executable behaviour depends on the mutated token, and spans of
-    comparisons with a string-literal operand (their ordering mutants are equivalent)."""
+    """Return declaration-policy spans and string-literal comparison operator spans.
+
+    These syntactic exclusions are not proofs of semantic equivalence or coverage.
+    """
     tree = ast.parse(source)
     lines = [line.encode() for line in source.split("\n")]
 
@@ -121,13 +123,19 @@ def declaration_scope(source):
         elif isinstance(node, ast.AnnAssign):
             declared.append((start(node.annotation), end(node.annotation)))
         elif isinstance(node, ast.ClassDef) and any(named(base, "Protocol") for base in node.bases):
-            declared.append((statement_start(node.body[0]), end(node.body[-1])))
-        elif isinstance(node, ast.Call) and named(node.func, "TypeVar"):
-            declared.append((start(node), end(node)))
+            for method in node.body:
+                if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)) and all(
+                        isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
+                        and (stmt.value.value is Ellipsis or isinstance(stmt.value.value, str))
+                        for stmt in method.body):
+                    declared.append((start(method.body[0]), end(method.body[-1])))
         elif isinstance(node, ast.Compare):
             operands = [node.left, *node.comparators]
             ordered.extend((end(left), start(right)) for left, right in zip(operands, operands[1:])
                 if any(isinstance(item, ast.Constant) and isinstance(item.value, str) for item in (left, right)))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and named(node.value.func, "TypeVar"):
+            declared.append((start(node.value), end(node.value)))
     return declared, ordered
 
 

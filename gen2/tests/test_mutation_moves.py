@@ -269,7 +269,8 @@ class MutationMovesTest(unittest.TestCase):
                 ("def f() -> int | None:\n    return None\n", "|", "core/ReplaceBinaryOperator_BitOr_Add"),
                 ("x: int | None = None\n", "|", "core/ReplaceBinaryOperator_BitOr_Add"),
                 ("class P(Protocol):\n    def m(self, flag: bool = True) -> int: ...\n", "True", flip),
-                ("class P(Protocol):\n    def m(self):\n        return 1 + 2\n", "+", "core/ReplaceBinaryOperator_Add_Sub"),
+                ("class P(Protocol):\n    def m(self): ...\n", "...", "core/NumberReplacer"),
+                ('class P(typing.Protocol):\n    async def m(self):\n        "stub"\n', '"stub"', "core/NumberReplacer"),
                 ("class P(Protocol[T]):\n    def m(self) -> int | None: ...\n", "|", "core/ReplaceBinaryOperator_BitOr_Add"),
                 ("T = TypeVar('T', covariant=True)\n", "True", flip)):
             with self.subTest(source=source):
@@ -303,6 +304,22 @@ class MutationMovesTest(unittest.TestCase):
                 ('def f(x):\n    return x in "lit"\n', "in", "core/ReplaceComparisonOperator_In_NotIn"),
                 ('def f(x):\n    return x == "lit" and 1 < 2\n', "<", "core/ReplaceComparisonOperator_Lt_Eq")):
             with self.subTest(source=source, operator=operator):
+                self.assertIsNone(self.classify(source, token, operator))
+
+    def test_declaration_overlap_controls_stay_live(self):
+        flip, add = "core/ReplaceTrueWithFalse", "core/ReplaceBinaryOperator_Add_Sub"
+        for source, token, operator in (
+                ("class P(Protocol):\n    def f(self, a=make(True)): ...\n", "True", flip),
+                ("class P(Protocol):\n    @deco(True)\n    def f(self): ...\n", "True", flip),
+                ("class P(Protocol):\n    x = 1 + 2\n", "+", add),
+                ("def f(a=TypeVar('T', covariant=True)): ...\n", "True", flip),
+                ("def f():\n    return TypeVar('T', covariant=True)\n", "True", flip),
+                ("class P(Protocol):\n    def m(self):\n        return 1 + 2\n", "+", add),
+                ("class P(Protocol):\n    do_work(True)\n", "True", flip),
+                ("class P(Protocol):\n    x: int = 1 + 2\n", "+", add),
+                ("class P(Protocol):\n    T = TypeVar('T', covariant=True)\n", "True", flip),
+                ("def f():\n    T = TypeVar('T', covariant=True)\n", "True", flip)):
+            with self.subTest(source=source):
                 self.assertIsNone(self.classify(source, token, operator))
 
     def test_campaign_reports_filtered_verdicts_and_passes_without_stage_two(self):
