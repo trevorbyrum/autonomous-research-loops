@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "dossier/2 literal boundary: revision-zero",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "replace", "path": "/dossier_revision", "value": 0}
+    ],
+    "errors": [
+      {"keyword": "minimum", "path": "/dossier_revision"}
+    ]
+  }
+}

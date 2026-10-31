@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "closed dossier/2: missing-dropped",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "remove", "path": "/result/dropped"}
+    ],
+    "errors": [
+      {"keyword": "required", "path": "/result"}
+    ]
+  }
+}

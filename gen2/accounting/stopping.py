@@ -19,10 +19,21 @@ class Context:
 
 
 @dataclass(frozen=True)
+class LabelOperand:
+    assessment_id: str
+    work_id: str
+    standing: Standing
+    novelty: str
+    independence: str
+    applicability: str
+    contribution: str
+
+
+@dataclass(frozen=True)
 class DescriptiveOperands:
     units: CandidateUnits
-    labels: tuple[SemanticOperand, ...]
-    new_fraction: Fraction | None
+    labels: tuple[LabelOperand, ...]
+    new_fraction: "Fraction | None"
 
 
 @dataclass(frozen=True)
@@ -60,6 +71,7 @@ class CoverageOperands:
     scope: frozenset[str] | None
     lower: int
     upper: int
+    raw_windows: tuple[WindowOperand, ...]
 
 
 @dataclass(frozen=True)
@@ -91,7 +103,7 @@ def descriptive(context: Context, rule_id: str, inventory: Inventory, as_of: str
     judgments = tuple(NoveltyJudgment(o.assessment.work_id, {"novel": True, "not_novel": False, "unknown": None}[o.labels[0]]) for o in labels)
     units = candidate_units(inventory)
     fraction = novelty(units.assessed_candidates, judgments) if inventory.current_contract_revision == context.contract_revision else None
-    return RuleResult(context, rule_id, "descriptive", "unknown", DescriptiveOperands(units, labels, fraction))
+    return RuleResult(context, rule_id, "descriptive", "unknown", DescriptiveOperands(units, tuple(LabelOperand(o.assessment.assessment_id, o.assessment.work_id, o.standing, *o.labels) for o in labels), fraction))
 
 
 def _window_operand(window: WindowStanding, inventory: Inventory, revisions: dict[str, int]) -> WindowOperand:
@@ -165,7 +177,8 @@ def coverage(context: Context, rule_id: str, inventory: Inventory, pins: tuple[W
         state = "not_satisfied"
     if inventory.current_contract_revision != context.contract_revision or inventory.history == "legacy_unknown":
         state = "unknown"
-    return RuleResult(context, rule_id, "coverage", state, CoverageOperands(minimum_windows, windows, inventory.history, eligible, ineligible, indeterminate, scope, lower, upper))
+    return RuleResult(context, rule_id, "coverage", state, CoverageOperands(minimum_windows, windows, inventory.history, eligible, ineligible, indeterminate, scope, lower, upper,
+        tuple(WindowOperand(w.invocation_id, revisions.get(w.invocation_id), global_operands[w.invocation_id].standing, w.state, w.reason) for w in standings)))
 
 
 def known_item(context: Context, rule_id: str, inventory: Inventory, declared: KnownItems) -> RuleResult:
@@ -233,6 +246,7 @@ class ProfileResult:
     rules: tuple[RuleResult, ...]
     gates: tuple[GateResult, ...]
     state: State
+    dropped: tuple[RuleResult, ...] = ()
     schema_version: Literal["stopping-result/1"] = "stopping-result/1"
 
 
@@ -249,11 +263,14 @@ def evaluate_profile(context: Context, profile: Profile, rules: tuple[RuleResult
     gate_states = {g.gate: g.state if g.context == context else "unknown" for g in gates}
     if len({r.rule_id for r in rules}) != len(rules) or len(gate_states) != len(gates):
         raise ValueError("duplicate rule or gate results")
-    rules = tuple(r for r in rules if _rule_reusable(r.context, context, inventory))
+    kept, dropped = [], []
+    for r in rules:
+        (kept if _rule_reusable(r.context, context, inventory) else dropped).append(r)
+    rules = tuple(kept)
     states = {r.rule_id: r.state for r in rules}
     rules_state = expression_state(profile.completion_condition, states)
     state = combine("all", (rules_state, *(gate_states.get(g, "unknown") for g in profile.conjunctive_gates)))
-    return ProfileResult(context, profile, rules, gates, state)
+    return ProfileResult(context, profile, rules, gates, state, tuple(dropped))
 
 
 @dataclass(frozen=True)

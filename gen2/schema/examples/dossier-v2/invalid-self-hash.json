@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "closed dossier/2: self-hash",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "add", "path": "/content_hash", "value": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+    ],
+    "errors": [
+      {"keyword": "additionalProperties", "path": ""}
+    ]
+  }
+}

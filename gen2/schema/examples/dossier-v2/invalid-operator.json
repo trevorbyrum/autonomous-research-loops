@@ -1,0 +1,15 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "dossier/2 literal boundary: operator",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "replace", "path": "/result/profile/completion_condition/op", "value": "majority"}
+    ],
+    "errors": [
+      {"keyword": "enum", "path": "/result/profile/completion_condition/op"},
+      {"keyword": "oneOf", "path": "/result/profile/completion_condition"}
+    ]
+  }
+}

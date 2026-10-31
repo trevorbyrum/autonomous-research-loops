@@ -1,0 +1,130 @@
+{
+  "fixture": {"schema": "dossier-v2.schema.json", "expect": "valid", "tests": "B5: null alternatives and dropped provenance"},
+  "instance": {
+    "schema_version": "dossier/2",
+    "dossier_revision": 1,
+    "invocation_id": "inv_dossier0001",
+    "evaluator_version": "stopping-result/1",
+    "history": "legacy_unknown",
+    "input_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "result": {
+      "context": {"topic_id": "fleet-a:t1", "contract_revision": 2, "protocol_revision": 2},
+      "profile": {
+        "profile_id": "P",
+        "completion_condition": {
+          "rule": null,
+          "op": "all",
+          "operands": [
+            {"rule": "R0", "op": null, "operands": []},
+            {
+              "rule": null,
+              "op": "any",
+              "operands": [
+                {"rule": "R0", "op": null, "operands": []}
+              ]
+            }
+          ]
+        },
+        "conjunctive_gates": ["challenge_pass_completed", "coverage_integrity", "load_bearing_verification_tiers"]
+      },
+      "rules": [
+        {
+          "context": {"topic_id": "fleet-a:t1", "contract_revision": 2, "protocol_revision": 2},
+          "rule_id": "R0",
+          "evaluator": "descriptive",
+          "state": "unknown",
+          "operands": {
+            "units": {
+              "retrieved_records": {"known_ids": ["a", "b"], "unknown_reason": "partial capture"},
+              "deduplicated_works": {"known_ids": ["a", "b"], "unknown_reason": "partial capture"},
+              "assessed_candidates": {"known_ids": ["a", "b"], "unknown_reason": "partial capture"},
+              "accepted_claims": {"known_ids": ["a", "b"], "unknown_reason": "partial capture"},
+              "saturation_passes": []
+            },
+            "labels": [
+              {"assessment_id": "assessment-0", "work_id": "w1", "standing": "current", "novelty": "novel", "independence": "independent", "applicability": "applicable", "contribution": "answer"},
+              {"assessment_id": "assessment-1", "work_id": "w1", "standing": "compatible", "novelty": "not_novel", "independence": "shared_origin", "applicability": "not_applicable", "contribution": "confidence"},
+              {"assessment_id": "assessment-2", "work_id": "w1", "standing": "stale", "novelty": "unknown", "independence": "unknown", "applicability": "unknown", "contribution": "applicability"},
+              {"assessment_id": "assessment-3", "work_id": "w1", "standing": "unknown", "novelty": "novel", "independence": "independent", "applicability": "applicable", "contribution": "options"},
+              {"assessment_id": "assessment-4", "work_id": "w1", "standing": "current", "novelty": "not_novel", "independence": "shared_origin", "applicability": "not_applicable", "contribution": "question_formulation"},
+              {"assessment_id": "assessment-5", "work_id": "w1", "standing": "compatible", "novelty": "unknown", "independence": "unknown", "applicability": "unknown", "contribution": "boundary_condition"},
+              {"assessment_id": "assessment-6", "work_id": "w1", "standing": "stale", "novelty": "novel", "independence": "independent", "applicability": "applicable", "contribution": "contradiction"},
+              {"assessment_id": "assessment-7", "work_id": "w1", "standing": "unknown", "novelty": "not_novel", "independence": "shared_origin", "applicability": "not_applicable", "contribution": "unknown"}
+            ],
+            "new_fraction": null
+          }
+        },
+        {
+          "context": {"topic_id": "fleet-a:t1", "contract_revision": 2, "protocol_revision": 2},
+          "rule_id": "R1",
+          "evaluator": "coverage",
+          "state": "satisfied",
+          "operands": {
+            "minimum_windows": 1,
+            "windows": [
+              {"invocation_id": "p0", "contract_revision": 2, "standing": "current", "state": "eligible", "reason": "retained capture reason"},
+              {"invocation_id": "p1", "contract_revision": 2, "standing": "stale", "state": "ineligible", "reason": "retained capture reason"},
+              {"invocation_id": "p2", "contract_revision": null, "standing": "unknown", "state": "indeterminate", "reason": "retained capture reason"}
+            ],
+            "history": "legacy_unknown",
+            "eligible": 1,
+            "ineligible": 1,
+            "indeterminate": 1,
+            "scope": null,
+            "lower": 1,
+            "upper": 2,
+            "raw_windows": [
+              {"invocation_id": "p0", "contract_revision": 2, "standing": "current", "state": "eligible", "reason": "retained capture reason"},
+              {"invocation_id": "p1", "contract_revision": 2, "standing": "stale", "state": "ineligible", "reason": "retained capture reason"},
+              {"invocation_id": "p2", "contract_revision": null, "standing": "unknown", "state": "indeterminate", "reason": "retained capture reason"}
+            ]
+          }
+        }
+      ],
+      "gates": [
+        {
+          "context": {"topic_id": "fleet-a:t1", "contract_revision": 2, "protocol_revision": 2},
+          "gate": "challenge_pass_completed",
+          "state": "unknown",
+          "evidence_refs": [
+            {"content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size_bytes": 9007199254740991, "media_type": "application/json"}
+          ]
+        },
+        {
+          "context": {"topic_id": "fleet-a:t1", "contract_revision": 2, "protocol_revision": 2},
+          "gate": "coverage_integrity",
+          "state": "unknown",
+          "evidence_refs": [
+            {"content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size_bytes": 9007199254740991, "media_type": "application/json"}
+          ]
+        },
+        {
+          "context": {"topic_id": "fleet-a:t1", "contract_revision": 2, "protocol_revision": 2},
+          "gate": "load_bearing_verification_tiers",
+          "state": "unknown",
+          "evidence_refs": [
+            {"content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size_bytes": 9007199254740991, "media_type": "application/json"}
+          ]
+        }
+      ],
+      "state": "unknown",
+      "dropped": [
+        {
+          "context": {"topic_id": "fleet-a:t1", "contract_revision": 2, "protocol_revision": 2},
+          "rule_id": "R2",
+          "evaluator": "known_item",
+          "state": "not_satisfied",
+          "operands": {
+            "declared": {
+              "reference": {"content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "size_bytes": 9007199254740991, "media_type": "application/json"},
+              "work_ids": ["a", "z"]
+            },
+            "retrieved": {"known_ids": ["a", "b"], "unknown_reason": "partial capture"},
+            "found": ["a"],
+            "missing": ["z"]
+          }
+        }
+      ]
+    }
+  }
+}
