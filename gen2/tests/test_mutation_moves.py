@@ -11,6 +11,8 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
+from gen2.tests import test_acceptance
+
 ROOT = Path(__file__).resolve().parents[2]
 with mock.patch.object(sys, "path", [str(ROOT / "tools"), *sys.path]):
     spec = importlib.util.spec_from_file_location("move_scope", ROOT / "tools/gen2_mutation_scope.py")
@@ -77,7 +79,8 @@ class MutationMovesTest(unittest.TestCase):
 
     def campaign(self, *args, expected=0, env=None):
         result = subprocess.run([sys.executable, "tools/gen2_mutation_scope.py", "--base", "HEAD",
-            "--workers", "2", *args], cwd=self.root, env=env, capture_output=True, text=True, timeout=60)
+            "--workers", "2", *args], cwd=self.root, env=env, capture_output=True, text=True,
+            timeout=test_acceptance.ACCEPTANCE_UNITS_TIMEOUT_S)  # nested campaign hang guard, shared bound
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         report, = self.root.glob("build/mutation-evidence/*/mutation-report.json")
         return json.loads(report.read_text())
