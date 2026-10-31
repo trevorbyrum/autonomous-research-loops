@@ -3924,3 +3924,28 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **ERROR_KILL** (PR #87, `2c023be`, Sol `b2f49a71`):
   - **Astra round 1 BLOCK EK-1:** an unchanged production helper raising on test-built input passed as a kill. **Fix:** attribution narrowed to the mutant's own module, with the reproduction kept as a non-passing fixture. `CI-DESIGN.md` reconciled.
   - Round 2 PASS. Verifier exit 0 in 901 s (2,867 tests). Merged.
+
+## 2026-10-30/31: Batch A, raw_exchange, the timeout fix and O-5 merged; 6b1′ PR 1 in progress
+- **Batch A** (PR #85, `b673267`):
+  - Rounds 4–6 repaired mutation-gate findings: the retry `made` rewrite, the redundant tier branch removed, a typed `payload_invalid` refusal for a missing pin instead of a KeyError, and a fixture `assertIn`.
+  - Astra PASS: retry and tier behaviour identical over exhaustive sampled matrices.
+  - Verifier exit 0 (2,883 tests). Mutation: ASSERTION_KILL 162, ERROR_KILL 16, 0 failures. Merged.
+- **raw_exchange** (PR #89, `0f32ddf`, Sonnet `3b4ce91c`): the deferred D2/TO1 helper moves, character-identical, into `operator_fixtures.py`.
+  - Astra PASS. Verifier exit 0. Merged.
+  - **Note:** a `WireClient` cross-test import remains; it is queued.
+- **O-5** (PR #90, `7c49d45`, Sol `445b3e4d`), contract-first:
+  - Sol's contract proposed per-caller sibling-view Protocols and a signature checker. **Astra APPROVE WITH CHANGES:** concrete-class sibling annotations under `TYPE_CHECKING`, with the signature checker deferred. That took the estimate from +20…+120 net to −20…−80.
+  - **Implemented:** a shared `router/protocols.py` (Rows[CaptureT_co]/Schemas/Spool), 24 forwarders plus one adapter removed, and the composition test extended with negative controls. Two mechanical BOUNDARIES substitutions (lines 24, 197) were approved.
+  - **Size:** production −161, tests +92.
+  - Astra PASS (all 338 retained function bodies match after the approved substitutions), then a round-2 PASS on the surface tests.
+  - Verifier exit 0 in 5,577 s (2,890 tests; mutation 22 ASSERTION_KILL, 0 failures). Merged.
+  - **Cost note:** the 23 declaration-only `protocols.py` mutants are not coverage-attributed, so they always run serial stage 2. A tooling item is queued.
+- **Load-safe nested-run timeouts** (PR #91, `a2c6b6a`, Sonnet `e144182f`):
+  - **Root cause:** fixed 60/30/15 s wall-clock limits on nested campaign and acceptance runs. They failed under the gate's own stage-2 parallelism (O-5 pre-check INVALID) and under host load (the Docs-1 verifier).
+  - **Fix:** one hang-guard bound (900 s; 300 s without units).
+  - Astra PASS; its non-blocking note (move the constant to a fixtures module) is queued. Verifier exit 0. Merged.
+- **External host load:** the `software-production-harness` timing-flakes stress runs (48, then 24 CPU busy-loops) held load at 40–85 from about 00:36 to 06:00+, and don't take the gen2 lock.
+  - The first O-5 verifier was stopped and rerun after #91.
+  - The rerun passed under load about 40–50.
+  - Reported to Trevor.
+- **6b1′ PR 1** (Sol `2cd9a3b6`, `task/6b1-pr1-dossier-codec`): started on O-5's branch to save its verifier time, now merged with gen2. Addendum: `gen2-6b1-pr1-addendum-20261031.md`. Pre-check running.
