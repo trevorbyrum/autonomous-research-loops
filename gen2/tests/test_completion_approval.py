@@ -158,7 +158,7 @@ class ApprovalTest(rf.ContractWorld):
             return result
         with patch.object(material, "digest", race):
             out = self.f.approve_candidate(candidate)
-        self.assertEqual((out["status"], out["reason"]), ("rejected", "stale_inputs"))
+        self.assertEqual((out["status"], out.get("reason")), ("rejected", "stale_inputs"))
         self.assertIn("material operands changed", out["detail"])
         self.assertEqual(self.state(exclude=()), states[0])
 
@@ -183,7 +183,7 @@ class ApprovalTest(rf.ContractWorld):
                 out = self.f.approve_candidate(candidate, did="opd_recapture_" + mode)
             self.assertEqual(self.value("SELECT count(*) FROM audit_events WHERE kind='dossier_input_recaptures'"), audits)
             if mode == "exhaust":
-                self.assertEqual((out["status"], out["reason"]), ("rejected", "stale_inputs"))
+                self.assertEqual((out["status"], out.get("reason")), ("rejected", "stale_inputs"))
                 self.assertIn("after two recaptures", out["detail"])
                 self.assertEqual(self.state(exclude=()), states[-1])
                 self.assertEqual(len(calls), 3)
