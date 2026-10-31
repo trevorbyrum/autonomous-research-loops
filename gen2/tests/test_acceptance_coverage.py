@@ -12,6 +12,8 @@ from unittest import mock
 
 from gen2.tests import test_acceptance
 
+CAMPAIGN_TIMEOUT_S = test_acceptance.ACCEPTANCE_UNITS_TIMEOUT_S  # nested campaign hang guard, same load-safe bound
+
 
 class ParallelAcceptanceTest(unittest.TestCase):
     def test_union_rejects_missing_overlap_and_failed_shards(self):
@@ -52,7 +54,7 @@ class ParallelAcceptanceTest(unittest.TestCase):
         config = dict(targets=["gen2/probe.py"], tests=["test_probe.Parent.test_parent"], full_tests=None, stage=1, workers=2)
         def execute(config):
             result = subprocess.run([sys.executable, "tools/gen2_mutation_runner.py", json.dumps(config)],
-                cwd=root, capture_output=True, text=True, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, timeout=30)
+                cwd=root, capture_output=True, text=True, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, timeout=CAMPAIGN_TIMEOUT_S)
             return runner.marker(result.stdout)
         data = execute(config)
         stage = data["stages"][-1]
