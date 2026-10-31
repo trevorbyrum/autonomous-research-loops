@@ -10,32 +10,30 @@ the committing invocation and operation, never a document field), and the ones t
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Callable, Mapping, Protocol
 
 from gen2.core import canonical
 from gen2.router import boundary, quote_matching, support
 from gen2.router.boundary import Refusal
+from gen2.router.protocols import Rows, Schemas, Spool
 
-
-class Rows(Protocol):
-    """The router's store as the evidence writer uses it (store/api.py Store): inside the transaction the core holds."""
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
-    def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object]) -> None: ...
+if TYPE_CHECKING:
+    from gen2.router.amendments import Amendments
+    from gen2.router.detailed_checks import DetailedChecks
+    from gen2.router.verification import Verification
 
 
 class EvidenceCore(Protocol):
-    """What the evidence writer takes of the router core, and nothing else; service.Router implements it without inheriting it. Every member is the core's own
-    (service.py; `_pin_status` is its delegate to amendments.py), so no comment names another owner."""
-    _store: Rows
-    _spool: object
+    """Members used through Router; sibling attributes name composed collaborators."""
+    _store: Rows[object]
+    _spool: Spool
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
-    def _pin_status(self, inv: dict) -> str: ...
+    _amendments: "Amendments"
     def _work_of_topic(self, work_id: str, topic_id: str) -> bool: ...
-    def _write_verification_holds(self, payload: dict, op_id: str, now: str) -> dict: ...  # delegate to Verification
-    def _require_detailed_support(self, claim: dict) -> None: ...  # delegate to DetailedChecks
+    _verification: "Verification"
+    _detailed_checks: "DetailedChecks"
     _extensions: object
-    _schemas: object
+    _schemas: Schemas
     # validate_decisions also hands the core itself to boundary.check_decision_receipt as its qualification source (is_qualified); not a member read
 
 
@@ -129,7 +127,7 @@ class EvidenceWriter:
                 continue
             try:
                 self._require_quote_support(claim)
-                self._core._require_detailed_support(claim)
+                self._core._detailed_checks.require_support(claim, self._quote_support_valid)
             except Refusal:
                 self._core._store.update("claims", key, {"status": "quarantined"})
 
@@ -243,7 +241,7 @@ class EvidenceWriter:
             self._require_acquired_content(doc)
             self._require_own_extraction(doc)
             self._require_validated_extraction(doc)
-        verification = self._core._write_verification_holds(payload, op_id, now)
+        verification = self._core._verification.write_holds(payload, op_id, now)
         for doc in payload["decision_receipts"]:
             response, outcome = doc["provider_response"], doc["outcome"]
             self._core._store.insert("decision_receipts", {
@@ -314,10 +312,10 @@ class EvidenceWriter:
             if row["status"] not in ("provisional", "contested"):
                 raise Refusal("payload_invalid", f"{promotion['claim_id']} revision {promotion['revision']} is {row['status']}")
             producer = self._core._one("invocations", {"invocation_id": row["producer_invocation_id"]})
-            if producer["admission_context"] == "contract/1" and self._core._pin_status(producer) not in ("current", "compatible"):
+            if producer["admission_context"] in ("contract/1",) and self._core._amendments._pin_status(producer) not in ("current", "compatible"):
                 raise Refusal("amendment_pending", f"{promotion['claim_id']} revision {promotion['revision']} was produced under a revision an amendment made "
                                                    "incompatible; contract-admitted work adopts it as a new revision (V-10, G-1)")
-            self._core._require_detailed_support(row)
+            self._core._detailed_checks.require_support(row, self._quote_support_valid)
             self._require_quote_support(row)
             self._core._store.update("claims", {"claim_id": promotion["claim_id"], "revision": promotion["revision"]}, {"status": "accepted_support"})
             promotions.append([promotion["claim_id"], promotion["revision"]])

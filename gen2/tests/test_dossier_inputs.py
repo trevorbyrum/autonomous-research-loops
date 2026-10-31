@@ -17,14 +17,14 @@ class RefusalTest(RouterTestCase):
         before = self.state(exclude=())
         for history in ('native', 'legacy_unknown'):
             with self.assertRaises(Refusal) as refused:
-                self.router._dossier_inputs(TOPIC, history=history)
+                self.router._accounting.dossier_inputs(TOPIC, history=history)
             self.assertEqual(refused.exception.reason, 'no_approved_contract')
             with self.assertRaises(Refusal) as unknown:
-                self.router._dossier_inputs('topic_unknown01', history=history)
+                self.router._accounting.dossier_inputs('topic_unknown01', history=history)
             self.assertEqual(unknown.exception.reason, 'unknown_topic')
             self.assertIsNone(self.router.evidence_inventory(TOPIC, history=history).current_contract_revision)
         with self.assertRaises(ValueError):
-            self.router._dossier_inputs(TOPIC, history='invented')
+            self.router._accounting.dossier_inputs(TOPIC, history='invented')
         self.assertEqual(self.state(exclude=()), before)
 
 
@@ -39,7 +39,7 @@ class AdapterTest(ContractWorld):
         self.assertEqual(self.finish(grant, 'op_' + inv[4:])['status'], 'committed')
 
     def inputs(self):
-        return self.router._dossier_inputs(TOPIC, history='native')
+        return self.router._accounting.dossier_inputs(TOPIC, history='native')
 
     def bound(self, inputs, minimum):
         snap = inputs.coverage
@@ -104,8 +104,8 @@ class HistoryTest(AttentionCase):
         self.attention(adverse)
         self.commit({**self.document('supports'), 'verification_receipt_id': 'ver_support001'})
         before = self.state(exclude=())
-        native = self.router._dossier_inputs(TOPIC, history='native')
-        legacy = self.router._dossier_inputs(TOPIC, history='legacy_unknown')
+        native = self.router._accounting.dossier_inputs(TOPIC, history='native')
+        legacy = self.router._accounting.dossier_inputs(TOPIC, history='legacy_unknown')
         self.assertEqual([r['verdict'] for r in records(native.raw, 'verification_receipts')], [adverse, 'supports'])
         holds = next(t.rows for t in native.raw.tables if t.name == 'holds')
         self.assertEqual(holds, tuple(self.rows('SELECT * FROM holds ORDER BY rowid')))
@@ -120,6 +120,6 @@ class HistoryTest(AttentionCase):
 class BranchTest(World):
     def test_branch_provenance_retained(self):
         self.assertEqual(self.send([self.record()])['status'], 'committed')
-        value = self.router._dossier_inputs(TOPIC, history='native')
+        value = self.router._accounting.dossier_inputs(TOPIC, history='native')
         self.assertEqual([(l.registry_id, l.invocation_id) for l in value.coverage.branch_links], [('B-1', 'inv_window0001')])
         self.assertEqual([(r['registry_id'], r['window_invocation_id']) for r in records(value.raw, 'branch_windows')], [('B-1', 'inv_window0001')])

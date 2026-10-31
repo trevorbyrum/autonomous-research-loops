@@ -34,11 +34,15 @@ from __future__ import annotations
 import math
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Callable, Mapping, Protocol
 
 from gen2.core import instants
 from gen2.router import boundary
 from gen2.router.boundary import Refusal
+from gen2.router.protocols import Rows, Schemas, Spool
+
+if TYPE_CHECKING:
+    from gen2.router.registries import Registries
 
 RESOLUTION_TARGET = {"found_running": "running", "found_result": "result_ready", "confirmed_failed": "failed"}
 
@@ -91,32 +95,9 @@ def is_episode_hold(hold: dict) -> bool:
     return hold["required_authority"] == "router" and subject.startswith("invocation:") and "#unknown:" in subject[len("invocation:"):]
 
 
-class Rows(Protocol):
-    """The router's store as the lifecycle uses it (store/api.py Store): writes only inside the core's transaction; reads there too, but `invocation_status` and `reconcile`'s first reads take none."""
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
-    def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object]) -> None: ...
-
-
-class Schemas(Protocol):
-    """The router's schema set as boundary.require_schema uses it (schemas.py SchemaSet)."""
-    def errors(self, instance: object, target: str) -> list[str]: ...
-
-
-class Spool(Protocol):
-    """The router's spool as boundary.staged uses it: reads only (supervisor/spool.py Spool)."""
-    def read(self, content_hash: str, *, topic_id: str) -> bytes | None: ...
-    def media_type(self, content_hash: str, *, topic_id: str) -> str | None: ...
-
-
 class LifecycleCore(Protocol):
-    """What the lifecycle takes of the router core, and nothing else; service.Router
-    implements it without inheriting it. Every member is the core's own (service.py).
-    The lifecycle's own members the rest of the Router reads (`_evidence`, `_bind_evidence`,
-    `_record_artifact`, `_require_delegates_ended`, `_release_capacity`, `_open_unknown_hold`,
-    `_cancel_in_transaction`) are the core's delegating members, so no other
-    collaborator reaches the lifecycle but through the core."""
-    _store: Rows
+    """Members used through Router; sibling attributes name composed collaborators."""
+    _store: Rows[object]
     _spool: Spool
     _schemas: Schemas
     _new_id: Callable[[str], str]
@@ -131,7 +112,7 @@ class LifecycleCore(Protocol):
     def _authorize_artifact(self, content_hash: str, inv: dict, now: str) -> None: ...
     def _set_topic(self, topic: dict, now: str, status: str | None = None, **columns) -> int: ...
     def _transition_row(self, invocation_id: str, from_state: str | None, to_state: str, at: str, cause: str, facts: dict | None = None) -> None: ...
-    def _router_policy(self, bundle_hash: str) -> dict: ...
+    _registries: "Registries"
 
 
 class Lifecycle:
@@ -206,7 +187,7 @@ class Lifecycle:
         invocation is pinned to (G-10, RG-9; shipped default one hour) (H-3,
         RG-3)."""
         station = self._core._lease_of(inv)["station_id"]
-        window = self._core._router_policy(inv["config_bundle_hash"])["hold_window_s"]
+        window = self._core._registries._router_policy(inv["config_bundle_hash"])["hold_window_s"]
         self._core._store.insert("holds", boundary.hold_row(
             hold_id=self._core._new_id("hold_"), topic_id=inv["topic_id"], subject_ref=unknown_hold_subject(inv["invocation_id"], episode),
             hold_class="unknown", cause=f"outcome_unknown ({cause})", recoverability="unknown", required_authority="router",

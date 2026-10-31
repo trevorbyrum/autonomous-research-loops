@@ -6,6 +6,7 @@ from typing import Callable, Mapping, Protocol
 
 from gen2.router import boundary
 from gen2.router.boundary import Refusal
+from gen2.router.protocols import Rows, Schemas
 
 NAME = {"type": "string", "pattern": "^[a-z][a-z0-9._-]{0,99}$"}
 EXTRACTOR_COMMANDS = {"extractor_registry": {
@@ -20,17 +21,8 @@ EXTRACTOR_COMMANDS = {"extractor_registry": {
             "properties": {"extractor_identity": NAME, "family": NAME}}}}}}
 
 
-class Rows(Protocol):
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
-
-
-class Schemas(Protocol):
-    def errors(self, instance: object, target: str) -> list[str]: ...
-
-
 class ExtractorRegistryCore(Protocol):
-    _store: Rows
+    _store: Rows[object]
     _schemas: Schemas
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
     def _guarded(self, reason: str, body: Callable[[str], object]) -> object: ...

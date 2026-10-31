@@ -57,6 +57,7 @@ from typing import Callable, Mapping, Protocol
 from gen2.core import canonical
 from gen2.router import boundary
 from gen2.router.boundary import Refusal
+from gen2.router.protocols import Rows, Schemas
 
 ROUTER_DEFAULTS = {"hold_window_s": 3600.0}  # the router's shipped policy (G-10); a bundle's router section overrides it
 BUNDLE_CAPABILITY = "config-bundle"
@@ -76,25 +77,9 @@ REGISTRY_COMMANDS = {
 }
 
 
-class Rows(Protocol):
-    """The router's store as the registries use it (store/api.py Store): inside the core's transaction."""
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
-    def update(self, table: str, key: Mapping[str, object], changes: Mapping[str, object]) -> None: ...
-
-
-class Schemas(Protocol):
-    """The router's schema set as boundary.require_schema uses it (schemas.py SchemaSet)."""
-    def errors(self, instance: object, target: str) -> list[str]: ...
-
-
 class RegistriesCore(Protocol):
-    """What the registries take of the router core, and nothing else; service.Router
-    implements it without inheriting it. Every member is the core's own (service.py).
-    The registries' own members the rest of the Router reads (`_active_bundle`,
-    `_bundle`, `_router_policy`, `_templates`, `is_qualified`) are the core's delegating
-    members, so no other collaborator reaches the registries but through the core."""
-    _store: Rows
+    """Members used through Router; sibling attributes name composed collaborators."""
+    _store: Rows[object]
     _schemas: Schemas
     _new_id: Callable[[str], str]
     def _now(self) -> str: ...

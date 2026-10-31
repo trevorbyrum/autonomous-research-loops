@@ -11,17 +11,13 @@ from typing import Mapping, Protocol
 from gen2.core import canonical
 from gen2.router import boundary
 from gen2.router.boundary import Refusal
-from gen2.router.evidence_writer import Rows
-
-
-class Schemas(Protocol):
-    def errors(self, instance: object, target: str) -> list[str]: ...
+from gen2.router.protocols import Rows, Schemas
 
 
 class ObservationCore(Protocol):
     _schemas: Schemas
     def _guarded(self, reason, body): ...
-    _store: Rows
+    _store: Rows[object]
     def _one(self, table: str, where: Mapping[str, object]) -> "dict | None": ...
     def _capability(self, capability_id: str, invocation_id: str) -> dict: ...
     def _require_current_lease(self, inv: dict, now: str, lease_ref: "Mapping | None" = None) -> dict: ...

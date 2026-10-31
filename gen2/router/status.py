@@ -29,11 +29,17 @@ into "why each item waits" is the operator surface's (gen2/operator/status.py).
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
-from typing import Mapping, Protocol
+from typing import TYPE_CHECKING, Mapping, Protocol
 
 from gen2.router import boundary
 from gen2.router.amendments import COMPATIBLE
 from gen2.router.boundary import Refusal, instant
+from gen2.router.protocols import Rows, Schemas
+
+if TYPE_CHECKING:
+    from gen2.router.amendments import Amendments
+    from gen2.router.registries import Registries
+    from gen2.router.scheduling import Scheduling
 
 LIVE = ("admitted", "launching", "running", "result_ready", "outcome_unknown")
 STATUS_COMMANDS = {"operator_status": {"type": "object", "additionalProperties": False,
@@ -46,22 +52,9 @@ def _pick(row: dict, keys) -> dict:
     return {k: row[k] for k in keys}
 
 
-class Rows(Protocol):
-    """The router's store as the status read uses it: reads only (store/api.py Store)."""
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-
-
-class Schemas(Protocol):
-    """The router's schema set as boundary.require_schema uses it (schemas.py SchemaSet)."""
-    def errors(self, instance: object, target: str) -> list[str]: ...
-
-
 class StatusCore(Protocol):
-    """What the status read takes of the router core, and nothing else; service.Router
-    implements it without inheriting it. A member with no comment is the core's own
-    (service.py); comments naming collaborators identify core delegates that forward
-    cross-collaborator access. The Router has no remaining mixins."""
-    _store: Rows
+    """Members used through Router; sibling attributes name composed collaborators."""
+    _store: Rows[object]
     _schemas: Schemas
     def _snapshot(self) -> AbstractContextManager: ...  # one read transaction that writes nothing
     def _now(self) -> str: ...
@@ -69,9 +62,9 @@ class StatusCore(Protocol):
     def _lease_of(self, inv: dict) -> dict: ...
     def _launch_refusal(self, inv: dict, now: str) -> Refusal | None: ...
     def _admission_json(self, inv: dict) -> dict: ...
-    def _active_bundle(self) -> dict | None: ...
-    def _pin_status(self, inv: dict) -> str: ...
-    def _lane_last(self, topic_id: str, scope: str) -> str | None: ...
+    _registries: "Registries"
+    _amendments: "Amendments"
+    _scheduling: "Scheduling"
 
 
 class Status:
@@ -98,7 +91,7 @@ class Status:
                 if "topic_id" in req and not topics:
                     raise Refusal("unknown_topic", req["topic_id"])
                 live = [i for i in self._core._store.select("invocations") if i["state"] in LIVE]
-                active = self._core._active_bundle()
+                active = self._core._registries._active_bundle()
                 pinned = {}
                 for inv in live:
                     pinned.setdefault(inv["config_bundle_hash"], []).append(inv["invocation_id"])
@@ -152,7 +145,7 @@ class Status:
 
     def _invocation_facts(self, inv: dict, now: str, holds: list[dict], retries: list[dict]) -> dict:
         lease = self._core._lease_of(inv)
-        standing = self._core._pin_status(inv)
+        standing = self._core._amendments._pin_status(inv)
         episode_hold = next((h for h in holds if h["subject_ref"] == f"invocation:{inv['invocation_id']}#unknown:{inv['unknown_episode']}"), None)
         launch = self._core._launch_refusal(inv, now) if inv["state"] in ("admitted", "launching") else None
         retry = next((r for r in retries if r["retry_invocation_id"] == inv["invocation_id"]), None)
@@ -191,7 +184,7 @@ class Status:
         held by an exhausted budget's operator hold (L-6, RG-3)."""
         lanes = []
         for scope in sorted({lease["scope"] for lease in self._core._store.select("leases", {"topic_id": tid})}):
-            last = self._core._lane_last(tid, scope)
+            last = self._core._scheduling._lane_last(tid, scope)
             inv = next(i for i in invocations if i["invocation_id"] == last)
             lane = {"scope": scope, "last_invocation_id": last, "state": inv["state"], "requeue": None, "requeue_hold": None}
             if inv["state"] in ("failed", "cancelled"):

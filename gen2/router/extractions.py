@@ -3,21 +3,20 @@
 Authentication runs outside the core writer lock; writes use its fenced commit.
 SQL 22/29 check recorded relationships, never semantic correctness or execution.
 """
-from typing import Callable, Mapping, Protocol
+from typing import TYPE_CHECKING, Callable, Protocol
 
 from gen2.router import boundary, support
 from gen2.router.boundary import Refusal
+from gen2.router.protocols import Rows, Spool
 
-
-class Rows(Protocol):
-    def select(self, table: str, where: Mapping[str, object] | None = None) -> list[dict]: ...
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
+if TYPE_CHECKING:
+    from gen2.router.extractor_registry import ExtractorRegistry
 
 
 class ExtractionCore(Protocol):
-    _store: Rows
-    _spool: object
-    def _require_extractor_tool(self, record: dict) -> None: ...
+    _store: Rows[object]
+    _spool: Spool
+    _extractor_registry: "ExtractorRegistry"
 
 
 class ExtractionRecords:
@@ -28,7 +27,7 @@ class ExtractionRecords:
         extractions = payload.get("source_extractions", [])
         validations = payload.get("extraction_validations", []) + payload.get("extraction_validations_v2", [])
         for record in extractions:
-            self._core._require_extractor_tool(record)
+            self._core._extractor_registry.require_tool(record)
         for records, field in ((extractions, "output_ref"), (validations, "comparison_evidence_ref")):
             for record in records:
                 ref = record[field]

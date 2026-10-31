@@ -8,17 +8,14 @@ from typing import Callable, Mapping, Protocol
 
 from gen2.core.instants import utc_instant_ns
 from gen2.router.boundary import RECORDS, Refusal
+from gen2.router.protocols import Rows
 
 # Confidence bases whose record the invocation attributes to itself.
 ATTRIBUTED_BASES = frozenset({"recorded_assessment"})
 
 
-class Rows(Protocol):
-    def insert(self, table: str, row: Mapping[str, object]) -> None: ...
-
-
 class AssessmentCore(Protocol):
-    _store: Rows
+    _store: Rows[object]
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
     def _work_of_topic(self, work_id: str, topic_id: str) -> bool: ...
 

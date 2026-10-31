@@ -3,16 +3,21 @@
 C-9 byte authentication precedes the writer lock. SQL 35 binds relationships;
 receipt references bind exactly; load-bearing support must consume records.
 """
-from typing import Callable
+from typing import Callable, Protocol
 
 from gen2.core import canonical
 from gen2.router import boundary, support
 from gen2.router.boundary import Refusal
-from gen2.router.extractions import ExtractionCore
+from gen2.router.protocols import Rows, Spool
+
+
+class DetailedChecksCore(Protocol):
+    _store: Rows[object]
+    _spool: Spool
 
 
 class DetailedChecks:
-    def __init__(self, core: ExtractionCore) -> None:
+    def __init__(self, core: DetailedChecksCore) -> None:
         self._core = core
 
     def require_support(self, claim: dict, capture_valid: Callable[[dict], bool]) -> None:

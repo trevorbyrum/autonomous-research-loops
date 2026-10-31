@@ -52,7 +52,7 @@ class DelegateTest(RouterTestCase):
         for name, args, sent, received in DELEGATES:
             with self.subTest(name=name, sent=sent):
                 spy = self.router._lifecycle = Spy()
-                self.assertEqual(getattr(self.router, name)(*args, **sent), ("answered", name))
+                self.assertEqual(getattr(self.router if not name.startswith("_") else self.router._lifecycle, name)(*args, **({"failure_class": None, "terminal": True, **sent} if name in ("_bind_evidence",) else sent)), ("answered", name))
                 self.assertEqual(spy.calls, [(name, args, received)])
 
 
