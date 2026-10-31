@@ -18,6 +18,7 @@ runner = importlib.util.module_from_spec(spec)
 with mock.patch.object(sys, "path", [str(ROOT / "tools"), *sys.path]):
     spec.loader.exec_module(runner)
 EvidenceResult, MARKER, normalize = runner.EvidenceResult, runner.MARKER, runner.normalize
+CAMPAIGN_TIMEOUT_S = 900  # a hang guard, not a performance assertion: stage-2 qualification runs suites in parallel
 
 
 class AutomaticMutationTest(unittest.TestCase):
@@ -50,7 +51,7 @@ class AutomaticMutationTest(unittest.TestCase):
                     out = root / f"campaign-{index}"
                     result = subprocess.run([sys.executable, "tools/gen2_mutation_scope.py", "--base", "HEAD",
                         "--out", str(out), "--coverage", str(root / f"coverage-{index}.sqlite")],
-                        cwd=root, capture_output=True, text=True, timeout=60)
+                        cwd=root, capture_output=True, text=True, timeout=CAMPAIGN_TIMEOUT_S)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     report, = out.glob("*/mutation-report.json")
                     data = json.loads(report.read_text())
@@ -274,7 +275,7 @@ class AutomaticMutationTest(unittest.TestCase):
             write_test(" def test_answer(self): self.assertEqual(answer(), 1)\n")
             def campaign(*args, env=None, flags=(), expected=0):
                 result = subprocess.run([sys.executable, *flags, "tools/gen2_mutation_scope.py", "--base", "HEAD", *args],
-                    cwd=root, env=env, capture_output=True, text=True, timeout=60)
+                    cwd=root, env=env, capture_output=True, text=True, timeout=CAMPAIGN_TIMEOUT_S)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
                 reports = sorted(root.glob("build/mutation-evidence/*/mutation-report.json"), key=lambda p: p.stat().st_mtime_ns)
                 return result, json.loads(reports[-1].read_text())
