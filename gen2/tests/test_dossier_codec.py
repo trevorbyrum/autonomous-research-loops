@@ -37,7 +37,9 @@ def decoded(case, value):
 
 class CodecTest(unittest.TestCase):
     def encode(self, result):
-        return admitted(self, dossier.encode, result)
+        encoded = admitted(self, dossier.encode, result)
+        self.assertIsInstance(encoded, dict if isinstance(result, s.ProfileResult) else list)
+        return encoded
 
     def decode(self, result):
         return decoded(self, result)
