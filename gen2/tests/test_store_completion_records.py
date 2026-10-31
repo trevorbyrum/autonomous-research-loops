@@ -24,10 +24,11 @@ class DDLTest(StoreTestCase):
 
     def refused(self, fragment, **changes):
         before = self.snapshot("completion_records")
-        with self.subTest(changes=changes), self.assertRaises(sqlite3.IntegrityError) as caught:
-            self.insert(**changes)
-        self.assertIn(fragment, str(caught.exception))
-        self.assertEqual(self.snapshot("completion_records"), before)
+        with self.subTest(changes=changes):
+            with self.assertRaises(sqlite3.IntegrityError) as caught:
+                self.insert(**changes)
+            self.assertIn(fragment, str(caught.exception))
+            self.assertEqual(self.snapshot("completion_records"), before)
 
     def test_one_accepted_row_per_kind(self):
         for kind, (ref, revision, subject_hash) in SUBJECTS.items():

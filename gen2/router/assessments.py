@@ -75,7 +75,7 @@ class Assessments:
                 if record.get("lineage") is not None:
                     self._core._store.insert("source_lineage", {"assessment_id": record["assessment_id"], **record["lineage"]})
         for record in payload.get("completion_records", []):
-            if record["kind"] == "verification_adjudication":
+            if record["kind"] in {"verification_adjudication"}:
                 self._clear_hold(hold_id(record["subject_ref"]), operation_id, now)
         return {spec.section: [r[spec.identity] for r in payload.get(spec.section, [])] for spec in RECORDS if payload.get(spec.section)}
 
@@ -129,35 +129,46 @@ class Assessments:
         return row
 
     def _validate_completion_records(self, payload: dict, inv: dict) -> None:
+        validators = {"counterevidence_search": self._validate_counterevidence,
+                      "competing_explanation": self._validate_competing_explanation,
+                      "sufficiency_review": self._validate_sufficiency_review,
+                      "verification_adjudication": self._validate_adjudication}
         for record in payload.get("completion_records", []):
-            kind, ref, revision = record["kind"], record["subject_ref"], record["subject_revision"]
             if record["contract_revision"] != inv["contract_revision"]:
                 raise Refusal("payload_invalid", "completion record differs from its invocation's contract pin")
-            if kind == "counterevidence_search":
-                claim = self._subject("claims", {"claim_id": ref, "revision": revision}, inv, "counterevidence subject claim revision")
-                if not claim["load_bearing"]:
-                    raise Refusal("payload_invalid", "counterevidence subject claim is not load-bearing")
-                if claim["producer_invocation_id"] == inv["invocation_id"]:
-                    raise Refusal("payload_invalid", "counterevidence search must come from an invocation other than the claim's producer")
-            elif kind == "competing_explanation":
-                row = self._subject("registry_dispositions", {"disposition_id": ref}, inv, "competing-explanation subject disposition")
-                if row["registry_kind"] != "contradiction":
-                    raise Refusal("payload_invalid", "competing-explanation subject is not a contradiction disposition")
-                if self._core._one("registry_dispositions", {"supersedes_id": ref}) is not None:  # active_records' explicit-replacement rule
-                    raise Refusal("payload_invalid", "competing-explanation subject disposition is explicitly superseded")
-            elif kind == "sufficiency_review":
-                if ref != inv["topic_id"]:
-                    raise Refusal("cross_topic", "sufficiency review names another topic's dossier")
-                dossier = self._subject("dossiers", {"topic_id": ref, "dossier_revision": revision}, inv, "sufficiency-review dossier")
-                if dossier["content_hash"] != record["subject_hash"]:
-                    raise Refusal("payload_invalid", "sufficiency review hash differs from its dossier")
-                if dossier["invocation_id"] == inv["invocation_id"]:
-                    raise Refusal("payload_invalid", "sufficiency review must come from an invocation other than the dossier's producer")
-                if dossier["contract_revision"] != record["contract_revision"]:
-                    raise Refusal("payload_invalid", "sufficiency review contract pin differs from its dossier's")
-            else:
-                receipt = self._subject("verification_receipts", {"verification_receipt_id": ref}, inv, "adjudication subject receipt")
-                if receipt["claim_revision"] != revision:
-                    raise Refusal("payload_invalid", "adjudication claim revision differs from its receipt's")
-                if receipt["verdict"] not in ADVERSE:
-                    raise Refusal("payload_invalid", "adjudication subject receipt raised no disagreement")
+            # Schema admission closes the kind domain; retain the former else fallback.
+            validators.get(record["kind"], self._validate_adjudication)(record, inv)
+
+    def _validate_counterevidence(self, record: dict, inv: dict) -> None:
+        claim = self._subject("claims", {"claim_id": record["subject_ref"], "revision": record["subject_revision"]}, inv, "counterevidence subject claim revision")
+        if not claim["load_bearing"]:
+            raise Refusal("payload_invalid", "counterevidence subject claim is not load-bearing")
+        if claim["producer_invocation_id"] == inv["invocation_id"]:
+            raise Refusal("payload_invalid", "counterevidence search must come from an invocation other than the claim's producer")
+
+    def _validate_competing_explanation(self, record: dict, inv: dict) -> None:
+        ref = record["subject_ref"]
+        row = self._subject("registry_dispositions", {"disposition_id": ref}, inv, "competing-explanation subject disposition")
+        if row["registry_kind"] not in {"contradiction"}:
+            raise Refusal("payload_invalid", "competing-explanation subject is not a contradiction disposition")
+        if self._core._one("registry_dispositions", {"supersedes_id": ref}) is not None:  # active_records' explicit-replacement rule
+            raise Refusal("payload_invalid", "competing-explanation subject disposition is explicitly superseded")
+
+    def _validate_sufficiency_review(self, record: dict, inv: dict) -> None:
+        ref = record["subject_ref"]
+        if ref != inv["topic_id"]:
+            raise Refusal("cross_topic", "sufficiency review names another topic's dossier")
+        dossier = self._subject("dossiers", {"topic_id": ref, "dossier_revision": record["subject_revision"]}, inv, "sufficiency-review dossier")
+        if dossier["content_hash"] != record["subject_hash"]:
+            raise Refusal("payload_invalid", "sufficiency review hash differs from its dossier")
+        if dossier["invocation_id"] == inv["invocation_id"]:
+            raise Refusal("payload_invalid", "sufficiency review must come from an invocation other than the dossier's producer")
+        if dossier["contract_revision"] != record["contract_revision"]:
+            raise Refusal("payload_invalid", "sufficiency review contract pin differs from its dossier's")
+
+    def _validate_adjudication(self, record: dict, inv: dict) -> None:
+        receipt = self._subject("verification_receipts", {"verification_receipt_id": record["subject_ref"]}, inv, "adjudication subject receipt")
+        if receipt["claim_revision"] != record["subject_revision"]:
+            raise Refusal("payload_invalid", "adjudication claim revision differs from its receipt's")
+        if receipt["verdict"] not in ADVERSE:
+            raise Refusal("payload_invalid", "adjudication subject receipt raised no disagreement")
