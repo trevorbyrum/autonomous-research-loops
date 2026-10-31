@@ -14,7 +14,7 @@ from gen2.router.accounting import convert_inventory
 from gen2.tests import test_attempted_request_bytes as attempted
 from gen2.tests.router_fixtures import EXPIRES, RouterTestCase
 
-NUMERIC = '{"request":{"request_type":"find","n":9007199254740992},"lane":"crossref","page":1}'
+NUMERIC = '{"request":{"request_type":"find","n":9007199254740993},"lane":"crossref","page":1}'
 NAME_ONLY = '{"request_type\\u0000suffix":"find"}'
 PARSER_LIMITS = ('{"n":' + '1' * 5000 + '}', '[' * 2000 + '0' + ']' * 2000)
 
@@ -77,8 +77,8 @@ class FailedAttemptTest(RouterTestCase):
         self.assertEqual(self.state(exclude=()), before)
 
     def test_integer_and_duplicate_both_orders(self):
-        cases = ('{"n":9007199254740992,"request":{"request_type":"find","request_type":"bad"}}',
-                 '{"request":{"request_type":"find","request_type":"bad"},"n":9007199254740992}')
+        cases = ('{"n":9007199254740993,"request":{"request_type":"find","request_type":"bad"}}',
+                 '{"request":{"request_type":"find","request_type":"bad"},"n":9007199254740993}')
         # Duplicate detection precedes integer validation in both orders.
         for raw in cases:
             with self.subTest(raw=raw):
@@ -95,10 +95,10 @@ class FailedAttemptTest(RouterTestCase):
     def test_numeric_and_name_faults_both_orders(self):
         # Each pair: the same numeric fault and name fault in both member orders; the first met names the class.
         cases = (
-            ('{"request":{"request_type":"find","n":9007199254740992,"filters":{"field\\u0000suffix":1}},"lane":"crossref","page":1}', 'logical_json_invalid'),
-            ('{"request":{"request_type":"find","filters":{"field\\u0000suffix":1},"n":9007199254740992},"lane":"crossref","page":1}', 'member_name_domain'),
-            ('{"n":9007199254740992,"request_type\\u0000suffix":"find"}', 'logical_json_invalid'),
-            ('{"request_type\\u0000suffix":"find","n":9007199254740992}', 'member_name_domain'),
+            ('{"request":{"request_type":"find","n":9007199254740993,"filters":{"field\\u0000suffix":1}},"lane":"crossref","page":1}', 'logical_json_invalid'),
+            ('{"request":{"request_type":"find","filters":{"field\\u0000suffix":1},"n":9007199254740993},"lane":"crossref","page":1}', 'member_name_domain'),
+            ('{"n":9007199254740993,"request_type\\u0000suffix":"find"}', 'logical_json_invalid'),
+            ('{"request_type\\u0000suffix":"find","n":9007199254740993}', 'member_name_domain'),
             ('{"n":0.10000000000000001,"request":{"request_type":"find","request_type":"bad"}}', 'logical_json_invalid'),
             ('{"request":{"request_type":"find","request_type":"bad"},"n":0.10000000000000001}', 'member_name_domain'))
         for raw, label in cases:
@@ -106,10 +106,17 @@ class FailedAttemptTest(RouterTestCase):
                 self.assert_retained(raw, label)
 
     def test_numeric_failures_without_names(self):
-        for raw in (NUMERIC, NUMERIC.replace('9007199254740992', '-9007199254740992'),
-                    NUMERIC.replace('9007199254740992', '0.10000000000000001')):
+        for raw in (NUMERIC, NUMERIC.replace('9007199254740993', '-9007199254740993'),
+                    NUMERIC.replace('9007199254740993', '0.10000000000000001')):
             with self.subTest(raw=raw):
                 self.assert_retained(raw)
+
+    def test_numeric_fault_fixture_is_a_parse_fault(self):
+        # D-F1: +/-2**53 are canonical binary64 spellings and parse; +/-(2**53+1) are the refused faults.
+        for sign in ('', '-'):
+            parsed = canonical.parse_json_strict(NUMERIC.replace('9007199254740993', sign + '9007199254740992'))
+            self.assertEqual(parsed['request']['n'], float(sign + '9007199254740992'))
+            self.assertRaises(canonical.CanonicalizationError, canonical.parse_json_strict, NUMERIC.replace('9007199254740993', sign + '9007199254740993'))
 
     def test_other_strict_parse_reasons(self):
         for raw in (' \n{"broken": \t', '{"n":NaN}', '{"n":Infinity}', '{"n":1e999}',
@@ -133,7 +140,7 @@ class FailedAttemptTest(RouterTestCase):
 
     def test_ordinary_numeric_control(self):
         for attempt, number in enumerate(('-9007199254740991', '9007199254740991', '0.1', '1e30'), 1):
-            raw = NUMERIC.replace('9007199254740992', number)
+            raw = NUMERIC.replace('9007199254740993', number)
             logical = json.loads(raw)
             command = self.command(None)
             command['observation'].update(request=raw, request_identity=canonical.logical_hash(logical),
@@ -153,8 +160,8 @@ class FailedAttemptTest(RouterTestCase):
         self.assertTrue(all(o.request_type == 'find' and o.page is not None for o in inventory.observations))
 
     def test_invalid_observed_and_exhausted_still_refuse(self):
-        raws = (NUMERIC, NUMERIC.replace('9007199254740992', '0.10000000000000001'),
-                '{"request":{"request_type":"find","n":9007199254740992,"filters":{"field\\u0000suffix":1}}}',
+        raws = (NUMERIC, NUMERIC.replace('9007199254740993', '0.10000000000000001'),
+                '{"request":{"request_type":"find","n":9007199254740993,"filters":{"field\\u0000suffix":1}}}',
                 '{"n":0.10000000000000001,"request":{"request_type":"find","request_type":"bad"}}',
                 *PARSER_LIMITS)
         for raw in raws:

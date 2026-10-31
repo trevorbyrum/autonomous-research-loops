@@ -9,6 +9,10 @@ from gen2.tests import test_canonical as vectors
 from gen2.tests.span_cap_cases import NUMERALS
 
 
+CANONICAL_DOUBLE_SPELLINGS = frozenset(("9007199254740992", "-9007199254740992", "123456789012345680000", "295147905179352830000",
+                                        "999999999999999700000", "999999999999999900000"))
+
+
 class DecimalExactnessTest(unittest.TestCase):
     def test_extreme_zero(self):
         for sign in ('', '-'):
@@ -65,6 +69,12 @@ class DecimalExactnessTest(unittest.TestCase):
             except InvalidOperation:  # Newly repaired zero spellings: tested above.
                 continue
             except (ValueError, c.CanonicalizationError):
+                if numeral in CANONICAL_DOUBLE_SPELLINGS:  # D-F1: refused before, now read back as the double canonical_bytes writes
+                    with self.subTest(admitted=numeral):
+                        value = c.parse_json_strict(numeral)
+                        self.assertIsInstance(value, float)
+                        self.assertEqual(c.canonical_bytes(value), numeral.encode())
+                    continue
                 with self.subTest(refused=numeral):
                     self.assertRaises(c.CanonicalizationError, c.parse_json_strict, numeral)
                 continue
