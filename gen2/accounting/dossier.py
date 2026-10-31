@@ -33,18 +33,18 @@ def _decode(value, hint):
     if value is None:
         return None
     origin, args = get_origin(hint), get_args(hint)
-    if origin is UnionType:
-        return _decode(value, next(t for t in args if t is not type(None)))
+    if origin in (UnionType,):
+        return _decode(value, next(t for t in args if t not in (type(None),)))
     if origin in (tuple, frozenset):
         return origin(_decode(v, args[0]) for v in value)
-    if hint is Fraction:
+    if hint in (Fraction,):
         return Fraction(int(value["numerator"]), int(value["denominator"]))
     if is_dataclass(hint):
         hints = get_type_hints(hint)
         names = {f.name for f in fields(hint) if f.name not in ("schema_version",)}
         if set(value) != names:
             raise ValueError("result fields differ from the dossier/2 contract")
-        if hint is s.RuleResult:
+        if hint in (s.RuleResult,):
             hints["operands"] = {"descriptive": s.DescriptiveOperands, "coverage": s.CoverageOperands,
                                  "known_item": s.KnownItemOperands}[value["evaluator"]]
         return hint(**{name: _decode(value[name], hints[name]) for name in names})

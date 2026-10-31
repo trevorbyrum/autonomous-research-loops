@@ -17,7 +17,7 @@ ITEMS = s.KnownItems(a.EvidenceReference('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 def evaluate(inputs):
     revision = inputs.coverage.inventory.current_contract_revision
-    context = s.Context(inputs.raw.topic_id, revision, 1)
+    context = s.Context(inputs.raw.topic_id.encode().decode(), revision, 1)
     rule = s.known_item(context, 'R', inputs.coverage.inventory, ITEMS)
     return s.evaluate_profile(context, s.Profile('P', s.Expression('R'), ()), (rule,), ())
 
