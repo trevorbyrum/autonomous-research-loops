@@ -172,7 +172,7 @@ class StrictBoundaryTest(unittest.TestCase):
 
     def test_parse_rejects(self) -> None:
         for text in ('{"a":1,"a":2}', '{"x":{"a":1,"a":1}}', 'NaN', '[Infinity]', '{"v":-Infinity}', '"\\ud800"', '{"\\udfff":1}',
-                     '12345678901234567890', '-9007199254740992', '0.1000000000000000055511151231257827', '333333333.33333329',
+                     '12345678901234567890', '0.1000000000000000055511151231257827', '333333333.33333329',
                      '1e400', '{"a":1} x', "{'a':1}", '',
                      '1e-400', '-1e-400', '[2.4e-324]'):  # underflow: the double would be 0.0, a value the text never named
             with self.subTest(text=text):
@@ -208,7 +208,7 @@ class StrictBoundaryTest(unittest.TestCase):
         identity/revision/generation field is now bounded by VALUE — whatever
         the notation and whichever type the parser produced: bound - 1 and
         bound pass as ints in all three notations; bound + 1 is refused in all
-        three (the bare integer by the parser, the others by the bound)."""
+        three (by the identity bound, whichever type the parser produced)."""
         def identity_from(text: str) -> int:
             return identity_integer(parse_json_strict(text))
         for value in (9007199254740990, 9007199254740991):
@@ -236,6 +236,57 @@ class StrictBoundaryTest(unittest.TestCase):
                 self.assertIsInstance(value, float)
         self.assertEqual(canonical_bytes(parse_json_strict("9007199254740992.0")), b"9007199254740992")
         self.assertEqual(canonical_bytes(parse_json_strict("1E30")), b"1e+30")
+
+    # token -> (admitted, canonical bytes it re-serializes to); every edge in both signs
+    CANONICAL_SPELLINGS = (
+        ("9007199254740991", int, b"9007199254740991"),
+        ("9007199254740992", float, b"9007199254740992"),
+        ("9007199254740994", float, b"9007199254740994"),
+        ("10000000000000000", float, b"10000000000000000"),
+        ("999999999999999900000", float, b"999999999999999900000"),  # predecessor of 1e21; exact value is ...868928
+    )
+    NON_CANONICAL_SPELLINGS = ("9007199254740993", "10000000000000001", "999999999999999868928", "999999999999999900001", "1000000000000000000000",
+                               "9007199254740993.0", "1" + "0" * 400)
+
+    def test_canonical_double_spellings_round_trip(self) -> None:
+        """D-F1: canonical_bytes writes 2**53 <= |x| < 1e21 as plain digits, so
+        the reader admits exactly those spellings, as floats; every other
+        out-of-bound integer token is refused. Both signs at every edge."""
+        for sign in ("", "-"):
+            for token, kind, rendered in self.CANONICAL_SPELLINGS:
+                with self.subTest(token=sign + token):
+                    value = parse_json_strict(sign + token)
+                    self.assertIs(type(value), kind)
+                    self.assertEqual(canonical_bytes(value), (sign.encode() + rendered))
+                    self.assertEqual(canonical_bytes(parse_json_strict(canonical_bytes(value))), canonical_bytes(value))
+            for token in self.NON_CANONICAL_SPELLINGS:
+                with self.subTest(refused=sign + token):
+                    self.assertRaises(CanonicalizationError, parse_json_strict, sign + token)
+        for value in (2.0**53, -(2.0**53), 1e16, -1e16, 9.999999999999999e20, -9.999999999999999e20, 1e21, 1e300, -1e300):
+            with self.subTest(value=value):
+                self.assertEqual(parse_json_strict(canonical_bytes({"x": value})), {"x": value})
+        self.assertEqual(canonical_bytes({"x": 1e21}), b'{"x":1e+21}')  # the integer spelling of 1e21 is not canonical
+        self.assertRaises(CanonicalizationError, parse_json_strict, "1000000000000000000000")
+
+    def test_canonical_spelling_is_admitted_inside_documents(self) -> None:
+        document = {"a": [{"b": 9007199254740992.0}, -1e16], "c": {"d": 999999999999999900000.0}}
+        raw = canonical_bytes(document)
+        self.assertEqual(raw, b'{"a":[{"b":9007199254740992},-10000000000000000],"c":{"d":999999999999999900000}}')
+        self.assertEqual(parse_json_strict(raw), document)
+        self.assertEqual(canonical_bytes(parse_json_strict(raw)), raw)
+
+    def test_leading_zeros_refused_and_negative_zero_is_zero(self) -> None:
+        for text in ("09007199254740992", "-09007199254740992", "010000000000000000"):
+            with self.subTest(text=text):
+                self.assertRaises(CanonicalizationError, parse_json_strict, text)
+        self.assertEqual(canonical_bytes(parse_json_strict("-0")), b"0")
+
+    def test_identity_integer_still_refuses_admitted_floats(self) -> None:
+        for token in ("9007199254740992", "10000000000000000", "999999999999999900000"):
+            with self.subTest(token=token):
+                self.assertRaises(CanonicalizationError, identity_integer, parse_json_strict(token))
+        self.assertEqual(identity_integer(parse_json_strict("9007199254740991")), 9007199254740991)
+        self.assertRaises(CanonicalizationError, identity_integer, parse_json_strict("-9007199254740991"))
 
     def test_value_rejects(self) -> None:
         for value in (float("nan"), float("inf"), 2**53, -(2**53), {1: "a"}, {"a": {2.0: "b"}}, {"s": "\ud800"}, b"bytes", {"x"}, Decimal("0.1"), object()):
