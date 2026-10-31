@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "flow: S7 (stopping dossier) | boundaries: Router; Evidence accounting | invariants: G-8; G-13; E-6; RG-U | note: Retained operands are not gate proof; DEBT-035.",
+  "$id": "https://research-loops.invalid/gen2/schema/dossier-v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "dossier_revision", "invocation_id", "evaluator_version", "history", "input_hash", "result"],
+  "properties": {"schema_version": {"const": "dossier/2"}, "dossier_revision": {"$ref": "#/$defs/revision"}, "invocation_id": {"$ref": "#/$defs/text"}, "evaluator_version": {"const": "stopping-result/1"}, "history": {"$ref": "#/$defs/history"}, "input_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "result": {"$ref": "#/$defs/result"}},
+  "$defs": {
+    "text": {"type": "string", "minLength": 1},
+    "integer": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "ids": {"type": "array", "items": {"$ref": "#/$defs/text"}, "uniqueItems": true},
+    "state": {"enum": ["satisfied", "not_satisfied", "unknown"]},
+    "standing": {"enum": ["current", "compatible", "stale", "unknown"]},
+    "window_state": {"enum": ["eligible", "ineligible", "indeterminate"]},
+    "history": {"enum": ["native", "legacy_unknown"]},
+    "gate": {"enum": ["challenge_pass_completed", "coverage_integrity", "load_bearing_verification_tiers"]},
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topic_id", "contract_revision", "protocol_revision"],
+      "properties": {
+        "topic_id": {"$ref": "#/$defs/text"},
+        "contract_revision": {"$ref": "#/$defs/revision"},
+        "protocol_revision": {"$ref": "#/$defs/revision"}
+      }
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_hash", "size_bytes", "media_type"],
+      "properties": {
+        "content_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "size_bytes": {"$ref": "#/$defs/integer"},
+        "media_type": {"$ref": "#/$defs/text"}
+      }
+    },
+    "count": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["known_ids", "unknown_reason"],
+      "properties": {
+        "known_ids": {"$ref": "#/$defs/ids"},
+        "unknown_reason": {"anyOf": [{"$ref": "#/$defs/text"}, {"type": "null"}]}
+      }
+    },
+    "units": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retrieved_records", "deduplicated_works", "assessed_candidates", "accepted_claims", "saturation_passes"],
+      "properties": {
+        "retrieved_records": {"$ref": "#/$defs/count"},
+        "deduplicated_works": {"$ref": "#/$defs/count"},
+        "assessed_candidates": {"$ref": "#/$defs/count"},
+        "accepted_claims": {"$ref": "#/$defs/count"},
+        "saturation_passes": {"type": "array", "items": {"$ref": "#/$defs/text"}}
+      }
+    },
+    "label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessment_id", "work_id", "standing", "novelty", "independence", "applicability", "contribution"],
+      "properties": {
+        "assessment_id": {"$ref": "#/$defs/text"},
+        "work_id": {"$ref": "#/$defs/text"},
+        "standing": {"$ref": "#/$defs/standing"},
+        "novelty": {"enum": ["novel", "not_novel", "unknown"]},
+        "independence": {"enum": ["independent", "shared_origin", "unknown"]},
+        "applicability": {"enum": ["applicable", "not_applicable", "unknown"]},
+        "contribution": {"enum": ["answer", "confidence", "applicability", "options", "question_formulation", "boundary_condition", "contradiction", "unknown"]}
+      }
+    },
+    "fraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": {"$ref": "#/$defs/integer"},
+        "denominator": {"$ref": "#/$defs/revision"}
+      }
+    },
+    "descriptive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "labels", "new_fraction"],
+      "properties": {
+        "units": {"$ref": "#/$defs/units"},
+        "labels": {"type": "array", "items": {"$ref": "#/$defs/label"}},
+        "new_fraction": {"anyOf": [{"$ref": "#/$defs/fraction"}, {"type": "null"}]}
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invocation_id", "contract_revision", "standing", "state", "reason"],
+      "properties": {
+        "invocation_id": {"$ref": "#/$defs/text"},
+        "contract_revision": {"anyOf": [{"$ref": "#/$defs/revision"}, {"type": "null"}]},
+        "standing": {"$ref": "#/$defs/standing"},
+        "state": {"$ref": "#/$defs/window_state"},
+        "reason": {"$ref": "#/$defs/text"}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum_windows", "windows", "history", "eligible", "ineligible", "indeterminate", "scope", "lower", "upper", "raw_windows"],
+      "properties": {
+        "minimum_windows": {"$ref": "#/$defs/revision"},
+        "windows": {"type": "array", "items": {"$ref": "#/$defs/window"}},
+        "history": {"$ref": "#/$defs/history"},
+        "eligible": {"$ref": "#/$defs/integer"},
+        "ineligible": {"$ref": "#/$defs/integer"},
+        "indeterminate": {"$ref": "#/$defs/integer"},
+        "scope": {"anyOf": [{"$ref": "#/$defs/ids"}, {"type": "null"}]},
+        "lower": {"$ref": "#/$defs/integer"},
+        "upper": {"$ref": "#/$defs/integer"},
+        "raw_windows": {"type": "array", "items": {"$ref": "#/$defs/window"}}
+      }
+    },
+    "known_items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "work_ids"],
+      "properties": {
+        "reference": {"$ref": "#/$defs/reference"},
+        "work_ids": {"$ref": "#/$defs/ids"}
+      }
+    },
+    "known_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declared", "retrieved", "found", "missing"],
+      "properties": {
+        "declared": {"$ref": "#/$defs/known_items"},
+        "retrieved": {"$ref": "#/$defs/count"},
+        "found": {"$ref": "#/$defs/ids"},
+        "missing": {"$ref": "#/$defs/ids"}
+      }
+    },
+    "rule": {"oneOf": [{"type": "object", "additionalProperties": false, "required": ["context", "rule_id", "evaluator", "state", "operands"], "properties": {"context": {"$ref": "#/$defs/context"}, "rule_id": {"$ref": "#/$defs/text"}, "evaluator": {"const": "descriptive"}, "state": {"$ref": "#/$defs/state"}, "operands": {"$ref": "#/$defs/descriptive"}}}, {"type": "object", "additionalProperties": false, "required": ["context", "rule_id", "evaluator", "state", "operands"], "properties": {"context": {"$ref": "#/$defs/context"}, "rule_id": {"$ref": "#/$defs/text"}, "evaluator": {"const": "coverage"}, "state": {"$ref": "#/$defs/state"}, "operands": {"$ref": "#/$defs/coverage"}}}, {"type": "object", "additionalProperties": false, "required": ["context", "rule_id", "evaluator", "state", "operands"], "properties": {"context": {"$ref": "#/$defs/context"}, "rule_id": {"$ref": "#/$defs/text"}, "evaluator": {"const": "known_item"}, "state": {"$ref": "#/$defs/state"}, "operands": {"$ref": "#/$defs/known_item"}}}]},
+    "expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "op", "operands"],
+      "properties": {
+        "rule": {"anyOf": [{"$ref": "#/$defs/text"}, {"type": "null"}]},
+        "op": {"enum": ["all", "any", null]},
+        "operands": {"type": "array", "items": {"$ref": "#/$defs/expression"}}
+      },
+      "oneOf": [{"properties": {"rule": {"$ref": "#/$defs/text"}, "op": {"type": "null"}, "operands": {"const": []}}}, {"properties": {"rule": {"type": "null"}, "op": {"enum": ["all", "any"]}, "operands": {"minItems": 1}}}]
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "completion_condition", "conjunctive_gates"],
+      "properties": {
+        "profile_id": {"$ref": "#/$defs/text"},
+        "completion_condition": {"$ref": "#/$defs/expression"},
+        "conjunctive_gates": {"type": "array", "items": {"$ref": "#/$defs/gate"}}
+      }
+    },
+    "gate_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context", "gate", "state", "evidence_refs"],
+      "properties": {
+        "context": {"$ref": "#/$defs/context"},
+        "gate": {"$ref": "#/$defs/gate"},
+        "state": {"$ref": "#/$defs/state"},
+        "evidence_refs": {"type": "array", "items": {"$ref": "#/$defs/reference"}}
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context", "profile", "rules", "gates", "state", "dropped"],
+      "properties": {
+        "context": {"$ref": "#/$defs/context"},
+        "profile": {"$ref": "#/$defs/profile"},
+        "rules": {"type": "array", "items": {"$ref": "#/$defs/rule"}},
+        "gates": {"type": "array", "items": {"$ref": "#/$defs/gate_result"}},
+        "state": {"$ref": "#/$defs/state"},
+        "dropped": {"type": "array", "items": {"$ref": "#/$defs/rule"}}
+      }
+    }
+  }
+}

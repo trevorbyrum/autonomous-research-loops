@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "dossier/2 literal boundary: reference-size-maximum",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "replace", "path": "/result/gates/0/evidence_refs/0/size_bytes", "value": 9007199254740992}
+    ],
+    "errors": [
+      {"keyword": "maximum", "path": "/result/gates/0/evidence_refs/0/size_bytes"}
+    ]
+  }
+}

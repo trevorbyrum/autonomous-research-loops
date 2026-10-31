@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "dossier/2 literal boundary: bound-negative",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "replace", "path": "/result/rules/1/operands/lower", "value": -1}
+    ],
+    "errors": [
+      {"keyword": "oneOf", "path": "/result/rules/1"}
+    ]
+  }
+}

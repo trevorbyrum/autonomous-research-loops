@@ -3,16 +3,18 @@ from dataclasses import dataclass
 from typing import Callable, Mapping, Protocol
 
 from gen2 import accounting as a
-from gen2.accounting import views as v
+from gen2.accounting import views as v, dossier
+from gen2.router import boundary
 from gen2.core import canonical, pagination
 from gen2.router.boundary import Refusal
 from gen2.store import api
 from gen2.store.capture import Freshness, TopicCapture, input_hash
-from gen2.router.protocols import Rows
+from gen2.router.protocols import Rows, Schemas
 
 
 class AccountingCore(Protocol):
     _store: Rows[TopicCapture]
+    _schemas: Schemas
     def _guarded(self, reason: str, body: Callable, *, freshness: Freshness | None = None) -> object: ...  # pragma: no mutate - Protocol declaration has no execution behavior
     def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None) -> str: ...  # pragma: no mutate - Protocol declaration has no execution behavior
 
@@ -76,6 +78,28 @@ class Accounting:
                 raise
         self._core._guarded("payload_invalid", audit)
         raise Refusal("stale_inputs", "store generation changed after two recaptures")
+
+    def prepare_dossier(self, inputs: "DossierInput", invocation_id: str, history: a.History, evaluate: Callable) -> dict:
+        result = evaluate(inputs)
+        if result.context.topic_id != inputs.raw.topic_id:
+            raise Refusal("cross_topic", "dossier result topic differs from capture")
+        contract = next(r for r in records(inputs.raw, "contract_revisions")
+                        if r["revision"] == inputs.coverage.inventory.current_contract_revision)
+        if (result.context.contract_revision, result.context.protocol_revision) != (contract["revision"], contract["protocol_revision"]):
+            raise Refusal("stale_inputs", "dossier context differs from captured approved contract")
+        doc = {"schema_version": "dossier/2", "invocation_id": invocation_id,
+               "dossier_revision": 1 + max((r["dossier_revision"] for r in records(inputs.raw, "dossiers")), default=0),
+               "evaluator_version": "stopping-result/1", "history": history, "input_hash": inputs.input_hash,
+               "result": dossier.encode(result)}
+        boundary.require_schema(self._core._schemas, doc, "dossier-v2.schema.json", "payload_invalid")
+        return {"document": doc, "content_hash": canonical.content_hash(doc)}
+
+    def write_dossier(self, prepared: dict, now: str) -> dict:
+        doc = prepared["document"]
+        self._core._store.insert("dossiers", {**prepared, "topic_id": doc["result"]["context"]["topic_id"],
+            "contract_revision": doc["result"]["context"]["contract_revision"], "created_at": now,
+            **{k: doc[k] for k in ("dossier_revision", "evaluator_version", "invocation_id")}})
+        return {"status": "recorded", "dossier_revision": doc["dossier_revision"], "content_hash": prepared["content_hash"]}
 
 
 def records(snapshot: TopicCapture, name: str):

@@ -155,8 +155,18 @@ class StoreTestCase(unittest.TestCase):
         self.x(self.CONTRACT_INSERT, *self.contract_row(tid, rev, parent, content, facets, obligations, status))
         return content
 
-    def dossier(self, tid: str, rev: int, contract_rev: int, ch: str) -> None:
-        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evaluator_version, content_hash, document_ref, created_at) VALUES (?, ?, ?, 'eval-1', ?, ?, ?)", tid, rev, contract_rev, ch, h("7"), T)
+    def dossier(self, tid: str, rev: int, contract_rev: int, ch: str, document: str = '{}', invocation_id: "str | None" = None) -> None:
+        if invocation_id is None:
+            existing = self.rows("SELECT invocation_id FROM invocations WHERE topic_id = ? ORDER BY rowid LIMIT 1", tid)
+            invocation_id = existing[0][0] if existing else f'inv_dossier_{tid}'
+        if not self.rows("SELECT 1 FROM invocations WHERE invocation_id = ?", invocation_id):
+            lease = f'lease_dossier_{tid}'
+            generation = self.rows("SELECT coalesce(max(generation),0)+1 FROM leases WHERE topic_id = ?", tid)[0][0]
+            self.lease(lease, generation, tid=tid)
+            approved = self.rows("SELECT revision FROM contract_revisions WHERE topic_id = ? AND status='approved'", tid)
+            self.invocation(invocation_id, lease=lease, tid=tid, pre_contract=not approved,
+                            contract_rev=approved[0][0] if approved else None)
+        self.x("INSERT INTO dossiers (topic_id, dossier_revision, contract_revision, evaluator_version, content_hash, document, invocation_id, created_at) VALUES (?, ?, ?, 'eval-1', ?, ?, ?, ?)", tid, rev, contract_rev, ch, document, invocation_id, T)
 
     def contract_cycle(self, tid: str, a: int, b: int, facets: tuple = (), obligations: tuple = ()) -> None:
         """Revisions a and b of `tid`, each naming the other as its parent,

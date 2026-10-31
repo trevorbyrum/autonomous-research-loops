@@ -84,7 +84,7 @@ class StoppingTest(unittest.TestCase):
         result = s.descriptive(CTX, "yield", inventory(), DATE)
         self.assertEqual((result.state, result.operands.new_fraction), (U, Fraction(0)))
         self.assertEqual(result.operands.units.deduplicated_works, a.Count(frozenset({"w1"})))
-        self.assertEqual(result.operands.labels[0].assessment, inventory().semantic_assessments[0])
+        self.assertEqual(result.operands.labels[0].assessment_id, "label")
         self.assertEqual((result.schema_version, result.context), ("stopping-result/1", CTX))
 
     def test_stale_unknown_and_empty_labels(self):

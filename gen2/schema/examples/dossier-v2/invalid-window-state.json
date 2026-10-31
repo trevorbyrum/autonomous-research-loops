@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "dossier/2 literal boundary: window-state",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "replace", "path": "/result/rules/1/operands/windows/0/state", "value": "pending"}
+    ],
+    "errors": [
+      {"keyword": "oneOf", "path": "/result/rules/1"}
+    ]
+  }
+}

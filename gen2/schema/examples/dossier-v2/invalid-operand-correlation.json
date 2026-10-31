@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "dossier/2 literal boundary: operand-correlation",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "replace", "path": "/result/rules/0/evaluator", "value": "coverage"}
+    ],
+    "errors": [
+      {"keyword": "oneOf", "path": "/result/rules/0"}
+    ]
+  }
+}
