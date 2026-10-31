@@ -554,7 +554,8 @@ CREATE TABLE dossiers (
   contract_revision INTEGER NOT NULL,
   evaluator_version TEXT NOT NULL,
   content_hash TEXT NOT NULL UNIQUE,
-  document_ref TEXT NOT NULL REFERENCES artifacts (content_hash),
+  document TEXT NOT NULL CHECK (json_valid(document)),
+  invocation_id TEXT NOT NULL REFERENCES invocations (invocation_id),
   created_at TEXT NOT NULL,
   PRIMARY KEY (topic_id, dossier_revision),
   FOREIGN KEY (topic_id, contract_revision) REFERENCES contract_revisions (topic_id, revision)

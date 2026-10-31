@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "closed dossier/2: nested-extra",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "add", "path": "/result/context/extra", "value": 1}
+    ],
+    "errors": [
+      {"keyword": "additionalProperties", "path": "/result/context"}
+    ]
+  }
+}

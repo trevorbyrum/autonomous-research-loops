@@ -171,11 +171,17 @@ class Router:
         """Capture admitted links and invocation-derived pins; compute views after returning."""
         return self._accounting.coverage_snapshot(topic_id, history=history)
 
+    def record_dossier(self, topic_id: str, *, invocation_id: str, history: accounting.History, evaluate: Callable) -> dict:
+        return self._commit_dossier_inputs(topic_id, invocation_id=invocation_id, history=history,
+            prepare=lambda inputs: self._accounting.prepare_dossier(inputs, invocation_id, history, evaluate),
+            commit=self._accounting.write_dossier)
+
     def _commit_dossier_inputs(self, topic_id: str, *, invocation_id: str, history: accounting.History, prepare: Callable, commit: Callable) -> object:
         inv = self._one("invocations", {"invocation_id": invocation_id})
         if inv is None or inv["topic_id"] != topic_id:
             raise Refusal("unknown_invocation", "dossier caller must be an admitted invocation of this topic")
         def require_live(now=None):
+            inv = self._one("invocations", {"invocation_id": invocation_id})
             refusal = self._launch_refusal(inv, self._now() if now is None else now)
             if refusal is not None:
                 raise refusal
@@ -992,6 +998,8 @@ class Router:
             stored = self._one("intake_briefs", {"topic_id": row["topic_id"], "brief_id": row["subject_ref"], "version": row["subject_revision"]})
         elif row["subject_kind"] == "scoping_report":  # task 2a
             stored = self._one("scoping_reports", {"topic_id": row["topic_id"], "report_id": row["subject_ref"], "version": row["subject_revision"]})
+        elif row["subject_kind"] in ("dossier",):
+            stored = self._one("dossiers", {"topic_id": row["topic_id"], "dossier_revision": row["subject_revision"]})
         elif row["subject_kind"] == "source_proposal":  # task 2a: its hash is of the whole document (it carries none of its own)
             stored = self._one("source_proposals", {"proposal_id": row["subject_ref"]})
             if stored is not None and canonical.logical_hash(stored["document"]) != stored["content_hash"]:

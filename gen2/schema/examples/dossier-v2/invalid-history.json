@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "closed dossier/2: history",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "add", "path": "/history", "value": "unknown"}
+    ],
+    "errors": [
+      {"keyword": "enum", "path": "/history"}
+    ]
+  }
+}

@@ -55,9 +55,11 @@ def read(conn, json_columns: dict, topic_id: str) -> TopicCapture:
     tables = []
     selections = [(name, "r.topic_id=:topic") for name in TOPIC_TABLES]
     for name, predicate in (*selections, *SHARED.items()):
-        cursor = conn.execute(f"SELECT r.* FROM {name} r WHERE {predicate} ORDER BY r.rowid", {"topic": topic_id})
-        tables.append(RawTable(name, tuple(c[0] for c in cursor.description),
-                               tuple(sorted(json_columns[name])), tuple(cursor.fetchall())))
+        columns = "r.topic_id,r.dossier_revision,r.contract_revision,r.evaluator_version,r.content_hash,r.invocation_id,r.created_at" if name in ("dossiers",) else "r.*"
+        cursor = conn.execute(f"SELECT {columns} FROM {name} r WHERE {predicate} ORDER BY r.rowid", {"topic": topic_id})
+        columns = tuple(column for column, *_ in cursor.description)
+        tables.append(RawTable(name, columns,
+                               tuple(sorted(json_columns[name].intersection(columns))), tuple(cursor.fetchall())))
     return TopicCapture(topic_id, tuple(tables))
 
 

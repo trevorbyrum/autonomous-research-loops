@@ -1,0 +1,14 @@
+{
+  "fixture": {
+    "schema": "dossier-v2.schema.json",
+    "expect": "invalid",
+    "tests": "dossier/2 literal boundary: reference-size-negative",
+    "base": "valid-rich.json",
+    "patch": [
+      {"op": "replace", "path": "/result/gates/0/evidence_refs/0/size_bytes", "value": -1}
+    ],
+    "errors": [
+      {"keyword": "minimum", "path": "/result/gates/0/evidence_refs/0/size_bytes"}
+    ]
+  }
+}
