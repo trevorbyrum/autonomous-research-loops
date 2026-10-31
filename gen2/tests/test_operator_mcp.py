@@ -115,11 +115,11 @@ class McpWireTest(WireClient, of.OperatorTestCase):
             b'"plain"',
             b'{"jsonrpc":"2.0","id":NaN,"method":"ping"}',
             b'{"jsonrpc":"2.0","id":1,"id":2,"method":"ping"}',
-            b'{"jsonrpc":"2.0","id":1,"method":"ping","extra":9007199254740992}',
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","extra":9007199254740993}',
             b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":1,"x":2}}}',
             b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":1.0000000000000001}}}',
             b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":1e-999}}}',
-            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":9007199254740992}}}',
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":9007199254740993}}}',
             b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":NaN}}}',
             b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":"\\ud800"}}}',
             b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":"\xff"}}}'):
@@ -129,9 +129,20 @@ class McpWireTest(WireClient, of.OperatorTestCase):
         self.assertEqual(self.wire("POST", "/mcp",
             b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":0.1}}}').partition(b"\r\n\r\n")[2],
             b'{"id": 1, "jsonrpc": "2.0", "result": {}}')
-        # REST command data still validates the entire document, including id.
+        # D-F1: 2**53 is a canonical binary64 spelling, so REST data parses; the router's
+        # command schema (not the number reader) refuses the unknown id, with the fixed reply.
         self.assertEqual(self.wire("POST", "/v1/commands/request_cancel", b'{"id":9007199254740992}').partition(b"\r\n\r\n")[2],
-            b'{"reason": "request_invalid", "status": "refused"}')
+            b'{"detail": "operation refused", "reason": "request_invalid", "status": "refused"}')
+
+    def test_mcp_canonical_large_number_is_data_not_a_parse_fault(self) -> None:
+        reply = self.wire("POST", "/mcp",
+            b'{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"x":9007199254740992}}}').partition(b"\r\n\r\n")[2]
+        self.assertEqual(reply, b'{"id": 1, "jsonrpc": "2.0", "result": {}}')  # accepted by ping, not reflected
+        extra = self.wire("POST", "/mcp", b'{"jsonrpc":"2.0","id":1,"method":"ping","extra":9007199254740992}')
+        self.assertNotIn(b"9007199254740992", extra)
+        self.assertEqual(extra.split(b"\r\n", 1)[0], b"HTTP/1.0 400 Bad Request")
+        self.assertEqual(extra.partition(b"\r\n\r\n")[2],
+            b'{"error": {"code": -32600, "data": {"reason": "request_invalid", "status": "refused"}, "message": "invalid request"}, "id": 1, "jsonrpc": "2.0"}')
 
     def test_token_ids_are_refused_in_success_and_error_envelopes(self) -> None:
         for method in ("ping", "unknown-method"):

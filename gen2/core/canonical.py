@@ -92,11 +92,31 @@ def _exact_float(text: str) -> float:
     return value
 
 
+def _integer_token(text: str) -> "int | float":
+    """An integer-notation numeral. Beyond +/-(2**53-1) it is admitted, as the
+    float, only when it is exactly the RFC 8785 serialization of a finite double
+    (what canonical_bytes writes for 2**53 <= |x| < 1e21); any other stays an int
+    for _validate to refuse. Byte identity, not mathematical equality: the
+    canonical spelling of 999999999999999868928.0 is 999999999999999900000."""
+    value = int(text)
+    if abs(value) <= INT_BOUND:
+        return value
+    as_float = float(text)
+    if math.isfinite(as_float) and rfc8785.dumps(as_float) == text.encode("ascii"):
+        return as_float
+    return value
+
+
 def parse_json_strict(text: str | bytes, *, member_domain: bool = False) -> object:
     """Parse JSON text (bytes are UTF-8) for hashing: duplicate keys,
     NaN/Infinity, integer-notation numerals outside +/-(2**53-1) and numerals
     a double cannot hold exactly (underflow to zero included) are errors,
-    never silently rounded or merged. Any other number is an IEEE binary64
+    never silently rounded or merged — with one exception: an out-of-bound
+    integer-notation numeral that is the canonical RFC 8785 spelling of a finite
+    double (see _integer_token) is read as that double. That recognizes a
+    spelling; it does not promise exact mathematical integer representability
+    (999999999999999900000 reads as the double whose exact value is
+    999999999999999868928). Any other number is an IEEE binary64
     value, as in JCS — 1e30 and 9007199254740992.0 are legitimate numbers —
     so identity bounds are not this parser's: see identity_integer."""
     if isinstance(text, bytes):
@@ -105,7 +125,7 @@ def parse_json_strict(text: str | bytes, *, member_domain: bool = False) -> obje
         except UnicodeDecodeError as exc:
             raise CanonicalizationError(f"JSON bytes are not UTF-8: {exc}") from exc
     try:
-        value = json.loads(text, object_pairs_hook=_reject_duplicates, parse_constant=_reject_constant, parse_float=_exact_float)
+        value = json.loads(text, object_pairs_hook=_reject_duplicates, parse_constant=_reject_constant, parse_float=_exact_float, parse_int=_integer_token)
     except json.JSONDecodeError as exc:
         raise CanonicalizationError(f"not JSON: {exc}") from exc
     _validate(value, member_domain=member_domain)
