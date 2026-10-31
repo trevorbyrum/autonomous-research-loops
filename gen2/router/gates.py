@@ -6,7 +6,6 @@ judgments (completion records); it makes none, and never reads holds (D3).
 """
 from gen2 import accounting as a
 from gen2.accounting import stopping
-from gen2.core import canonical
 from gen2.router import boundary, support
 from gen2.router.accounting import records
 from gen2.router.boundary import Refusal
