@@ -10,9 +10,13 @@ from dataclasses import replace
 from gen2 import accounting as a
 from gen2.accounting import stopping as s
 from gen2.core import canonical
-from gen2.router import gates
+from gen2.router import gates, material
+from gen2.router.accounting import DossierInput, convert_coverage_snapshot
+from gen2.store.capture import input_hash
 from gen2.router.boundary import Refusal
 from gen2.tests import router_fixtures as rf
+from gen2.tests.detailed_receipt_fixtures import attach_checks
+from gen2.tests.router_fixtures import CaptureCase
 from gen2.tests.test_completion_records import World
 from gen2.tests.test_coverage_dependencies import history, page
 
@@ -267,17 +271,25 @@ class ProfileSelectionTest(rf.ContractWorld):
         self.assertIn("G-11", caught.exception.detail)
 
 
-if __name__ == "__main__":
-    unittest.main()
+PROFILES = rf.contract_doc(1, None)["stopping_profiles"]
+
+
+def with_profiles(inputs, profiles=PROFILES):
+    return with_contract(inputs, lambda doc: doc.update(stopping_profiles=profiles))
+
+
+def view(result):
+    return {g.gate: (g.state, g.evidence_refs) for g in result.gates}
 
 
 class WiringTest(World):
     """Gate states through the real Router's detached capture and the production evaluator."""
-    PROFILES = rf.contract_doc(1, None)["stopping_profiles"]
+
+    def inputs(self):
+        return with_profiles(self.router._accounting.dossier_inputs(rf.TOPIC, history="native"))
 
     def states(self):
-        inputs = with_contract(self.router._accounting.dossier_inputs(rf.TOPIC, history="native"), lambda doc: doc.update(stopping_profiles=self.PROFILES))
-        return {g.gate: (g.state, g.evidence_refs) for g in gates.evaluate(inputs, self.spool, NOW).gates}
+        return view(gates.evaluate(self.inputs(), self.spool, NOW))
 
     def load_bearing_quote_claim(self):
         triggers = self.rows("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'claims'")
@@ -307,3 +319,92 @@ class WiringTest(World):
 
     def test_coverage_gate_reads_the_capture(self):
         self.assertEqual(self.states()["coverage_integrity"], (U, ()))  # research passes here have no observations
+
+    def reassessed(self, inputs, kind, was, now):
+        table = next(t for t in inputs.raw.tables if t.name == "completion_records")
+        kind_at, assessment_at = table.columns.index("kind"), table.columns.index("assessment")
+        rows = tuple(tuple(c.replace(was, now) if i == assessment_at and row[kind_at] == kind else c for i, c in enumerate(row)) for row in table.rows)
+        self.assertNotEqual(rows, table.rows, kind)
+        return replace(inputs, raw=replace(inputs.raw, tables=tuple(replace(t, rows=rows) if t is table else t for t in inputs.raw.tables)))
+
+    def test_same_gate_output_different_assessment_different_digest(self):
+        self.load_bearing_quote_claim()
+        for record in (self.completion("counterevidence_search"), self.completion("counterevidence_search", record_id="cr-second", subject_ref="clm_quote00001"),
+                       self.completion("competing_explanation"), self.completion("verification_adjudication")):
+            self.assertEqual(self.submit([record])["status"], "committed", record["record_id"])
+        original = self.inputs()
+        before = view(gates.evaluate(original, self.spool, NOW))
+        self.assertEqual(before["challenge_pass_completed"][0], S)
+        for kind, was, now in (("counterevidence_search", "none_found", "counterevidence_found"), ("competing_explanation", "explanation_rejected", "explanation_stands"),
+                               ("verification_adjudication", "verdict_upheld", "verdict_overturned")):
+            changed = self.reassessed(original, kind, was, now)
+            self.assertEqual(view(gates.evaluate(changed, self.spool, NOW)), before, kind)
+            self.assertNotEqual(material.digest(changed.raw, "native"), material.digest(original.raw, "native"), kind)
+
+
+class SupportWiringTest(CaptureCase):
+    """The production evaluator over a real promoted governed-quote support (B4)."""
+
+    def setUp(self):
+        super().setUp()
+        self.sentinels = self.spool.put(json.dumps([self.work]).encode())
+
+    def profile(self, rule_state_gates=("challenge_pass_completed", "coverage_integrity", "load_bearing_verification_tiers")):
+        reference = {"content_hash": self.sentinels, "size_bytes": len(json.dumps([self.work])), "media_type": "application/json"}
+        return [{**PROFILES[0], "rules": [{"rule_id": "R-known", "family": "known_item", "evaluation": "automatic",
+                 "params": {"sentinel_set": reference, "tests": "retrieval", "seeded_into_prompts": False}}],
+                 "completion_condition": {"rule": "R-known"}, "conjunctive_gates": list(rule_state_gates)}]
+
+    def inputs(self):
+        return with_profiles(self.router._accounting.dossier_inputs(rf.TOPIC, history="native"), self.profile())
+
+    def evaluate(self, inputs=None):
+        try:
+            return gates.evaluate(inputs or self.inputs(), self.spool, NOW)
+        except Exception as exc:  # an unexpected failure is a failed witness, not an error
+            self.fail(f"production evaluation raised {type(exc).__name__}: {exc}")
+
+    def verification(self):
+        return view(self.evaluate())["load_bearing_verification_tiers"]
+
+    def test_qualifying_governed_quote_support_satisfies_with_its_controls(self):
+        self.assertEqual(self.verification(), (N, ()))  # no receipt
+        record, doc = self.operands()
+        self.accepted(record, verification_receipts=[doc])
+        self.assertEqual(self.verification(), (N, ()))  # a qualifying receipt on a claim not yet admitted as accepted support
+        self.promote()
+        self.assertEqual(self.verification(), (S, ()))
+        _, adverse = self.operands()
+        adverse.update(verification_receipt_id="ver_adverse001", verdict="does_not_support")
+        out = self.send([], verification_receipts=[adverse])
+        self.assertEqual(out["status"], "committed", out)
+        self.assertEqual(self.verification(), (U, ()))  # D3 outranks the qualifying support
+
+    def test_glue_an_unknown_gate_keeps_the_profile_unknown_and_all_satisfied_completes(self):
+        record, doc = self.operands()
+        self.accepted(record, verification_receipts=[doc])
+        self.promote()
+        checkpoint = self.started("inv_checkpoint1", "checkpoint")
+        ref = self.artifact(b"completion evidence")
+        review = {"record_id": "cr-challenge", "kind": "counterevidence_search", "contract_revision": 1, "subject_ref": "clm_quote00001", "subject_revision": 2,
+                  "subject_hash": None, "assessment": {"outcome": "none_found", "summary": "searched"}, "evidence_refs": [ref]}
+        self.assertEqual(self.send([], grant=checkpoint, refs=[ref], completion_records=[review])["status"], "committed")
+        result = self.evaluate()
+        self.assertEqual([(r.rule_id, r.state) for r in result.rules], [("R-known", S)])
+        self.assertEqual({g: state for g, (state, _) in view(result).items()},
+            {"load_bearing_verification_tiers": S, "challenge_pass_completed": S, "coverage_integrity": U})  # the capture's pagination end is unknown
+        self.assertEqual(result.state, U)
+        self.assertEqual(self.finish(self.capture_grant, "op_capturefin1")["status"], "committed")  # the research window completes
+        inputs = self.inputs()
+        table = next(t for t in inputs.raw.tables if t.name == "search_observations")
+        at = table.columns.index("page_outcome")
+        exhausted = replace(table, rows=tuple(tuple("exhausted" if i == at else c for i, c in enumerate(r)) for r in table.rows))
+        raw = replace(inputs.raw, tables=tuple(exhausted if t is table else t for t in inputs.raw.tables))
+        rebuilt = DossierInput(raw, convert_coverage_snapshot(raw, rf.TOPIC, "native"), input_hash(raw, "native"))
+        result = self.evaluate(rebuilt)
+        self.assertEqual({g: state for g, (state, _) in view(result).items()}, {"load_bearing_verification_tiers": S, "challenge_pass_completed": S, "coverage_integrity": S})
+        self.assertEqual(result.state, S)
+
+
+if __name__ == "__main__":
+    unittest.main()

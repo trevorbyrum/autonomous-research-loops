@@ -1,11 +1,9 @@
 """6b2' PR 2: the material-operand digest binds scientific operands, not bookkeeping."""
 from dataclasses import replace
 
-from gen2 import accounting as a
 from gen2.core import canonical
-from gen2.router import gates, material
+from gen2.router import material
 from gen2.store.capture import RawTable, input_hash
-from gen2.tests.test_completion_gates import completion, standing
 from gen2.tests.test_completion_records import World, TOPIC
 
 SEVEN = {"dossiers", "audit_events", "operation_receipts", "queue_entries", "leases", "artifacts", "artifact_topics"}
@@ -88,31 +86,6 @@ class DigestTest(World):
         self.assertNotEqual(held, self.base)
         self.started("inv_delegate001", "delegate", parent=self.capture_grant)
         self.assertNotEqual(material.digest(self.store.capture_topic(TOPIC), "native"), held)
-
-    def test_same_gate_states_different_assessment_different_digest(self):
-        for kind, subject, revision, was, now in (("counterevidence_search", "clm_lbearing01", 1, "none_found", "counterevidence_found"),
-                                                  ("competing_explanation", "rdp_history00", None, "explanation_rejected", "explanation_stands")):
-            rows = table_of(self.raw, "completion_records")
-            at = next(i for i, r in enumerate(rows.rows) if r[rows.columns.index("kind")] == kind)
-            old = rows.rows[at][rows.columns.index("assessment")]
-            self.assertIn(was, old)
-            changed = self.cell("completion_records", "assessment", old.replace(was, now), at)
-            self.assertNotEqual(self.digest(changed), self.base, kind)
-            states = [gates.challenge_state([{"claim_id": "clm_lbearing01", "revision": 1}] if kind == "counterevidence_search" else [],
-                                            [] if kind == "counterevidence_search" else [a.RegistryDisposition("rdp_history00", "contradiction", "C-1", "s", "unresolved", 1, 1, 1, None, "r", (), "primary", "i", "o", "t")],
-                                            [completion(kind, subject, revision, outcome)], standing)[0] for outcome in (was, now)]
-            self.assertEqual(states, ["satisfied", "satisfied"])
-        verdict = lambda: gates.verification_state([{"claim_id": "c1", "revision": 1, "status": "accepted_support"}],  # noqa: E731
-            [{"verification_receipt_id": "ver_1", "claim_id": "c1", "claim_revision": 1, "verdict": "does_not_support"}],
-            [{"subject_ref": "ver_1", "subject_revision": 1, "evidence_refs": []}], lambda c: True)[0]
-        self.assertEqual(verdict(), "satisfied")  # an upheld or an overturned adjudication both resolve the receipt
-        self.accepted("verification_adjudication")
-        self.raw = self.store.capture_topic(TOPIC)
-        rows = table_of(self.raw, "completion_records")
-        at = next(i for i, r in enumerate(rows.rows) if r[rows.columns.index("kind")] == "verification_adjudication")
-        old = rows.rows[at][rows.columns.index("assessment")]
-        self.assertIn("verdict_upheld", old)
-        self.assertNotEqual(self.digest(self.cell("completion_records", "assessment", old.replace("verdict_upheld", "verdict_overturned"), at)), self.digest())
 
     def test_order_empties_and_new_relations_bind(self):
         records = table_of(self.raw, "completion_records")
