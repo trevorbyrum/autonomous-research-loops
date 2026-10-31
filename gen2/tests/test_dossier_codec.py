@@ -26,12 +26,21 @@ def admitted(case, call, *args, **kwargs):
         case.fail(f"admitted production call raised {type(exc).__name__}: {exc}")
 
 
+def decoded(case, value):
+    result = admitted(case, dossier.decode, value)
+    case.assertIsInstance(result, s.ProfileResult)
+    for rules in (result.rules, result.dropped):
+        case.assertIsInstance(rules, tuple)
+        case.assertTrue(all(isinstance(rule, s.RuleResult) for rule in rules))
+    return result
+
+
 class CodecTest(unittest.TestCase):
     def encode(self, result):
         return admitted(self, dossier.encode, result)
 
     def decode(self, result):
-        return admitted(self, dossier.decode, result)
+        return decoded(self, result)
 
     def test_independent_shape_and_all_variants(self):
         doc = document()

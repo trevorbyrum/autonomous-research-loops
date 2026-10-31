@@ -11,7 +11,7 @@ from gen2.router.service import Router
 from gen2.store.capture import input_hash
 from gen2.tests import router_fixtures as rf
 from gen2.tests.test_coverage_dependencies import history, page
-from gen2.tests.test_dossier_codec import admitted
+from gen2.tests.test_dossier_codec import admitted, decoded
 ITEMS = s.KnownItems(a.EvidenceReference('sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 10, 'application/json'), frozenset({'w1'}))
 
 
@@ -42,7 +42,9 @@ class DossierCase(rf.ContractWorld):
         return admitted(self, self.router.record_dossier, rf.TOPIC, **kwargs)
 
     def stored(self, revision=1):
-        return self.store.select('dossiers', {'topic_id': rf.TOPIC, 'dossier_revision': revision})[0]
+        rows = self.store.select('dossiers', {'topic_id': rf.TOPIC, 'dossier_revision': revision})
+        self.assertEqual(len(rows), 1)
+        return rows[0]
 
 
 class RecordTest(DossierCase):
@@ -187,7 +189,8 @@ class DebtCases(DossierCase):
             return s.evaluate_profile(ctx, s.Profile('P', s.Expression('R'), ()), (rule,), ())
         out = self.record(callback)
         doc = self.stored(out['dossier_revision'])['document']
-        result = admitted(self, dossier.decode, doc['result'])
+        result = decoded(self, doc['result'])
+        self.assertEqual(len(result.rules), 1)
         operand = result.rules[0].operands
         self.assertEqual((result.state, operand.lower, operand.upper), expected)
         self.assertEqual(operand.scope, scope)
@@ -208,7 +211,7 @@ class DebtCases(DossierCase):
             return s.evaluate_profile(ctx, s.Profile('P', s.Expression(op='all', operands=(s.Expression('prior'), s.Expression('stale'))), ()), (rule, old), (), inventory=inv)
         self.record(callback)
         doc = self.stored()['document']
-        result = admitted(self, dossier.decode, doc['result'])
+        result = decoded(self, doc['result'])
         self.assertEqual((result.state, tuple(r.rule_id for r in result.rules), tuple(r.rule_id for r in result.dropped)), ('unknown', ('prior',), ('stale',)))
         self.assertEqual(s.expression_state(s.Expression('stale'), {r.rule_id: r.state for r in result.rules}), 'unknown')
         self.assertEqual(result.dropped[0].context, s.Context(rf.TOPIC, 3, 1))
