@@ -84,7 +84,7 @@ class Accounting:
         if result.context.topic_id != inputs.raw.topic_id:
             raise Refusal("cross_topic", "dossier result topic differs from capture")
         contract = next(r for r in records(inputs.raw, "contract_revisions")
-                        if r["revision"] == inputs.coverage.inventory.current_contract_revision)
+                        if r["revision"] in (inputs.coverage.inventory.current_contract_revision,))
         if (result.context.contract_revision, result.context.protocol_revision) != (contract["revision"], contract["protocol_revision"]):
             raise Refusal("stale_inputs", "dossier context differs from captured approved contract")
         doc = {"schema_version": "dossier/2", "invocation_id": invocation_id,
