@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from gen2.router import acquisitions, amendments, assessments, capabilities, evidence_writer, lifecycle, observations, registries, scheduling, service, status, verification
-from gen2.router import accounting, detailed_checks, extractor_registry, extractions, history, protocols, support
+from gen2.router import accounting, gates, detailed_checks, extractor_registry, extractions, history, protocols, support
 from gen2.core.instants import utc_instant_ns
 from gen2.tests.router_fixtures import RouterTestCase
 from gen2.tests.test_capability_probe import observation
@@ -175,6 +175,10 @@ class CollaboratorInterfaceTest(RouterTestCase):
         self.assertFalse(isinstance(self.router, (status.Status, capabilities.Capabilities, registries.Registries, lifecycle.Lifecycle, scheduling.Scheduling, amendments.Amendments, evidence_writer.EvidenceWriter, assessments.Assessments)))
         self.assertEqual(service.Router.__bases__, (object,))  # the last mixin is gone
         self.assertEqual({n for n in dir(service.Router) if not n.startswith("_")}, PUBLIC_API)
+
+    def test_the_production_evaluator_is_the_default_and_fixed_per_router(self):
+        self.assertIs(inspect.signature(service.Router.__init__).parameters["evaluate"].default, gates.evaluate)
+        self.assertIs(self.router._evaluate, gates.evaluate)
 
 
 if __name__ == "__main__":
