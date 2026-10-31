@@ -167,7 +167,7 @@ documented operator act (§4).
 | Decision thresholds and action-policy versions | **mounted**, read-only | restart | Same reason; they pin to question versions. |
 | Approved contracts, evidence, dossiers, receipts (the control store) | **mounted**, read-write, `engine` only | live | The record of scientific work; never in an image. |
 | Logs, spool, staged artifacts | **mounted**, read-write | live | Content-addressed staging under trusted station code. |
-| Secrets (`.env` file, or Vault token files) | **mounted**, read-only, `0400` service-owned | restart (env) / ≤15 min (Vault cache) | §3. |
+| Secrets (`.env` file, or Vault token files) | `0400`: host Compose operator reads env; Vault token files mounted read-only for trusted services | restart (env) / ≤15 min (Vault cache) | §3. |
 | Per-provider agent auth homes | **mounted**, read-write, one volume per provider | live | §4. |
 | `wrappers/` | **mounted**, read-only, **operator-owned and explicitly operator-trusted** | restart | §4. The one place a non-image executable enters. |
 | Connector enablement and per-topic export options | **mounted**, read-only | restart | `EXPORT-API.md` §5; connection strings are secrets, not config. |
@@ -202,8 +202,9 @@ breaks both rules in §3.3, and the engine's does not exist yet.
 
 ### 3.1 The `env` backend
 
-One mounted file, `deploy/gen2.env`, gitignored, `0400`, owned by the service
-user, passed to the containers that need it. Every name in it, with its
+One file, `deploy/gen2.env`, gitignored, `0400`, read by the host Compose
+operator, which passes only needed variables to trusted services; the runner
+receives neither the file nor those service secrets. Every name in it, with its
 grouping and comments, is generated: `deploy/gen2.env.example` (see
 `docs/gen2/SOURCE-CATALOG.md`). Source keys are
 `RESEARCH_GATEWAY_SECRET_<NAME>[_<FIELD>]`, the gateway's own scheme, which the
@@ -380,7 +381,8 @@ pinned versions. The set of executables a station can launch is therefore a
 property of a reviewed release.
 
 **Auth homes are persistent per-provider volumes.** Each provider gets one
-named, access-controlled volume holding only that provider's credential state,
+named, access-controlled directory volume holding that provider's credential
+state and runner-adjacent files (AUTH-DEMO F2/F4),
 mounted at a fixed path, owned by the service user with stable uid/gid, `0700`.
 They survive restart and container replacement (design review §6: "persistent,
 access-controlled provider-auth volumes use stable ownership and survive
@@ -429,6 +431,45 @@ without declaring it, is outside the offline scope: neither changes a local byte
 probe that makes no network call cannot be sure to see it (AUTH-DEMO.md F1;
 resolved by the operator amendment above). AUTH-DEMO.md F2–F4 name the places where this
 section's and §3.1's wording and the slice differ.
+
+### 4.1 Live preflight contract amendment (2e1 PR 1; Astra round 2)
+
+Declarations grant no live authority. The runner/runtime/relay/ACL/endpoint and
+offline wire fixtures remain blocked on the accepted §6.4 feasibility inventory.
+Absent a complete qualified live policy, execution stays closed. Policy values
+belong in configuration, never Contract v2; secret references are not secret bytes.
+The accounting/attempt/exchange/usage definitions in `live-vocabulary.schema.json`
+are fragments, not complete live policy or runner/evidence envelope schemas.
+
+Router owns immutable dispatch facts and topic history. Trusted supervisor
+composition binds original admission/config/topic/lease generation, protected
+job/epoch/channel and manifest; an invocation capability alone is insufficient.
+Ordinary first results may retain authoritative actual A <= authorized U.
+Expired/replaced/released lease, terminal state, changed epoch or uncertain use
+allows only authenticated first fixed-U **safety retention**, permanent stop and
+any typed rejection's dated fact/owned/deadlined hold. This narrow authority
+confers no execution, lifecycle, lease or scientific write. Register manifest and
+all referenced artifacts transactionally. Identical authenticated replay precedes
+current-state refusal; changed evidence refuses. Unknown spending keeps all U;
+new run/policy IDs, raised ceilings and cleared holds never resume it here.
+
+The administrator-approved mounted deployment manifest determines fixture-only
+versus real-provider route and pins endpoint identity, profile, runner/model and
+secret-home reference. The trusted collector binds its hash to the actual channel,
+job and admission; Router authenticates this chain, never a self-declared label.
+Fixture evidence cannot qualify DEBT-004. Mismatched/unverified provenance stops
+as infrastructure uncertainty. Trusted real rejection blocks immediately, even
+before operator qualification review; later usable probes, new topics on that
+route and hold clearance cannot remove the retained blocker. Late rejection
+retains its original dated failing snapshot and hold even after a newer usable
+projection. Separate reviewed auth remediation is required before productive use.
+
+Gateway call-capture ACK proves gateway capture only. Router persistence ACK
+precedes records handed to screening, with identical-ID replay and once-only
+delivery; missing Router ACK leaves historical gateway coverage/end unchanged.
+The exhaustive cut/keep decision is in BOUNDARIES, Station supervisor.
+Auth homes remain directory mounts, isolated per job; shared-home use initially
+serializes. Earlier read-only login-status evidence proves no refresh concurrency.
 
 **`wrappers/` is the one operator-trusted executable mount.** Some providers
 need a small shell wrapper the image cannot ship (a site-specific login shim, a

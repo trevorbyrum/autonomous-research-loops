@@ -1,0 +1,1 @@
+{"fixture": {"schema": "live-vocabulary.schema.json#/$defs/cost", "expect": "valid", "tests": "F5: integer minor units and explicit currency"}, "instance": {"minor_units": 0, "currency": "USD"}}

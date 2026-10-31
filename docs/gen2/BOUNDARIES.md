@@ -160,6 +160,47 @@ Retained provider/artifact/request BLOBs stay raw.
 
 ## Station supervisor
 
+**2e1 PR 1 contract amendment (Astra v2 round 2, 2026-10-31).** Router owns
+immutable dispatch authorization/results and topic-trial accounting in audit
+facts, without a new table. Core-only trusted-supervisor calls are not operator,
+MCP, CLI or model commands. Capability possession or a caller's actor label
+alone grants neither trusted-supervisor origin nor late-write authority.
+The composition root binds the protected journal/collector, original admission,
+topic/config/lease-generation pins, job handle and approved deployment manifest.
+Manifest and all referenced artifacts must be authenticated and registered
+together; an evidence pointer alone is insufficient.
+
+Ordinary current fences permit a first actual charge A <= original upper bound
+U. After lease expiry/replacement/release, terminal invocation, changed supervisor
+epoch or uncertainty, the bound trusted supervisor has only narrow **safety
+retention** authority: first immutable fixed-U worst-case result, permanent trial
+stop, and any authenticated typed rejection's dated fact/owned/deadlined hold.
+Original bindings authorize this retention; current-lease authority is not
+invented. It grants no execution, scientific write, lease or lifecycle transition.
+Identical authenticated replay is checked before current-state refusal; changed
+evidence conflicts. Unknown/worst-case charges cannot be lowered or resumed by
+new policy/run IDs, credentials or hold clearance. Invocation reconciliation and
+confirmed descendant handling remain separate existing lifecycle obligations.
+
+Fixture versus genuine evidence derives from trusted deployment/channel/job
+provenance (DEP §4.1), never an artifact's self-declared label. No complete
+runner/profile contract or live entrance is implemented by these declarations.
+
+The gateway output contract for PR 4a keeps observations, retrieval events,
+records, capability facts and telemetry losses; cuts delivery and top-level pages;
+and retains Resolution only in child-local diagnostics with a tested reader.
+Search returns `{observations: [{observation, retrieval_events, records}],
+capability_facts, telemetry_losses}`. Every existing observation field survives.
+Telemetry losses, including failures without a lane, enter bounded attempt
+evidence and an owned incident/hold when persistence fails. Completed Resolution
+host/addresses/error/elapsed/instant enter diagnostics; a hung lookup instead
+retains its termination limit. None of these diagnostics grants endpoint authority.
+Keep echo, attempted-request identity, capture, pagination and byte-integrity
+checks. Gateway call-capture ACK and Router persistence ACK are distinct: only
+the latter permits screening delivery; its absence never rewrites historical
+gateway coverage/end fields. Replay retains IDs and delivers records once.
+This does not discharge 2e2's independently re-derivable retrieval evidence.
+
 - **Definition:** the one lifecycle implementation for every execution kind (research pass, discovery, delegate, verification, checkpoint); code.
 - **Owns:** launch intent records before spawn; process identity (invocation/job handle + host/boot/start fingerprint — never bare PID); deadlines, cancellation, descendant handling; result retention and durable delivery receipts; structural telemetry (progress signatures, capability probes, retrieval-event capture at retrieval time); snapshot assembly for checkpoints/decisions (typed records + extractive quotes only).
 - **Produces:** invocation records `admitted→launching→running→result_ready→committed` (+ explicit cancelled/failed/`outcome_unknown`); staged immutable content-addressed artifacts in the protected spool; search observations with request identity/coverage/yield; screening-event records.
