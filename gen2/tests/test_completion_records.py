@@ -8,7 +8,9 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
+from gen2.router.boundary import Refusal
 from gen2.router.schemas import SchemaSet
+from gen2.router.verification import hold_id
 from gen2.tests.router_fixtures import TOPIC, OTHER, HOLD, AttentionCase, empty_outcome
 from gen2.tests.test_dossier_record import evaluate
 from gen2.tests.test_registry_dispositions import example_disposition
@@ -170,6 +172,98 @@ class AdmissionTest(World):
         self.assertEqual(self.stored(), [])
 
 
+class OperandTest(World):
+    """Isolate validation operands from upstream DDL mirrors, using real retained rows.
+
+    One shared reader overlay changes only the named columns. Validation itself
+    is unpatched; the existing Router tests cover commits, audits and rollback.
+    """
+    def validate_operands(self, kind, *, record=None, invocation=None, retained=None, refusal=None, reason="payload_invalid"):
+        record = {**self.completion(kind), **(record or {})}
+        inv = {**self.router._one("invocations", {"invocation_id": "inv_checkpoint1"}), **(invocation or {})}
+        read = self.router._one
+        def operands(table, where):
+            row = read(table, where)
+            return {**row, **(retained or {}).get(table, {})} if row is not None else None
+        before = self.state()
+        with patch.object(self.router, "_one", side_effect=operands):
+            if refusal is None:
+                try:
+                    self.assertIsNone(self.router._assessments.validate({"completion_records": [record]}, inv))
+                except Refusal as exc:
+                    self.fail(f"valid {kind} operands refused: {exc}")
+            else:
+                with self.assertRaises(Refusal) as caught:
+                    self.router._assessments.validate({"completion_records": [record]}, inv)
+                self.assertEqual(caught.exception.reason, reason)
+                self.assertIn(refusal, caught.exception.detail)
+        self.assertEqual(self.state(), before)
+
+    def distinct(self, value):
+        copy = json.loads(json.dumps(value))
+        self.assertEqual(copy, value)
+        self.assertIsNot(copy, value)
+        return copy
+
+    def test_subject_topics_on_both_sides(self):
+        for kind, table, label in (("counterevidence_search", "claims", "counterevidence subject claim revision"),
+                                   ("competing_explanation", "registry_dispositions", "competing-explanation subject disposition"),
+                                   ("verification_adjudication", "verification_receipts", "adjudication subject receipt")):
+            for topic in ("fleet-a:t0", "fleet-a:t2"):
+                with self.subTest(kind=kind, topic=topic):
+                    self.validate_operands(kind, retained={table: {"topic_id": topic}}, reason="cross_topic", refusal=f"{label} belongs to another topic")
+                    self.validate_operands(kind, retained={table: {"topic_id": self.distinct(TOPIC)}})
+
+    def test_invocation_contract_pin_on_both_sides_and_distinct_equal_objects(self):
+        pin = int("1000")  # outside CPython's small-integer cache, within the schema's revision domain
+        for revision in (999, 1001):
+            with self.subTest(revision=revision):
+                self.validate_operands("counterevidence_search", invocation={"contract_revision": pin}, record={"contract_revision": revision},
+                    refusal="completion record differs from its invocation's contract pin")
+                self.validate_operands("counterevidence_search", invocation={"contract_revision": pin}, record={"contract_revision": self.distinct(pin)})
+
+    def test_dossier_topic_on_both_sides(self):
+        for topic in ("fleet-a:t0", "fleet-a:t2"):
+            with self.subTest(topic=topic):
+                self.validate_operands("sufficiency_review", record={"subject_ref": topic}, reason="cross_topic", refusal="sufficiency review names another topic's dossier")
+                self.validate_operands("sufficiency_review", record={"subject_ref": self.distinct(TOPIC)})
+
+    def test_dossier_hash_on_both_sides(self):
+        digest = "sha256:" + "8" * 64
+        for other in ("sha256:" + "0" * 64, "sha256:" + "f" * 64):
+            with self.subTest(other=other):
+                self.validate_operands("sufficiency_review", retained={"dossiers": {"content_hash": digest}}, record={"subject_hash": other},
+                    refusal="sufficiency review hash differs from its dossier")
+                self.validate_operands("sufficiency_review", retained={"dossiers": {"content_hash": digest}}, record={"subject_hash": self.distinct(digest)})
+
+    def test_dossier_contract_pin_on_both_sides(self):
+        pin = int("1000")
+        for revision in (999, 1001):
+            with self.subTest(revision=revision):
+                args = dict(invocation={"contract_revision": pin}, record={"contract_revision": self.distinct(pin)})
+                self.validate_operands("sufficiency_review", **args, retained={"dossiers": {"contract_revision": revision}},
+                    refusal="sufficiency review contract pin differs from its dossier's")
+                self.validate_operands("sufficiency_review", **args, retained={"dossiers": {"contract_revision": self.distinct(pin)}})
+
+    def test_receipt_claim_revision_on_both_sides(self):
+        revision = int("1000")
+        for other in (999, 1001):
+            with self.subTest(other=other):
+                self.validate_operands("verification_adjudication", record={"subject_revision": revision}, retained={"verification_receipts": {"claim_revision": other}},
+                    refusal="adjudication claim revision differs from its receipt's")
+                self.validate_operands("verification_adjudication", record={"subject_revision": revision},
+                    retained={"verification_receipts": {"claim_revision": self.distinct(revision)}})
+
+    def test_independent_producers_on_both_sides_and_distinct_equal_objects(self):
+        for kind, table, field, label in (("counterevidence_search", "claims", "producer_invocation_id", "claim"),
+                                          ("sufficiency_review", "dossiers", "invocation_id", "dossier")):
+            for producer in ("inv_aaaaaaaa", "inv_zzzzzzzz"):
+                with self.subTest(kind=kind, producer=producer):
+                    self.validate_operands(kind, retained={table: {field: producer}})
+                    self.validate_operands(kind, retained={table: {field: self.distinct("inv_checkpoint1")}},
+                        refusal=f"other than the {label}'s producer")
+
+
 class GenerationTest(World):
     def counter(self):
         return self.value("SELECT generation FROM store_generation")
@@ -207,6 +301,15 @@ class HoldTest(World):
         before = self.hold_row()
         self.accepted("counterevidence_search")
         self.assertEqual(self.hold_row(), before)
+
+    def test_each_non_adjudication_preserves_a_hold_with_its_subjects_derived_id(self):
+        for kind in ("counterevidence_search", "competing_explanation", "sufficiency_review"):
+            with self.subTest(kind=kind):
+                hold = hold_id(self.completion(kind)["subject_ref"])
+                self.hold(self.capture_grant, hold)
+                before = self.hold_row(hold)
+                self.accepted(kind)
+                self.assertEqual(self.hold_row(hold), before)
 
     def test_already_cleared_hold_is_skipped(self):
         self.x("UPDATE holds SET cleared_at = '2026-09-27T10:10:00Z', cleared_by_operation_id = 'op_capture001' WHERE hold_id = ?", HOLD)
