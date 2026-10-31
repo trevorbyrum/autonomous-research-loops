@@ -44,6 +44,31 @@ Import-time production errors represented by a loader `_FailedTest` remain
 `ERROR_KILL` separately and retains exception type, message and repo-relative
 innermost frame path/line in its error events. Syntax-invalid variants are
 separate non-kills.
+
+**Trap filters (S3-1, Gate S #3 item 2).** The scope tool drops two mutant
+families before any test runs (after the git and move filters, in both changed-line
+and `--full` campaigns) and reports them as non-blocking verdicts, counted in
+`counts` and in `filtered_declaration_mutants` / `filtered_string_order_mutants`.
+Production code is not written to satisfy them. Rules, read from the AST of the
+current file:
+
+- `FILTERED_DECLARATION`: every mutation lies inside a function header (from `def`
+  to the end of the `returns` annotation, or to the first body statement when there
+  is none, so parameters, annotations, `*`, `/` and constant defaults, but not decorators),
+  an `AnnAssign` annotation, the body of a class whose bases include `Protocol`
+  (also `Protocol[...]`, `typing.Protocol`), or a `TypeVar(...)` call. A default that is
+  not a constant (a number, string, `None`, `True` or a signed numeric) stays live,
+  as do decorator arguments, class-level assignments that are not annotations, and
+  everything in an ordinary function body.
+- `FILTERED_STRING_ORDER`: `ReplaceComparisonOperator_{Eq,NotEq}_{Lt,LtE,Gt,GtE}`
+  and the reverse, on a comparison where either operand of that operator is an
+  `ast.Constant` string. `Eq`↔`NotEq`, `Eq`→`Is`, `In`↔`NotIn`, every other operator
+  and every comparison of non-literal operands stay live. An f-string is not a literal.
+
+Limits: a filtered mutant is not evidence that any test exists. The filter runs
+on positions, not behaviour: a changed constant default or Protocol member body is
+not mutation-checked, and review must still read those lines. A multi-mutation item is
+filtered only when all of its mutations are.
 This applies Trevor's 2026-10-30 "Count them" ruling as narrowed by Astra's EK-1
 review. Resolved worker-relative mutation identity is carried into the runner
 and each stage/shard result. Attribution and a clean control are not proof of

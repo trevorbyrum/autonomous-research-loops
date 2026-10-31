@@ -245,3 +245,94 @@ class MutationMovesTest(unittest.TestCase):
             stages = scope.marker(row["native"]["output"])["stages"]
             self.assertEqual([stage["stage"] for stage in stages], [1])
             self.assertEqual(stages[0]["events"][0]["exception_type"], "subprocess.TimeoutExpired")
+
+    # S3-1: declaration-only lines and string-literal ordering mutants are filtered in the tool.
+    def classify(self, source, token, operator, occurrence=0):
+        (self.root / "gen2/probe.py").write_text(source)
+        index = -1
+        for _ in range(occurrence + 1):
+            index = source.index(token, index + 1)
+        line = source.count("\n", 0, index) + 1
+        column = index - (source.rfind("\n", 0, index) + 1)
+        mutation = SimpleNamespace(module_path=Path("gen2/probe.py"), operator_name=operator,
+                                   start_pos=(line, column), end_pos=(line, column + len(token)))
+        with mock.patch.object(scope, "ROOT", self.root):
+            return scope.filtered_verdict(SimpleNamespace(mutations=[mutation]), {})
+
+    def test_declaration_shapes_are_filtered(self):
+        star, flip = "core/ReplaceBinaryOperator_Mul_Div", "core/ReplaceTrueWithFalse"
+        for source, token, operator in (
+                ("def f(a=10):\n    return a\n", "10", "core/NumberReplacer"),
+                ("def f(a, *, b):\n    return a\n", "*", star),
+                ("def f(a, /, b):\n    return a\n", "/", "core/ReplaceBinaryOperator_Div_Mul"),
+                ("def f(a: int | None):\n    return a\n", "|", "core/ReplaceBinaryOperator_BitOr_Add"),
+                ("def f() -> int | None:\n    return None\n", "|", "core/ReplaceBinaryOperator_BitOr_Add"),
+                ("x: int | None = None\n", "|", "core/ReplaceBinaryOperator_BitOr_Add"),
+                ("class P(Protocol):\n    def m(self, flag: bool = True) -> int: ...\n", "True", flip),
+                ("class P(Protocol):\n    def m(self):\n        return 1 + 2\n", "+", "core/ReplaceBinaryOperator_Add_Sub"),
+                ("class P(Protocol[T]):\n    def m(self) -> int | None: ...\n", "|", "core/ReplaceBinaryOperator_BitOr_Add"),
+                ("T = TypeVar('T', covariant=True)\n", "True", flip)):
+            with self.subTest(source=source):
+                self.assertEqual(self.classify(source, token, operator), "FILTERED_DECLARATION")
+
+    def test_string_literal_ordering_mutants_are_filtered(self):
+        for source in ('def f(x):\n    return x == "lit"\n', 'def f(x):\n    return "lit" == x\n',
+                       'def f(x):\n    return x != "lit"\n', 'def f(x):\n    return x < "lit"\n'):
+            original = "NotEq" if "!=" in source else "Lt" if "<" in source else "Eq"
+            token = "!=" if "!=" in source else "<" if "<" in source else "=="
+            targets = ("Lt", "LtE", "Gt", "GtE") if original != "Lt" else ("Eq", "NotEq")
+            for target in targets:
+                with self.subTest(source=source, target=target):
+                    self.assertEqual(self.classify(source, token, f"core/ReplaceComparisonOperator_{original}_{target}"),
+                                     "FILTERED_STRING_ORDER")
+
+    def test_live_controls_are_not_filtered(self):
+        eq = "core/ReplaceComparisonOperator_Eq_"
+        for source, token, operator in (
+                ("def f(a=1 + 2):\n    return a\n", "+", "core/ReplaceBinaryOperator_Add_Sub"),
+                ("def f(a=len('x')):\n    return a\n", "len", "core/NumberReplacer"),
+                ("@deco(True)\ndef f(a):\n    return a\n", "True", "core/ReplaceTrueWithFalse"),
+                ("def g(a):\n    @deco(True)\n    def f(b):\n        return b\n    return f\n", "True", "core/ReplaceTrueWithFalse"),
+                ("def f(a=1):\n    return a + 1\n", "+", "core/ReplaceBinaryOperator_Add_Sub"),
+                ("class C:\n    x = 1 + 2\n", "+", "core/ReplaceBinaryOperator_Add_Sub"),
+                ("class C:\n    def m(self):\n        return 1 + 2\n", "+", "core/ReplaceBinaryOperator_Add_Sub"),
+                ("def f(x, y):\n    return x == y\n", "==", eq + "Lt"),
+                ("def f(x, y):\n    return x == y\n", "==", eq + "GtE"),
+                ('def f(x):\n    return x == "lit"\n', "==", eq + "NotEq"),
+                ('def f(x):\n    return x == "lit"\n', "==", eq + "Is"),
+                ('def f(x):\n    return x in "lit"\n', "in", "core/ReplaceComparisonOperator_In_NotIn"),
+                ('def f(x):\n    return x == "lit" and 1 < 2\n', "<", "core/ReplaceComparisonOperator_Lt_Eq")):
+            with self.subTest(source=source, operator=operator):
+                self.assertIsNone(self.classify(source, token, operator))
+
+    def test_campaign_reports_filtered_verdicts_and_passes_without_stage_two(self):
+        self.base({"gen2/probe.py": ""})
+        (self.root / "gen2/probe.py").write_text(
+            "from typing import Protocol\n"
+            "class Reader(Protocol):\n"
+            "    def read(self, count: int = 10, flag: bool = True) -> int: ...\n"
+            "def answer(): return 11\n"
+            "def kind(x): return x == 'canonical'\n")
+        (self.root / "gen2/tests/test_probe.py").write_text(
+            "import unittest\nfrom gen2.probe import answer, kind\nclass Case(unittest.TestCase):\n"
+            " def test_answer(self): self.assertEqual(answer(), 11)\n"
+            " def test_kind(self): self.assertTrue(kind(''.join(['canon', 'ical']))); self.assertFalse(kind('other'))\n")
+        self.git("add", "gen2/probe.py", "gen2/tests/test_probe.py")
+        report = self.campaign()
+        rows = {}
+        for row in report["mutants"]:
+            rows.setdefault(row["verdict"], []).append(row["mutation"]["start_pos"][0])
+        self.assertEqual(set(rows["FILTERED_DECLARATION"]), {3})
+        self.assertGreaterEqual(len(rows["FILTERED_DECLARATION"]), 2)
+        self.assertEqual(set(rows["FILTERED_STRING_ORDER"]), {5})
+        self.assertEqual(len(rows["FILTERED_STRING_ORDER"]), 4)
+        self.assertEqual(set(rows["ASSERTION_KILL"]) - {4, 5}, set())
+        self.assertEqual(set(report["counts"]), {"FILTERED_DECLARATION", "FILTERED_STRING_ORDER", "ASSERTION_KILL"})
+        self.assertEqual(report["filtered_declaration_mutants"], len(rows["FILTERED_DECLARATION"]))
+        self.assertEqual(report["filtered_string_order_mutants"], 4)
+        self.assertEqual(report["selected_mutants"], len(rows["ASSERTION_KILL"]))
+        self.assertFalse(report["failed"])
+        for row in report["mutants"]:
+            if row["verdict"].startswith("FILTERED"):
+                self.assertEqual(scope.marker(row["native"]["output"] or "").get("stages", []), [])
+        self.assertFalse([name for name in report["stage_verdicts"] if name.startswith("2:")])
