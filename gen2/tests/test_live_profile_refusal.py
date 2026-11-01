@@ -18,6 +18,13 @@ UNQUALIFIED = {"manifest_pin": "sha256:" + "1" * 64, "source_pin": "sha256:" + "
                "qualification_pin": "sha256:" + "3" * 64, "state": "unqualified"}
 
 
+class EqualToAnything:
+    """A fixed foreign value: neither null nor the internal absent marker."""
+
+    def __eq__(self, other):
+        return True
+
+
 class LiveProfileRefusal(SupervisedTestCase):
     def files(self):
         return {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
@@ -46,13 +53,13 @@ class LiveProfileRefusal(SupervisedTestCase):
         order = self.order("research_pass")
         self.supervisor.prepare(order)  # unchanged offline preparation
         self.supervisor.job(order.invocation_id).write("journal.json", {"budgets": {"spawn": 1}, "sentinel": "retain"})
-        cases = [(None, "profile_null"), ("placeholder", "profile_invalid_shape"),
+        cases = [(None, "profile_null"), ("placeholder", "profile_invalid_shape"), (EqualToAnything(), "profile_invalid_shape"),
                  ({**UNQUALIFIED, "state": None}, "profile_invalid_state")]
         for field in ("manifest_pin", "source_pin", "qualification_pin"):
             missing = dict(UNQUALIFIED)
             del missing[field]
             cases.append((missing, f"profile_missing_{field}"))
-            for value, reason in ((None, "profile_null_pin"), ([], "profile_invalid_pin"),
+            for value, reason in ((None, "profile_null_pin"), ([], "profile_invalid_pin"), (EqualToAnything(), "profile_invalid_pin"),
                                   *((v, "profile_placeholder") for v in ("", "TODO", "TBD", "pending", "placeholder", "unbuilt")),
                                   ("relay:latest", "profile_unpinned"), ("sha256:" + "a" * 63, "profile_unpinned"),
                                   ("sha256:" + "g" * 64, "profile_unpinned"),
@@ -70,6 +77,7 @@ class LiveProfileRefusal(SupervisedTestCase):
             self.refused(entrance, replace(order, invocation_id="inv_newlive001"), None, "profile_null")
             self.refused(entrance, order, None, "profile_absent", omit=True)
             self.refused(entrance, order, None, "profile_null", live=False)
+            self.refused(entrance, order, EqualToAnything(), "profile_invalid_shape", live=False)
             self.refused(entrance, order, UNQUALIFIED, "profile_unqualified", live=False)
         self.assertEqual(self.control.calls, 0)
 
