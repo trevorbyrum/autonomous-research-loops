@@ -9,11 +9,12 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
   - **Complete:** the Gate S full-pass batches C, C-fu, D1, D2 (a1–a3, b), E, O-9 (a, b), B; R2 (INVARIANTS rules plus generated traceability); 6b1′ PR 0; O-10, Docs-1, Prune-1 (2026-10-29); move-aware mutation scope (#73); Str-A, Str-B, Str-C and CS-1 (2026-10-30; collected ids 2,868 → 2,848).
   - **Done 2026-10-30/31:** Str-D (#84), Batch F (#54), ERROR_KILL (#87), Batch A (#85), raw_exchange (#89), load-safe timeouts (#91), O-5 (#90), 6b1′ PR 1 (#93), D-F1 canonical round trip (#94), mutation declaration filter (#96), 6b2′ PR 1 (#97).
   - **Critical path:**
-    - **6b2′:** PR 2 (#98) is in a survivor fix plus a gen2 merge; PR 3 (#99) follows.
-    - **2e1:** PR 1 (#100) is accepted, with its verifier queued. v3 and the host-prerequisite design are being written; PR 2 is blocked until they are reviewed.
+    - **6b2′ complete** (#97, #98, #99).
+    - **2e1:** PR 1 (#100) and PR 2a (#102) are merged. The complete PR 2 waits on the static closures (in progress), a missing-evidence acquisition decision, and the records amendments.
+    - **Host prerequisite:** the READY rows are approved (not yet applied); the stop is 665.
   - **Paused:** the nightly test-portfolio review (S3-4), until after 2f.
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`.
-- **Last verifier result:** 6b2′ PR 1 `dc51d5d`, gen2-accept exit 0 (2,949 tests; mutation 80 ASSERTION_KILL, 13 ERROR_KILL).
+- **Last verifier result:** 6b2′ PR 3 `158c553`, gen2-accept exit 0 (3,026 tests; mutation 37 ASSERTION_KILL, 2 ERROR_KILL).
 - **Blockers:** none for the build.
   - Trevor's next decisions: approve the 2e1 host-change list once Astra has reviewed it; then, closer to 2f, the genuine rejected-credential experiment (DEBT-004). S3-6 is still open.
 - **Gate S:** last run was **Gate S #3c at `cba7288`** (2026-11-01, 2e1 scope; rulings S3c-2 to S3c-6). The last whole-system run was Gate S #3 at `a406215` (2026-10-31).
