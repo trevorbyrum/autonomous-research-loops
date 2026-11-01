@@ -38,7 +38,7 @@ import copy
 import json
 
 from gen2.core import canonical
-from gen2.tests.test_dossier_record import FixtureEvaluator
+from gen2.tests.completion_fixtures import completion_world
 from gen2.tests import router_fixtures as rf, store_fixtures
 from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, find_request, h, jcs
 from gen2.tests.router_fixtures import ContractWorld, REFRAMED_QUESTION, columns, compatible, contract_doc, protocol_changed, reframed
@@ -101,7 +101,7 @@ class AmendmentProposalTest(ContractWorld):
         self.refused_command("propose_amendment", {"document": doc}, "no_approved_contract")
 
 
-class AmendmentApprovalTest(FixtureEvaluator, ContractWorld):
+class AmendmentApprovalTest(ContractWorld):
     """G-1, G-6, G-7: an approval supersedes exactly the approved revision it
     revises; a framing change is approved as a reframe and only as one."""
 
@@ -129,12 +129,15 @@ class AmendmentApprovalTest(FixtureEvaluator, ContractWorld):
         self.assertEqual(self.approve(r3, "reframe_approval")["status"], "applied")
 
     def test_an_approved_amendment_requeues_a_completed_topic(self) -> None:
-        self.started("inv_research01")
-        from gen2.tests.test_dossier_record import admitted
-        recorded = admitted(self, self.router.record_dossier, TOPIC, invocation_id="inv_research01", history="native")
+        recorded = completion_world(self).candidate()
         self.assertEqual(self.decide("opd_complete01", "completion_approval", {"kind": "dossier", "revision": 1, "hash": recorded["content_hash"]})["status"], "applied")
         self.assertEqual(self.status(), "completed_with_qualified_conclusions")
-        out = self.approve(self.propose(3, compatible))
+        doc = json.loads(self.value("SELECT document FROM contract_revisions WHERE status='approved'"))
+        doc.update(revision=3, parent_revision=2)
+        compatible(doc)
+        doc["content_hash"] = canonical.content_hash(doc)
+        self.assertEqual(self.router.propose_amendment({"document": doc})["status"], "recorded")
+        out = self.approve(doc)
         self.assertEqual(out.get("effects", {}).get("queue_transition"), {"from": "completed_with_qualified_conclusions", "to": "queued"})
         self.assertEqual(self.rows("SELECT status, status_decision_id, active_contract_revision FROM queue_entries WHERE topic_id = ?", TOPIC), [("queued", None, 3)])
         self.assertEqual(self.impact("opd_amend0003")["dossiers"], [{"dossier_revision": 1, "contract_revision": 2, "disposition": "not_current"}])

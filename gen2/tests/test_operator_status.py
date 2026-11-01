@@ -174,6 +174,7 @@ class TopicWaitingTest(StatusWorld):
         expected = {TOPIC: None, OTHER: "brief_confirmation", T3: "scope_approval", T4: "claim", T5: "claim"}
         self.assertEqual(sorted(t["topic_id"] for t in doc["topics"]), sorted(expected))
         for topic in doc["topics"]:
+            self.assertEqual((topic["completion"], topic["export_delivery"], topic["currency"]), (None, "not_attempted", "unknown"))
             with self.subTest(topic=topic["topic_id"]):
                 own = [w["reason"] for w in topic["waiting"] if w.get("status") == topic["status"]]
                 self.assertEqual(own, [] if expected[topic["topic_id"]] is None else [expected[topic["topic_id"]]])

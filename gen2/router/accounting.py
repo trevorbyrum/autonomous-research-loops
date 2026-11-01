@@ -46,16 +46,17 @@ class Accounting:
             raise Refusal("no_approved_contract", topic_id)
         return DossierInput(raw, convert_coverage_snapshot(raw, topic_id, history), input_hash(raw, history))
 
-    def commit_dossier_inputs(self, topic_id: str, *, history: a.History, prepare: Callable, commit: Callable, require_live: Callable) -> object:
-        """Compute outside the fence, bounded by the caller's admitted deadline.
+    def commit_dossier_inputs(self, topic_id: str, *, history: a.History, prepare: Callable, commit: Callable, require_live: Callable,
+                              reason: str = "payload_invalid", audit_kind: str | None = "dossier_input_recaptures") -> object:
+        """Compute outside the fence with caller-specific liveness and refusal policy.
 
         Only an effect-free generation mismatch permits up to two recaptures.
-        The next slice supplies dossier preparation and its normal commit body.
         """
         recaptures = 0
         for attempt in range(3):
             def audit(now):
-                return self._core._audit("dossier_input_recaptures", now, {"recaptures": recaptures}, topic_id=topic_id)
+                if audit_kind is not None:
+                    return self._core._audit(audit_kind, now, {"recaptures": recaptures}, topic_id=topic_id)
             def fenced(now):
                 require_live(now)
                 result = commit(prepared, now)
@@ -67,16 +68,18 @@ class Accounting:
                 inputs = self.dossier_inputs(topic_id, history=history)
                 require_live()
                 prepared = prepare(inputs)
-                return self._core._guarded(reason="payload_invalid", body=fenced, freshness=inputs.raw.freshness)
+                return self._core._guarded(reason=reason, body=fenced, freshness=inputs.raw.freshness)
             except api.GenerationMismatch:
                 del inputs, prepared
                 continue
             except api.StaleInput as exc:
                 raise Refusal("stale_inputs", str(exc)) from None
             except Refusal:
-                self._core._guarded("payload_invalid", audit)
+                if audit_kind is not None:
+                    self._core._guarded(reason, audit)
                 raise
-        self._core._guarded("payload_invalid", audit)
+        if audit_kind is not None:
+            self._core._guarded(reason, audit)
         raise Refusal("stale_inputs", "store generation changed after two recaptures")
 
     def prepare_dossier(self, inputs: "DossierInput", invocation_id: str, history: a.History, evaluate: Callable) -> dict:

@@ -61,7 +61,7 @@ from gen2.router.boundary import Refusal, instant
 from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
 from gen2.router.commands import COMMANDS, LIFECYCLE_FACTS
 from gen2.router.evidence_writer import EvidenceWriter
-from gen2.router import gates
+from gen2.router import gates, material
 from gen2.router.extractions import ExtractionRecords
 from gen2.router.detailed_checks import DetailedChecks
 from gen2.router.history import require_retained_support
@@ -968,6 +968,18 @@ class Router:
         try:
             req = boundary.normalize(request, "request_invalid")
             boundary.require_schema(self._schemas, req, "router-commands#/$defs/operator_decision", "request_invalid")
+            if (req["kind"], req["disposition"]) in frozenset({("completion_approval", "approved")}) and self._one("operator_decisions", {"decision_id": req["decision_id"]}) is None:
+                stored = self._one("dossiers", {"topic_id": req["topic_id"], "dossier_revision": req["subject"]["revision"]})
+                if stored is not None:
+                    doc = stored["document"]
+                    if self._schemas.errors(doc, "dossier-v2.schema.json") or "material_digest" not in doc:
+                        raise Refusal("decision_refused", "dossier has no supported material binding; reassemble and review")
+                    def prepare(inputs):
+                        if material.digest(inputs.raw, doc["history"]) != doc["material_digest"]:
+                            raise Refusal("stale_inputs", "material operands changed since the dossier was assembled; reassemble")
+                    return self._accounting.commit_dossier_inputs(req["topic_id"], history=doc["history"], prepare=prepare,
+                        commit=lambda prepared, now: self._decision_in_transaction(req, now), require_live=lambda now=None: None,
+                        reason="decision_refused", audit_kind=None)
             return self._guarded("decision_refused", lambda now: self._decision_in_transaction(req, now))
         except Refusal as refusal:
             return {"status": "rejected", "decision_id": request.get("decision_id") if isinstance(request, Mapping) else None,
@@ -1045,6 +1057,7 @@ class Router:
         if kind in ("contract_approval", "amendment_approval", "reframe_approval"):
             return self._approve_contract(d, topic, now)
         if kind == "completion_approval":
+            self._require_completion(d)
             return self._move(topic, now, {"active": "completed_with_qualified_conclusions", "awaiting_judgment": "completed_with_qualified_conclusions"},
                               required=True, status_decision_id=d["decision_id"])
         if kind == "retirement":
@@ -1057,6 +1070,14 @@ class Router:
             self._store.update("holds", {"hold_id": d["subject_ref"]}, {"cleared_at": now, "cleared_by_decision_id": d["decision_id"]})
             return {"hold_cleared": d["subject_ref"]}
         return {}  # rating, publication, source, blind and advised decisions are records their consumers read (a source approval enables nothing)
+
+    def _require_completion(self, d: dict) -> None:
+        stored = self._one("dossiers", {"topic_id": d["topic_id"], "dossier_revision": d["subject_revision"]})
+        if stored["document"]["result"]["state"] != "satisfied":
+            raise Refusal("decision_refused", "completion requires a satisfied dossier")
+        if not self._store.select("completion_records", {"kind": "sufficiency_review", "subject_ref": d["topic_id"],
+                "subject_revision": d["subject_revision"], "subject_hash": d["subject_hash"]}):
+            raise Refusal("decision_refused", "completion requires a sufficiency review of this exact dossier revision and hash")
 
     def _rework(self, d: dict, now: str) -> dict:
         """Task 2a: a rejected scope approval of the topic's current report

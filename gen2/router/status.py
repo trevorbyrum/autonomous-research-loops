@@ -117,8 +117,14 @@ class Status:
         retries = self._core._store.select("retries", where)
         holds = [h for h in self._core._store.select("holds", where) if h["cleared_at"] is None]
         reservations = [r for r in self._core._store.select("reservations", where) if r["closed_at"] is None]
+        completion = None
+        if topic["status"] == "completed_with_qualified_conclusions":
+            decision = self._core._one("operator_decisions", {"decision_id": topic["status_decision_id"]})
+            completion = {"dossier_revision": decision["subject_revision"], "content_hash": decision["subject_hash"], "decision_id": decision["decision_id"]}
         return {
             **_pick(topic, ("topic_id", "status", "state_revision", "paused_at", "active_contract_revision")),
+            # DEBT-040..043 own export delivery and ongoing currency reporting.
+            "completion": completion, "export_delivery": "not_attempted", "currency": "unknown",
             "briefs": [{**_pick(b, ("brief_id", "version", "status", "review_deadline", "overdue_since")), "owner": b["owner_operator_id"],
                         "deadline_passed": instant(now) >= instant(b["review_deadline"])}
                        for b in sorted(self._core._store.select("intake_briefs", where), key=lambda b: (b["brief_id"], b["version"]))
