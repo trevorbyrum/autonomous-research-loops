@@ -80,6 +80,70 @@ def moved_only(item, changed, moved):
     return True
 
 
+def _minus(region, cuts):
+    """The (start, end) region with the cut spans removed."""
+    pieces = [region]
+    for first, last in sorted(cuts):
+        pieces = [piece for low, high in pieces
+                  for piece in ((low, min(high, first)), (max(low, last), high)) if piece[0] < piece[1]]
+    return pieces
+
+
+def declaration_scope(source):
+    """Return declaration-policy spans, preserving executable-expression boundaries.
+
+    These syntactic exclusions are not proofs of semantic equivalence or coverage.
+    """
+    tree = ast.parse(source)
+    lines = [line.encode() for line in source.split("\n")]
+
+    def at(line, offset):
+        return (line, len(lines[line - 1][:offset].decode()))
+    def start(node):
+        return at(node.lineno, node.col_offset)
+    def end(node):
+        return at(node.end_lineno, node.end_col_offset)
+    def statement_start(node):
+        return min([start(node), *(start(item) for item in getattr(node, "decorator_list", []))])
+    def constant(node):
+        return isinstance(node, ast.Constant) or (isinstance(node, ast.UnaryOp)
+            and isinstance(node.op, (ast.USub, ast.UAdd)) and isinstance(node.operand, ast.Constant))
+    def named(node, name):
+        node = node.value if isinstance(node, ast.Subscript) else node
+        return getattr(node, "id", getattr(node, "attr", None)) == name
+    declared = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            header = (start(node), end(node.returns) if node.returns else statement_start(node.body[0]))
+            defaults = [*node.args.defaults, *(item for item in node.args.kw_defaults if item)]
+            declared.extend(_minus(header, [(start(item), end(item)) for item in defaults if not constant(item)]))
+        elif isinstance(node, ast.AnnAssign):
+            declared.append((start(node.annotation), end(node.annotation)))
+        elif isinstance(node, ast.ClassDef) and any(named(base, "Protocol") for base in node.bases):
+            for method in node.body:
+                if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)) and all(
+                        isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
+                        and (stmt.value.value is Ellipsis or isinstance(stmt.value.value, str))
+                        for stmt in method.body):
+                    declared.append((start(method.body[0]), end(method.body[-1])))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and named(node.value.func, "TypeVar"):
+            declared.append((start(node.value), end(node.value)))
+    return declared
+
+
+def filtered_verdict(item, regions):
+    """FILTERED_DECLARATION when every mutation lies inside a declaration-policy span
+    (`regions` caches declaration_scope per module); otherwise None."""
+    def inside(mutation, spans):
+        return any(first <= tuple(mutation.start_pos) and tuple(mutation.end_pos) <= last for first, last in spans)
+    for mutation in item.mutations:
+        if mutation.module_path not in regions:
+            regions[mutation.module_path] = declaration_scope((ROOT / mutation.module_path).read_text())
+    if all(inside(m, regions[m.module_path]) for m in item.mutations):
+        return "FILTERED_DECLARATION"
+
+
 def item_order(item):
     mutation = item.mutations[0]
     return (str(mutation.module_path), mutation.start_pos, mutation.end_pos,
@@ -123,6 +187,7 @@ def main():
     def command(*argv):
         with (out / "commands.log").open("a") as log:
             subprocess.run(argv, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+    filtered = {}
     try:
         report.update(head=git("rev-parse", "HEAD"), base=git("merge-base", args.base, "HEAD"),
                       source_dirty=bool(git("status", "--porcelain", "--untracked-files=no")))
@@ -181,6 +246,13 @@ def main():
                         if moved_only(item, changed, moved):
                             move_skipped.add(item.job_id)
                             db.set_result(item.job_id, WorkResult(worker_outcome=WorkerOutcome.SKIPPED))
+            regions = {}
+            with use_db(session) as db:
+                for item in list(db.pending_work_items):
+                    if verdict := filtered_verdict(item, regions):
+                        filtered[item.job_id] = verdict
+                        db.set_result(item.job_id, WorkResult(worker_outcome=WorkerOutcome.SKIPPED))
+            report["filtered_declaration_mutants"] = list(filtered.values()).count("FILTERED_DECLARATION")
             command(str(Path(sys.executable).with_name("cr-filter-pragma")), str(session))
             with use_db(session) as db:
                 selected = sorted(db.pending_work_items, key=item_order)
@@ -273,6 +345,7 @@ def main():
                     result = results.get(item.job_id)
                     verdict = ("FILTERED_GIT" if item.job_id in locals().get("git_skipped", set()) else
                                "FILTERED_MOVE" if item.job_id in locals().get("move_skipped", set()) else
+                               filtered[item.job_id] if item.job_id in filtered else
                                "PRAGMA" if result and result.worker_outcome == "skipped" else normalize(result))
                     if verdict in {"ASSERTION_KILL", "ERROR_KILL", "TEST_ERROR"} and item.job_id not in accepted:
                         verdict = "INVALID"
@@ -300,7 +373,7 @@ def main():
         if report["counts"].get("PENDING"):
             report["status"] = "incomplete"
         report["failed"] = report["status"] not in ("complete", "no-applicable-files") or any(
-            row["verdict"] not in {"FILTERED_GIT", "FILTERED_MOVE", "PRAGMA", "ASSERTION_KILL", "ERROR_KILL", "SYNTAX_INVALID"} for row in report["mutants"])
+            row["verdict"] not in {"FILTERED_GIT", "FILTERED_MOVE", "FILTERED_DECLARATION", "PRAGMA", "ASSERTION_KILL", "ERROR_KILL", "SYNTAX_INVALID"} for row in report["mutants"])
         (out / "mutation-report.json").write_text(json.dumps(report, indent=2) + "\n")
         print(f"gen2-mutation: {out / 'mutation-report.json'}: {report['status']} {report['counts']}", flush=True)
     return int(report["failed"] and not args.report_only)

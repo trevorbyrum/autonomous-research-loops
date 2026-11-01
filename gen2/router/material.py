@@ -29,7 +29,7 @@ def project(raw: TopicCapture) -> TopicCapture:
             table = replace(table, rows=tuple(r for r in table.rows if r[kind] != "sufficiency_review"))
         if table.name == "invocations":  # checkpoint lifecycle is bookkeeping
             kind = table.columns.index("kind")
-            table = _narrow(replace(table, rows=tuple(r for r in table.rows if r[kind] != "checkpoint")), INVOCATION_COLUMNS)
+            table = _narrow(replace(table, rows=tuple(r for r in table.rows if r[kind] not in ("checkpoint",))), INVOCATION_COLUMNS)
         tables.append(table)
     return replace(raw, tables=tuple(tables))
 

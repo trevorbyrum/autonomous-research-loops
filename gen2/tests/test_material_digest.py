@@ -80,6 +80,15 @@ class DigestTest(World):
         records = table_of(self.raw, "completion_records")
         self.assertNotEqual(self.digest(self.cell("completion_records", "contract_revision", records.rows[0][records.columns.index("contract_revision")] + 1)), self.base)
 
+    def test_invocation_projection_keeps_every_noncheckpoint_kind(self):
+        table = table_of(self.raw, "invocations")
+        at = table.columns.index("kind")
+        for kind in ("checkpoint", "delegate", "discovery", "research_pass", "verification"):
+            row = tuple(kind if i == at else cell for i, cell in enumerate(table.rows[0]))
+            projected = table_of(material.project(replacing(self.raw, "invocations", rows=(row,))), "invocations")
+            expected = () if kind == "checkpoint" else (tuple(row[table.columns.index(c)] for c in material.INVOCATION_COLUMNS),)
+            self.assertEqual(projected.rows, expected, f"material-invocation-kind:{kind}")
+
     def test_holds_a_delegate_and_a_research_state_change_flip_it(self):
         self.hold(self.capture_grant, "hold_judge0001")
         held = material.digest(self.store.capture_topic(TOPIC), "native")
