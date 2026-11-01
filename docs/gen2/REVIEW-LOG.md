@@ -3973,3 +3973,37 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
 - **Applied:** the nightly schedules are paused, and the critical-path lane is in the charter. The mutation trap-filter PR (S3-1) is dispatched to Sonnet `7d19c81d`.
 - **6b2′ design** (Sonnet `d6dd4d29`, `gen2-6b2-design-20261031.md`) adopts Gate S #3 with five deviations and two newly found gaps (profile selection, sentinel format). Astra's design review is running.
 - **Cross-repo:** the harness agreed that its stress runs take the gen2 heavy lock (harness constraint 17).
+
+## 2026-10-31/11-01: mutation filters and 6b2′ PR 1 merged; 2e1 designed through v2, checkpoint and Gate S #3c
+- **Mutation trap filters** (PR #96, `9af3d50`): only the declaration-only filter (`FILTERED_DECLARATION`). Trevor dropped the string-ordering half after Astra showed it removed 8 non-equivalent Batch A kills. Merged.
+- **6b2′ PR 1** (PR #97, `cba7288`): `completion_records` and the per-kind validation hook.
+  - The first verifier failed on 17 survivors, all in `gen2/router/assessments.py`.
+  - The fix (Sol `8a76c586`): 13 closed with paired witnesses, 4 removed by a dispatch/membership rewrite.
+  - Astra round 3 PASS; verifier-2 exit 0 (2,949 tests; 80 ASSERTION_KILL, 13 ERROR_KILL). Merged.
+- **6b2′ PR 2 (#98) and PR 3 (#99):** Astra accepted both.
+  - #98's verifier (`592a0fc`) recorded **32 survivors**: 12 are annotation mutants of `Router.__init__`'s header, because the branch predates #96; the other 20 are in `gen2/router/gates.py` and 1 in `gen2/router/material.py`.
+  - A survivor fix with a merge of gen2 is dispatched (Sol `ed57b463`). #99's queued verifier was cancelled as superseded; #99 merges the new #98 head next.
+- **2e1-minimum design:**
+  - **v1** (Sol `854b015d`): Astra ACCEPTED WITH CHANGES:
+    - B1: unknown spending needs a reachable contract; the orchestrator took the permanent-stop option under Gate S (DEBT-052);
+    - B2: a genuine provider rejection blocks independently of local probes (DEBT-053);
+    - B3: a feasibility checkpoint before dependent coding.
+  - **v2** (Sol `500e84a4`): Astra round 2 ACCEPTED at design level. The checkpoint was NOT READY: Podman absent; pinned codex 0.153.2 not local; relay/ACL unpinned. Six landings.
+  - **Static checkpoint** (Sol `e7947e35`; Trevor authorized the release download):
+    - the 0.153.2 binary hash matches;
+    - `exec --json` drops typed error fields, so an auth rejection is only `error`/`turn.failed` with exit 1;
+    - forecast 2,800 / 915 / 1,040, over all three stops.
+  - **Gate S #3c** (Fable `cb0bef5c`):
+    - no re-pin: a relay-bound rejection is the stronger, trusted signal;
+    - network as policy and tmpfs collection would shrink PR 2;
+    - host provisioning becomes a separately budgeted prerequisite; defer PR 4a;
+    - re-baseline to ≈2,000; 2f late November.
+    - **Estimating pattern:** both re-baselines on 10-31 grew where a design rested on a premise it had marked unverified.
+  - **Astra on the checkpoint and Gate S #3c** (`gen2-2e1-checkpoint-astra-20261031.md`):
+    - the runner finding passes; the relay rejection is accepted in principle, but blocks until its binding and complete-log contract is written (R1);
+    - network as policy passes as a candidate, with a fixture-topology fix (R2) and two named Docker witnesses;
+    - tmpfs collection blocks (R3/R4);
+    - concurrency 1 passes, with a serialized predicate.
+  - **Trevor ruled** S3c-2 to S3c-6 (DOSSIER).
+  - **Next:** v3 and the host-prerequisite design are dispatched (Sol `17e77b3c`). PR 2 stays blocked until they are reviewed.
+- **2e1 PR 1** (PR #100, `6f20733`, Sol `52493b32`): the four operator `COMMANDS` rows (`create_topic`, `open_brief`, `draft_contract`, `open_review`), the live vocabulary schema, and the BOUNDARIES/DEP amendments. 392 counted lines, 0.93× plan. Astra PASS; the verifier is queued.
