@@ -284,6 +284,7 @@ class SentinelTest(rf.RouterTestCase):
 
     def test_a_parsed_empty_array_keeps_the_rule_unknown(self):
         declared = self.read(self.binding(b"[]"))
+        self.assertIsInstance(declared, s.KnownItems, "empty-sentinel-array: declared inventory must exist")
         self.assertEqual(s.known_item(s.Context(rf.TOPIC, 1, 1), "R", history((), ()), declared).state, U)
 
 
