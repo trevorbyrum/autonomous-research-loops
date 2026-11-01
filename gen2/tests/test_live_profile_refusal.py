@@ -51,7 +51,10 @@ class LiveProfileRefusal(SupervisedTestCase):
 
     def test_refusal_matrix_at_prepare_and_submit(self):
         order = self.order("research_pass")
-        self.supervisor.prepare(order)  # unchanged offline preparation
+        try:
+            self.supervisor.prepare(order)  # unchanged offline preparation
+        except Exception as failure:
+            self.fail(f"offline preparation refused: {failure!r}")
         self.supervisor.job(order.invocation_id).write("journal.json", {"budgets": {"spawn": 1}, "sentinel": "retain"})
         cases = [(None, "profile_null"), ("placeholder", "profile_invalid_shape"), (EqualToAnything(), "profile_invalid_shape"),
                  ({**UNQUALIFIED, "state": None}, "profile_invalid_state")]
