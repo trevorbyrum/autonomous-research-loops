@@ -4007,3 +4007,25 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - **Trevor ruled** S3c-2 to S3c-6 (DOSSIER).
   - **Next:** v3 and the host-prerequisite design are dispatched (Sol `17e77b3c`). PR 2 stays blocked until they are reviewed.
 - **2e1 PR 1** (PR #100, `6f20733`, Sol `52493b32`): the four operator `COMMANDS` rows (`create_topic`, `open_brief`, `draft_contract`, `open_review`), the live vocabulary schema, and the BOUNDARIES/DEP amendments. 392 counted lines, 0.93× plan. Astra PASS; the verifier is queued.
+
+## 2026-11-01: 6b2′ complete (#98, #99); 2e1 PR 1 (#100) and PR 2a (#102) merged; 2e1 design v3 → v5c
+- **6b2′ PR 2** (PR #98, `cfedadf`):
+  - verifier-2 was stopped as superseded at 268/303, with 32 SURVIVED. 10 were annotation mutants (the branch predated #96); 22 were real.
+  - Sol `ed57b463` merged gen2 and closed the 22: paired witnesses, and membership/singleton rewrites for the equivalent ones.
+  - Astra round 3 PASS; verifier-3 exit 0 (75 ASSERTION_KILL, 23 ERROR_KILL). Merged-tree check passed. Merged.
+- **6b2′ PR 3** (PR #99, `2d8ef6a`):
+  - verifier-3 found 2 SURVIVED (`service.py` `apply_operator_decision` and `_require_completion`) and 5 TEST_ERROR, where approval-fixture construction raised rather than asserted.
+  - Sol `40960f73`: fixture failures become assertions; a frozenset membership rewrite; a `not_satisfied` witness.
+  - Astra round 3 PASS; verifier-4 (Codex, while the Claude window was hot) exit 0 (3,026 tests; 37 ASSERTION_KILL, 2 ERROR_KILL). Merged.
+  - **6b2′ is complete.**
+- **2e1 PR 1** (PR #100, `266f488`): Astra PASS; verifier exit 0 (2,959 tests; no mutants on its lines, which are Protocol stubs and dictionary rows). Merged.
+- **2e1 PR 2a** (PR #102, `62da5c4`): the refusal-only live-profile gate, `gen2/supervisor/isolation.py`. Astra PASS; verifier exit 0 (2,961 tests; 33 ASSERTION_KILL). Merged.
+- **2e1 design rounds v3 → v5c** (Sol; Astra each round):
+  - v3: the relay request binding (R1), the separate fixture network (R2), persistent collection (R3/R4).
+  - v4: mapped-file collection reusing `gen2/supervisor/spool.py::read_scratch` (Astra's simpler option) replaces Docker archives.
+  - The nginx source showed the master-mode profile can't evidence worker generations, and its cache files are owner-only. So the relay is now **single-process nginx**, under Trevor's trusted-administrator boundary.
+  - Private quota tools replace the quota package's service effects.
+  - BusyBox could not be version-pinned without a pull, so the relay status queries now run over **an engine-owned Unix socket**, and BusyBox is retired.
+  - Final forecasts: application 2,357 upper; prerequisite 665 upper (stop amended).
+  - **The pattern recorded:** about ten design rounds in 24 h, each adding justified mechanism. It will be reviewed against the 2f target after the static closures and the missing-evidence list.
+- **Open:** the static pre-brief closures for the complete PR 2 (Sol `f4e15011`).

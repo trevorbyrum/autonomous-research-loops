@@ -209,6 +209,12 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
   - **S3c-4, approved:** the 2e1 application slice is re-baselined to about 2,000 lines (band 1,900–2,200). Stops: 2,400 total, 850 production, 1,000 tests; landings ≤600. The crossed v2 stops stay on record.
   - **S3c-5, acknowledged:** 2f moves to late November (about Nov 25–28), or early December if the Docker network premise fails.
   - **S3c-6, approved:** the estimating rules in the charter (Build throughput).
+- **2026-11-01, Trevor's later 2e1 rulings:**
+  - **Read-only downloads authorized:** the nginx source, image digests by registry lookup only, package files and metadata, and the Moby source (29.9.0) and BusyBox source. Nothing is built, installed or run. Kept under `private/inputs/`.
+  - **The relay trust boundary is accepted:** the host administrator is trusted. Management goes only through the recorded steps, any unrecorded intervention invalidates the run, and no independent watcher is built.
+  - **The +62 target variance is acknowledged;** the hard stops 2,400 / 850 / 1,000 are unchanged.
+  - **The prerequisite stop is amended 650 → 665.**
+  - **The READY host rows in `private/reviews/gen2-2e1-host-approval-package-20261101.md` are approved** as written, tied to the reviewed hashes. Applying them is a later, separate task, after the remaining design gates close. Built-image digests, activation and qualification aren't covered.
 
 ## Current contract
 
