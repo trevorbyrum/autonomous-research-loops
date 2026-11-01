@@ -7,15 +7,17 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 - **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
 - **Open task:** 2d, slice 6. 6a is complete. The checks cut-back S1–S6, S2b–S2d and the gateway-mutant and trigger-order retirements are complete.
   - **Complete:** the Gate S full-pass batches C, C-fu, D1, D2 (a1–a3, b), E, O-9 (a, b), B; R2 (INVARIANTS rules plus generated traceability); 6b1′ PR 0; O-10, Docs-1, Prune-1 (2026-10-29); move-aware mutation scope (#73); Str-A, Str-B, Str-C and CS-1 (2026-10-30; collected ids 2,868 → 2,848).
-  - **Done 2026-10-30/31:** Str-D (#84), Batch F (#54), ERROR_KILL (#87), Batch A (#85), raw_exchange (#89), load-safe timeouts (#91), O-5 (#90), 6b1′ PR 1 (#93), D-F1 canonical round trip (#94).
-  - **Critical path:** the 6b2′ design (Astra design review running).
-  - **Off-path:** the S3-1 mutation trap filters (Sonnet).
+  - **Done 2026-10-30/31:** Str-D (#84), Batch F (#54), ERROR_KILL (#87), Batch A (#85), raw_exchange (#89), load-safe timeouts (#91), O-5 (#90), 6b1′ PR 1 (#93), D-F1 canonical round trip (#94), mutation declaration filter (#96), 6b2′ PR 1 (#97).
+  - **Critical path:**
+    - **6b2′:** PR 2 (#98) is in a survivor fix plus a gen2 merge; PR 3 (#99) follows.
+    - **2e1:** PR 1 (#100) is accepted, with its verifier queued. v3 and the host-prerequisite design are being written; PR 2 is blocked until they are reviewed.
   - **Paused:** the nightly test-portfolio review (S3-4), until after 2f.
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`.
-- **Last verifier result:** D-F1 `112e597`, gen2-accept exit 0 in 964 s (8 shards, 2,916 tests).
-- **Blockers:** none. Trevor ruled on 2026-10-29 (DOSSIER): mutation scope, Batch F option A, CI-DESIGN, C-4, O-10, and test-pruning items 7–11. The tier table is approved (TIERS-v2 plus Astra), and Batch F option A was chosen.
-- **Gate S:** last run was **Gate S #3 at `a406215`** (2026-10-31; rulings S3-1 to S3-5 approved, S3-6 open). The previous full pass was at `3a579af` (2026-10-27).
-- **What's next:** 6b2′ → 2e1-minimum → 2e2-minimum → 2f. Batch F, then `raw_exchange`, on the second coder. Task 2g follows 2f.
+- **Last verifier result:** 6b2′ PR 1 `dc51d5d`, gen2-accept exit 0 (2,949 tests; mutation 80 ASSERTION_KILL, 13 ERROR_KILL).
+- **Blockers:** none for the build.
+  - Trevor's next decisions: approve the 2e1 host-change list once Astra has reviewed it; then, closer to 2f, the genuine rejected-credential experiment (DEBT-004). S3-6 is still open.
+- **Gate S:** last run was **Gate S #3c at `cba7288`** (2026-11-01, 2e1 scope; rulings S3c-2 to S3c-6). The last whole-system run was Gate S #3 at `a406215` (2026-10-31).
+- **What's next:** 6b2′ PRs 2–3 → 2e1 (the application slice of ≈2,000 lines, plus the host prerequisite of ≈450) → 2e2-minimum → 2f, late November (S3c-5). 2e1 PR 4a is deferred past the 2f start (DEBT-054). Task 2g follows 2f.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 

@@ -557,3 +557,27 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: `gen2/router/reaccess.py`, `gen2/router/acquisitions.py`, `gen2/core/gateway_capture.py` and `gen2/router/service.py::Router.admit_reaccess` (built ahead; no production constructor passes `gateway_captures`) are frozen: no slice before 2e2-minimum extends them. 2e2-minimum either consumes each with a production caller or deletes it.
 - source: operator ruling S3-5, 2026-10-31 (Gate S #3, private/reviews/gen2-gate-s3-fable-20261031.md §6/§9)
 - removal: 2e2-minimum consumes or deletes each module, and its review confirms it.
+
+### DEBT-052 - resuming a topic after unknown spending (Phase 2)
+- kind: obligation
+- status: open
+- owner: phase 2
+- what: in 2e1-minimum, an attempt whose spending is unknown is charged at its whole authorized upper bound and permanently stops the trial. There is no settlement, downward adjustment or resumption route. A later slice designs any reconciliation that would let such a topic resume.
+- source: 2e1 design v2 B1 (Astra, private/reviews/gen2-2e1-design-review-astra-20261031.md); Gate S rule "cut automatic post-unknown resumption if it cannot be given a small explicit contract"
+- removal: a reviewed slice adds an append-only, narrowly authorized reconciliation, or the operator rules that unknown-spend topics never resume.
+
+### DEBT-053 - operator remediation after a genuine provider credential rejection (Phase 2)
+- kind: obligation
+- status: open
+- owner: phase 2
+- what: after a genuine provider rejection, 2e1-minimum blocks productive dispatch for that deployment and provider route. A local usable probe, a generic hold clearance, a policy reactivation and an old qualification each leave the block in place. Productive use after the genuine negative-auth experiment (DEBT-004) needs a separately reviewed operator remediation procedure.
+- source: 2e1 design v2 B2 (Astra rounds 1–2, private/reviews/gen2-2e1-design-review-astra-20261031.md)
+- removal: a reviewed remediation procedure exists and passes before 2f's productive dispatch.
+
+### DEBT-054 - the gateway client output cut and P9 transport, deferred past the 2f start (Phase 2)
+- kind: obligation
+- status: open
+- owner: phase 2
+- what: 2e1 PR 4a cuts the unconsumed `gen2/gateway_client/client.py::GatewayClient.search` outputs (delivery and top-level pages), gives records, telemetry losses and Resolution their real tested consumers, and adds the P9 direct-transport change. It is deferred to the cleanup slot after the 2f start. H-6 behaviour and the capture/persistence ACK split are preserved meanwhile.
+- source: operator ruling S3c-3, 2026-11-01 (Gate S #3c, private/reviews/gen2-gate-s3c-2e1-fable-20261031.md); full-pass reconcile §4.13
+- removal: the PR 4a scope lands with its tests and its review confirms it.

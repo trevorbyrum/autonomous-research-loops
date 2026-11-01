@@ -196,6 +196,20 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
   - **S3-5, approved:** `reaccess`, `acquisitions` and `gateway_capture` are frozen, with 2e2-minimum as their consumer or deleter (DEBT-051).
   - **S3-6, open:** whether 2e2-minimum's queue path uses one executor-run pre-contract scoping pass. It is to be asked again with the 2e2-minimum design.
 
+- **2026-10-31, Trevor narrowed S3-1:** drop the string-ordering half and keep only the declaration-only filter (#96). A genuinely equivalent string comparison gets a clearer rewrite (dispatch or membership) or an Astra-approved same-line pragma.
+- **2026-10-31, Trevor accepted the 6b2′ re-baseline:** about 1,450 lines planned, about 2,050 adjusted, in three PRs (private/reviews/gen2-gate-s3b-6b2-size-fable-20261031.md).
+- **2026-10-31, Trevor's rulings for the 2e1 feasibility checkpoint:**
+  - **Runner source:** an agent may download the official codex 0.153.2 release for read-only inspection, with its hash verified, never built or run. Done; kept under `private/inputs/codex-0.153.2/`.
+  - **Host setup:** an agent writes the exact configuration for Astra's review first. Trevor then approves the exact host-change and undo list before an agent applies it.
+  - **The genuine rejected-credential provider call (DEBT-004):** who, when, on which deployment and within what bounds is decided closer to 2f. The build makes no provider calls.
+- **2026-11-01, Trevor's rulings on Gate S #3c** (private/reviews/gen2-gate-s3c-2e1-fable-20261031.md §7; Astra gen2-2e1-checkpoint-astra-20261031.md):
+  - **S3c-1 (Astra, technical):** keep codex 0.153.2. Its `exec --json` has no typed auth field, so the typed rejection comes from a relay-bound exchange: the trusted relay retains the upstream 401, bound to the exact request. Astra accepted this in principle, subject to her binding and complete-log contract (R1).
+  - **S3c-2, approved:** host provisioning and operational qualification are a separate, separately counted prerequisite: about 450 lines, stop 650, under `deploy/gen2/live/`, on the second coder slot. Approving the work package doesn't qualify its output.
+  - **S3c-3, approved:** 2e1 PR 4a (the gateway output cut and the P9 transport) is deferred to the cleanup slot after the 2f start (DEBT-054). H-6 behaviour and capture/persistence ACK safety are kept regardless.
+  - **S3c-4, approved:** the 2e1 application slice is re-baselined to about 2,000 lines (band 1,900–2,200). Stops: 2,400 total, 850 production, 1,000 tests; landings ≤600. The crossed v2 stops stay on record.
+  - **S3c-5, acknowledged:** 2f moves to late November (about Nov 25–28), or early December if the Docker network premise fails.
+  - **S3c-6, approved:** the estimating rules in the charter (Build throughput).
+
 ## Current contract
 
 **No slice is in flight.** 6a parts 1–3 are done (part 3 merged as `dbbdced`,
