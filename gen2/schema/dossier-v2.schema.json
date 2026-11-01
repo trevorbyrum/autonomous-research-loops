@@ -5,7 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "dossier_revision", "invocation_id", "evaluator_version", "history", "input_hash", "result"],
-  "properties": {"schema_version": {"const": "dossier/2"}, "dossier_revision": {"$ref": "#/$defs/revision"}, "invocation_id": {"$ref": "#/$defs/text"}, "evaluator_version": {"const": "stopping-result/1"}, "history": {"$ref": "#/$defs/history"}, "input_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "result": {"$ref": "#/$defs/result"}},
+  "properties": {"schema_version": {"const": "dossier/2"}, "dossier_revision": {"$ref": "#/$defs/revision"}, "invocation_id": {"$ref": "#/$defs/text"}, "evaluator_version": {"const": "stopping-result/1"}, "history": {"$ref": "#/$defs/history"}, "input_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "material_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "result": {"$ref": "#/$defs/result"}},
   "$defs": {
     "text": {"type": "string", "minLength": 1},
     "integer": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},

@@ -4,7 +4,7 @@ from typing import Callable, Mapping, Protocol
 
 from gen2 import accounting as a
 from gen2.accounting import views as v, dossier
-from gen2.router import boundary
+from gen2.router import boundary, material
 from gen2.core import canonical, pagination
 from gen2.router.boundary import Refusal
 from gen2.store import api
@@ -90,6 +90,7 @@ class Accounting:
         doc = {"schema_version": "dossier/2", "invocation_id": invocation_id,
                "dossier_revision": 1 + max((r["dossier_revision"] for r in records(inputs.raw, "dossiers")), default=0),
                "evaluator_version": "stopping-result/1", "history": history, "input_hash": inputs.input_hash,
+               "material_digest": material.digest(inputs.raw, history),
                "result": dossier.encode(result)}
         boundary.require_schema(self._core._schemas, doc, "dossier-v2.schema.json", "payload_invalid")
         return {"document": doc, "content_hash": canonical.content_hash(doc)}

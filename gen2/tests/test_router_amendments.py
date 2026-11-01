@@ -38,6 +38,7 @@ import copy
 import json
 
 from gen2.core import canonical
+from gen2.tests.test_dossier_record import FixtureEvaluator
 from gen2.tests import router_fixtures as rf, store_fixtures
 from gen2.tests.router_fixtures import OTHER, TOPIC, RouterTestCase, empty_outcome, find_request, h, jcs
 from gen2.tests.router_fixtures import ContractWorld, REFRAMED_QUESTION, columns, compatible, contract_doc, protocol_changed, reframed
@@ -100,7 +101,7 @@ class AmendmentProposalTest(ContractWorld):
         self.refused_command("propose_amendment", {"document": doc}, "no_approved_contract")
 
 
-class AmendmentApprovalTest(ContractWorld):
+class AmendmentApprovalTest(FixtureEvaluator, ContractWorld):
     """G-1, G-6, G-7: an approval supersedes exactly the approved revision it
     revises; a framing change is approved as a reframe and only as one."""
 
@@ -129,8 +130,8 @@ class AmendmentApprovalTest(ContractWorld):
 
     def test_an_approved_amendment_requeues_a_completed_topic(self) -> None:
         self.started("inv_research01")
-        from gen2.tests.test_dossier_record import evaluate, admitted
-        recorded = admitted(self, self.router.record_dossier, TOPIC, invocation_id="inv_research01", history="native", evaluate=evaluate)
+        from gen2.tests.test_dossier_record import admitted
+        recorded = admitted(self, self.router.record_dossier, TOPIC, invocation_id="inv_research01", history="native")
         self.assertEqual(self.decide("opd_complete01", "completion_approval", {"kind": "dossier", "revision": 1, "hash": recorded["content_hash"]})["status"], "applied")
         self.assertEqual(self.status(), "completed_with_qualified_conclusions")
         out = self.approve(self.propose(3, compatible))

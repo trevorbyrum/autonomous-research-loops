@@ -61,6 +61,7 @@ from gen2.router.boundary import Refusal, instant
 from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
 from gen2.router.commands import COMMANDS, LIFECYCLE_FACTS
 from gen2.router.evidence_writer import EvidenceWriter
+from gen2.router import gates
 from gen2.router.extractions import ExtractionRecords
 from gen2.router.detailed_checks import DetailedChecks
 from gen2.router.history import require_retained_support
@@ -108,12 +109,14 @@ class Router:
     none qualified (INVARIANTS §13)."""
 
     def __init__(self, store: api.Store, spool, *, clock: Callable[[], str] = instants.utc_now, new_id: Callable[[str], str] = random_id,
-                 extensions=None, fault: Callable[[str], None] | None = None, schemas: SchemaSet | None = None, gateway_captures=None) -> None:
+                 extensions=None, fault: Callable[[str], None] | None = None, schemas: SchemaSet | None = None, gateway_captures=None,
+                 evaluate: Callable = gates.evaluate) -> None:
         self._store = store
         with self._snapshot():
             require_retained_support(self._store)
         self._spool = spool
         self._clock = clock
+        self._evaluate = evaluate  # fixed for this Router's life: no request can select an evaluator
         self._new_id = new_id
         self._extensions = extensions or NoExtensions()
         self._fault = fault or (lambda point: None)
@@ -171,9 +174,10 @@ class Router:
         """Capture admitted links and invocation-derived pins; compute views after returning."""
         return self._accounting.coverage_snapshot(topic_id, history=history)
 
-    def record_dossier(self, topic_id: str, *, invocation_id: str, history: accounting.History, evaluate: Callable) -> dict:
+    def record_dossier(self, topic_id: str, *, invocation_id: str, history: accounting.History) -> dict:
         return self._commit_dossier_inputs(topic_id, invocation_id=invocation_id, history=history,
-            prepare=lambda inputs: self._accounting.prepare_dossier(inputs, invocation_id, history, evaluate),
+            prepare=lambda inputs: self._accounting.prepare_dossier(inputs, invocation_id, history,
+                lambda prepared: self._evaluate(prepared, self._spool, self._now())),  # as_of: read once per attempt
             commit=self._accounting.write_dossier)
 
     def _commit_dossier_inputs(self, topic_id: str, *, invocation_id: str, history: accounting.History, prepare: Callable, commit: Callable) -> object:

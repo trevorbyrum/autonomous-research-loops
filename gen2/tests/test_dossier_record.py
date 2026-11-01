@@ -22,7 +22,15 @@ def evaluate(inputs):
     return s.evaluate_profile(context, s.Profile('P', s.Expression('R'), ()), (rule,), ())
 
 
-class DossierCase(rf.ContractWorld):
+class FixtureEvaluator:
+    """A world whose Router is constructed with a fixture evaluator: `callback(inputs)` stands in for the production one."""
+    callback = staticmethod(evaluate)
+
+    def make_router(self, **overrides):
+        return super().make_router(evaluate=lambda inputs, spool, as_of: self.callback(inputs), **overrides)
+
+
+class DossierCase(FixtureEvaluator, rf.ContractWorld):
     def setUp(self):
         rf.DurableRouterTestCase.setUp(self)
         self.build_world()
@@ -31,15 +39,19 @@ class DossierCase(rf.ContractWorld):
     tearDown = rf.DurableRouterTestCase.tearDown
 
     def record(self, callback=evaluate, *, refuses=False):
-        kwargs = dict(invocation_id=self.grant['invocation_id'], history='native', evaluate=callback)
-        if refuses:
-            try:
-                return self.router.record_dossier(rf.TOPIC, **kwargs)
-            except Refusal:
-                raise
-            except Exception as exc:
-                self.fail(f"refusal witness raised {type(exc).__name__}: {exc}")
-        return admitted(self, self.router.record_dossier, rf.TOPIC, **kwargs)
+        kwargs = dict(invocation_id=self.grant['invocation_id'], history='native')
+        outer, self.callback = self.callback, callback  # a nested record() inside a callback restores the outer one
+        try:
+            if refuses:
+                try:
+                    return self.router.record_dossier(rf.TOPIC, **kwargs)
+                except Refusal:
+                    raise
+                except Exception as exc:
+                    self.fail(f"refusal witness raised {type(exc).__name__}: {exc}")
+            return admitted(self, self.router.record_dossier, rf.TOPIC, **kwargs)
+        finally:
+            self.callback = outer
 
     def stored(self, revision=1):
         rows = self.store.select('dossiers', {'topic_id': rf.TOPIC, 'dossier_revision': revision})
@@ -84,7 +96,7 @@ class RecordTest(DossierCase):
         for topic, iid in ((rf.TOPIC, 'inv_missing000'), (rf.TOPIC, other), (rf.OTHER, self.grant['invocation_id'])):
             before = self.state(exclude=())
             with self.assertRaises(Refusal) as caught:
-                self.router.record_dossier(topic, invocation_id=iid, history='native', evaluate=evaluate)
+                self.router.record_dossier(topic, invocation_id=iid, history='native')
             self.assertEqual(caught.exception.reason, 'unknown_invocation')
             self.assertEqual(self.state(exclude=()), before)
 
@@ -163,7 +175,7 @@ class RecordTest(DossierCase):
                 self.assertEqual(caught.exception.reason, expected)
 
     def test_literal_route_and_collaborator_signatures(self):
-        self.assertEqual(str(inspect.signature(Router.record_dossier)), "(self, topic_id: 'str', *, invocation_id: 'str', history: 'accounting.History', evaluate: 'Callable') -> 'dict'")
+        self.assertEqual(str(inspect.signature(Router.record_dossier)), "(self, topic_id: 'str', *, invocation_id: 'str', history: 'accounting.History') -> 'dict'")
         self.assertEqual(str(inspect.signature(Accounting.prepare_dossier)), "(self, inputs: 'DossierInput', invocation_id: str, history: Literal['native', 'legacy_unknown'], evaluate: Callable) -> dict")
         self.assertEqual(str(inspect.signature(Accounting.write_dossier)), '(self, prepared: dict, now: str) -> dict')
 
