@@ -8,6 +8,7 @@ from collections.abc import Mapping
 import re
 
 PIN = re.compile(r"sha256:[0-9a-f]{64}")
+ABSENT_PROFILE = object()
 PLACEHOLDERS = frozenset({"", "TODO", "TBD", "pending", "placeholder", "unbuilt"})
 STATE_REFUSALS = {"unqualified": "profile_unqualified", "stale": "profile_stale", "invalidated": "profile_invalidated"}
 
@@ -22,8 +23,10 @@ def refuse_live_profile(profile: object) -> None:
     A claimed qualified state is not trusted evidence. No manifest loader,
     image resolution, wire decoder or launcher is reachable from this gate.
     """
+    if profile is ABSENT_PROFILE:
+        raise LiveProfileRefused("profile_absent")
     if profile is None:
-        raise LiveProfileRefused("profile_absent_or_null")
+        raise LiveProfileRefused("profile_null")
     if not isinstance(profile, Mapping):
         raise LiveProfileRefused("profile_invalid_shape")
     for field in ("manifest_pin", "source_pin", "qualification_pin"):

@@ -46,7 +46,7 @@ class LiveProfileRefusal(SupervisedTestCase):
         order = self.order("research_pass")
         self.supervisor.prepare(order)  # unchanged offline preparation
         self.supervisor.job(order.invocation_id).write("journal.json", {"budgets": {"spawn": 1}, "sentinel": "retain"})
-        cases = [(None, "profile_absent_or_null"), ("placeholder", "profile_invalid_shape"),
+        cases = [(None, "profile_null"), ("placeholder", "profile_invalid_shape"),
                  ({**UNQUALIFIED, "state": None}, "profile_invalid_state")]
         for field in ("manifest_pin", "source_pin", "qualification_pin"):
             missing = dict(UNQUALIFIED)
@@ -67,8 +67,9 @@ class LiveProfileRefusal(SupervisedTestCase):
                     self.refused(entrance, order, dict(UNQUALIFIED), "profile_unqualified")
                     self.refused(entrance, order, profile, reason)
             # An absent profile and a new invocation leave no job directory, too.
-            self.refused(entrance, replace(order, invocation_id="inv_newlive001"), None, "profile_absent_or_null")
-            self.refused(entrance, order, None, "profile_absent_or_null", omit=True)
+            self.refused(entrance, replace(order, invocation_id="inv_newlive001"), None, "profile_null")
+            self.refused(entrance, order, None, "profile_absent", omit=True)
+            self.refused(entrance, order, None, "profile_null", live=False)
             self.refused(entrance, order, UNQUALIFIED, "profile_unqualified", live=False)
         self.assertEqual(self.control.calls, 0)
 

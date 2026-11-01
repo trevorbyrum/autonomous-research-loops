@@ -16,7 +16,7 @@ from typing import Callable, Mapping
 from gen2.core import canonical, instants
 from gen2.core.control import ControlUnavailable
 from gen2.supervisor import jobs
-from gen2.supervisor.isolation import refuse_live_profile
+from gen2.supervisor.isolation import ABSENT_PROFILE, refuse_live_profile
 from gen2.supervisor.spool import Spool, SpoolFull, read_scratch
 
 OUTPUT = "outcome.json"          # the executor's one result file; its name is the supervisor's (C-9)
@@ -159,20 +159,20 @@ class Supervisor:
     def job(self, invocation_id: str) -> jobs.Job:
         return jobs.Job(self.jobs_root, "job-" + invocation_id)
 
-    def prepare(self, order: WorkOrder, *, live: bool = False, isolation_profile: object = None) -> None:
+    def prepare(self, order: WorkOrder, *, live: bool = False, isolation_profile: object = ABSENT_PROFILE) -> None:
         """Make the order durable under its job handle (the claim is sent from
         the stored order, so a restart re-sends the same claim, L-8). An order
         pins a recorded config bundle: one the resolver does not know raises
         before anything is written. Live preparation is refusal-only (2e1 F1);
         a supplied profile also requires the gate, regardless of `live`."""
-        if live or isolation_profile is not None:
+        if live or isolation_profile is not ABSENT_PROFILE:
             refuse_live_profile(isolation_profile)
         if self._policies is not None:
             self._policies(order.config_bundle_hash)
         self.job(order.invocation_id).prepare({**asdict(order), "command": list(order.command), "env": dict(order.env),
                                                "reservation": None if order.reservation is None else dict(order.reservation)})
 
-    def submit(self, order: WorkOrder, *, live: bool = False, isolation_profile: object = None) -> str:
+    def submit(self, order: WorkOrder, *, live: bool = False, isolation_profile: object = ABSENT_PROFILE) -> str:
         self.prepare(order, live=live, isolation_profile=isolation_profile)
         return self.advance(order.invocation_id)
 
