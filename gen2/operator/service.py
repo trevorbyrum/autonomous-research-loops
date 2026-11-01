@@ -100,6 +100,10 @@ _NAME = lambda principal: principal.name  # noqa: E731
 _OPERATOR = lambda principal: "operator"  # noqa: E731
 # route name (the router operation called) -> (the role it needs, the fields the principal supplies)
 COMMANDS: dict[str, tuple[str, dict[str, Callable[[Principal], str]]]] = {
+    "create_topic": ("operator", {}),
+    "open_brief": ("operator", {}),
+    "draft_contract": ("operator", {}),
+    "open_review": ("operator", {}),
     "apply_operator_decision": ("operator", {"operator_id": _NAME}),
     "request_cancel": ("operator", {"requested_by": _OPERATOR}),
     "requeue": ("operator", {"requested_by": _OPERATOR}),

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/live-vocabulary.schema.json",
+  "$comment": "flow: §4.1; S1–S3 | boundaries: Router; Station supervisor; Gateway | invariants: RG-U; G-4; G-10; H-1; L-6 | note: 2e1 design v2 §§3.1–3.3; Astra round 2; fragments only, never live admission",
+  "description": "Normalized vocabulary fragments, referenced individually. No document validates against this root. Complete live policy, exchange/evidence envelopes, runner wire and deployment profiles await the feasibility checkpoint; these fragments grant no execution or provenance authority.",
+  "not": {},
+  "$defs": {
+    "text": {"$ref": "common.schema.json#/$defs/short_text"},
+    "count": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "positive_count": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "attempt_identity": {
+      "description": "One external attempt per invocation; control replay is not another attempt.",
+      "type": "object", "additionalProperties": false, "required": ["run_id", "attempt"],
+      "properties": {"run_id": {"$ref": "#/$defs/text"}, "attempt": {"$ref": "#/$defs/positive_count"}}
+    },
+    "policy_accounting": {
+      "description": "Accounting vocabulary only, not policy.live_trial. Full policy must also prove enforceable whole-attempt bounds, resource/verification reserves and reviewed deployment pins. New run/version never resets topic history; unknown spending permanently retains U and stops the trial.",
+      "type": "object", "additionalProperties": false,
+      "required": ["run_id", "topic_id", "accounting_owner", "deadline_at", "max_attempts", "max_concurrent_attempts", "ceiling_minor_units", "currency", "ceiling_scope", "policy_version"],
+      "properties": {
+        "run_id": {"$ref": "#/$defs/text"},
+        "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
+        "accounting_owner": {"$ref": "#/$defs/text"},
+        "deadline_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "max_attempts": {"$ref": "#/$defs/positive_count"},
+        "max_concurrent_attempts": {"$ref": "#/$defs/positive_count"},
+        "ceiling_minor_units": {"$ref": "#/$defs/count"},
+        "currency": {"$ref": "#/$defs/currency"},
+        "ceiling_scope": {
+          "type": "array", "uniqueItems": true, "minItems": 6, "maxItems": 6,
+          "items": {"enum": ["model", "delegates", "retries", "verification", "gateway", "maintenance"]}
+        },
+        "policy_version": {"$ref": "#/$defs/text"}
+      }
+    },
+    "exchange_identity": {
+      "description": "Trusted child correlation only; no gateway request/reply or runner wire shape is frozen.",
+      "type": "object", "additionalProperties": false,
+      "required": ["invocation_id", "live_attempt", "exchange_number", "policy_hash"],
+      "properties": {
+        "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"},
+        "live_attempt": {"$ref": "#/$defs/attempt_identity"},
+        "exchange_number": {"$ref": "#/$defs/positive_count"},
+        "policy_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "unknown_measurement": {
+      "type": "object", "additionalProperties": false, "required": ["state", "reason"],
+      "properties": {"state": {"const": "unknown"}, "reason": {"$ref": "#/$defs/text"}}
+    },
+    "reported_count": {
+      "type": "object", "additionalProperties": false, "required": ["state", "value"],
+      "properties": {"state": {"const": "reported"}, "value": {"$ref": "#/$defs/count"}}
+    },
+    "count_measurement": {"oneOf": [{"$ref": "#/$defs/reported_count"}, {"$ref": "#/$defs/unknown_measurement"}]},
+    "quantity_measurement": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["state", "value"],
+         "properties": {"state": {"const": "reported"}, "value": {"type": "number", "minimum": 0, "maximum": 9007199254740991}}},
+        {"$ref": "#/$defs/unknown_measurement"}
+      ]
+    },
+    "gateway_call_ref": {"$ref": "#/$defs/text"},
+    "cost": {
+      "type": "object", "additionalProperties": false, "required": ["minor_units", "currency"],
+      "properties": {"minor_units": {"$ref": "#/$defs/count"}, "currency": {"$ref": "#/$defs/currency"}}
+    },
+    "cost_measurement": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["state", "value"],
+         "properties": {"state": {"const": "reported"}, "value": {"$ref": "#/$defs/cost"}}},
+        {"$ref": "#/$defs/unknown_measurement"}
+      ]
+    },
+    "usage": {
+      "description": "Collector-normalized reported tokens/cost; explicit zero differs from absent. Not a runner event or a downward revision of worst-case exposure.",
+      "type": "object", "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "cached_tokens", "cost", "elapsed_seconds", "gateway_credits"],
+      "properties": {
+        "input_tokens": {"$ref": "#/$defs/count_measurement"},
+        "output_tokens": {"$ref": "#/$defs/count_measurement"},
+        "cached_tokens": {"$ref": "#/$defs/count_measurement"},
+        "cost": {"$ref": "#/$defs/cost_measurement"},
+        "elapsed_seconds": {"description": "Monotonic elapsed time.", "$ref": "#/$defs/quantity_measurement"},
+        "gateway_credits": {"$ref": "#/$defs/quantity_measurement"}
+      }
+    },
+    "disposition": {"description": "Normalized collector outcome, never a claimed runner wire discriminant.", "enum": ["succeeded", "credentials_rejected", "transport_failed", "interrupted", "unknown"]},
+    "charge_state": {"enum": ["actual", "worst_case"]}
+  }
+}

@@ -1,0 +1,1 @@
+{"fixture": {"schema": "live-vocabulary.schema.json#/$defs/reported_count", "expect": "valid", "tests": "RG-U: explicit reported zero"}, "instance": {"state": "reported", "value": 0}}

@@ -76,6 +76,25 @@ class ControlBackend(Protocol):
     lock is held, so time spent waiting for the lock counts; a lease or
     deadline at instant E is over at E."""
 
+    def authorize_dispatch(self, request: Mapping) -> dict:
+        """Future trusted-supervisor call only: {capability_id, invocation_id,
+        run_id, attempt} -> {status: authorized|replayed, admission_ref,
+        upper_minor_units, policy_hash}, or {status: refused, reason, detail}.
+        Router-owned immutable intent; replay grants no second external send.
+        Absent qualified policy/bound/provenance refuses; no live entrance here."""
+
+    def record_dispatch_result(self, request: Mapping) -> dict:
+        """Future trusted-supervisor call only: {capability_id, invocation_id,
+        run_id, attempt, admission_ref, evidence_ref} -> {status: recorded|replayed,
+        charge_state: actual|worst_case, trial_stopped, fact_id?, hold_id?}, or
+        {status: refused, reason, detail}. Authenticate original admission/job/
+        deployment and all registered artifacts; capability possession alone
+        grants no late authority. Ordinary fences permit first actual <= U;
+        expired/replaced lease, terminal state or changed epoch permits only
+        fixed-U safety retention and permanent stop. Identical authenticated
+        replay precedes current-state refusal; changed evidence conflicts.
+        No launch, lease, lifecycle or scientific-write authority is granted."""
+
     def claim(self, request: Mapping) -> dict:
         """Admit one invocation. Key: invocation_id (the supervisor's stable
         job identity, L-8): the same request again returns the same grant, a
@@ -190,6 +209,26 @@ class OperatorBackend(ControlBackend, Protocol):
     The surface authenticates the principal and fills the fields that name
     it; the router validates, fences and writes as for every operation. None
     of these hands out the store."""
+
+    def create_topic(self, request: Mapping) -> dict:
+        """{topic_id, priority} -> {status: created|replayed, topic_id}.
+        Intake only; identical identity/priority replays, changed priority refuses."""
+
+    def open_brief(self, request: Mapping) -> dict:
+        """{document, owner_operator_id, review_deadline}: first intake brief.
+        Returns recorded with topic_id, brief_id, version, superseded, or replayed
+        with its identity. Owner assigns responsibility; confirmation is separate."""
+
+    def draft_contract(self, request: Mapping) -> dict:
+        """{document}: validated Contract v2 under a confirmed brief; returns
+        recorded with topic_id, revision, against_approved, or replayed with its
+        identity. Confers no scope approval."""
+
+    def open_review(self, request: Mapping) -> dict:
+        """{episode_id, topic_id, kind}: existing cadence/signal admission;
+        returns opened with episode_id and triggers, or replayed with episode_id.
+        All four commands may instead
+        return {status: refused, reason, detail}; no capability is accepted."""
 
     def recover_incident(self, request: Mapping) -> dict:
         """The station's, not the router's (gen2/supervisor/supervisor.py

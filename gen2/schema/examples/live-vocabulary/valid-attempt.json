@@ -1,0 +1,2 @@
+{"fixture": {"schema": "live-vocabulary.schema.json#/$defs/attempt_identity", "expect": "valid", "tests": "L-6: external attempt differs from control replay"},
+ "instance": {"run_id": "trial-1", "attempt": 1}}

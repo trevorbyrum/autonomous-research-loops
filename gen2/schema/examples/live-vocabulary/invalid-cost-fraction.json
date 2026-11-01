@@ -1,0 +1,1 @@
+{"fixture": {"schema": "live-vocabulary.schema.json#/$defs/cost", "expect": "invalid", "tests": "F5: no float money", "base": "valid-cost.json", "patch": [{"op": "replace", "path": "/minor_units", "value": 0.5}], "errors": [{"keyword": "type", "path": "/minor_units"}]}}
