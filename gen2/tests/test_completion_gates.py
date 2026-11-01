@@ -25,6 +25,23 @@ NOW = "2026-09-27T10:00:00Z"
 REF = {"content_hash": rf.h("a"), "size_bytes": 10, "media_type": "application/json"}
 
 
+def witness(test, fragment, operation, expected):
+    """An unexpected exception fails the witness by assertion with its own diagnostic."""
+    try:
+        actual = operation()
+    except Exception as exc:
+        test.fail(f"{fragment}: raised {type(exc).__name__}: {exc}")
+    test.assertEqual(actual, expected, fragment)
+
+
+def with_rows(inputs, name, rows):
+    """Overlay one detached operand group; keep the evaluator and its readers real."""
+    table = next(t for t in inputs.raw.tables if t.name == name)
+    encoded = tuple(tuple(canonical.canonical_bytes(row[c]).decode() if c in table.json_columns and row.get(c) is not None
+                          else row.get(c) for c in table.columns) for row in rows)
+    return replace(inputs, raw=replace(inputs.raw, tables=tuple(replace(t, rows=encoded) if t is table else t for t in inputs.raw.tables)))
+
+
 def claim(cid="c1", revision=1, status="accepted_support"):
     return {"claim_id": cid, "revision": revision, "status": status}
 
@@ -93,6 +110,28 @@ class VerificationTest(unittest.TestCase):
             record = completion("verification_adjudication", "ver_1", 1, outcome, pin)
             self.assertEqual(gates._counts(record, standing), expected, (outcome, pin))
 
+    def test_counting_uses_outcome_values_in_distinct_objects(self):
+        for outcome, expected in (("counterevidence_found", True), ("incomplete", False), ("verdict_upheld", True)):
+            copied = json.loads(json.dumps(outcome))
+            self.assertEqual(copied, outcome)
+            self.assertIsNot(copied, outcome)
+            witness(self, f"performed-outcome:{outcome}",
+                    lambda: gates._counts(completion("verification_adjudication", "ver_1", 1, copied), standing), expected)
+
+    def test_every_claim_status_uses_value_membership(self):
+        for status in ("accepted_support", "contested", "provisional", "quarantined", "rejected", "superseded"):
+            copied = json.loads(json.dumps(status))
+            self.assertIsNot(copied, status)
+            witness(self, f"accepted-status:{status}", lambda: self.state([claim(status=copied)]), S if status == "accepted_support" else N)
+
+    def test_large_equal_counts_missing_and_extra_adjudications(self):
+        receipts = [receipt(f"ver_{i}") for i in range(257)]
+        named = [adjudication(f"ver_{i}") for i in range(257)]
+        witness(self, "adjudication-count:equal-above-cache", lambda: self.state([claim()], receipts, named), S)
+        witness(self, "adjudication-count:one-missing", lambda: self.state([claim()], receipts, named[:-1]), U)
+        # Extra named rows cannot make relied larger than adverse: one lookup per receipt.
+        witness(self, "adjudication-count:extra-named", lambda: self.state([claim()], receipts, [*named, adjudication("ver_extra")]), S)
+
 
 class ChallengeTest(unittest.TestCase):
     def state(self, required, contradictions=(), records=()):
@@ -150,6 +189,13 @@ class ChallengeTest(unittest.TestCase):
         self.assertEqual((state, [r["subject_ref"] for r in relied]), (S, ["c1"]))
         self.assertEqual(self.state([claim()], records=[self.counter("incomplete")])[1], [])
 
+    def test_resolved_value_in_a_distinct_object_and_both_open_states(self):
+        for state in ("contested", "resolved", "unresolved"):
+            copied = json.loads(json.dumps(state))
+            self.assertIsNot(copied, state)
+            witness(self, f"contradiction-disposition:{state}",
+                    lambda: self.state([claim()], [disposition(state=copied)], [self.counter()])[0], S if state == "resolved" else N)
+
 
 class CoverageTest(unittest.TestCase):
     def test_defects_are_unknown_never_not_satisfied(self):
@@ -163,6 +209,15 @@ class CoverageTest(unittest.TestCase):
         inventory = history(("p0", "p1"), (page("p0", "q"), page("p1", "q", end="end_unknown")))
         self.assertIsNone(a.candidate_units(inventory).retrieved_records.unknown_reason)
         self.assertEqual(gates.coverage_state(inventory), U)
+
+    def test_eligible_ineligible_and_indeterminate_windows(self):
+        base = history(("p0",), (page("p0", "q"),))
+        failed = replace(base, passes=(replace(base.passes[0], state="failed"),))
+        unfinished = replace(base, observations=(page("p0", "q", end="end_unknown"),))
+        for inventory, state, expected in ((base, "eligible", S), (failed, "ineligible", S), (unfinished, "indeterminate", U)):
+            self.assertIsNone(a.candidate_units(inventory).retrieved_records.unknown_reason, state)
+            self.assertEqual([w.state for w in a.window_standings(inventory)], [state])
+            witness(self, f"coverage-window:{state}", lambda: gates.coverage_state(inventory), expected)
 
 
 class EvidenceTest(unittest.TestCase):
@@ -210,6 +265,22 @@ class SentinelTest(rf.RouterTestCase):
     def test_only_known_item_rules_read_the_spool(self):
         descriptive = s.bind_rule({"rule_id": "D", "family": "descriptive", "evaluation": "automatic", "params": {}})
         self.assertIsNone(self.read(descriptive))
+
+    def test_sentinel_dispatch_uses_values_for_every_evaluator(self):
+        binding = self.binding(b'["w1"]')
+        for evaluator in (None, "coverage", "descriptive", "known_item"):
+            copied = json.loads(json.dumps(evaluator))
+            if evaluator is not None:
+                self.assertIsNot(copied, evaluator)
+            selected = replace(binding, evaluator=copied)
+            witness(self, f"sentinel-evaluator:{evaluator}", lambda: self.read(selected),
+                    s.KnownItems(a.EvidenceReference(**binding.params["sentinel_set"]), frozenset({"w1"})) if evaluator == "known_item" else None)
+
+    def test_large_sentinel_set_and_the_same_set_with_a_duplicate(self):
+        ids = [f"w{i}" for i in range(257)]
+        binding = self.binding(json.dumps(ids).encode())
+        witness(self, "sentinel-count:unique-above-cache", lambda: self.read(binding).work_ids, frozenset(ids))
+        self.refuses(self.binding(json.dumps([*ids, ids[0]]).encode()), "payload_invalid", "duplicate work ids")
 
     def test_a_parsed_empty_array_keeps_the_rule_unknown(self):
         declared = self.read(self.binding(b"[]"))
@@ -270,6 +341,19 @@ class ProfileSelectionTest(rf.ContractWorld):
         self.assertEqual(caught.exception.reason, "payload_invalid")
         self.assertIn("G-11", caught.exception.detail)
 
+    def test_current_contract_matches_by_value_with_foreign_revisions_on_both_sides(self):
+        revision = int("1000")
+        original = next(gates.records(self.inputs.raw, "contract_revisions"))
+        for other in (999, 1001):
+            current = {**original, "revision": json.loads("1000")}
+            self.assertEqual(current["revision"], revision)
+            self.assertIsNot(current["revision"], revision)
+            foreign = {**original, "revision": other, "protocol_revision": 99}
+            inputs = with_rows(self.inputs, "contract_revisions", [foreign, current])
+            inputs = replace(inputs, coverage=replace(inputs.coverage, inventory=replace(inputs.coverage.inventory, current_contract_revision=revision)))
+            witness(self, f"contract-selection:foreign-{other}", lambda: self.evaluate(inputs).context,
+                    s.Context(rf.TOPIC, 1000, original["protocol_revision"]))
+
 
 PROFILES = rf.contract_doc(1, None)["stopping_profiles"]
 
@@ -305,6 +389,19 @@ class WiringTest(World):
         self.assertEqual(self.states()["load_bearing_verification_tiers"], (U, ()))  # D3: an adverse receipt without an adjudication
         self.accepted("verification_adjudication")
         self.assertEqual(self.states()["load_bearing_verification_tiers"], (N, (a.EvidenceReference(**self.ref),)))  # adjudicated, still no qualifying support
+
+    def test_adjudication_selection_requires_both_kind_and_counting_work(self):
+        self.load_bearing_quote_claim()
+        inputs = self.inputs()
+        for kind in ("counterevidence_search", "competing_explanation", "sufficiency_review", "verification_adjudication"):
+            for outcome in ("incomplete", "verdict_upheld"):
+                # Isolate selection from admission's subject checks: only kind and outcome vary.
+                record = {**self.completion("verification_adjudication"), "kind": kind,
+                          "assessment": {"outcome": outcome, "summary": "selection witness"}}
+                changed = with_rows(inputs, "completion_records", [record])
+                expected = (N, (a.EvidenceReference(**self.ref),)) if kind == "verification_adjudication" and outcome == "verdict_upheld" else (U, ())
+                witness(self, f"adjudication-selection:{kind}:{outcome}",
+                        lambda: view(gates.evaluate(changed, self.spool, NOW))["load_bearing_verification_tiers"], expected)
 
     def test_challenge_gate_needs_every_claim_and_open_contradiction(self):
         self.load_bearing_quote_claim()
@@ -379,6 +476,15 @@ class SupportWiringTest(CaptureCase):
         out = self.send([], verification_receipts=[adverse])
         self.assertEqual(out["status"], "committed", out)
         self.assertEqual(self.verification(), (U, ()))  # D3 outranks the qualifying support
+
+    def test_accepted_claim_requires_support_in_the_detached_capture(self):
+        record, doc = self.operands()
+        self.accepted(record, verification_receipts=[doc])
+        self.promote()
+        inputs = self.inputs()
+        witness(self, "accepted-support:qualifying-receipt", lambda: view(self.evaluate(inputs))["load_bearing_verification_tiers"], (S, ()))
+        missing = with_rows(inputs, "verification_receipts", [])
+        witness(self, "accepted-support:missing-receipt", lambda: view(self.evaluate(missing))["load_bearing_verification_tiers"], (N, ()))
 
     def test_glue_an_unknown_gate_keeps_the_profile_unknown_and_all_satisfied_completes(self):
         record, doc = self.operands()

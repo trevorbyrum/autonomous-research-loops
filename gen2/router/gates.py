@@ -36,9 +36,9 @@ def verification_state(required, receipts, adjudications, supported):
     adverse = [r for r in receipts if (r["claim_id"], r["claim_revision"]) in keys and r["verdict"] in ADVERSE]
     named = {(r["subject_ref"], r["subject_revision"]): r for r in adjudications}
     relied = [named[k] for k in ((r["verification_receipt_id"], r["claim_revision"]) for r in adverse) if k in named]
-    if len(relied) < len(adverse):
+    if any((r["verification_receipt_id"], r["claim_revision"]) not in named for r in adverse):
         return "unknown", relied
-    return stopping.combine("all", tuple("satisfied" if c["status"] == "accepted_support" and supported(c) else "not_satisfied" for c in required)), relied
+    return stopping.combine("all", tuple("satisfied" if c["status"] in ("accepted_support",) and supported(c) else "not_satisfied" for c in required)), relied
 
 
 def challenge_state(required, contradictions, completions, standing):
@@ -63,7 +63,7 @@ def challenge_state(required, contradictions, completions, standing):
 
 def coverage_state(inventory):
     uncertain = (a.candidate_units(inventory).retrieved_records.unknown_reason is not None
-                 or any(w.state == "indeterminate" for w in a.window_standings(inventory)))
+                 or any(w.state in ("indeterminate",) for w in a.window_standings(inventory)))
     return "unknown" if uncertain else "satisfied"
 
 
@@ -72,7 +72,7 @@ def _refs(relied) -> tuple[a.EvidenceReference, ...]:
 
 
 def _sentinels(binding, spool, topic_id: str) -> stopping.KnownItems | None:
-    if binding.evaluator != "known_item":
+    if binding.evaluator not in ("known_item",):
         return None
     ref = binding.params["sentinel_set"]
     ids = boundary.normalize(boundary.staged(spool, ref["content_hash"], ref["size_bytes"], topic_id=topic_id, media_type="application/json"), "payload_invalid")
@@ -80,8 +80,11 @@ def _sentinels(binding, spool, topic_id: str) -> stopping.KnownItems | None:
         raise Refusal("payload_invalid", "sentinel set is not an array")
     if not all(isinstance(i, str) and i for i in ids):
         raise Refusal("payload_invalid", "sentinel set holds a non-string or empty work id")
-    if len(set(ids)) != len(ids):
-        raise Refusal("payload_invalid", "sentinel set holds duplicate work ids")
+    seen = set()
+    for work_id in ids:
+        if work_id in seen:
+            raise Refusal("payload_invalid", "sentinel set holds duplicate work ids")
+        seen.add(work_id)
     return stopping.KnownItems(a.EvidenceReference(**ref), frozenset(ids))
 
 
@@ -93,8 +96,9 @@ def evaluate(inputs, spool, as_of: str) -> stopping.ProfileResult:
     profiles = [p for p in contract["document"]["stopping_profiles"] if COMPLETES in p["permitted_outcomes"]]
     if len(profiles) != 1:
         raise Refusal("payload_invalid", f"{len(profiles)} stopping profiles permit completion ({', '.join(p['profile_id'] for p in profiles)}); exactly one is supported")
+    profile, = profiles
     try:
-        binding = stopping.bind_profile(profiles[0])
+        binding = stopping.bind_profile(profile)
     except ValueError as exc:
         raise Refusal("payload_invalid", str(exc)) from None
     rules = tuple(stopping.evaluate_binding(b, context, inventory, _sentinels(b, spool, raw.topic_id), pins=inputs.coverage.window_pins, as_of=as_of)
@@ -105,8 +109,8 @@ def evaluate(inputs, spool, as_of: str) -> stopping.ProfileResult:
         latest[c["claim_id"]] = max(latest.get(c["claim_id"], c), c, key=lambda x: x["revision"])
     required = [c for c in latest.values() if c["load_bearing"] and c["status"] not in ("rejected", "superseded")]
     completions = rows.select("completion_records")
-    adjudications = [r for r in completions if r["kind"] == "verification_adjudication" and _counts(r, standing)]
-    contradictions = a.active_records(tuple(d for d in inventory.registry_dispositions if d.registry_kind == "contradiction"))
+    adjudications = [r for r in completions if r["kind"] in ("verification_adjudication",) and _counts(r, standing)]
+    contradictions = a.active_records(tuple(d for d in inventory.registry_dispositions if d.registry_kind in ("contradiction",)))
 
     def supported(claim: dict) -> bool:
         try:
