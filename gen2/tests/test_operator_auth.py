@@ -334,11 +334,18 @@ class BackendSurfaceTest(of.OperatorTestCase):
             self.fail("the station's recovery is not reachable through the backend")
         self.assertEqual(answered["reason"], "request_invalid")
         for name in ("_store", "claim", "record_transition", "commit_outcome", "reconcile", "invocation_status", "record_observation",
-                     "record_qualification", "open_reservation", "open_review", "restore_config_bundle", "close",
+                     "record_qualification", "open_reservation", "restore_config_bundle", "close",
                      "recover", "advance", "submit", "prepare", "run", "incidents", "job", "control"):
             with self.subTest(name=name):
                 with self.assertRaises(AttributeError):
                     getattr(backend, name)
+
+        review = {"episode_id": "rev_operator0001", "topic_id": TOPIC, "kind": "fixed_cadence"}
+        self.assertEqual(self.command("open_review", review), (200, {"status": "opened", "episode_id": "rev_operator0001", "triggers": []}))
+        before = self.state(exclude=())
+        self.assertEqual(self.command("open_review", review, token=of.EXPORTER_TOKEN),
+                         (403, {"status": "refused", "reason": "forbidden"}))
+        self.assertEqual(self.state(exclude=()), before)
 
 
 class AuthorityFieldTest(of.CommandWorld):

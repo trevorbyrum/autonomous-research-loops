@@ -1,0 +1,2 @@
+{"fixture": {"schema": "live-vocabulary.schema.json#/$defs/usage", "expect": "valid", "tests": "DEBT-015/RG-U: 11 input, 7 output, 3 cached; no invented cost/credits"},
+ "instance": {"input_tokens": {"state": "reported", "value": 11}, "output_tokens": {"state": "reported", "value": 7}, "cached_tokens": {"state": "reported", "value": 3}, "cost": {"state": "unknown", "reason": "not reported"}, "elapsed_seconds": {"state": "reported", "value": 1.5}, "gateway_credits": {"state": "unknown", "reason": "not reported"}}}

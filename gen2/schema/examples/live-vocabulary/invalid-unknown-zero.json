@@ -1,0 +1,1 @@
+{"fixture": {"schema": "live-vocabulary.schema.json#/$defs/unknown_measurement", "expect": "invalid", "tests": "RG-U: unknown cannot invent zero", "base": "valid-unknown.json", "patch": [{"op": "add", "path": "/value", "value": 0}], "errors": [{"keyword": "additionalProperties", "path": ""}]}}

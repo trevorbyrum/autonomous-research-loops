@@ -89,6 +89,11 @@ Both are re-indexed from the reviewed commit before every Gate D and are availab
   - one coder slot is always on the critical path to 2f (6b2′ → 2e1-minimum → 2e2-minimum → 2f);
   - cleanup, portfolio and tooling work use only the other slot and never pre-empt the critical path;
   - every PR body names the 2f item it serves, or says it is off-path.
+- **Estimating** (Trevor, S3c-6, 2026-11-01; Gate S #3c §6: both re-baselines on 10-31 grew where a design rested on a premise it had itself marked unverified):
+  - **Feasibility facts before figures.** A design whose cost depends on host, runtime, runner or external facts gathers them (read-only) before it gives a number.
+  - **Two tiers.** In-repo work gets a firm figure; premise-dependent work gets a conditional band.
+  - **Infrastructure has its own budget.** Host provisioning and qualification are counted separately from the application slice, never hidden in it.
+  - **A premise register per design:** every premise not verified in the repo or in source, with its owner and the gate that verifies it.
 
 ## Checking-pipeline rules (operator ruling S2-7, 2026-10-27)
 - **Harness changes.** After S2d, the mutation and acceptance pipeline changes only when a real campaign produced a wrong verdict: a survivor later shown killed, or a kill later shown false on clean code. A reviewer-constructed harness adversary is recorded as non-blocking unless the suite can produce the condition.

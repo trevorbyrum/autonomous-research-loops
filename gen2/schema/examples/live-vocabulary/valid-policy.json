@@ -1,0 +1,2 @@
+{"fixture": {"schema": "live-vocabulary.schema.json#/$defs/policy_accounting", "expect": "valid", "tests": "G-10/F5: accounting fragment, no live policy or authority"},
+ "instance": {"run_id": "trial-1", "topic_id": "fleet-a:topic-1", "accounting_owner": "alice", "deadline_at": "2026-10-31T12:00:00Z", "max_attempts": 2, "max_concurrent_attempts": 1, "ceiling_minor_units": 1000, "currency": "USD", "ceiling_scope": ["model", "delegates", "retries", "verification", "gateway", "maintenance"], "policy_version": "v1"}}

@@ -1,0 +1,1 @@
+{"fixture": {"schema": "live-vocabulary.schema.json#/$defs/unknown_measurement", "expect": "valid", "tests": "RG-U: missing telemetry is unknown"}, "instance": {"state": "unknown", "reason": "not reported"}}
