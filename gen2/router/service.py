@@ -968,7 +968,7 @@ class Router:
         try:
             req = boundary.normalize(request, "request_invalid")
             boundary.require_schema(self._schemas, req, "router-commands#/$defs/operator_decision", "request_invalid")
-            if (req["kind"], req["disposition"]) == ("completion_approval", "approved") and self._one("operator_decisions", {"decision_id": req["decision_id"]}) is None:
+            if (req["kind"], req["disposition"]) in frozenset({("completion_approval", "approved")}) and self._one("operator_decisions", {"decision_id": req["decision_id"]}) is None:
                 stored = self._one("dossiers", {"topic_id": req["topic_id"], "dossier_revision": req["subject"]["revision"]})
                 if stored is not None:
                     doc = stored["document"]

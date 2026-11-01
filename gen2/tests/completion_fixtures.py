@@ -3,6 +3,7 @@ import json
 
 from gen2.core import canonical
 from gen2.router import gates
+from gen2.router.boundary import Refusal
 from gen2.tests import router_fixtures as rf
 from gen2.tests.detailed_receipt_fixtures import seed_checks, attach_checks
 from gen2.tests.extraction_receipt_fixtures import seed
@@ -76,8 +77,13 @@ class CompletionFixture(rf.CaptureCase):
 
     def candidate(self, review=True, **sections):
         producer = self.started(self.ids("inv_"), "checkpoint")
-        out = self.router.record_dossier(rf.TOPIC, invocation_id=producer["invocation_id"], history="native")
-        self.assertEqual(out["status"], "recorded")
+        try:
+            out = self.router.record_dossier(rf.TOPIC, invocation_id=producer["invocation_id"], history="native")
+        except (ValueError, Refusal) as exc:
+            if str(exc) not in ("R: sentinel inventory required", "stale_inputs: dossier context differs from captured approved contract"):
+                raise
+            self.fail(f"completion-candidate-recording: expected a recorded dossier, raised {type(exc).__name__}: {exc}")
+        self.assertEqual(out["status"], "recorded", "completion-candidate-recording")
         self.assertEqual(self.finish(producer, self.ids("op_"))["status"], "committed")
         if review:
             self.review(out, **sections)

@@ -54,8 +54,14 @@ class ApprovalTest(rf.ContractWorld):
     def test_unknown_dossier_refuses_even_when_reviewed(self):
         self.f.replace_seed("search_observations", "page_outcome='end_unknown'")
         candidate = self.f.candidate()
-        self.assertEqual(json.loads(self.value("SELECT document FROM dossiers"))["result"]["state"], "unknown")
+        self.assertEqual(json.loads(self.value("SELECT document FROM dossiers"))["result"]["state"], "unknown", "completion-state:unknown")
         self.refused(candidate, "decision_refused", "requires a satisfied dossier")
+
+    def test_not_satisfied_dossier_refuses_even_when_reviewed(self):
+        self.f.replace_seed("claims", "status='quarantined'")
+        candidate = self.f.candidate()
+        self.assertEqual(json.loads(self.value("SELECT document FROM dossiers"))["result"]["state"], "not_satisfied", "completion-state:not_satisfied")
+        self.refused(candidate, "decision_refused", "completion requires a satisfied dossier")
 
     def test_missing_or_invalid_binding_is_typed_and_effect_free(self):
         candidate = self.f.candidate()
