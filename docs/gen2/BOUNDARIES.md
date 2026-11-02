@@ -201,6 +201,18 @@ the latter permits screening delivery; its absence never rewrites historical
 gateway coverage/end fields. Replay retains IDs and delivers records once.
 This does not discharge 2e2's independently re-derivable retrieval evidence.
 
+For the reviewed supervised 2e1 static-key profile, the protected journal binds original
+runtime/CIDs/start/config, networks and source generations before start. The trusted
+dedicated runtime and administrator are the boundary: administrator intervention
+requires prior invalidation, and uncertain intervention invalidates attempt and
+qualification. Direct single-process nginx has no cache capture, status queries or QUIT
+protocol. Rejection uses its unbuffered access log, independent fixture record and
+actual runner failed turn/exit after ingress closure and confirmed writer end. Missing
+or extra evidence is unknown and stops. Runner has no evidence/control/socket/PID
+mapping. Fixed-file collection reuses the bounded descriptor-relative no-follow reader
+and immutable spool publication; files alone grant neither completion nor Router
+authority. All relevant descendants must end before capacity release.
+
 - **Definition:** the one lifecycle implementation for every execution kind (research pass, discovery, delegate, verification, checkpoint); code.
 - **Owns:** launch intent records before spawn; process identity (invocation/job handle + host/boot/start fingerprint — never bare PID); deadlines, cancellation, descendant handling; result retention and durable delivery receipts; structural telemetry (progress signatures, capability probes, retrieval-event capture at retrieval time); snapshot assembly for checkpoints/decisions (typed records + extractive quotes only).
 - **Produces:** invocation records `admitted→launching→running→result_ready→committed` (+ explicit cancelled/failed/`outcome_unknown`); staged immutable content-addressed artifacts in the protected spool; search observations with request identity/coverage/yield; screening-event records.
