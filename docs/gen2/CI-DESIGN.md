@@ -104,7 +104,7 @@ Engine work fixes **worker budgeting**: mutation jobs come from the container's 
 
   It runs inside the no-egress boundary (§3.6), because these are candidate-controlled checkers.
 - **Acceptance tests:** the engine suite, the gateway suite without a DB and the gateway suite with a DB. JUnit for each. A report of **executed test identities and unexpected skips**, compared against the expected set.
-- **Mutation:** automatic mutation over production lines changed against the explicit base at acceptance (survivors fail; an unavailable base is rejected); full campaign nightly and at phase gates, report-only. Selection is native git changed-line filtering against `GEN2_BASE`; high-risk and unclassified changes run the full campaign; selected and omitted files are recorded in the mutation report. The unmutated baseline is kept; per-test oracle review stays with Gate C.
+- **Mutation:** weekly and report-only over production lines changed since the last campaign (`make gen2-campaign GEN2_BASE=<last-campaign-sha>`); full tree at phase gates; survivors go to `docs/gen2/MUTATION-LEDGER.md`. Selection is native git changed-line filtering against `GEN2_BASE`; selected and omitted files are recorded in the mutation report. The unmutated baseline is kept; per-test oracle review stays with Gate C.
 
 ### 3.4 Protected-path and test-integrity review signals (R2)
 
