@@ -216,6 +216,19 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
   - **The prerequisite stop is amended 650 → 665.**
   - **The READY host rows in `private/reviews/gen2-2e1-host-approval-package-20261101.md` are approved** as written, tied to the reviewed hashes. Applying them is a later, separate task, after the remaining design gates close. Built-image digests, activation and qualification aren't covered.
 
+- **2026-11-02, Trevor's rulings on Gate S #4** (`private/reviews/gen2-gate-s4-fable-20261102.md` §10; all accepted):
+  - **S4-1:** trim Decision T's management protocol: relay evidence is the access log, the fixture record and the runner failure.
+  - **S4-2:** withdraw the missing-evidence acquisition; pin images by digest after one authorized pull and one build.
+  - **S4-3:** apply the approved host rows minus storage, quota and guard; `--ulimit`, tmpfs sizes and a free-space floor bound the runner; kernel quotas go to a DEBT entry.
+  - **S4-4:** design round cap of two; ACCEPTED WITH CHANGES counts; design rounds count toward the task total.
+  - **S4-5:** Tiers + Trevor's approval on High.
+  - **S4-6:** Gate S trigger 3 at a cumulative 1.3× instead of 2×.
+  - **S4-7:** Gate B retired to Gate D and phase gates; the coder pre-check and the S2-7 harness-change bullet are deleted.
+  - **S4-8:** mutation becomes a weekly report-only campaign; the per-PR gate is `gen2-check`.
+  - **S4-9:** re-baselined 2e1: application about 1,950/2,150, prerequisite about 370/450; stops unchanged.
+  - **S4-10:** ETA acknowledged: 2f Nov 28 (P50) / Dec 5 (P80); Phase 2 mid-December.
+  - **S4-11:** the VM host is the fallback if the rootless Docker witnesses fail, replacing the nft fallback.
+
 ## Current contract
 
 **No slice is in flight.** 6a parts 1–3 are done (part 3 merged as `dbbdced`,

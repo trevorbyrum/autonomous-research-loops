@@ -25,18 +25,24 @@ GEN2_TEST_WORKERS ?= 8
 GEN2_CC_MAX_FUNCTION = 48
 GEN2_CC_MAX_AVERAGE = 10
 
-.PHONY: gen2-check gen2-accept gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-traceability gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-accept gen2-campaign gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-traceability gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-auth-demo gen2-gateway
 
 gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-size
 	@echo "gen2-check: all checks passed"
 
-# Acceptance runs the full checks, then changed-line mutation.
+# Acceptance is the full checks. Mutation runs weekly, report-only, via gen2-campaign.
 gen2-accept: export GEN2_TEST_COVERAGE = $(abspath $(GEN2_COVERAGE))
 gen2-accept: GEN2_TEST_ARGS += --workers $(GEN2_TEST_WORKERS)
-gen2-accept: export GEN2_MUTATION_ARGS += --workers $(GEN2_TEST_WORKERS)
 gen2-accept: gen2-check
-	$(MAKE) gen2-mutation
 	@echo "gen2-accept: all checks passed"
+
+# Periodic campaign: full checks with coverage, then report-only mutation since GEN2_BASE.
+gen2-campaign: export GEN2_TEST_COVERAGE = $(abspath $(GEN2_COVERAGE))
+gen2-campaign: GEN2_TEST_ARGS += --workers $(GEN2_TEST_WORKERS)
+gen2-campaign: export GEN2_MUTATION_ARGS += --workers $(GEN2_TEST_WORKERS) --report-only
+gen2-campaign: gen2-check
+	$(MAKE) gen2-mutation
+	@echo "gen2-campaign: complete"
 
 .PHONY: gen2-push gen2-ci gen2-ci-default gen2-ci-unit gen2-ci-mutation gen2-ci-gateway-no-db gen2-ci-gateway-db
 # T0 is deliberately separate from full acceptance. No acceptance verdict is
