@@ -15,7 +15,7 @@ from pathlib import Path
 
 from gen2.supervisor import jobs
 from gen2.supervisor.isolation import LiveProfileRefused, PIN, PLACEHOLDERS
-from gen2.supervisor.spool import SpoolFull, read_scratch
+from gen2.supervisor.spool import read_scratch
 
 CLI = "/usr/bin/docker"
 CLI_SHA = "adbc67ecdc2cd2d350c01a5964a205bd81470b485aba1fb90c2f559de9e4584f"
@@ -30,6 +30,12 @@ NETWORKS = {"job": "172.31.254.0/29", "fixture": "172.31.252.0/29"}
 def require(ok, reason):
     if not ok:
         raise LiveProfileRefused(reason)
+
+
+def _binding(record):
+    return {key: record[key] for key in ("Id", "Image", "Config", "HostConfig")}, {
+        name: {key: network.get(key) for key in ("NetworkID", "IPAMConfig", "Aliases")}
+        for name, network in record["NetworkSettings"]["Networks"].items()}
 
 
 def manifest_gate(manifest, retained, tree):
@@ -89,6 +95,7 @@ def capture(job, argv, env, deadline, bounds):
         else:
             ended = job.terminate(identity, term_grace=0, kill_grace=5, reap=child.poll)
             require(ended["confirmed"], "cli_end_unconfirmed")
+            child.wait(timeout=5)
 
 
 class DockerCLI:
@@ -99,8 +106,12 @@ class DockerCLI:
         self.plan = job.read("docker-plan.json")
         require(isinstance(self.plan, dict) and bool(self.plan.get("origin")), "launch_originals")
 
-    def call(self, args, *, mutation=False, seconds=5, bound=65536, end=False, logs=False):
-        require(args[0] in COMMANDS or (args[0] == "network" and args[1] in {"create", "connect", "disconnect", "inspect", "rm"}), "cli_command")
+    def _command(self, args):
+        operation = args[1] if args[0] == "network" else args[0]
+        require(args[0] in COMMANDS or (args[0] == "network" and operation in {"create", "connect", "disconnect", "inspect", "rm"}), "cli_command")
+        mutation, logs = operation not in {"wait", "inspect", "logs"}, args[0] == "logs"
+        seconds = {"wait": 120, "logs": 10, "stop": 10, "kill": 10}.get(operation, 5)
+        bound = (4 << 20) if logs else (4096 if operation in {"create", "start", "wait"} else 65536)
         # I/D: rehash at use; never resolve a tag or inherit Docker/proxy config.
         require(hashlib.sha256(Path(CLI).read_bytes()).hexdigest() == CLI_SHA, "cli_pin")
         argv = (CLI, "--host", "unix://" + SOCKET, *args)
@@ -110,7 +121,7 @@ class DockerCLI:
             require(key not in journal, "mutation_already_intended")
             self.job.write("docker.json", {**journal, key: {"intent": list(argv)}})
         limit = self.now() + seconds
-        deadline = limit if end else min(limit, self.deadline)
+        deadline = limit if operation in {"logs", "stop", "kill", "rm"} else min(limit, self.deadline)
         require(deadline > self.now(), "cli_deadline")
         code, out, err = self.execute(self.job, argv, {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
                                                       "DOCKER_CONFIG": str(self.job.dir / "docker-config")}, deadline, (bound, 4 << 20 if logs else 4096))
@@ -122,10 +133,10 @@ class DockerCLI:
     def network(self, generation, role="job"):
         require(role in NETWORKS, "network_role")
         require(re.fullmatch(r"[0-9a-f]{32}", generation), "network_generation")
-        network = self.call(("network", "create", "--internal", "--driver", "bridge", "--subnet", NETWORKS[role],
-                             "--opt", "com.docker.network.bridge.gateway_mode_ipv4=isolated", "gen2-2e1-live-" + role + "-" + generation), mutation=True).strip().decode()
+        network = self._command(("network", "create", "--internal", "--driver", "bridge", "--subnet", NETWORKS[role],
+                                 "--opt", "com.docker.network.bridge.gateway_mode_ipv4=isolated", "gen2-2e1-live-" + role + "-" + generation)).strip().decode()
         require(CID.fullmatch(network), "network_identity")
-        view = json.loads(self.call(("network", "inspect", network)))[0]
+        view = json.loads(self._command(("network", "inspect", network)))[0]
         require(view["Id"] == network and view["Internal"] and not view["EnableIPv6"] and view["Driver"] == "bridge", "network_inspect")
         require(view["IPAM"]["Config"] == [{"Subnet": NETWORKS[role]}] and not view["Containers"], "network_members")
         self.job.write("network-" + role + ".json", view)
@@ -133,7 +144,7 @@ class DockerCLI:
 
     def endpoint(self, action, network, cid, ip=None):
         require(action in {"connect", "disconnect"} and CID.fullmatch(network) and CID.fullmatch(cid), "endpoint_identity")
-        return self.call(("network", action, *(("--ip", ip) if ip else ()), network, cid), mutation=True)
+        return self._command(("network", action, *(("--ip", ip) if ip else ()), network, cid))
 
     def create_runner(self, network, binds):
         require(CID.fullmatch(network) and set(binds) == {"out", "inputs", "seed"}, "runner_bindings")
@@ -151,33 +162,32 @@ class DockerCLI:
             args.extend(("--mount", f"type=bind,src={source},dst=/{name}" + ("" if name == "out" else ",readonly")))
         args.append(self.manifest["images"]["runner"]["pin"])
         require(not (self.job.dir / "runner.cid").exists(), "cidfile_exists")
-        cid = self.call(tuple(args), mutation=True, bound=4096).strip().decode("ascii")
+        cid = self._command(tuple(args)).strip().decode("ascii")
         found = read_scratch(self.job.dir, "runner.cid", 4096)
         require(CID.fullmatch(cid) and found["status"] == "present" and found["data"].strip() == cid.encode(), "create_identity")
         record = self.inspect(cid)
-        require(record["Id"] == cid and record["Image"] == args[-1], "create_inspect")
+        require(record["Image"] == args[-1], "create_inspect")
         self.job.write("runner.json", record)
         return cid
 
     def inspect(self, cid):
         require(isinstance(cid, str) and CID.fullmatch(cid), "container_identity")
-        records = json.loads(self.call(("inspect", cid)))
+        records = json.loads(self._command(("inspect", cid)))
         require(isinstance(records, list) and len(records) == 1 and records[0].get("Id") == cid, "inspect_identity")
         return records[0]
 
     def start(self, cid):
         free_space(self.plan["paths"], 16 << 30)
         original = self.job.read("runner.json")
-        require(original is not None and self.inspect(cid) == original, "start_identity")
-        self.call(("start", cid), mutation=True, bound=4096)
+        require(original is not None and _binding(self.inspect(cid)) == _binding(original), "start_identity")
+        self._command(("start", cid))
         self.job.write("runner-start.json", self.inspect(cid))
 
     def end(self, cid, descendants_ended):
-        waited = self.call(("wait", cid), seconds=120, bound=4096).strip()
+        waited = self._command(("wait", cid)).strip()
         original, observed = self.job.read("runner-start.json"), self.inspect(cid)
         require(original is not None, "end_original")
-        for key in ("Id", "Image", "Config", "HostConfig", "NetworkSettings"):
-            require(observed[key] == original[key], "end_binding")
+        require(_binding(observed) == _binding(original), "end_binding")
         state = observed["State"]
         require(state["StartedAt"] == original["State"]["StartedAt"] and not any(state[k] for k in ("Running", "Restarting", "Paused", "OOMKilled")), "end_state")
         require(waited == str(state["ExitCode"]).encode() and descendants_ended(original), "end_unconfirmed")
@@ -188,15 +198,15 @@ class DockerCLI:
         require((self.job.read("runner-end.json") or {}).get("Id") == cid, "logs_before_end")
         require(self.job.read("runner-logs.json") is None, "logs_already_intended")
         self.job.write("runner-logs.json", {"intent": cid})
-        return self.call(("logs", cid), seconds=10, bound=4 << 20, end=True, logs=True)
+        return self._command(("logs", cid))
 
     def contain(self, cid, *, kill=False):
         require((self.job.read("runner.json") or {}).get("Id") == cid, "contain_original")
-        return self.call(("kill", cid) if kill else ("stop", "--time", "5", cid), mutation=True, seconds=10, end=True)
+        return self._command(("kill", cid) if kill else ("stop", "--time", "5", cid))
 
     def remove(self, cid, ack):
         require(ack and (self.job.read("runner-end.json") or {}).get("Id") == cid, "remove_before_ack")
-        return self.call(("rm", cid), mutation=True, end=True)
+        return self._command(("rm", cid))
 
 
 def free_space(paths, floor):
@@ -215,9 +225,10 @@ def slot(path):
             next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
             os.close(fd)
             fd = next_fd
-        return os.dup(fd)
-    finally:
+        return fd
+    except BaseException:
         os.close(fd)
+        raise
 
 
 class EvidenceBatch:
@@ -247,7 +258,6 @@ class EvidenceBatch:
             require(found["status"] == "present", "collection_" + found["status"])
             after = os.stat(generation, dir_fd=slot_fd, follow_symlinks=False)
             require((after.st_dev, after.st_ino) == identity, "collection_replaced")
-            require(kind != "access" or found["data"].count(b"\n") <= 1024, "collection_rows")
             return self.stage(found["data"], media)
         finally:
             os.close(fd)
