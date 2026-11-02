@@ -80,7 +80,9 @@ def _write_once(dir_fd: int, name: str, payload: bytes) -> None:
     try:
         os.link(tmp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd, follow_symlinks=False)
     except FileExistsError:
-        pass  # staged meanwhile; content-addressed, so the entry is these bytes (the reader re-hashes)
+        found = read_scratch(dir_fd, name, len(payload))
+        if found["status"] not in {"present", "empty"} or (found["data"] or b"") != payload:
+            raise SpoolConflict("existing publication differs from retained bytes")
     finally:
         os.unlink(tmp, dir_fd=dir_fd)
     os.fsync(dir_fd)
@@ -100,7 +102,7 @@ def _read_bounded(fd: int, bound: int) -> bytes:
 STABLE = ("st_dev", "st_ino", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")  # what a stable read keeps unchanged
 
 
-def read_scratch(scratch: str | Path, name: str, bound: int) -> dict:
+def read_scratch(scratch: str | Path | int, name: str, bound: int) -> dict:
     """Read the file `name` of a job's scratch directory, as found, without
     following anything. {"status": present | absent | empty | refused, "data",
     "detail"}; refused covers a symlink (on the directory or the file), a
@@ -110,7 +112,7 @@ def read_scratch(scratch: str | Path, name: str, bound: int) -> dict:
     if not NAME.match(name):
         raise ValueError(f"{name!r} is not one component of a scratch directory")
     try:
-        dir_fd = os.open(scratch, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        dir_fd = os.dup(scratch) if isinstance(scratch, int) else os.open(scratch, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except FileNotFoundError:
         return {"status": "absent", "data": None, "detail": "the scratch directory is gone"}
     except OSError as exc:
@@ -204,6 +206,9 @@ class Spool:
             if recorded is not None and recorded["media_type"] != media_type:
                 raise SpoolConflict(f"{content_hash} is staged for {topic_id} as {recorded['media_type']}, not {media_type}")
             if recorded is not None and self._exists(dir_fd, name):
+                found = read_scratch(dir_fd, name, len(data))
+                if recorded["size_bytes"] != len(data) or found["status"] not in {"present", "empty"} or (found["data"] or b"") != data:
+                    raise SpoolConflict("existing digest object failed verification")
                 return ref
             used = self.usage() if self._used is None else self._used
             if used + len(data) > self.quota_bytes:
