@@ -96,6 +96,18 @@ Both are re-indexed from the reviewed commit before every Gate D and are availab
   - **Two tiers.** In-repo work gets a firm figure; premise-dependent work gets a conditional band.
   - **Infrastructure has its own budget.** Host provisioning and qualification are counted separately from the application slice, never hidden in it.
   - **A premise register per design:** every premise not verified in the repo or in source, with its owner and the gate that verifies it.
+- **Test-growth cap (Trevor, 2026-11-02).** A PR's added hand-written test and test-support lines must be no more than about twice its added production lines, unless the reviewer records why the extra tests are needed.
+  - Count physical added lines, including fixtures and helpers, in the PR's diff against its merge base. Count test-only helpers as tests wherever they live, and use the same convention for production.
+  - Don't net unrelated deletions against either side, and don't exclude moved test code to make the ratio pass. The brief and the review record both counts.
+  - For a test-only regression, strengthening or consolidation PR, the reviewer records the exception and its reason, including the net test-line change.
+  - Protected archived-mutant and known-failure witnesses take precedence over this cap.
+  - Demoting tests to a scheduled tier reduces PR runtime, not the test-line inventory.
+  - Before the Phase 2→3 gate, report the test/support inventory against the floor of about 46,000 lines (Trevor, 2026-11-03).
+- **Forward test rules (Trevor, 2026-11-03; test compaction report §6):**
+  1. **One refusal idiom:** new refusal witnesses use `RouterTestCase.refused` or `StoreTestCase.rejects`/`refuses`. A local refusal helper or an inline before-state block needs a recorded reason, and Gate C checks the diff for both.
+  2. **Docstrings** name the rule, the oracle and the limits; history goes to REVIEW-LOG. Module docstrings stay under about fifteen lines.
+  3. **Three same-shape cases make a table.** One witness per layer: a new rule names its owning layer in INVARIANTS "Enforced at", and a doubled guard is justified in the brief.
+  4. **Gate S reports the shape:** test lines per production line, protected IDs, the count of local refusal helpers, and docstring lines.
 
 ## Checking-pipeline rules (operator ruling S2-7, 2026-10-27)
 - **Demotion ladder.** A check moves one step at a time: blocking on every PR → report-only on a schedule → report-only at phase gates → off, on the catch record. Deletion needs a replay of the past failures credited to the check. A pipeline change is briefed with its cost budget and measured before review (the S2b-C1 lesson).
