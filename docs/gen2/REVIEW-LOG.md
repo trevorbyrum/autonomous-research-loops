@@ -4029,3 +4029,30 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - Final forecasts: application 2,357 upper; prerequisite 665 upper (stop amended).
   - **The pattern recorded:** about ten design rounds in 24 h, each adding justified mechanism. It will be reviewed against the 2f target after the static closures and the missing-evidence list.
 - **Open:** the static pre-brief closures for the complete PR 2 (Sol `f4e15011`).
+
+## 2026-11-02/03: Gate S #4; process changes merged (#104); 2e1 narrowed (v7) and PR 2b-i; the test-cut findings
+- **Gate S #4** (Fable `ce7c9568`, `gen2-gate-s4-fable-20261102.md`):
+  - 2e1 carried about twice the mechanism a supervised 2f needs, grown by uncapped design rounds (eight Astra rounds in 23 h);
+  - the narrower 2e1: a Docker CLI launcher, log-based rejection, single-file collection, digest-pinned images, and no storage or quota machinery;
+  - the process rules, and mutation moving to a weekly report-only run.
+  - **Trevor accepted S4-1 to S4-11** (DOSSIER).
+- **The process PR #104** (`5babc6e`, Sonnet `24f3be79`): the charter, mutation to periodic (`gen2-accept` = `gen2-check`; a new `gen2-campaign`; `docs/gen2/MUTATION-LEDGER.md`), and the DOSSIER rulings.
+  - Astra PASS; verifier exit 0 in 873 s (no mutation step); merged-tree check passed.
+  - Trevor approved the High-tier merge. Merged.
+  - **The weekly campaign schedule is `60659e2f`:** Sundays at 02:00 UTC, a fresh Sonnet runner, report-only.
+- **2e1 v7** (Sol `2adb58c3`): Astra ACCEPTED in round 1 (of 2), with no P0/P1 findings. The host rows are ready, and Trevor approved I01, I02 and F01.
+- **2e1 PR 2b:** the draft (#105) exceeded its production allocation (261 against about 150–175).
+  - Astra's size review found no P0/P1 defect and only modest trims.
+  - Trevor raised the production stop to 950.
+  - **#105 became 2b-i** (`d3ecc4d`; 567 additions: production 271, tests 250, records 46). Astra PASS; the verifier is running; it needs Trevor's High-tier approval.
+  - 2b-ii (relay sequencing and supervisor integration) follows.
+- **Host apply O0–O2** (Sol `1c8b2a38`):
+  - stopped twice on group-writable ancestors (Trevor approved `chmod 755` on five home directories);
+  - O1 installed and verified the four packages (P01–P57); dpkg is clean;
+  - O2 stopped at D03 on the agent's own helper check (owner 110000), and is resuming.
+  - No daemon start, pull or build.
+- **The test cut:**
+  - the Sol plan (`gen2-test-cut-plan-20261102.md`): R 920 / D 383 / S 7,615 / C 42,116, with 1,483 protected IDs; only about 158 lines safely deletable;
+  - the Fable second opinion (`gen2-test-compaction-fable-20261102.md`): the C classification is right; compaction with the same catches is worth about 1,250–1,900 lines (3–4%), and docstrings 1,200–2,200; the real duplication is production design (doubled SQL/Router guards, the checkers).
+  - **Trevor:** a floor of about 46k by the Phase 2→3 gate; the docstring trim; the 25-edit cap relaxed for mechanical folds; the doubled guards and the checker consolidation routed to Gate S.
+- **Records:** DEBT-055 (unattended storage and lifecycle hardening, Phase 3); the charter test-growth cap and the forward test rules.

@@ -228,6 +228,16 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
   - **S4-9:** re-baselined 2e1: application about 1,950/2,150, prerequisite about 370/450; stops unchanged.
   - **S4-10:** ETA acknowledged: 2f Nov 28 (P50) / Dec 5 (P80); Phase 2 mid-December.
   - **S4-11:** the VM host is the fallback if the rootless Docker witnesses fail, replacing the nft fallback.
+- **2026-11-02/03, Trevor's later rulings:**
+  - **New host rows approved:** I01 (one pull of the four official images on the dedicated socket, pinned by digest), I02 (one batch build of the four custom images from the reviewed tree, never pushed, with up to four hash-locked wheels) and F01 (free-space floors: 16 GiB launch/build, 8 GiB supervised stop, 2 GiB collection margin). The rows are in `private/reviews/gen2-2e1-prereq-design-v7-20261102.md`.
+  - **Home-directory permissions:** `~/.local`, `~/.local/share`, `~/.config`, `~/.config/systemd` and `~/.config/systemd/user` changed from 775 to 755, so the host package's secure-ancestor checks pass. The record and undo are in `private/evidence/2e1/host-apply/operator-chmod-20261102.txt`.
+  - **2e1 production stop raised 850 → 950;** the total 2,400, tests 1,000 and landings ≤600 are unchanged. PR 2b splits into 2b-i (#105) and 2b-ii.
+  - **Tests:**
+    - the halving mandate is replaced by **a floor of about 46k test lines by the Phase 2→3 gate**, through the six-step compaction program in `private/reviews/gen2-test-compaction-fable-20261102.md`, on the second slot;
+    - the per-PR test-growth cap and the forward test rules are adopted (charter, Build throughput);
+    - **docstrings** keep only the rule, the oracle and the limits; the review history is trimmed as a mechanical batch;
+    - mechanical compaction batches may exceed the 25-edited-test-ID cap when the kill-set re-run proves every catch is preserved;
+    - **routed to the next Gate S:** retiring the SQL copy of rules the Router also enforces, and folding the custom checkers into one lint.
 
 ## Current contract
 
