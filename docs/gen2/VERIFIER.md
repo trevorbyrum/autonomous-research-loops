@@ -25,11 +25,11 @@ When CI meets the CI design's §4 qualification, CI replaces this role.
    - `cp -a /home/trevor/work/autonomous-research-loops/.venv-gen2 .`, never a symlink;
    - `touch .venv-gen2/.gen2-installed`;
    - `make gen2-schemas gen2-ddl gen2-catalog-check`. Stop and report if this fails.
-3. Run `make gen2-accept GEN2_BASE=<merge-base>` for acceptance. Attach its `mutation-report.json` and session directory; survivors are failures. The verifier reports outcomes and never judges exemptions. **Run each target unpiped**, one after another, inside `systemd-run --user --unit=gen2-verify-<task> --collect -p MemoryMax=20G` (pass the pinned `GEN2_BASE` to `gen2-accept`):
+3. Run `make gen2-accept GEN2_BASE=<merge-base>` for acceptance. The verifier reports outcomes and never judges exemptions. **Run each target unpiped**, one after another, inside `systemd-run --user --unit=gen2-verify-<task> --collect -p MemoryMax=20G` (pass the pinned `GEN2_BASE` to `gen2-accept`):
    - write each target's full log to `<evidence>/<target>.log`;
    - write `{"target", "exit", "seconds", "sha"}` to `<evidence>/<target>.exit.json`.
 4. **Report** the SHA, the clone path, each target's exit code and duration, and the last 20 lines of each log. Also report any environment problem.
-   - Record the base SHA. Trigger-order is retired (operator ruling S2-2, 2026-10-27): `gen2-accept` is gen2-check (sharded units) followed by changed-line mutation. Report the shard count, the unit test count, and the mutation report's status and counts.
+   - Record the base SHA. Trigger-order is retired (operator ruling S2-2, 2026-10-27): `gen2-accept` is gen2-check (sharded units). Mutation is not part of it (S4-8). Report the shard count and the unit test count.
    - Report only what you observed. Don't interpret failures or propose fixes.
 5. **Remove the clone** after reporting, unless a target failed. A failed clone is kept for the reviewer.
 
@@ -39,3 +39,9 @@ When CI meets the CI design's §4 qualification, CI replaces this role.
 - Never touch gen-1 runtime state or `127.0.0.1:8765`.
 - Never run a migration against a real database.
 - Look up AGENTS.md only inside the repository. Read nothing outside the clone, the evidence directory and this file.
+
+## Campaign procedure (weekly, report-only)
+1. Clone at `origin/gen2` head, set up the venv as in Procedure step 2, and read `GEN2_BASE` from the header of `docs/gen2/MUTATION-LEDGER.md`.
+2. Run `make gen2-campaign GEN2_BASE=<last-campaign-sha>` unpiped, under `flock /home/trevor/.cache/gen2-heavy.lock systemd-run --user --wait --collect --unit=gen2-campaign-<date> -p MemoryMax=20G`. At a phase gate, run `make gen2-mutation-report` instead.
+3. Write the log, `<target>.exit.json` and `mutation-report.json` to `~/work/research-loops-public/private/evidence/mutation-campaigns/<date>/`.
+4. Report the head SHA and the survivors (file:line, operator). The orchestrator records them in the ledger.

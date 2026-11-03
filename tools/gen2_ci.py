@@ -2,8 +2,8 @@
 """Run one explicit CI workload. Scheduling and status aggregation belong to Jenkins.
 
 The default is T0 only. Full acceptance requires every engine test shard and
-the changed-line mutation campaign and both gateway modes; no subset implies
-acceptance.
+both gateway modes; no subset implies acceptance. The mutation campaign is
+periodic and report-only, and `engine-mutation` stays for that lane.
 """
 from __future__ import annotations
 

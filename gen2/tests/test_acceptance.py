@@ -36,7 +36,7 @@ class AcceptanceSelectionTest(unittest.TestCase):
         (self.root / "tools").mkdir()
         (self.root / "tools/gen2_mutation_scope.py").write_text(
             "import argparse, os\nfrom pathlib import Path\n"
-            "parser = argparse.ArgumentParser()\nparser.add_argument('--base', required=True)\nparser.add_argument('--coverage')\nparser.add_argument('--workers', type=int)\n"
+            "parser = argparse.ArgumentParser()\nparser.add_argument('--base', required=True)\nparser.add_argument('--coverage')\nparser.add_argument('--workers', type=int)\nparser.add_argument('--report-only', action='store_true')\n"
             "args = parser.parse_args()\nPath('mutation-base').write_text(args.base)\n"
             "Path('shared-coverage').write_text(os.path.abspath(args.coverage))\n"
             "with Path('step-order').open('a') as log: log.write('mutation\\n')\n"
@@ -58,7 +58,7 @@ class AcceptanceSelectionTest(unittest.TestCase):
         skipped = ["gen2-sqlite", "gen2-sqlite-native", "gen2-boundaries", "gen2-complexity", "gen2-debt",
                    "gen2-locators", "gen2-schemas", "gen2-ddl", "gen2-catalog-check", "gen2-size"] if run_units else ["gen2-check"]
         command = ["make", "--no-print-directory", *[arg for name in skipped for arg in ("-o", name)],
-                   "gen2-accept", f"PYTHON={sys.executable}"]
+                   "gen2-campaign", f"PYTHON={sys.executable}"]
         if base is not None:
             command.append(f"GEN2_BASE={base}")
         if coverage is not None:
@@ -92,4 +92,4 @@ class AcceptanceSelectionTest(unittest.TestCase):
         self.assertEqual((self.root / "step-order").read_text().splitlines(), ["mutation"], result.stdout)
         self.assertTrue((self.root / "mutation-base").exists(), result.stdout)
         self.assertNotEqual(result.returncode, 0, result.stdout)
-        self.assertNotIn("gen2-accept: all checks passed", result.stdout)
+        self.assertNotIn("gen2-campaign: complete", result.stdout)
