@@ -123,8 +123,10 @@ operator authority.
 
 ### 1.2 Healthchecks
 
-Every container declares a healthcheck, and every healthcheck answers about the
-thing that container owns — not about a dependency.
+Long-running stack services declare an ownership healthcheck. The supervised 2e1 runner,
+direct single-process relay and finite fixture/initializer/verifier jobs instead use
+supervisor start/end evidence; periodic and inherited healthchecks are disabled for
+them. This exception grants no general service-healthcheck waiver.
 
 | Service | Check | Healthy means | Explicitly **not** part of the check |
 |---|---|---|---|
@@ -167,8 +169,8 @@ documented operator act (§4).
 | Decision thresholds and action-policy versions | **mounted**, read-only | restart | Same reason; they pin to question versions. |
 | Approved contracts, evidence, dossiers, receipts (the control store) | **mounted**, read-write, `engine` only | live | The record of scientific work; never in an image. |
 | Logs, spool, staged artifacts | **mounted**, read-write | live | Content-addressed staging under trusted station code. |
-| Secrets (`.env` file, or Vault token files) | `0400`: host Compose operator reads env; Vault token files mounted read-only for trusted services | restart (env) / ≤15 min (Vault cache) | §3. |
-| Per-provider agent auth homes | **mounted**, read-write, one volume per provider | live | §4. |
+|Secrets (service-specific env files, or Vault token files)|Env files host-owned0400 under0700; Compose injects only recipient variables, no env-file bind. Vault files readonly service-owned0400 only in an admissible profile.|restart / Vault cache interval|§3; no operator/grantor/DB secret to runner, relay or fixture.|
+|Per-provider agent auth homes|Persistent read-write directory volumes for refresh profiles; reviewed 2e1 uses a persistent readonly seed and fresh per-attempt0700 auth tmpfs.|live for qualified refresh profiles; new attempt for seed revision|§4; static-key exception proves no refresh concurrency.|
 | `wrappers/` | **mounted**, read-only, **operator-owned and explicitly operator-trusted** | restart | §4. The one place a non-image executable enters. |
 | Connector enablement and per-topic export options | **mounted**, read-only | restart | `EXPORT-API.md` §5; connection strings are secrets, not config. |
 
@@ -202,15 +204,12 @@ breaks both rules in §3.3, and the engine's does not exist yet.
 
 ### 3.1 The `env` backend
 
-One file, `deploy/gen2.env`, gitignored, `0400`, read by the host Compose
-operator, which passes only needed variables to trusted services; the runner
-receives neither the file nor those service secrets. Every name in it, with its
-grouping and comments, is generated: `deploy/gen2.env.example` (see
-`docs/gen2/SOURCE-CATALOG.md`). Source keys are
-`RESEARCH_GATEWAY_SECRET_<NAME>[_<FIELD>]`, the gateway's own scheme, which the
-gen-2 stack keeps. In this mode the current gateway image meets this contract
-as it is. `EnvBackend.get` reads the process environment, so a value is either
-present or absent. No read can fail and be mistaken for an absence.
+Service-specific env files remain on the host, gitignored, operator-owned0400 under0700.
+Compose reads each and injects only its recipient's variables; env files are not
+container binds. Names/grouping are documented in deploy/gen2.env.example and SOURCE-
+CATALOG.md; source keys remain RESEARCH_GATEWAY_SECRET_<NAME>[_<FIELD>]. EnvBackend
+reads process environment: present or absent, never a failed read converted into
+absence. Runner, relay and fixture receive no operator, grantor or DB variables.
 
 ### 3.2 The `vault` backend
 
@@ -291,7 +290,7 @@ payload) becomes `{}` and then `None`, the value of a missing key
 (`VaultBackend._read`, `get`). The engine's and exporter's vault backend is
 gen-2 code that does not exist yet. Until the release below exists, the gen-2
 gateway runs with `RESEARCH_GATEWAY_SECRETS=env` and the engine with
-`GEN2_SECRETS=env`, both from the one mounted `.env` (§3.1).
+`GEN2_SECRETS=env`, each from recipient-specific variables injected by Compose from host-owned service-specific env files (§3.1).
 
 *Task 2b (branch `gen2`, 2026-09-30):* the gateway CODE on this branch now keeps every
 read's outcome (found / absent / failing), refuses to start without an explicit
@@ -420,6 +419,18 @@ live provider call is admissible. An optional provider liveness check (a
 non-billing token exchange) may be added later as a deployment choice; it is not
 required.
 
+**2e1 static-key exception.** A persistent versioned administrator seed is0700,
+containing exactly auth.json/config.toml/models.json regular files0400. Only its
+selected job maps it readonly. The image-baked wrapper copies bounded hash-checked files
+(total≤1MiB, no links/extras) into fresh per-attempt0700 /auth/codex tmpfs
+owned10001:10001. Missing, unreadable or changed seeds refuse. No ambient
+auth/config/proxy, OAuth/refresh, command auth or fallback is selected. Replacement
+preserves seed identity/permissions and creates new tmpfs; ephemeral changes do not
+persist. Same-UID tools can change their own copy;0400 is a launch condition. This
+exception proves no refresh/concurrency property and leaves AUTH-DEMO history intact.
+Offline seeds are dummy keys, cannot enable real egress, and do not discharge genuine
+rejection, spending or remediation gates.
+
 *Status (task 1f, 2026-09-28, corrected by task 1f-repair, 2026-09-29;
 evidence `docs/gen2/AUTH-DEMO.md`; this note changes no requirement).* With
 the pinned runner codex 0.153.2, (a), (b) and (c) are demonstrated, and (d)
@@ -470,6 +481,15 @@ delivery; missing Router ACK leaves historical gateway coverage/end unchanged.
 The exhaustive cut/keep decision is in BOUNDARIES, Station supervisor.
 Auth homes remain directory mounts, isolated per job; shared-home use initially
 serializes. Earlier read-only login-status evidence proves no refresh concurrency.
+
+**2e1 supervised isolation.** The pinned Docker CLI addresses only the dedicated
+rootless Unix socket. Direct nginx runs10001:10001 with master_process off, daemon off,
+restart/healthcheck disabled. Trusted administrator intervention invalidates first;
+uncertain exclusivity invalidates qualification. Runner file/descriptor limits, bounded
+tmpfs and a launch free-space floor replace kernel project quotas for this supervised
+profile only; these are not an aggregate disk quota. No retained file, local usable
+probe or qualification permits resumption past §4.1's original bindings, unknown-U stop
+or genuine-rejection history. Unattended hardening is an owned DEBT obligation.
 
 **`wrappers/` is the one operator-trusted executable mount.** Some providers
 need a small shell wrapper the image cannot ship (a site-specific login shim, a
