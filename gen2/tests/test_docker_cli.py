@@ -1,5 +1,6 @@
 """CLI-boundary tests only: no daemon, image, container, or qualified profile."""
 import copy
+import contextlib
 import hashlib
 import json
 import os
@@ -36,15 +37,19 @@ class DockerBoundary(unittest.TestCase):
         self.cli = d.DockerCLI(self.job, self.manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10)
 
     def files(self):
-        return {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        return {str(p.relative_to(self.root)): (tuple(getattr(p.lstat(), k) for k in
+                ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")),
+                os.readlink(p) if p.is_symlink() else p.read_bytes() if p.is_file() else None)
+                for p in [self.root, *self.root.rglob("*")]}
 
     def refused(self, action, reason):
-        before = self.files()
+        before, memory = self.files(), copy.deepcopy(self.cli.plan)
         self.execute.reset_mock()
         with self.assertRaisesRegex(LiveProfileRefused, reason):
             action()
         self.execute.assert_not_called()
         self.assertEqual(self.files(), before)
+        self.assertEqual(self.cli.plan, memory)
 
     def test_manifest_admitted_operands_and_refusals(self):
         self.assertEqual(d.manifest_gate(self.manifest, lambda pin: b"configuration", "reviewed-tree"), self.manifest)
@@ -94,6 +99,11 @@ class DockerBoundary(unittest.TestCase):
             with mock.patch.object(self.cli, "inspect", return_value=changed):
                 self.refused(lambda: self.cli.end(CID, lambda view: True), "end_state")
             self.assertEqual(self.cli.end(CID, lambda view: True), original)
+            for field, reason in (("OOMKilled", "end_state"), ("Running", "end_state"), ("Restarting", "end_state"), ("Paused", "end_state")):
+                changed = copy.deepcopy(original)
+                changed["State"][field] = True
+                with self.subTest(field=field), mock.patch.object(self.cli, "inspect", return_value=changed):
+                    self.refused(lambda: self.cli.end(CID, lambda view: True), reason)
         self.refused(lambda: self.cli.remove(CID, False), "remove_before_ack")
         with mock.patch.object(self.cli, "_command", return_value=(b"events", b"diagnostics")) as command:
             self.assertEqual(self.cli.logs(CID), (b"events", b"diagnostics"))
@@ -213,7 +223,7 @@ class DockerBoundary(unittest.TestCase):
 
     def test_create_exact_argv_identity_and_preflight_refusal(self):
         binds = self.runner_binds()
-        record = {"Id": CID, "Image": "sha256:" + CID}
+        record = {"Id": CID, "Image": "sha256:" + CID, "Config": {"Image": "sha256:" + CID}}
         replies = iter([(0, CID.encode(), b""), (0, json.dumps([record]).encode(), b"")])
         def execute(*args):
             self.assertIn("intent", next(iter(self.job.read("docker.json").values())))
@@ -248,3 +258,120 @@ class DockerBoundary(unittest.TestCase):
             self.assertIsNone(self.job.read("runner.json"))
             self.assertIn("intent", next(iter(self.job.read("docker.json").values())))
             self.refused(lambda: self.cli.create_runner(NET, binds), "mutation_already_intended")
+
+    def test_auxiliary_argv_and_preflight_rows(self):
+        """I/L: exact create argv and retained originals; fake CLI only."""
+        self.cli.plan.update(generation=GENERATION, slots={"out": "/slots/out", "evidence": "/slots/evidence"}, relay_config="/reviewed/nginx.conf")
+        self.job.write("network-job.json", {"Id": NET})
+        for role in ("engine", "relay"):
+            self.manifest["images"][role]["kind"] = "repo-digest"
+        common = ("--pull=never", "--restart=no", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+                  "--pids-limit", "32", "--memory", "128m", "--memory-swap", "128m", "--cpus", ".25", "--no-healthcheck",
+                  "--ipc=private", "--cgroupns=private", "--log-driver", "local", "--log-opt", "max-size=4m", "--log-opt", "max-file=1",
+                  "--tmpfs", "/tmp:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001", "--network")
+        for role, network, suffix in (
+            ("initializer", None, ("none", "--mount", "type=bind,src=/slots/out,dst=/out", "--mount", "type=bind,src=/slots/evidence,dst=/evidence",
+                "--user", "0:0", "--cap-add", "CHOWN", "sha256:" + CID, "/usr/local/bin/python", "-m", "gen2.supervisor.docker_cli", GENERATION)),
+            ("relay", NET, (NET, "--mount", f"type=bind,src=/slots/evidence/{GENERATION},dst=/evidence", "--mount",
+                "type=bind,src=/reviewed/nginx.conf,dst=/etc/nginx/nginx.conf,readonly", "--user", "10001:10001", "--sysctl", "net.ipv4.ip_forward=0",
+                "--ip", "172.31.254.2", "sha256:" + CID))):
+            record = {"Id": CID, "Image": "sha256:" + "d" * 64, "Config": {"Image": "sha256:" + CID}}
+            def execute(*args):
+                (self.job.dir / (role + ".cid")).write_text(CID)
+                return (0, CID.encode() if args[1][3] == "create" else json.dumps([record]).encode(), b"")
+            self.execute.side_effect = execute
+            self.execute.reset_mock()
+            with mock.patch.object(d.Path, "read_bytes", autospec=True, side_effect=lambda p: b"pinned" if str(p) == d.CLI else self.real_read_bytes(p)), mock.patch.object(d, "CLI_SHA", hashlib.sha256(b"pinned").hexdigest()):
+                self.assertEqual(self.cli.create_auxiliary(role, network), CID)
+            self.assertEqual(self.execute.call_args_list[0].args[1], (d.CLI, "--host", "unix://" + d.SOCKET, "create", "--cidfile", str(self.job.dir / (role + ".cid")), *common, *suffix))
+        for role, network, reason in (("gateway", NET, "auxiliary_role"), ("relay", CID, "relay_network")):
+            self.refused(lambda: self.cli.create_auxiliary(role, network), reason)
+
+    def test_start_projection_and_capture_recovery_rows(self):
+        """L/F1: expected settings and original start; mocked inspection, no daemon."""
+        record = {"Id": CID, "Image": "sha256:" + CID, "Config": {"User": "10001:10001"}, "HostConfig": {"ReadonlyRootfs": True}, "NetworkSettings": {"Networks": {}}, "State": {"StartedAt": "original"}}
+        self.job.write("runner.json", record)
+        self.cli.plan["expected"] = {"runner": {"Config": {"User": "10001:10001"}, "HostConfig": {"ReadonlyRootfs": True}}}
+        with mock.patch.object(d, "free_space"), mock.patch.object(self.cli, "inspect", return_value=record), mock.patch.object(self.cli, "_command") as command:
+            self.cli.start(CID)
+            command.assert_called_once_with(("start", CID))
+            with mock.patch.object(self.cli, "inspect", side_effect=[record, {**record, "Image": "replaced"}]):
+                with self.assertRaisesRegex(LiveProfileRefused, "start_changed"):
+                    self.cli.start(CID)
+            self.cli.plan["expected"]["runner"]["Config"]["User"] = "0:0"
+            self.refused(lambda: self.cli.start(CID), "start_configuration")
+        self.job.write("docker-cli.json", {"intent": "crashed-before-identity"})
+        with mock.patch.object(d.subprocess, "Popen") as process:
+            self.refused(lambda: d.capture(self.job, ("unused",), {}, time.monotonic() + 5, (1, 1)), "cli_previous_unconfirmed")
+            process.assert_not_called()
+
+    def test_relay_sequence_and_refusal_rows(self):
+        """I/L/E: ordered end/closure/collection, no complete marker on uncertainty; sequencing mocks only."""
+        upstream, relay, fixture_id = "d" * 64, "e" * 64, "f" * 64
+        record = {"Id": relay, "Image": "sha256:" + CID, "Config": {}, "HostConfig": {}, "NetworkSettings": {"Networks": {}}}
+        connected = {**record, "NetworkSettings": {"Networks": {n: {"NetworkID": n, "IPAMConfig": {"IPv4Address": ip}} for n, ip in ((NET, "172.31.254.2"), (upstream, "172.31.252.2"))}}}
+        fixture = {**record, "Id": fixture_id}
+        slots = {n: str(self.root / n) for n in ("out", "evidence")}
+        for path in slots.values():
+            (Path(path) / GENERATION).mkdir(parents=True)
+        self.cli.plan.update(generation=GENERATION, slots=slots, binds={"out": str(Path(slots["out"]) / GENERATION)}, fixture=fixture)
+        self.job.write("identity.json", {"pid": os.getpid()})
+        self.job.write("relay.json", record)
+        for reason in (None, "backend_unsupervised", "initializer_failed", "ingress_not_closed", "relay_drain", "relay_stop_failed", "fixture_writers_live"):
+            with self.subTest(reason=reason), contextlib.ExitStack() as stack:
+                batch, close, drain, ended, watch = mock.Mock(), mock.Mock(), mock.Mock(return_value=reason != "relay_drain"), mock.Mock(return_value=None if reason == "fixture_writers_live" else (0, GENERATION, (1, 2))), mock.Mock()
+                stack.enter_context(mock.patch.object(d.jobs, "members", return_value=[] if reason == "backend_unsupervised" else [os.getpid()]))
+                batch.collect.return_value = batch.stage.return_value = {"content_hash": "sha256:" + CID}
+                actions = {"create_auxiliary": [CID, relay], "start": None, "end": [{"State": {"ExitCode": int(reason == "initializer_failed")}}, {}, {"State": {"ExitCode": int(reason == "relay_stop_failed")}}], "network": [NET, upstream], "endpoint": None, "create_runner": CID,
+                           "inspect": [fixture, connected, {"NetworkSettings": {"Networks": {}}}], "contain": None, "logs": (b"events", b"diagnostics"), "_command": json.dumps([{"Id": NET, "Containers": {relay: {}, **({CID: {}} if reason == "ingress_not_closed" else {})}}]).encode()}
+                for name, result in actions.items():
+                    patched = stack.enter_context(mock.patch.object(self.cli, name, **({"side_effect": result} if isinstance(result, list) else {"return_value": result})))
+                    watch.attach_mock(patched, name)
+                if reason == "backend_unsupervised":
+                    self.refused(lambda: self.cli.run(close, lambda _: True, ended, drain, batch), reason)
+                elif reason:
+                    with self.assertRaisesRegex(LiveProfileRefused, reason):
+                        self.cli.run(close, lambda _: True, ended, drain, batch)
+                    self.assertIsNotNone(self.job.read("docker-attempt.json"))
+                    self.assertIsNone(self.job.read("docker-complete.json"))
+                    batch.collect.assert_not_called()
+                else:
+                    refs = self.cli.run(close, lambda _: True, ended, drain, batch)
+                    self.assertEqual(len(refs), 5)
+                    watch.assert_has_calls([mock.call.start(CID), mock.call.end(CID, mock.ANY), mock.call.endpoint("disconnect", NET, CID), mock.call._command(("network", "inspect", NET)), mock.call.inspect(CID), mock.call.contain(relay, role="relay"), mock.call.end(relay, mock.ANY, "relay"), mock.call.logs(CID)])
+                    close.assert_called_once_with()
+                    self.assertEqual(batch.collect.call_count, 3)
+                for name in ("docker-attempt.json", "docker-generations.json", "docker-complete.json"):
+                    (self.job.dir / name).unlink(missing_ok=True)
+                self.job.write("relay.json", record)
+
+    def test_supervisor_holds_uncertain_backend_rows(self):
+        """L: no capacity release before backend end; direct control-call boundary only."""
+        from gen2.supervisor.supervisor import Supervisor, Waiting
+        control = mock.Mock()
+        supervisor = Supervisor(control, None, self.root, station_id="fixture", host_id="fixture", clock=lambda: "2026-11-04T00:00:00Z")
+        for method, request in (("record_transition", {"to_state": "failed"}), ("reconcile", {"resolution": "confirmed_failed"}), ("commit_outcome", {})):
+            before = self.files()
+            with self.assertRaisesRegex(Waiting, "backend_end_unconfirmed"):
+                supervisor._call(self.job, {}, method, request)
+            self.assertEqual(self.files(), before)
+            self.assertEqual(control.mock_calls, [])
+        self.job.write("docker-complete.json", {"origin": self.cli.plan["origin"]})
+        supervisor._call(self.job, {"budgets": {}}, "record_transition", {"to_state": "failed"})
+        control.record_transition.assert_called_once_with({"to_state": "failed"})
+
+    def test_launch_hook_refuses_before_spawn_or_state_change(self):
+        """I/L: closed productive hook; zero spawn and full local state equality."""
+        from gen2.supervisor.supervisor import Supervisor
+        supervisor = Supervisor(mock.Mock(), None, self.root, station_id="fixture", host_id="fixture", clock=lambda: "2026-11-04T00:00:00Z")
+        with mock.patch.object(self.job, "lookup", return_value={"verdict": "not_started"}), mock.patch.object(self.job, "spawn") as spawn:
+            self.refused(lambda: supervisor._launching(self.job, {}, {}, {}, {}), "profile_absent")
+            spawn.assert_not_called()
+
+    def test_initializer_exclusive_file_mode(self):
+        """I: fresh directories and access0600; ownership syscalls are mocked."""
+        for name in ("out", "evidence"):
+            (self.root / name).mkdir()
+        with mock.patch.object(d, "Path", side_effect=lambda root: self.root / root.lstrip("/")), mock.patch.object(d.os, "chown"), mock.patch.object(d.os, "fchown"):
+            d.initialize(GENERATION)
+            self.assertEqual((self.root / "evidence" / GENERATION / "access.jsonl").stat().st_mode & 0o777, 0o600)

@@ -472,6 +472,10 @@ class Supervisor:
         """Refuse calls for stalled or settled jobs; only an answered write refunds the outage budget (L-6, RG-3; Astra 1c A5)."""
         if journal.get("incident") or journal.get("settled"):
             raise Held(job.handle, journal.get("settled"))
+        plan = job.read("docker-plan.json")
+        ending = method == "commit_outcome" or (method == "record_transition" and request["to_state"] in (*TERMINAL, "result_ready")) or (method == "reconcile" and request["resolution"] != "found_running")
+        if plan and ending and (job.read("docker-complete.json") or {}).get("origin") != plan["origin"]:
+            raise Waiting("backend_end_unconfirmed")
         try:
             response = getattr(self.control, method)(request)
         except ControlUnavailable:
@@ -730,6 +734,8 @@ class Supervisor:
     def _launching(self, job, order, journal, grant, status) -> str:
         view = job.lookup()
         if view["verdict"] == "not_started":  # launch intent is recorded and no start has happened: start it now
+            if job.read("docker-plan.json") is not None:
+                refuse_live_profile(ABSENT_PROFILE)
             refused = status["launch_admission"]  # the router's current launch-admission check, read before every actual start (L-7)
             if status["cancel_requested"] or self._past(order["deadline_at"]) or (refused and refused["reason"] == "deadline_passed"):
                 return self._end_unlaunched(job, order, journal, grant, status)

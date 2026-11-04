@@ -63,6 +63,9 @@ def manifest_gate(manifest, retained, tree):
 def capture(job, argv, env, deadline, bounds):
     """Bound both pipes while running; a CLI end never proves container end."""
     require(time.monotonic() < deadline, "cli_deadline")
+    previous = job.read("docker-cli.json")
+    require(previous is None or previous.get("confirmed"), "cli_previous_unconfirmed")
+    job.write("docker-cli.json", {"intent": list(argv)})
     child = subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, start_new_session=True, close_fds=True)
     state = jobs.proc_stat(child.pid)
@@ -96,6 +99,7 @@ def capture(job, argv, env, deadline, bounds):
             ended = job.terminate(identity, term_grace=0, kill_grace=5, reap=child.poll)
             require(ended["confirmed"], "cli_end_unconfirmed")
             child.wait(timeout=5)
+            job.write("docker-cli.json", {**identity, "confirmed": True})
 
 
 class DockerCLI:
@@ -161,13 +165,16 @@ class DockerCLI:
             require(Path(source).is_absolute() and "," not in source, "runner_bind_path")
             args.extend(("--mount", f"type=bind,src={source},dst=/{name}" + ("" if name == "out" else ",readonly")))
         args.append(self.manifest["images"]["runner"]["pin"])
-        require(not (self.job.dir / "runner.cid").exists(), "cidfile_exists")
+        return self._create("runner", args)
+
+    def _create(self, role, args):
+        require(not (self.job.dir / (role + ".cid")).exists(), "cidfile_exists")
         cid = self._command(tuple(args)).strip().decode("ascii")
-        found = read_scratch(self.job.dir, "runner.cid", 4096)
+        found = read_scratch(self.job.dir, role + ".cid", 4096)
         require(CID.fullmatch(cid) and found["status"] == "present" and found["data"].strip() == cid.encode(), "create_identity")
-        record = self.inspect(cid)
-        require(record["Image"] == args[-1], "create_inspect")
-        self.job.write("runner.json", record)
+        record, image = self.inspect(cid), self.manifest["images"]["engine" if role == "initializer" else role]
+        require(record["Config"]["Image"] == image["pin"] and (image["kind"] == "repo-digest" or record["Image"] == image["pin"]), "create_inspect")
+        self.job.write(role + ".json", record)
         return cid
 
     def inspect(self, cid):
@@ -176,22 +183,27 @@ class DockerCLI:
         require(isinstance(records, list) and len(records) == 1 and records[0].get("Id") == cid, "inspect_identity")
         return records[0]
 
-    def start(self, cid):
+    def start(self, cid, role="runner"):
         free_space(self.plan["paths"], 16 << 30)
-        original = self.job.read("runner.json")
-        require(original is not None and _binding(self.inspect(cid)) == _binding(original), "start_identity")
+        original = self.job.read(role + ".json")
+        expected = self.plan.get("expected", {}).get(role)
+        require(expected and set(expected) == {"Config", "HostConfig"} and all(original[section].get(key) == value
+                for section, fields in expected.items() for key, value in fields.items()), "start_configuration")
+        require(_binding(self.inspect(cid)) == _binding(original), "start_identity")
         self._command(("start", cid))
-        self.job.write("runner-start.json", self.inspect(cid))
+        started = self.inspect(cid)
+        require(_binding(started) == _binding(original) and started["State"]["StartedAt"], "start_changed")
+        self.job.write(role + "-start.json", started)
 
-    def end(self, cid, descendants_ended):
+    def end(self, cid, descendants_ended, role="runner"):
         waited = self._command(("wait", cid)).strip()
-        original, observed = self.job.read("runner-start.json"), self.inspect(cid)
+        original, observed = self.job.read(role + "-start.json"), self.inspect(cid)
         require(original is not None, "end_original")
         require(_binding(observed) == _binding(original), "end_binding")
         state = observed["State"]
         require(state["StartedAt"] == original["State"]["StartedAt"] and not any(state[k] for k in ("Running", "Restarting", "Paused", "OOMKilled")), "end_state")
         require(waited == str(state["ExitCode"]).encode() and descendants_ended(original), "end_unconfirmed")
-        self.job.write("runner-end.json", observed)
+        self.job.write(role + "-end.json", observed)
         return observed
 
     def logs(self, cid):
@@ -200,9 +212,89 @@ class DockerCLI:
         self.job.write("runner-logs.json", {"intent": cid})
         return self._command(("logs", cid))
 
-    def contain(self, cid, *, kill=False):
-        require((self.job.read("runner.json") or {}).get("Id") == cid, "contain_original")
+    def contain(self, cid, *, kill=False, role="runner"):
+        require((self.job.read(role + ".json") or {}).get("Id") == cid, "contain_original")
         return self._command(("kill", cid) if kill else ("stop", "--time", "5", cid))
+
+    def create_auxiliary(self, role, network=None):
+        require(role in {"initializer", "relay"}, "auxiliary_role")
+        generation, slots = self.plan["generation"], self.plan["slots"]
+        require(re.fullmatch(r"[0-9a-f]{32}", generation), "auxiliary_generation")
+        require(set(slots) == {"out", "evidence"}, "auxiliary_slots")
+        require(role == "initializer" or network == (self.job.read("network-job.json") or {}).get("Id"), "relay_network")
+        args = ["create", "--cidfile", str(self.job.dir / (role + ".cid")), "--pull=never", "--restart=no", "--read-only",
+                "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "32", "--memory", "128m",
+                "--memory-swap", "128m", "--cpus", ".25", "--no-healthcheck", "--ipc=private", "--cgroupns=private",
+                "--log-driver", "local", "--log-opt", "max-size=4m", "--log-opt", "max-file=1",
+                "--tmpfs", "/tmp:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001", "--network", "none" if role == "initializer" else network]
+        mounts = slots if role == "initializer" else {"evidence": str(Path(slots["evidence"]) / generation), "etc/nginx/nginx.conf": self.plan["relay_config"]}
+        for name, source in mounts.items():
+            require(Path(source).is_absolute() and "," not in source, "auxiliary_bind_path")
+            args.extend(("--mount", f"type=bind,src={source},dst=/{name}" + (",readonly" if name.startswith("etc/") else "")))
+        if role == "initializer":
+            args.extend(("--user", "0:0", "--cap-add", "CHOWN", self.manifest["images"]["engine"]["pin"],
+                         "/usr/local/bin/python", "-m", "gen2.supervisor.docker_cli", generation))
+        else:
+            args.extend(("--user", "10001:10001", "--sysctl", "net.ipv4.ip_forward=0", "--ip", "172.31.254.2", self.manifest["images"]["relay"]["pin"]))
+        return self._create(role, args)
+
+    def run(self, close_admission, descendants_ended, fixture_ended, drain, batch):
+        """I/L/E: supervised finite lane; trusted original observers, raw evidence only."""
+        require(self.plan["binds"]["out"] == str(Path(self.plan["slots"]["out"]) / self.plan["generation"]), "backend_output_generation")
+        identity = self.job.read("identity.json")
+        require(identity is not None and os.getpid() in jobs.members(identity), "backend_unsupervised")
+        with self.job.hold(self.deadline, .01):
+            require(self.job.read("docker-attempt.json") is None, "backend_already_intended")
+            self.job.write("docker-attempt.json", {"origin": self.plan["origin"]})
+        initializer = self.create_auxiliary("initializer")
+        self.start(initializer, "initializer")
+        require(self.end(initializer, descendants_ended, "initializer")["State"]["ExitCode"] == 0, "initializer_failed")
+        originals = {}
+        for kind, name in (("outcome", "out"), ("access", "evidence")):
+            directory = Path(self.plan["slots"][name]) / self.plan["generation"]
+            fd = slot(str(directory))
+            try:
+                info = os.fstat(fd)
+                originals[kind] = (info.st_dev, info.st_ino)
+            finally:
+                os.close(fd)
+        self.job.write("docker-generations.json", originals)
+        network, upstream = self.network(self.plan["generation"]), self.network(self.plan["generation"], "fixture")
+        fixture = self.plan["fixture"]
+        require(_binding(self.inspect(fixture["Id"])) == _binding(fixture), "fixture_original")
+        self.endpoint("connect", upstream, fixture["Id"], "172.31.252.3")
+        relay = self.create_auxiliary("relay", network)
+        self.endpoint("connect", upstream, relay, "172.31.252.2")
+        observed = self.inspect(relay)
+        require(_binding(observed)[0] == _binding(self.job.read("relay.json"))[0], "relay_changed")
+        require({n["NetworkID"]: n["IPAMConfig"]["IPv4Address"] for n in observed["NetworkSettings"]["Networks"].values()}
+                == {network: "172.31.254.2", upstream: "172.31.252.2"}, "relay_topology")
+        self.job.write("relay.json", observed)
+        self.start(relay, "relay")
+        runner = self.create_runner(network, self.plan["binds"])
+        self.start(runner)
+        close_admission()
+        self.end(runner, descendants_ended)
+        self.endpoint("disconnect", network, runner)
+        view = json.loads(self._command(("network", "inspect", network)))[0]
+        require(view["Id"] == network and set(view["Containers"]) == {relay}
+                and network not in {n["NetworkID"] for n in self.inspect(runner)["NetworkSettings"]["Networks"].values()}, "ingress_not_closed")
+        before = self.now()
+        require(drain(10) and self.now() - before <= 10, "relay_drain")
+        self.contain(relay, role="relay")
+        require(self.end(relay, descendants_ended, "relay")["State"]["ExitCode"] == 0, "relay_stop_failed")
+        fixture_file = fixture_ended()
+        require(fixture_file, "fixture_writers_live")
+        refs = [batch.collect(*fixture_file, writers_ended=True, kind="fixture")]
+        refs.extend(batch.stage(data, "application/octet-stream") for data in self.logs(runner))
+        for kind, name in (("outcome", "out"), ("access", "evidence")):
+            fd = slot(self.plan["slots"][name])
+            try:
+                refs.append(batch.collect(fd, self.plan["generation"], originals[kind], writers_ended=True, kind=kind))
+            finally:
+                os.close(fd)
+        self.job.write("docker-complete.json", {"origin": self.plan["origin"], "refs": refs})
+        return refs
 
     def remove(self, cid, ack):
         require(ack and (self.job.read("runner-end.json") or {}).get("Id") == cid, "remove_before_ack")
@@ -261,3 +353,21 @@ class EvidenceBatch:
             return self.stage(found["data"], media)
         finally:
             os.close(fd)
+
+
+def initialize(generation):
+    """I: exclusive original generations, no credentials or networking."""
+    require(re.fullmatch(r"[0-9a-f]{32}", generation), "initialize_generation")
+    for root in ("/out", "/evidence"):
+        directory = Path(root) / generation
+        directory.mkdir(mode=0o700)
+        if root == "/evidence":
+            fd = os.open(directory / "access.jsonl", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.fchown(fd, 10001, 10001)
+            os.close(fd)
+        os.chown(directory, 10001, 10001)
+
+
+if __name__ == "__main__":
+    import sys
+    initialize(sys.argv[1])
