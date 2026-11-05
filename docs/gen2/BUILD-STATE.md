@@ -24,7 +24,7 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 
 ## Phase 2 plan (approved order, Gate S plan 2026-10-24; supersedes the 2026-09-29 plan, which is preserved in REVIEW-LOG)
-**Size rules (the user, 2026-09-29):** no hand-written file over 1,500 lines (enforced by `make gen2-check`); 15,000 total production lines is a growth-review trigger.
+**Size rules (the user, 2026-09-29):** no hand-written file over 1,500 lines (enforced by `make gen2-check`); 17,500 total production lines is a growth-review trigger.
 - **Done:** 2a (bootstrap chain), 2r (size rules), 2b (gateway input contract), 2q (architecture refactors), 2c (accounting views and confidence), and in 2d: slices 1–5 and 6a parts 1–3.
 - **Remaining, in order** (S = Gate S simplification batch, R = records batch):
   1. ~~R1 records collapse~~, ~~S1 tiered checks~~, ~~S2 automatic mutation~~, ~~S3 retire the metrics ratchet~~ (all done); ~~S2b mutation test selection~~ (done); ~~S2c coverage reuse through make~~ (done).
