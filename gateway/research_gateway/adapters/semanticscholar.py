@@ -17,12 +17,12 @@ CAPABILITIES = ("find", "resolve", "enrich")
 ENRICHES = ("citations", "references", "full_text")
 SCHEMES = ("doi", "arxiv", "s2")
 BASE = "https://api.semanticscholar.org/graph/v1"
-FIELDS = "externalIds,title,year,venue,authors,openAccessPdf,citationCount,referenceCount,publicationTypes"
+FIELDS = "externalIds,title,year,venue,authors,openAccessPdf,citationCount,referenceCount,publicationTypes,abstract"
 SEARCH_CAP = 1000   # /paper/search: "the maximum sum of offset and limit" (docs/PROVIDER-PAGINATION.md)
 
 # What an answer must be. A paper is named by its DOI, else its arXiv id, else its own id: all declared, so all decoded before one is chosen.
 PAPER = S.obj({"paperId": S.text(), "externalIds": S.obj({"DOI": S.text(), "ArXiv": S.text(), "PubMed": S.text()}),
-               "openAccessPdf": S.obj({"url": S.text(), "license": S.text()}), "title": S.text(), "year": S.year(), "venue": S.text(),
+               "openAccessPdf": S.obj({"url": S.text(), "license": S.text()}), "title": S.text(), "year": S.year(), "venue": S.text(), "abstract": S.text(),
                "authors": S.own(S.obj({"name": S.text()})), "citationCount": S.any_(), "referenceCount": S.any_(), "publicationTypes": S.any_()},
               alts=(("externalIds.DOI", "externalIds.ArXiv", "paperId"),))
 # `data` may be left out only when the answer counts nothing (`total` is 0), and it is never null: the Graph API's `PaperRelevanceSearchBatch.data` is `type: array`, its
@@ -56,6 +56,7 @@ def _paper_id(identity: str) -> str | None:
 
 def _record(p) -> dict:
     ext, access = p["externalIds"], p["openAccessPdf"]
+    abstract = p["abstract"]
     doi = normalize_doi(ext["DOI"])
     arx = normalize_arxiv(ext["ArXiv"])
     pmid, paper_id = ext["PubMed"], p["paperId"]
@@ -69,7 +70,8 @@ def _record(p) -> dict:
         license=access["license"],
         attribution="Semantic Scholar",
         extra={"cited_by_count": p["citationCount"], "reference_count": p["referenceCount"],
-               "publication_types": p["publicationTypes"], "redistributable": False},
+               "publication_types": p["publicationTypes"], "redistributable": False,
+               **({"abstract": abstract} if abstract and abstract.strip() else {})},
         raw=p.raw,
     )
 
