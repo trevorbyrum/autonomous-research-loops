@@ -157,8 +157,8 @@ def staged(data=b"response bytes", lie=False):
 
 
 def lineage(**over):
-    base = {"retrieval_events": [{"event_id": "e1", "observation_id": "obs_00000001", "captured_at": "2026-11-05T11:00:00Z"},
-                                 {"event_id": "e2", "observation_id": "obs_00000002", "captured_at": "2026-11-05T11:05:00Z"}],
+    base = {"retrieval_events": [{"event_id": "e1", "observation_id": "obs_00000001", "provider_record_id": "doi:10.1/a", "captured_at": "2026-11-05T11:00:00Z"},
+                                 {"event_id": "e2", "observation_id": "obs_00000002", "provider_record_id": "doi:10.1/a", "captured_at": "2026-11-05T11:05:00Z"}],
             "record_work_links": [{"event_id": "e1", "work_id": "wrk_aaaaaaaa"}, {"event_id": "e2", "work_id": "wrk_aaaaaaaa"}],
             "search_observations": [observation(1), observation(2)]}
     return {**base, **over}

@@ -8,8 +8,10 @@ final byte cap is orders.write_inputs'.
 """
 from __future__ import annotations
 
-from typing import Mapping, Protocol, Sequence
+from typing import Callable, Mapping, Protocol, Sequence
 
+from gen2.core import canonical
+from gen2.exec import artifacts
 from gen2.exec.common import Refused
 
 ROW_CAP = 200
@@ -55,3 +57,56 @@ def scope_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], lan
             "observations": [{key: row.get(key) for key in OBSERVATION_KEYS}
                              for row in bounded("search_observations", records["search_observations"], truncation)],
             "latest_report": ({k: reports[-1][k] for k in ("report_id", "version")} if reports else None)}
+
+
+ABSTRACT_CAP = 1500
+RESEARCH_FAMILIES = ("contract_revisions", "obligations", "works", "record_work_links", "retrieval_events",
+                     "search_observations", "claims")
+
+
+def _abstract(retained: artifacts.Retained) -> str | None:
+    """The retained response's own canonical `abstract` for this record (T12-G), or None."""
+    try:
+        body = canonical.parse_json_strict(retained.data)
+        for record in body["gateway_response"]["records"] if "gateway_response" in body else body["records"]:
+            if record.get("identity") == retained.provider_record_id and isinstance(record.get("abstract"), str):
+                return record["abstract"] or None
+    except (ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def research_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], exchanges: artifacts.Exchanges,
+                  claim_text: Callable[[str], str | None], as_of: str, state_revision: int, truncation: list[dict]) -> dict:
+    """The research pass's view: the pinned contract, its obligations, the works the topic retrieved and retained
+    (with the retained abstract when one is there), and earlier claims. A work with no staged response never
+    appears, so the pass cannot cite what the builder could not bind (F3)."""
+    if admission.get("context") != "contract/1":
+        raise Refused("a research view needs a contract/1 admission")
+    pin = admission["contract"]
+    rows = [r for r in records["contract_revisions"] if (r["revision"], r["content_hash"]) == (pin["revision"], pin["content_hash"])]
+    if len(rows) != 1:
+        raise Refused("the admission's contract is not exactly one contract_revisions row")
+    document = rows[0]["document"]
+    scheme = document.get("confidence_scheme")
+    works, cut = [], 0
+    for work in records["works"]:
+        try:
+            found = artifacts.retained(work["work_id"], records, exchanges)
+        except Refused:
+            continue
+        abstract = _abstract(found)
+        entry = {"work_id": work["work_id"], "identity": f"{work['identity_scheme']}:{work['identity_value']}"}
+        if abstract is not None:
+            entry["abstract"], cut = abstract[:ABSTRACT_CAP], cut + (len(abstract) > ABSTRACT_CAP)
+        works.append(entry)
+    if cut:
+        truncation.append({"family": "abstracts", "kept": len(works) - cut, "total": len(works)})
+    claims = [{"claim_id": r["claim_id"], "revision": r["revision"], "load_bearing": bool(r["load_bearing"]), "text": claim_text(r["text_ref"])}
+              for r in bounded("claims", records["claims"], truncation)]
+    return {"as_of": as_of, "state_revision": state_revision,
+            "contract": {**pin, "framing_version": rows[0]["framing_version"], "eligibility_protocol": document["eligibility_protocol"],
+                         "confidence_scheme": None if scheme is None else {"scheme_id": scheme["scheme_id"], "version": scheme["version"], "labels": sorted(scheme["labels"])}},
+            "obligations": [{k: r[k] for k in ("obligation_id", "claim_type", "facet_ids")} for r in records["obligations"]
+                            if r["contract_revision"] == pin["revision"]],
+            "works": bounded("works", works, truncation), "claims": claims}
