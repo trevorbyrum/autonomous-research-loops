@@ -1,0 +1,6 @@
+{"fixture": {"schema": "judgment-review.schema.json", "expect": "valid", "tests": "the fresh review's whole output"},
+ "instance": {
+  "judgment_version": "judgment-review/1",
+  "outcome": "sufficient",
+  "summary": "gates satisfied"
+ }}

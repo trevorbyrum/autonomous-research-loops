@@ -1,0 +1,9 @@
+{"fixture": {"schema": "judgment-challenge.schema.json", "expect": "valid", "tests": "F4: a counterevidence entry names what was searched and the searches it asks for"},
+ "instance": {
+  "judgment_version": "judgment-challenge/1",
+  "counterevidence": [{"claim_ref": "clm-1", "outcome": "unknown", "summary": "search pending", "searched": ["prop-1"]}],
+  "explanations": [{"disposition_id": "disp-1", "outcome": "unresolved", "summary": "two readings remain"}],
+  "adjudications": [{"receipt_id": "ver_aaaaaaaa", "outcome": "resolved", "summary": "read the full text"}],
+  "promotions": ["clm-1"],
+  "search_proposals": [{"proposal_version": "search-proposal/1", "proposal_id": "prop-1", "proposer": "primary", "lane": "semanticscholar", "request_type": "find", "query": "counterevidence for the claim", "page_cap": 2, "obligation_ids": ["ob-1"], "rationale": "tests clm-1 against contrary findings", "subject_ref": {"claim_ref": "clm-1"}}]
+ }}

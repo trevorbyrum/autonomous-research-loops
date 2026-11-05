@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/work-input.schema.json",
+  "$comment": "flow: S4 (the executor hand-off) | boundaries: Router; Station supervisor | invariants: C-2; C-9; RG-5 | note: 2e2-min T12-D. Trusted code assembles it; the model reads it and cannot write it",
+  "title": "Executor work input",
+  "description": "input.json staged read-only for one supervised invocation: identity and pins, the admission context (which pins the contract or the confirmed brief), a bounded per-purpose view, limits. Truncation is recorded, never silent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "input_version",
+    "kind",
+    "purpose",
+    "invocation_id",
+    "topic_id",
+    "admission",
+    "limits",
+    "view",
+    "truncation"
+  ],
+  "properties": {
+    "input_version": {
+      "const": "work-input/1"
+    },
+    "kind": {
+      "$ref": "common.schema.json#/$defs/invocation_kind"
+    },
+    "purpose": {
+      "$ref": "common.schema.json#/$defs/local_id"
+    },
+    "invocation_id": {
+      "$ref": "common.schema.json#/$defs/invocation_id"
+    },
+    "topic_id": {
+      "$ref": "common.schema.json#/$defs/topic_id"
+    },
+    "admission": {
+      "$ref": "common.schema.json#/$defs/admission_context"
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_input_bytes",
+        "max_output_bytes"
+      ],
+      "properties": {
+        "max_input_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_output_bytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "view": {
+      "type": "object"
+    },
+    "truncation": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "family",
+          "kept",
+          "total"
+        ],
+        "properties": {
+          "family": {
+            "$ref": "common.schema.json#/$defs/local_id"
+          },
+          "kept": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

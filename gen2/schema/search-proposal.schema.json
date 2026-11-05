@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/search-proposal.schema.json",
+  "$comment": "flow: S4 (the executor hand-off) | boundaries: Primary agent (per-station frontier LLM); Verifier | invariants: C-2; C-9; RG-5 | note: 2e2-min T12-D. typed discovery request a supervised discovery job executes; the model never talks to the gateway (H-6)",
+  "title": "Discovery search proposal",
+  "description": "One typed search the primary proposes and the discovery job runs through the gateway. It authorizes nothing and carries no result. A counterevidence search names the claim it tests in subject_ref.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["proposal_version", "proposal_id", "proposer", "lane", "request_type", "query", "page_cap", "obligation_ids", "rationale"],
+  "properties": {
+    "proposal_version": {"const": "search-proposal/1"},
+    "proposal_id": {"$ref": "common.schema.json#/$defs/local_id"},
+    "proposer": {"$ref": "common.schema.json#/$defs/local_id"},
+    "lane": {"$ref": "common.schema.json#/$defs/local_id"},
+    "request_type": {
+      "enum": ["find", "resolve", "enrich", "fetch", "data"]
+    },
+    "query": {"$ref": "common.schema.json#/$defs/short_text"},
+    "filters": {"type": "object", "maxProperties": 20},
+    "page_cap": {"type": "integer", "minimum": 1, "maximum": 10},
+    "obligation_ids": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/local_id"}
+    },
+    "rationale": {"type": "string", "minLength": 1, "maxLength": 500},
+    "subject_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_ref"],
+      "properties": {"claim_ref": {"$ref": "common.schema.json#/$defs/local_id"}}
+    }
+  }
+}

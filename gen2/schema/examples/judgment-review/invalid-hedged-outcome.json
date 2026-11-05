@@ -1,0 +1,1 @@
+{"fixture": {"schema": "judgment-review.schema.json", "expect": "invalid", "tests": "the review answers sufficient or insufficient", "base": "valid-example.json", "patch": [{"op": "replace", "path": "/outcome", "value": "probably"}], "errors": [{"keyword": "enum", "path": "/outcome"}]}}

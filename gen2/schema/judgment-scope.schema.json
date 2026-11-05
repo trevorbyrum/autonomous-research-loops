@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/judgment-scope.schema.json",
+  "$comment": "flow: S4 (the executor hand-off) | boundaries: Primary agent (per-station frontier LLM); Verifier | invariants: C-2; C-9; RG-5 | note: 2e2-min T12-D. pre-contract scoping pass (flow S2)",
+  "title": "Executor judgment: scope",
+  "description": "The model's only output for the scope purpose. Trusted builders bind identities, hashes and pins; the model authors none (C-9).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["judgment_version", "territory", "traditions", "candidate_facets", "deliberately_out", "gap_skeleton", "search_proposals"],
+  "properties": {
+    "judgment_version": {"const": "judgment-scope/1"},
+    "territory": {"$ref": "common.schema.json#/$defs/long_text"},
+    "traditions": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {"$ref": "common.schema.json#/$defs/short_text"}
+    },
+    "candidate_facets": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {"$ref": "common.schema.json#/$defs/short_text"}
+    },
+    "deliberately_out": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {"$ref": "common.schema.json#/$defs/short_text"}
+    },
+    "gap_skeleton": {"$ref": "common.schema.json#/$defs/long_text"},
+    "search_proposals": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {"$ref": "search-proposal.schema.json"}
+    }
+  }
+}
