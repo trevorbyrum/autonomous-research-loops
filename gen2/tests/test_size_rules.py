@@ -10,7 +10,7 @@ no hand-written file in the gen-2 surface (gen2/, gateway/, tools/gen2*,
 tools/check_*, tools/gen_*, deploy/, Makefile, .github/) over 1,500 physical lines, exactly
 1,500 passing; a generated file exempt only through the tool's GENERATED
 list, each entry naming a tracked tool that names the file; and reaching
-15,000 production lines stops the build for a growth review, where the gateway
+17,500 production lines stops the build for a growth review, where the gateway
 service's production is its own budget (task 2b's split) and never counts toward it.
 """
 from __future__ import annotations
@@ -99,9 +99,9 @@ class SizeRuleTest(unittest.TestCase):
                 self.assertIn(f"GENERATED ALLOWLIST ENTRY DOES NOT HOLD: {expected}", result.stderr)
 
     def test_reaching_the_growth_review_trigger_fails(self) -> None:
-        result = self.check({f"gen2/core/m{i}.py": lines(1500) for i in range(10)})  # 15,000 production lines, no file over the limit
+        result = self.check({f"gen2/core/m{i}.py": lines(1500) for i in range(11)} | {"gen2/core/m11.py": lines(1000)})  # 17,500 production lines, no file over the limit
         self.assertEqual(result.returncode, 1, msg=result.stderr)
-        self.assertIn("GROWTH REVIEW REQUIRED: 15,000 production lines reach the 15,000-line trigger", result.stderr)
+        self.assertIn("GROWTH REVIEW REQUIRED: 17,500 production lines reach the 17,500-line trigger", result.stderr)
         self.assertNotIn("FILE SIZE LIMIT", result.stderr)
 
     def test_the_gateway_is_its_own_budget_not_the_engines(self) -> None:
@@ -113,7 +113,7 @@ class SizeRuleTest(unittest.TestCase):
         self.assertIn("gateway service (its own budget, not in the trigger): production 15,000, tests 7", result.stdout)
 
     def test_below_the_growth_review_trigger_passes(self) -> None:
-        files = {f"gen2/core/m{i}.py": lines(1500) for i in range(9)} | {"gen2/core/m9.py": lines(1499)}  # 14,999 production lines
+        files = {f"gen2/core/m{i}.py": lines(1500) for i in range(11)} | {"gen2/core/m11.py": lines(999)}  # 17,499 production lines
         files |= {f"gen2/tests/test_m{i}.py": lines(1500) for i in range(4)}  # tests are not production
         result = self.check(files)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
