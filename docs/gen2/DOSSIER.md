@@ -269,3 +269,7 @@ History: per-slice preflights, re-estimates, repair narratives and the earlier
 slice map and decisions text are in
 `~/work/research-loops-public/private/evidence/dossier-history/DOSSIER-2d-history-20261024.md`
 (outside the repository).
+
+## T2 / 2e1 3a (2026-11-05)
+
+Lane A adds serialized admission, immutable first-result charging and the permanent original-U uncertainty stop (F5, DEBT-052), serving 2f admission/spend qualification. Trusted-reader fixtures establish Router behavior only; productive dispatch remains closed pending the later gates. No schema change; 3b safety retention and rejection authority are deferred to T3/T4.

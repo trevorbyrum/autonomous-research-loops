@@ -49,11 +49,13 @@ class Spy:
 
 class DelegateTest(RouterTestCase):
     def test_each_delegate_forwards_its_call_to_the_collaborator_and_returns_its_answer(self) -> None:
+        self.router._clock = lambda: E
         for name, args, sent, received in DELEGATES:
             with self.subTest(name=name, sent=sent):
                 spy = self.router._lifecycle = Spy()
                 self.assertEqual(getattr(self.router if not name.startswith("_") else self.router._lifecycle, name)(*args, **({"failure_class": None, "terminal": True, **sent} if name in ("_bind_evidence",) else sent)), ("answered", name))
-                self.assertEqual(spy.calls, [(name, args, received)])
+                expected = {**received, "now": E} if name == "invocation_status" else received
+                self.assertEqual(spy.calls, [(name, args, expected)])
 
 
 class TransactionTest(RouterTestCase):
