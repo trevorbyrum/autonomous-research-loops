@@ -335,3 +335,11 @@ The original writer-capture D1 trial failed; the full assembly path is not ready
 - **Definition:** the human authority.
 - **Owns:** scope, framing and reframes, obligation and rating approval, phase transitions, completion, retirement, merges to main, anything contested; which export connectors are enabled and what each topic exports (operator ruling 2026-09-26).
 - **Interface guarantees owed to the operator:** typed holds with owners and deadlines; status that answers why every waiting item waits; dated capability facts with transition alerts; dossiers that permanently carry their evidence; blind-sample protocol so advisory recommendations don't anchor the labels.
+
+**T12-A:** `record_dossier` authenticates a running checkpoint and current
+lease/pins for a new native dossier; replay authenticates identity and returns
+its original row. `topic_records` is a trusted station read over fixed families,
+with topic-scoped retrieval/work links, versioned briefs and one named dossier
+revision including its stored body/gates. It changes no dossier capture/hash.
+`search_proposals` are validated primary proposals retained only in the payload;
+`policy.executors` carries hash-pinned prompts and explicit execution bounds.

@@ -293,3 +293,12 @@ History: per-slice preflights, re-estimates, repair narratives and the earlier
 slice map and decisions text are in
 `~/work/research-loops-public/private/evidence/dossier-history/DOSSIER-2d-history-20261024.md`
 (outside the repository).
+
+## T12-A / 2e2 Router interface (2026-11-05)
+
+Trusted station calls can record a native dossier under a live checkpoint;
+invocation replay returns the original revision/hash. Fixed topic-record reads
+supply F3's operands and exact dossier bodies without changing dossier captures.
+Validated-only search proposals stay in committed payloads (P6); executor pins
+and bounds live in the bundle. Offline tests establish Router structure only;
+T13–T18 supply the production consumers for the supervised 2f workflow.
