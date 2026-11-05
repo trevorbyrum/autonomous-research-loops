@@ -343,3 +343,4 @@ with topic-scoped retrieval/work links, versioned briefs and one named dossier
 revision including its stored body/gates. It changes no dossier capture/hash.
 `search_proposals` are validated primary proposals retained only in the payload;
 `policy.executors` carries hash-pinned prompts and explicit execution bounds.
+The fixed read families include `scoping_reports` for T14's scoping view; its `topic_id` key scopes full report bodies without adding them to dossier captures.

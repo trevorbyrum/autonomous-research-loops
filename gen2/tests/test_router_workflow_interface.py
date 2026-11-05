@@ -12,7 +12,7 @@ from gen2.tests import test_router_registries as bundle_tests
 
 FAMILIES = """claim_source_links obligation_assessments source_acquisitions source_artifacts
 retrieval_events search_observations record_work_links works facets obligations contract_revisions
-claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs dossiers""".split()
+claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers""".split()
 PROPOSAL = {"proposal_version": "search-proposal/1", "proposal_id": "search-1", "proposer": "primary",
     "lane": "crossref", "request_type": "find", "query": "omissions", "page_cap": 1,
     "obligation_ids": ["O-1"], "rationale": "Test the open obligation"}
@@ -170,6 +170,24 @@ class ExecutorTests(rf.RouterTestCase):
 
 
 class ScopingTests(rf.Workflow):
+    def test_scoping_view_reads_topic_bodies_without_changing_dossier_hashes(self):
+        """T14/F3: two topics' persisted report/brief bodies and capture hashes; no executor-input assembly."""
+        reports = {}
+        for topic in (rf.TOPIC, rf.OTHER):
+            self.to_scoping(topic)
+            reports[topic] = self.scoped(topic)
+        before = self.state()
+        for topic, report in reports.items():
+            raw = self.store.capture_topic(topic)
+            out = self.router.topic_records({"topic_id": topic, "families": ["scoping_reports", "intake_briefs"]})
+            self.assertEqual(out["status"], "ok", out)
+            self.assertEqual([(r["topic_id"], r["document"]) for r in out["records"]["scoping_reports"]], [(topic, report)])
+            brief = json.loads(self.value("SELECT document FROM intake_briefs WHERE topic_id=?", topic))
+            self.assertEqual([(r["topic_id"], r["document"]) for r in out["records"]["intake_briefs"]], [(topic, brief)])
+            self.assertNotIn("scoping_reports", {t.name for t in raw.tables})
+            self.assertEqual(input_hash(self.store.capture_topic(topic), "native"), input_hash(raw, "native"))
+        self.assertEqual(self.state(), before)
+
     def test_proposal_only_pass_keeps_scoping_and_has_no_ordinal(self):
         """P6/P10: pre-contract final commit retains proposals; SQL state/ordinal oracle, no discovery job."""
         self.to_scoping()

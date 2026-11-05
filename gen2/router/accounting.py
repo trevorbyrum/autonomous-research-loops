@@ -14,7 +14,7 @@ from gen2.router.protocols import Rows, Schemas
 
 TOPIC_FAMILIES = tuple("""claim_source_links obligation_assessments source_acquisitions source_artifacts
 retrieval_events search_observations record_work_links works facets obligations contract_revisions
-claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs dossiers""".split())
+claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers""".split())
 _ID = {"$ref": "common.schema.json#/$defs/topic_id"}
 ACCOUNTING_COMMANDS = {
     "record_dossier": {"type": "object", "additionalProperties": False,
