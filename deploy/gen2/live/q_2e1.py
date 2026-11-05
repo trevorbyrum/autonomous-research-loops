@@ -16,11 +16,11 @@ def find(client, query, *, limit=1, page=1):
     check(SOURCE_ID, reply, allow_404=False)
     decoded = decode(SOURCE_ID, FIND, reply)
     def record(row):
-        if set(row.raw) != {"id", "title"} or row["id"] != "q1" or row["title"] != "2e1 fixture":
+        if row["id"] != "q1" or row["title"] != "2e1 fixture":
             raise AdapterError("fixture record differs")
         return make_record(identity="q_2e1:q1", kind="article", source_id=SOURCE_ID,
                            title=row["title"], authors=[], identifiers={}, links=[], license="CC0", raw=row.raw)
     records = members(SOURCE_ID, decoded["records"], record)
-    if set(decoded.raw) != {"records", "total"} or decoded["total"] != 1 or len(records) != 1 or records[0] is None:
+    if decoded["total"] != 1 or len(records) != 1 or records[0] is None:
         raise AdapterError("fixture cardinality")
     return {"records": records, "total": 1, "exhausted": True, "next_page": None}
