@@ -564,6 +564,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - owner: phase 2
 - what: in 2e1-minimum, an attempt whose spending is unknown is charged at its whole authorized upper bound and permanently stops the trial. There is no settlement, downward adjustment or resumption route. A later slice designs any reconciliation that would let such a topic resume.
   T2 / 2e1 3a retains original U on uncertain intent/result, including U=0; append-only stops survive new Router/policy/run IDs. No reconciliation or resumption is implemented.
+  T3 / 3b-i also retains original U after expired/released leases, terminal state, changed epoch or stale pins; no late evidence can lower it or resume the trial.
 - source: 2e1 design v2 B1 (Astra, private/reviews/gen2-2e1-design-review-astra-20261031.md); Gate S rule "cut automatic post-unknown resumption if it cannot be given a small explicit contract"
 - removal: a reviewed slice adds an append-only, narrowly authorized reconciliation, or the operator rules that unknown-spend topics never resume.
 

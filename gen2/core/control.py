@@ -94,7 +94,15 @@ class DispatchAuthority(Protocol):
 
     def result(self, admission_ref: str, evidence_ref: str) -> Mapping | None:
         """{origin, admission_ref, evidence_ref, artifacts, confirmed_end,
-        actual_minor_units}; authenticated original evidence, not caller claims."""
+        actual_minor_units, rejection?}; authenticated originals, not caller claims.
+        rejection is {started_at, observed_at, runner, affected_lanes}, supplied
+        only for a log/fixture/runner-authenticated credentials_rejected result.
+        Its evidence_ref names the execution-record/1 with exit1/exit_nonzero;
+        artifacts also enumerate every original raw log/fixture/runner reference.
+        Router persists the capability projection and hold in the result's ACK.
+        After ACK the supervisor uses record_transition(failed, exit_nonzero,
+        end_evidence_ref=evidence_ref); replay after a crash never relaunches.
+        Late safety retention grants no terminal transition or reconciliation."""
 
 
 class ControlBackend(Protocol):

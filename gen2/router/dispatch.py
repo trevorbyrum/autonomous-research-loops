@@ -1,7 +1,7 @@
 """F5/L-6, v7 §2: serialized intent, first result, fixed-U stop (DEBT-052).
 
-Audit facts are append-only authority; no lifecycle/scientific writes. Late
-safety retention and provider rejection are 3b. No productive reader is wired.
+Audit facts are append-only authority; no lifecycle/scientific writes.
+Safety retention never resumes work. No productive reader is wired.
 """
 from typing import Callable, Mapping, Protocol, TYPE_CHECKING
 
@@ -13,6 +13,8 @@ from gen2.router.protocols import Rows, Schemas, Spool
 
 if TYPE_CHECKING:
     from gen2.router.amendments import Amendments
+    from gen2.router.capabilities import Capabilities
+    from gen2.router.lifecycle import Lifecycle
 
 TEXT = {"$ref": "common.schema.json#/$defs/short_text"}
 HASH = {"$ref": "common.schema.json#/$defs/sha256"}
@@ -37,6 +39,8 @@ class DispatchCore(Protocol):
     _spool: Spool
     _dispatch_authority: DispatchAuthority | None
     _amendments: "Amendments"
+    _capabilities: "Capabilities"
+    _lifecycle: "Lifecycle"
     def _guarded(self, reason: str, body: Callable) -> object: ...
     def _capability(self, capability_id: str, invocation_id: str) -> dict: ...
     def _lease_of(self, inv: dict) -> dict: ...
@@ -162,6 +166,35 @@ class Dispatch:
             return exc
         return None
 
+    def _current_result(self, inv: dict, original: dict, now: str) -> bool:
+        try:
+            self._core._require_current_lease(inv, now)
+            self._core._amendments._require_current_pins(inv)
+        except Refusal:
+            return False
+        return (inv["state"] in ("launching", "running", "result_ready")
+                and original["origin"]["epoch"] == self._core._dispatch_authority.epoch
+                and self._core._dispatch_authority.is_current(original["origin"])
+                and not any(r["invocation_id"] == inv["invocation_id"] for r in self._facts("dispatch_stopped")))
+
+    def _rejection(self, inv: dict, doc: dict) -> tuple[dict, dict] | None:
+        if doc.get("rejection") is None:
+            return None
+        require(isinstance(doc["rejection"], dict), "dispatch_origin_invalid")
+        require(set(doc["rejection"]) == {"started_at", "observed_at", "runner", "affected_lanes"}, "dispatch_origin_invalid")
+        observation = {**doc["rejection"], "probe_id": "probe_" + canonical.content_hash(
+            {"admission": doc["admission_ref"], "evidence": doc["evidence_ref"]})[7:39], "capability": "provider-auth:codex",
+            "outcome": "unusable_credential", "declared_expiry": None, "requested_by": "supervisor",
+            "detail": "credentials_rejected evidence=" + doc["evidence_ref"]}
+        boundary.require_schema(self._core._schemas, observation, "router-commands#/$defs/capability_probe", "dispatch_origin_invalid")
+        require(observation["runner"]["name"] == "codex", "dispatch_origin_invalid")
+        require(instant(observation["started_at"]) <= instant(observation["observed_at"]), "dispatch_origin_invalid")
+        require(instant(inv["launch_intent_at"]) <= instant(observation["started_at"]), "dispatch_origin_invalid")
+        evidence = self._core._lifecycle._evidence(inv, doc["evidence_ref"])
+        require(observation["observed_at"] == evidence["doc"]["observed_at"], "dispatch_origin_invalid")
+        require(doc["confirmed_end"] and evidence["doc"]["exit"] == {"code": 1, "signal": None}, "dispatch_origin_invalid")
+        return observation, evidence
+
     def record(self, request: Mapping) -> dict:
         try:
             req, inv, doc = self._read(request, result=True)
@@ -171,6 +204,7 @@ class Dispatch:
             if actual is not None:
                 boundary.require_schema(self._core._schemas, actual, "live-vocabulary.schema.json#/$defs/count", "dispatch_origin_invalid")
             refs = self._artifacts(inv, doc, req["evidence_ref"])
+            rejection = self._rejection(inv, doc)
             def write(now):
                 current = self._core._capability(req["capability_id"], req["invocation_id"])
                 intent = self._intent(inv["invocation_id"])
@@ -181,17 +215,18 @@ class Dispatch:
                 if prior is not None:
                     require(prior["detail"]["evidence"] == doc, "dispatch_result_conflict")
                     return {"status": "replayed", **prior["detail"]["response"]}
-                require(not any(r["invocation_id"] == inv["invocation_id"] for r in self._facts("dispatch_stopped")), "dispatch_result_not_current")
-                # 3a accepts only the current first-result branch. 3b adds late safety retention.
-                self._core._require_current_lease(current, now)
-                require(current["state"] in ("launching", "running", "result_ready"), "dispatch_result_not_current")
-                require(original["origin"]["epoch"] == self._core._dispatch_authority.epoch, "dispatch_result_not_current")
-                self._core._amendments._require_current_pins(current)
-                known = doc["confirmed_end"] and actual is not None
+                known = self._current_result(current, original, now) and doc["confirmed_end"] and actual is not None
                 charge = actual if known else original["upper_minor_units"]
                 stopped = not known or charge > original["upper_minor_units"]
                 response = {"charge_state": "actual" if known else "worst_case", "trial_stopped": stopped}
                 self._register(current, refs, now)
+                if rejection is not None:
+                    observation, evidence = rejection
+                    require(instant(observation["observed_at"]) <= instant(now), "dispatch_origin_invalid")
+                    self._core._lifecycle._bind_evidence(current, evidence, failure_class="exit_nonzero")
+                    projection = self._core._capabilities._probe_in_transaction(observation, now)
+                    response.update(fact_id=projection["fact"]["fact_id"],
+                                    hold_id=projection["hold"]["hold_id"] if projection["hold"] else None)
                 self._core._audit("dispatch_result", now, {"admission_ref": req["admission_ref"], "evidence": doc,
                     "charge_minor_units": charge, "trial_stopped": stopped, "response": response},
                     topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])

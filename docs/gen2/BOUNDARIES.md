@@ -343,3 +343,12 @@ The original writer-capture D1 trial failed; the full assembly path is not ready
 - **Definition:** the human authority.
 - **Owns:** scope, framing and reframes, obligation and rating approval, phase transitions, completion, retirement, merges to main, anything contested; which export connectors are enabled and what each topic exports (operator ruling 2026-09-26).
 - **Interface guarantees owed to the operator:** typed holds with owners and deadlines; status that answers why every waiting item waits; dated capability facts with transition alerts; dossiers that permanently carry their evidence; blind-sample protocol so advisory recommendations don't anchor the labels.
+
+**T3 / 2e1 3b-i:** Dispatch implements the safety-retention contract above.
+Its trusted rejection reader names the original execution record and raw
+artifacts; one transaction admits artifacts, result, capability fact and hold.
+It calls the existing capability projection, preserving its retained observation
+history and newest-observation ordering. D1's late-rejection projection changes
+remain deferred to DEBT-055. Only the existing lifecycle records FAILED after
+persistence ACK; dispatch never reopens or reconciles an invocation. No live
+authority is wired; route-wide rejection blocking and remediation belong to T4.
