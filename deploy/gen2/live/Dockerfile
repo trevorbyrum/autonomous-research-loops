@@ -7,6 +7,7 @@ HEALTHCHECK NONE
 FROM base AS runner
 COPY --from=approved-inputs --chmod=0555 codex /usr/local/bin/codex
 COPY --chmod=0555 deploy/gen2/live/runner.py /opt/live/runner.py
+COPY --chmod=0555 deploy/gen2/live/q_net.py /opt/live/q_net.py
 RUN echo 'f8786262ebc0fa1337448a2977332beadec66c8d0cda0ce973c7849766d7943c  /usr/local/bin/codex' | sha256sum -c -
 RUN test "$(/usr/local/bin/codex --version)" = 'codex-cli 0.153.2' && test ! -e /work && test ! -e /auth/codex
 USER 10001:10001

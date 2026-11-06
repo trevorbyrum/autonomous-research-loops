@@ -1,5 +1,6 @@
 """Q1–Q3 finite observers/probes; exchanges are evidence, never qualification."""
 import json
+import http.client
 import os
 import re
 import select
@@ -15,6 +16,30 @@ ROLES = {"host": ("127.0.0.1", 18870), "child": ("172.31.254.1", 18080),
 TARGETS = ROLES | {"host_alias": ("10.0.2.2", 18870), "local_dns": ("127.0.0.1", 53),
     "embedded_dns": ("127.0.0.11", 53), "alternate_dns": ("172.31.246.3", 53), "relay": ("172.31.254.2", 8080),
     "fixture": ("172.31.252.3", 8081), "service": ("172.31.250.3", 8765), "db": ("172.31.249.3", 5432)}
+
+
+def model_request(nonce):
+    return dict(model="gpt-5.4", stream=True, input=nonce,
+                tools=[dict(name=name) for name in ("exec_command", "write_stdin", "apply_patch")])
+
+
+def relay(nonce):
+    connection = http.client.HTTPConnection(*TARGETS["relay"], timeout=2)
+    answer = dict(connected=False, nonce=nonce)
+    try:
+        connection.request("POST", "/v1/responses", json.dumps(model_request(nonce)).encode(),
+                           {"Authorization": "Bearer 2e1-fixture-accepted", "Content-Type": "application/json",
+                            "Accept": "text/event-stream", "X-Request-ID": nonce, "Connection": "close"})
+        response = connection.getresponse()
+        body = response.read((1 << 20) + 1)
+        if len(body) > 1 << 20:
+            raise ValueError("relay response bound")
+        answer.update(connected=True, status=response.status, media=response.getheader("Content-Type"), body=body.hex())
+    except (OSError, http.client.HTTPException):
+        pass
+    finally:
+        connection.close()
+    print(json.dumps(answer))
 
 
 def dns_reply(packet, nonce):
@@ -94,5 +119,7 @@ if __name__ == "__main__":
         observe(sys.argv[2], sys.argv[3])
     elif sys.argv[1] == "probe":
         probe(sys.argv[2], int(sys.argv[4]), sys.argv[3], sys.argv[5])
+    elif sys.argv[1] == "relay" and (sys.argv[2], int(sys.argv[4]), sys.argv[5]) == (*TARGETS["relay"], "tcp"):
+        relay(sys.argv[3])
     else:
         raise ValueError("finite Q operation required")
