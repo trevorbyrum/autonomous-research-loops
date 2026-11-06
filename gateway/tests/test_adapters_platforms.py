@@ -1,6 +1,7 @@
 """Contract tests: OpenAIRE, Semantic Scholar, CORE, Europe PMC, OpenAlex local index."""
 import json
 import os
+from pathlib import Path
 import unittest
 import uuid
 
@@ -8,6 +9,8 @@ from research_gateway.adapters import core as core_adapter, europepmc, openaire,
 from research_gateway.adapters.base import Client, FakeTransport
 from research_gateway.core import db
 from research_gateway.core.broker import Broker, RatePolicy
+from research_gateway.core.dedup import cluster
+from research_gateway.core.payload import plain
 
 
 def client(secrets=None):
@@ -64,6 +67,38 @@ class SemanticScholar(unittest.TestCase):
     PAPER = {"paperId": "p1", "externalIds": {"DOI": "10.1234/abc", "ArXiv": "2301.10140"}, "title": "S2 paper", "year": 2023,
              "venue": "NeurIPS", "authors": [{"name": "A. Author"}], "openAccessPdf": {"url": "https://arxiv.org/pdf/2301.10140", "license": "CCBY"},
              "citationCount": 40, "referenceCount": 30}
+
+    def test_retained_abstract_and_crossref_first_merge(self):
+        """F1: actual adapter output equals the retained support operand; no live availability claim."""
+        fixture = json.loads((Path(__file__).resolve().parents[2] /
+            "gen2/tests/fixtures/gateway_answers/semanticscholar_abstract.json").read_text())
+        expected = fixture["gateway_response"]["records"][0]
+        for operation in ("find", "resolve"):
+            with self.subTest(operation=operation):
+                c, t = client()
+                body = fixture["provider_response"] if operation == "find" else fixture["provider_response"]["data"][0]
+                t.add("GET", semanticscholar.BASE + "/paper/", body=body)
+                record = (semanticscholar.find(c, "abstract fixture")["records"][0] if operation == "find"
+                          else semanticscholar.resolve(c, expected["identity"]))
+                actual = plain(record)
+                self.assertEqual({k: v for k, v in actual.items() if k != "retrieved_at"},
+                                 {k: v for k, v in expected.items() if k != "retrieved_at"})
+                self.assertIn("abstract", t.calls[0][1].split("fields=", 1)[1].split("&", 1)[0].split("%2C"))
+                bibliographic = {"identity": expected["identity"], "kind": "article", "source_id": "crossref"}
+                merged = cluster([bibliographic, actual])[0]
+                self.assertEqual((merged["source_id"], merged["abstract"]), ("crossref", expected["abstract"]))
+                self.assertFalse(merged["provenance"][1]["redistributable"])
+                first = cluster([actual, {**bibliographic, "abstract": "Different later content"}])[0]
+                self.assertEqual(first["abstract"], expected["abstract"])
+
+    def test_missing_and_blank_abstract_is_omitted(self):
+        """F1: absent/null/blank provider content never becomes an empty canonical abstract."""
+        for fields in ({}, {"abstract": None}, {"abstract": ""}, {"abstract": " \t\n"}):
+            with self.subTest(fields=fields):
+                c, t = client()
+                t.add("GET", semanticscholar.BASE + "/paper/search?", body={"total": 1, "data": [{**self.PAPER, **fields}]})
+                record = semanticscholar.find(c, "fixture")["records"][0]
+                self.assertNotIn("abstract", record)
 
     def test_find_resolve_with_key(self):
         c, t = client({("semantic_scholar", None): "KEY"})
