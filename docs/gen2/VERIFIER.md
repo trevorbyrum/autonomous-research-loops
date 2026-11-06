@@ -17,7 +17,7 @@ When CI meets the CI design's §4 qualification, CI replaces this role.
 - A unique unit name, `gen2-verify-<task>`.
 
 ## Procedure
-1. **Wait for the host to be free.** If any `gen2-landing-*` or `gen2-verify-*` systemd user unit is active, wait until none is.
+1. **Wait for the host to be free.** If any `gen2-landing-*` or `gen2-verify-*` systemd user unit is active, wait until none is. The candidate SHA is the merged-tree SHA: the PR head after current `origin/gen2` has been merged into it.
 2. **Make a clean clone and set up the venv:**
    - `git clone --no-hardlinks /home/trevor/work/autonomous-research-loops /tmp/verify-<task>`;
    - `git checkout --detach <SHA>`;
