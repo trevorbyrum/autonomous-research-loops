@@ -1,0 +1,1 @@
+{"fixture": {"schema": "judgment-verify.schema.json", "expect": "invalid", "tests": "the verdict vocabulary is the receipt's", "base": "valid-example.json", "patch": [{"op": "replace", "path": "/items/0/verdict", "value": "mostly"}], "errors": [{"keyword": "enum", "path": "/items/0/verdict"}]}}

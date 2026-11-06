@@ -1,0 +1,1 @@
+{"fixture": {"schema": "judgment-scope.schema.json", "expect": "invalid", "tests": "C-9: the model authors no hash", "base": "valid-example.json", "patch": [{"op": "add", "path": "/content_hash", "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}], "errors": [{"keyword": "additionalProperties", "path": ""}]}}

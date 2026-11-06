@@ -1,0 +1,10 @@
+{"fixture": {"schema": "judgment-research.schema.json", "expect": "valid", "tests": "claims, screening, obligations and the queue proposal in one judgment"},
+ "instance": {
+  "judgment_version": "judgment-research/1",
+  "claims": [{"local_id": "clm-1", "text": "Sleep loss lowers attention.", "load_bearing": true, "required_access_tier": "abstract", "sources": [{"work_id": "wrk_aaaaaaaa", "obligation_id": "ob-1", "contribution": "primary estimate"}]}],
+  "screening": [{"work_id": "wrk_aaaaaaaa", "stage": "abstract", "decision": "include", "reason_code": null, "criteria": {"c-1": "met"}}],
+  "obligations": [{"obligation_id": "ob-1", "outcome": "unknown", "confidence": "low", "summary": "one source"}],
+  "triggers": ["persistent_contradiction"],
+  "search_proposals": [{"proposal_version": "search-proposal/1", "proposal_id": "prop-1", "proposer": "primary", "lane": "semanticscholar", "request_type": "find", "query": "counterevidence for the claim", "page_cap": 2, "obligation_ids": ["ob-1"], "rationale": "tests clm-1 against contrary findings", "subject_ref": {"claim_ref": "clm-1"}}],
+  "next_queue_state": "resting"
+ }}
