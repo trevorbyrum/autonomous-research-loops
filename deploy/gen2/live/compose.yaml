@@ -1,0 +1,112 @@
+name: gen2-2e1-live
+x-service: &service
+  platform: linux/amd64
+  pull_policy: never
+  restart: "no"
+  read_only: true
+  user: "10001:10001"
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 512m
+  memswap_limit: 512m
+  cpus: 0.5
+  pids_limit: 64
+  tmpfs: ["/tmp:rw,nodev,nosuid,size=64m,mode=1777"]
+  logging: {driver: local, options: {max-size: 4m, max-file: "1"}}
+x-network: &network
+  driver: bridge
+  internal: true
+  enable_ipv6: false
+  driver_opts: {com.docker.network.bridge.gateway_mode_ipv4: isolated}
+services:
+  engine:
+    <<: *service
+    image: sha256:${GEN2_ENGINE_ID:?64-hex engine image ID}
+    command: [--root, /var/lib/gen2/control, --station-id, station-2e1, --host-id, "${GEN2_HOST_ID:?original host identity}", --bundle, /etc/gen2/bundle.json]
+    env_file: [/home/trevor/.config/gen2-2e1/secrets/engine.env]
+    environment: {GEN2_OPERATOR_LISTEN: "0.0.0.0:8770"}
+    group_add: ["0"]
+    stop_signal: SIGINT
+    ports: ["127.0.0.1:8770:8770"]
+    volumes:
+      - /home/trevor/.local/share/gen2-2e1/storage/control:/var/lib/gen2/control
+      - /home/trevor/.local/share/gen2-2e1/storage/spool:/var/lib/gen2/control/spool
+      - /home/trevor/.local/share/gen2-2e1/storage/journal:/var/lib/gen2/control/jobs
+      - /home/trevor/.local/share/gen2-2e1/storage/staging:/var/lib/gen2/staging
+      - /home/trevor/.local/share/gen2-2e1/storage/outputs/slot-0:/home/trevor/.local/share/gen2-2e1/storage/outputs/slot-0:ro
+      - /home/trevor/.local/share/gen2-2e1/storage/relay-evidence/slot-0:/home/trevor/.local/share/gen2-2e1/storage/relay-evidence/slot-0:ro
+      - /run/user/1000/gen2-2e1/docker.sock:/run/user/1000/gen2-2e1/docker.sock
+      - /home/trevor/.config/gen2-2e1/bundle.json:/etc/gen2/bundle.json:ro
+    networks: {service: {ipv4_address: 172.31.250.2}}
+    healthcheck: {test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8770/v1/health',timeout=2)"], interval: 10s, timeout: 3s, retries: 1}
+  gateway:
+    <<: *service
+    image: sha256:${GEN2_GATEWAY_ID:?64-hex gateway image ID}
+    env_file: [/home/trevor/.config/gen2-2e1/secrets/gateway.env]
+    environment: {RESEARCH_GATEWAY_LISTEN: "0.0.0.0:8765"}
+    stop_signal: SIGINT
+    ports: ["127.0.0.1:8771:8765"]
+    networks: {service: {ipv4_address: 172.31.250.3}, db: {ipv4_address: 172.31.249.2}, research-egress-offline: {ipv4_address: 172.31.251.2}}
+    healthcheck: {test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/v1/health',timeout=2)"], interval: 10s, timeout: 3s, retries: 1}
+  gateway-db:
+    <<: *service
+    image: docker.io/library/postgres@sha256:cf5d353f55240ecc2f811827a15c7d1f2d562f08019b49dca12b5a59f4ab5962
+    user: "999:999"
+    env_file: [/home/trevor/.config/gen2-2e1/secrets/db.env]
+    volumes: [/home/trevor/.local/share/gen2-2e1/storage/gateway-db:/var/lib/postgresql/data]
+    tmpfs: ["/tmp:rw,nodev,nosuid,size=16m,mode=1777", "/var/run/postgresql:rw,nodev,nosuid,size=4m,mode=0700,uid=999,gid=999"]
+    networks: {db: {ipv4_address: 172.31.249.3}}
+    healthcheck: {test: [CMD, pg_isready, -U, gen2_gateway, -d, gen2_gateway, -h, /var/run/postgresql], interval: 10s, timeout: 3s, retries: 1}
+  relay:
+    <<: *service
+    profiles: [offline]
+    image: docker.io/library/nginx@sha256:09ab424a8c788f8d0fe3a64429f6d19dfa526885c8609b748d0943a75dcb9f8c
+    entrypoint: [/usr/sbin/nginx, -c, /etc/gen2/nginx.conf]
+    mem_limit: 128m
+    memswap_limit: 128m
+    cpus: 0.25
+    pids_limit: 32
+    tmpfs: ["/tmp:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001"]
+    healthcheck: {disable: true}
+    sysctls: {net.ipv4.ip_forward: "0", net.ipv6.conf.all.forwarding: "0"}
+    volumes: ["${GEN2_RELAY_EVIDENCE:?original relay generation}:/evidence", /home/trevor/.config/gen2-2e1/relay-fixture.conf:/etc/gen2/nginx.conf:ro]
+    networks: {job: {ipv4_address: 172.31.254.2}, fixture-upstream: {ipv4_address: 172.31.252.2}}
+  fixture: &fixture
+    <<: *service
+    profiles: [offline]
+    image: sha256:${GEN2_FIXTURE_ID:?64-hex fixture image ID}
+    command: [accepted]
+    mem_limit: 128m
+    memswap_limit: 128m
+    cpus: 0.25
+    pids_limit: 32
+    healthcheck: {disable: true}
+    sysctls: {net.ipv4.ip_forward: "0", net.ipv6.conf.all.forwarding: "0"}
+    volumes: ["${GEN2_FIXTURE_EVIDENCE:?original model generation}:/evidence"]
+    networks: {fixture-upstream: {ipv4_address: 172.31.252.3}}
+  source-fixture:
+    <<: *fixture
+    command: [source]
+    volumes: ["${GEN2_SOURCE_EVIDENCE:?original source generation}:/evidence"]
+    networks: {research-egress-offline: {ipv4_address: 172.31.251.3}}
+networks:
+  service:
+    <<: *network
+    name: gen2-2e1-live-service-${GEN2_GENERATION:?protected random generation}
+    ipam: {config: [{subnet: 172.31.250.0/29}]}
+  db:
+    <<: *network
+    name: gen2-2e1-live-db-${GEN2_GENERATION:?protected random generation}
+    ipam: {config: [{subnet: 172.31.249.0/29}]}
+  research-egress-offline:
+    <<: *network
+    name: gen2-2e1-live-research-${GEN2_GENERATION:?protected random generation}
+    ipam: {config: [{subnet: 172.31.251.0/29}]}
+  job:
+    <<: *network
+    name: gen2-2e1-live-job-${GEN2_GENERATION:?protected random generation}
+    ipam: {config: [{subnet: 172.31.254.0/29}]}
+  fixture-upstream:
+    <<: *network
+    name: gen2-2e1-live-fixture-${GEN2_GENERATION:?protected random generation}
+    ipam: {config: [{subnet: 172.31.252.0/29}]}
