@@ -181,6 +181,14 @@ may_import = ["core", "router", "supervisor", "gateway_client", "operator"]
 stdlib_capabilities = ["http.server", "http.client"]
 third_party = []
 
+[modules.exec]
+path = "gen2/exec"
+purpose = "Trusted executor code (2e2-min): assembles the model's input from router reads, reads its small judgment.json, and builds the hash-bound outcome document. Reaches state only through the core ControlBackend protocol; model output is never trusted, so it maps to no BOUNDARIES.md component (the router still validates every commit)."
+boundaries = []
+may_import = ["core"]
+stdlib_capabilities = []
+third_party = []
+
 [modules.tests]
 path = "gen2/tests"
 purpose = "Gen-2 test suite. May import any gen2 module and any stdlib surface; forbidden_imports still apply (tests must not lean on gen-1 code)."

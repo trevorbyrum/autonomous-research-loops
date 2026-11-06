@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/judgment-review.schema.json",
+  "$comment": "flow: S4 (the executor hand-off) | boundaries: Primary agent (per-station frontier LLM); Verifier | invariants: C-2; C-9; RG-5 | note: 2e2-min T12-D. fresh-session review of the persisted dossier (flow S7)",
+  "title": "Executor judgment: review",
+  "description": "The model's only output for the review purpose. Trusted builders bind identities, hashes and pins; the model authors none (C-9).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["judgment_version", "outcome", "summary"],
+  "properties": {
+    "judgment_version": {"const": "judgment-review/1"},
+    "outcome": {
+      "enum": ["sufficient", "insufficient"]
+    },
+    "summary": {"$ref": "common.schema.json#/$defs/long_text"}
+  }
+}

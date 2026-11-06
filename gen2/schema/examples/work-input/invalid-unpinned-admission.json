@@ -1,0 +1,1 @@
+{"fixture": {"schema": "work-input.schema.json", "expect": "invalid", "tests": "C-12: admission carries its pinned contract, not a bare context", "base": "valid-example.json", "patch": [{"op": "replace", "path": "/admission", "value": {"context": "contract/1"}}], "errors": [{"keyword": "oneOf", "path": "/admission"}]}}

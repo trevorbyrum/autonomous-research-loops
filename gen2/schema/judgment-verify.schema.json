@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/judgment-verify.schema.json",
+  "$comment": "flow: S4 (the executor hand-off) | boundaries: Primary agent (per-station frontier LLM); Verifier | invariants: C-2; C-9; RG-5 | note: 2e2-min T12-D. verification (flow S4 steps 8-9)",
+  "title": "Executor judgment: verify",
+  "description": "The model's only output for the verify purpose. Trusted builders bind identities, hashes and pins; the model authors none (C-9).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["judgment_version", "items"],
+  "properties": {
+    "judgment_version": {"const": "judgment-verify/1"},
+    "items": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"type": "object", "additionalProperties": false, "required": ["claim_ref", "verdict", "cited_spans", "checks"], "properties": {"claim_ref": {"$ref": "common.schema.json#/$defs/local_id"}, "verdict": {"$ref": "verification-receipt.schema.json#/properties/verdict"}, "cited_spans": {"type": "array", "maxItems": 50, "items": {"type": "object", "additionalProperties": false, "required": ["quote", "locator"], "properties": {"quote": {"type": "string", "minLength": 1, "maxLength": 8000}, "locator": {"$ref": "common.schema.json#/$defs/short_text"}}}}, "checks": {"type": "object", "additionalProperties": false, "required": ["numeric_units", "denominators", "negation", "qualifications"], "properties": {"numeric_units": {"type": "object", "additionalProperties": false, "required": ["outcome", "note"], "properties": {"outcome": {"enum": ["succeeded", "failed", "not_applicable", "not_checked", "unavailable"]}, "note": {"type": "string", "maxLength": 8000}}}, "denominators": {"type": "object", "additionalProperties": false, "required": ["outcome", "note"], "properties": {"outcome": {"enum": ["succeeded", "failed", "not_applicable", "not_checked", "unavailable"]}, "note": {"type": "string", "maxLength": 8000}}}, "negation": {"type": "object", "additionalProperties": false, "required": ["outcome", "note"], "properties": {"outcome": {"enum": ["succeeded", "failed", "not_applicable", "not_checked", "unavailable"]}, "note": {"type": "string", "maxLength": 8000}}}, "qualifications": {"type": "object", "additionalProperties": false, "required": ["outcome", "note"], "properties": {"outcome": {"enum": ["succeeded", "failed", "not_applicable", "not_checked", "unavailable"]}, "note": {"type": "string", "maxLength": 8000}}}}}}}
+    }
+  }
+}

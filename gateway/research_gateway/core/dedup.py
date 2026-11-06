@@ -61,7 +61,7 @@ def _merge(into: dict, other: dict) -> None:
     for link in other.get("links") or []:
         if link not in into["links"]:
             into["links"].append(link)
-    for k in ("title", "year", "venue", "license", "attribution"):
+    for k in ("title", "year", "venue", "license", "attribution", "abstract"):
         if not into.get(k) and other.get(k):
             into[k] = other[k]
     if not into.get("authors") and other.get("authors"):

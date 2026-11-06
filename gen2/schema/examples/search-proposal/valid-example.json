@@ -1,0 +1,13 @@
+{"fixture": {"schema": "search-proposal.schema.json", "expect": "valid", "tests": "a counterevidence search ties to the claim it tests"},
+ "instance": {
+  "proposal_version": "search-proposal/1",
+  "proposal_id": "prop-1",
+  "proposer": "primary",
+  "lane": "semanticscholar",
+  "request_type": "find",
+  "query": "counterevidence for the claim",
+  "page_cap": 2,
+  "obligation_ids": ["ob-1"],
+  "rationale": "tests clm-1 against contrary findings",
+  "subject_ref": {"claim_ref": "clm-1"}
+ }}
