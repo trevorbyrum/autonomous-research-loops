@@ -60,7 +60,7 @@ def scope_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], lan
 
 
 ABSTRACT_CAP = 1500
-RESEARCH_FAMILIES = ("contract_revisions", "obligations", "works", "record_work_links", "retrieval_events",
+RESEARCH_FAMILIES = ("contract_revisions", "works", "record_work_links", "retrieval_events",
                      "search_observations", "claims")
 
 
@@ -78,7 +78,8 @@ def _abstract(retained: artifacts.Retained) -> str | None:
 
 def research_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], exchanges: artifacts.Exchanges,
                   claim_text: Callable[[str], str | None], as_of: str, state_revision: int, truncation: list[dict]) -> dict:
-    """The research pass's view: the pinned contract, its obligations, the works the topic retrieved and retained
+    """The research pass's view: the pinned contract's own wording (objective, key questions, facets, obligation text and
+    slots, confidence rubrics; none truncated, so an over-cap input is refused by write_inputs), the works the topic retrieved and retained
     (with the retained abstract when one is there), and earlier claims. A work with no staged response never
     appears, so the pass cannot cite what the builder could not bind (F3)."""
     if admission.get("context") != "contract/1":
@@ -89,6 +90,7 @@ def research_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], 
         raise Refused("the admission's contract is not exactly one contract_revisions row")
     document = rows[0]["document"]
     scheme = document.get("confidence_scheme")
+    record, framework = document["decision_record"], document["facet_map"]
     works, cut = [], 0
     for work in records["works"]:
         try:
@@ -106,7 +108,11 @@ def research_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], 
               for r in bounded("claims", records["claims"], truncation)]
     return {"as_of": as_of, "state_revision": state_revision,
             "contract": {**pin, "framing_version": rows[0]["framing_version"], "eligibility_protocol": document["eligibility_protocol"],
-                         "confidence_scheme": None if scheme is None else {"scheme_id": scheme["scheme_id"], "version": scheme["version"], "labels": sorted(scheme["labels"])}},
-            "obligations": [{k: r[k] for k in ("obligation_id", "claim_type", "facet_ids")} for r in records["obligations"]
-                            if r["contract_revision"] == pin["revision"]],
+                         "objective": record["objective"]["operator_words"], "feeds": record["feeds"],
+                         "evidence_that_would_change_it": record["evidence_that_would_change_it"],
+                         "key_questions": [{k: link[k] for k in ("link_id", "key_question")} for link in framework["analytic_framework"]["links"]],
+                         "facets": [{k: f[k] for k in ("facet_id", "label", "kind")} for f in framework["facets"]],
+                         "confidence_scheme": None if scheme is None else {"scheme_id": scheme["scheme_id"], "version": scheme["version"], "labels": scheme["labels"]}},
+            "obligations": [{"obligation_id": o["obligation_id"], "claim_type": o["template"]["claim_type"], "text": o["text"], "slots": o["slots"],
+                             "facet_ids": o["facet_ids"]} for o in document["obligations"]],
             "works": bounded("works", works, truncation), "claims": claims}

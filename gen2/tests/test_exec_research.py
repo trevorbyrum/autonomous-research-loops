@@ -7,11 +7,12 @@ import copy
 import hashlib
 import json
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
 from gen2.core import canonical
-from gen2.exec import artifacts, common, research, views
+from gen2.exec import common, orders, research, views
 from gen2.router.schemas import SchemaSet
 from gen2.tests import children
 from gen2.tests.test_exec_scope import HASH, TOPIC, Exchanges, lineage, staged
@@ -23,16 +24,24 @@ JUDGMENT["claims"][0]["sources"][0]["contribution"] = "answer"
 RAW = canonical.canonical_bytes({"gateway_response": {"records": [{"identity": "doi:10.1/a", "abstract": "An abstract."}]}})
 
 
+RUBRICS = {"low": "One study, or studies that disagree.", "high": "Two or more independent studies agree."}
+
+
 def contract(**doc):
     return {"revision": 1, "content_hash": HASH, "framing_version": 2,
             "document": {"eligibility_protocol": {"protocol_version": 3, "criteria": [{"criterion_id": "c-1"}]},
-                         "confidence_scheme": {"scheme_id": "s", "version": 1, "labels": {"low": "", "high": ""}}, **doc}}
+                         "confidence_scheme": {"scheme_id": "s", "version": 1, "labels": RUBRICS},
+                         "decision_record": {"objective": {"operator_words": "Does sleep loss lower adolescent attention?"},
+                                             "feeds": {"kind": "decision", "description": "School start times."},
+                                             "evidence_that_would_change_it": [{"entry_id": "e1", "text": "A null multi-site trial."}]},
+                         "facet_map": {"analytic_framework": {"links": [{"link_id": "l1", "key_question": "Does duration change attention?"}]},
+                                       "facets": [{"facet_id": "f1", "label": "Sleep duration", "kind": "exposure", "importance": 5}]},
+                         "obligations": [{"obligation_id": "ob-1", "template": {"claim_type": "effect"}, "text": "Estimate the effect of under 7 hours of sleep on sustained attention.",
+                                          "slots": {"population": "adolescents 13-17"}, "facet_ids": ["f1"]}], **doc}}
 
 
 def records(**over):
     base = {**lineage(), "contract_revisions": [contract()],
-            "obligations": [{"obligation_id": "ob-1", "contract_revision": 1, "claim_type": "effect", "facet_ids": ["f1"], "template_id": "t"},
-                            {"obligation_id": "ob-9", "contract_revision": 2, "claim_type": "effect", "facet_ids": ["f1"], "template_id": "t"}],
             "works": [{"work_id": "wrk_aaaaaaaa", "identity_scheme": "doi", "identity_value": "10.1/a"},
                       {"work_id": "wrk_bbbbbbbb", "identity_scheme": "doi", "identity_value": "10.1/b"}],
             "claims": [{"claim_id": "clm_prior0001", "revision": 1, "load_bearing": 0, "text_ref": "sha256:" + "d" * 64}]}
@@ -70,10 +79,31 @@ class ViewTest(unittest.TestCase):
     def test_only_retained_works_appear_with_their_retained_abstract(self):
         view = work()["view"]
         self.assertEqual(view["works"], [{"work_id": "wrk_aaaaaaaa", "identity": "doi:10.1/a", "abstract": "An abstract."}])
-        self.assertEqual([o["obligation_id"] for o in view["obligations"]], ["ob-1"])
         self.assertEqual(view["claims"][0]["text"], "prior text")
         self.assertEqual((view["state_revision"], view["contract"]["framing_version"]), (7, 2))
-        self.assertEqual(view["contract"]["confidence_scheme"], {"scheme_id": "s", "version": 1, "labels": ["high", "low"]})
+
+    def test_the_view_carries_the_contracts_own_wording(self):
+        contract_view = work()["view"]["contract"]
+        self.assertEqual(contract_view["objective"], "Does sleep loss lower adolescent attention?")
+        self.assertEqual(contract_view["feeds"], {"kind": "decision", "description": "School start times."})
+        self.assertEqual(contract_view["key_questions"], [{"link_id": "l1", "key_question": "Does duration change attention?"}])
+        self.assertEqual(contract_view["facets"], [{"facet_id": "f1", "label": "Sleep duration", "kind": "exposure"}])
+        self.assertEqual(contract_view["confidence_scheme"], {"scheme_id": "s", "version": 1, "labels": RUBRICS})
+        self.assertEqual(work()["view"]["obligations"], [{"obligation_id": "ob-1", "claim_type": "effect", "facet_ids": ["f1"],
+                         "text": "Estimate the effect of under 7 hours of sleep on sustained attention.", "slots": {"population": "adolescents 13-17"}}])
+
+    def test_changed_wording_changes_the_input_and_an_oversized_input_is_refused(self):
+        document = contract()["document"]
+        edited = copy.deepcopy(document)
+        edited["obligations"][0]["text"] = "Estimate something else."
+        edited["confidence_scheme"]["labels"]["high"] = "Three replications."
+        other = work(records(contract_revisions=[{**contract(), "document": edited}]))["view"]
+        self.assertEqual((other["obligations"][0]["text"], other["contract"]["confidence_scheme"]["labels"]["high"]), ("Estimate something else.", "Three replications."))
+        self.assertNotEqual(other, work()["view"])
+        entry = {"max_input_bytes": 500}
+        document_ = {"view": work()["view"]}
+        with tempfile.TemporaryDirectory() as root, self.assertRaises(common.Refused):
+            orders.write_inputs(Path(root), entry=entry, prompt=b"", document=document_)
 
     def test_a_response_without_a_usable_abstract_gives_a_work_without_one(self):
         for case, data in (("missing", canonical.canonical_bytes({"gateway_response": {"records": [{"identity": "doi:10.1/a"}]}})),

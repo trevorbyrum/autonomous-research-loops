@@ -8,10 +8,12 @@ work. Write what the sources support, not what would make the topic look finishe
 ## What you are given
 
 `input.json` holds, under `view`:
-- `contract`: the pinned contract. `eligibility_protocol.criteria` lists the screening criteria
-  (`criterion_id`, `description`, `stage`). `confidence_scheme` lists the only confidence labels allowed,
-  or is null.
-- `obligations`: what the contract requires. Every `obligation_id` you write must come from here.
+- `contract`: the pinned contract's wording. `objective`, `feeds` and `evidence_that_would_change_it` say what the
+  research is for; `key_questions` and `facets` are the framing; `eligibility_protocol.criteria` lists the
+  screening criteria (`criterion_id`, `description`, `stage`); `confidence_scheme.labels` maps each allowed
+  confidence label to its rubric, or `confidence_scheme` is null.
+- `obligations`: what the contract requires, each with its `text` and `slots`. Every `obligation_id` you write must
+  come from here, and your judgment of an obligation answers its `text`.
 - `works`: the sources you may cite. Each has a `work_id` and an `identity`. When the retained response
   carried one, it has an `abstract`; a source without an `abstract` has only bibliographic data, and the
   system will hold any claim that needs more than that. You may cite no work that is not in this list.
@@ -39,7 +41,7 @@ One file, `/out/judgment.json`, strict JSON, exactly these keys:
   `not_met` or `unknown`. Missing information is `unknown`, never `not_met`.
 - `obligations`: one entry per obligation you can speak to: `{obligation_id, outcome, confidence, summary}`.
   `outcome` is `satisfied`, `not_satisfied` or `unknown`. `confidence` is a label from the contract's
-  scheme (any word if there is no scheme; it is then recorded as unknown). `summary` states what the
+  scheme, chosen by its rubric (any word if there is no scheme; it is then recorded as unknown). `summary` states what the
   evidence is and what is missing.
 - `triggers`: reason codes only when they apply: `persistent_contradiction`, `yield_exhaustion_open_obligations`,
   `cross_context_heterogeneity`, `definitional_disagreement`, `evidence_type_mismatch`,
