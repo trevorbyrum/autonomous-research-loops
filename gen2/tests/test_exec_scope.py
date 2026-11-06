@@ -9,10 +9,12 @@ import json
 import re
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from gen2.core import canonical
 from gen2.exec import artifacts, common, scope, views
 from gen2.router.schemas import SchemaSet
+from gen2.router.service import Router
 from gen2.tests import children
 
 TOPIC = "fleet:topic"
@@ -107,20 +109,38 @@ class ScopeBuilderTest(unittest.TestCase):
                 self.assertEqual(report["discovery_mechanisms"][0], {"mechanism": "database_search", "status": expected})
 
     def test_a_replay_builds_identical_bytes(self):
-        build = lambda: common.outcome_bytes(scope.build_scope(work(), copy.deepcopy(JUDGMENT)))
+        build = lambda: common.outcome_bytes(scope.build_scope(work(), {**copy.deepcopy(JUDGMENT), "search_proposals": []}))
         self.assertEqual(build(), build())
 
-    def test_outcome_carries_one_report_and_set_proposers(self):
-        outcome = scope.build_scope(work(), {**JUDGMENT, "search_proposals": [{**JUDGMENT["search_proposals"][0], "proposer": "forged"}]})
-        self.assertEqual(len(outcome["scoping_reports"]), 1)
+    def handoff(self, outcome):
+        """The router's own decision for a scoping topic committing this outcome (service.py `_decide_effects`); it reads nothing of `self` on this path."""
+        payload = {**outcome, "next_queue_state": None}
+        lease = {"lease_id": "l1", "generation": 1}
+        inv = {"kind": "research_pass", "admission_context": "pre-contract/1", "topic_id": TOPIC}
+        return Router._decide_effects(SimpleNamespace(), True, inv, {"status": "scoping"}, payload, lease)[1]
+
+    def test_pending_searches_commit_alone_and_the_topic_stays_scoping(self):
+        forged = {**JUDGMENT["search_proposals"][0], "proposer": "forged"}
+        outcome = scope.build_scope(work(), {**JUDGMENT, "search_proposals": [forged]})
+        self.assertEqual(outcome["scoping_reports"], [])
         self.assertEqual([p["proposer"] for p in outcome["search_proposals"]], ["research_pass.scope"])
         self.assertEqual(SCHEMAS.errors(outcome["search_proposals"][0], "search-proposal.schema.json"), [])
-        self.assertEqual(SCHEMAS.errors({k: v for k, v in outcome.items() if k != "search_proposals"}, "outcome-document.schema.json"), [])
+        self.assertIsNone(self.handoff(outcome))
 
-    def test_a_judgment_without_traditions_or_facets_is_refused(self):
+    def test_no_pending_searches_commit_one_report_and_hand_off_to_the_operator(self):
+        outcome = scope.build_scope(work(), {**JUDGMENT, "search_proposals": []})
+        self.assertEqual((len(outcome["scoping_reports"]), "search_proposals" in outcome), (1, False))
+        self.assertEqual(SCHEMAS.errors(outcome, "outcome-document.schema.json"), [])
+        self.assertEqual(self.handoff(outcome), {"from": "scoping", "to": "awaiting_scope_approval"})
+
+    def test_a_proposal_only_pass_needs_no_report_fields(self):
+        outcome = scope.build_scope(work(), {**JUDGMENT, "traditions": [], "candidate_facets": []})
+        self.assertEqual((outcome["scoping_reports"], len(outcome["search_proposals"])), ([], 1))
+
+    def test_a_report_without_traditions_or_facets_is_refused(self):
         for key in ("traditions", "candidate_facets"):
             with self.subTest(key), self.assertRaises(common.Refused):
-                scope.scoping_report(work(), {**JUDGMENT, key: []})
+                scope.build_scope(work(), {**JUDGMENT, "search_proposals": [], key: []})
 
 
 class Exchanges:

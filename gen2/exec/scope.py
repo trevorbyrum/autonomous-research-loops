@@ -58,8 +58,11 @@ def scoping_report(work: Mapping, judgment: Mapping) -> dict:
 
 
 def build_scope(work: Mapping, judgment: Mapping) -> dict:
-    """work-input/1 + judgment-scope/1 -> outcome/1. The proposals keep the model's content and lose its
-    attribution: the proposer is the purpose, set here (C-9)."""
+    """work-input/1 + judgment-scope/1 -> outcome/1. Pending proposals mean the territory is not yet described:
+    the pass commits those searches alone, because the router hands the topic to scope approval on any report
+    (service.py `_decide_effects`). An empty list is the model's word that recorded searches suffice, and then
+    the report is built. The proposals keep the model's content and lose its attribution (C-9)."""
     proposals = [{**p, "proposer": PROPOSER} for p in judgment["search_proposals"]]
-    return scaffold(work["invocation_id"], work["topic_id"], scoping_reports=[scoping_report(work, judgment)],
-                    search_proposals=proposals)
+    if proposals:
+        return scaffold(work["invocation_id"], work["topic_id"], search_proposals=proposals)
+    return scaffold(work["invocation_id"], work["topic_id"], scoping_reports=[scoping_report(work, judgment)])

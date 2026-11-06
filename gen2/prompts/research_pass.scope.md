@@ -26,8 +26,9 @@ Write one file, `/out/judgment.json`, strict JSON, no comments, exactly these ke
 - `candidate_facets`: the separate questions or dimensions the topic splits into. At least one.
 - `deliberately_out`: what you leave out, each with its reason inside the phrase.
 - `gap_skeleton`: what you do not yet know, in plain words. Say what has not been searched.
-- `search_proposals`: up to 32 searches for the next pass. Empty when you have enough recorded searches
-  to describe the territory.
+- `search_proposals`: up to 32 searches for the next pass. **A non-empty list means you want those searches run
+  first, so no scoping report is produced from this pass.** Leave it empty only when the recorded searches are
+  enough to describe the territory; the report is then produced from the other fields.
 
 Each search proposal has: `proposal_version` (`search-proposal/1`), `proposal_id` (a short label, for
 example `p1`), `proposer` (any label; it is replaced), `lane`, `request_type` (`find`, `resolve`, `enrich`,
