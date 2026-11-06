@@ -294,6 +294,20 @@ slice map and decisions text are in
 `~/work/research-loops-public/private/evidence/dossier-history/DOSSIER-2d-history-20261024.md`
 (outside the repository).
 
+## T2 / 2e1 3a (2026-11-05)
+
+Lane A adds serialized admission, immutable first-result charging and the permanent original-U uncertainty stop (F5, DEBT-052), serving 2f admission/spend qualification. Trusted-reader fixtures establish Router behavior only; productive dispatch remains closed pending the later gates. No schema change; 3b safety retention and rejection authority are deferred to T3/T4.
+
+## T3 / 2e1 3b-i (2026-11-05)
+
+Lane A retains original-U results after expired/released leases, terminal state,
+changed epoch, stale pins or uncertainty, with a permanent stop (DEBT-052).
+Authenticated rejection reuses the dated capability projection and owned,
+deadlined remediation hold; persistence ACK precedes the existing FAILED
+transition. Offline fixtures cover dates, atomic hold failure and replay; they
+qualify no real provider or runtime. Serves 2f spending and DEBT-004's rejection
+experiment. T4 owns the route-wide blocker/remediation subject (DEBT-053).
+
 ## T12-A / 2e2 Router interface (2026-11-05)
 
 Trusted station calls can record a native dossier under a live checkpoint;

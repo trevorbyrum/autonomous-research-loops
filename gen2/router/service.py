@@ -52,6 +52,8 @@ from typing import Callable, Mapping
 
 from gen2 import accounting
 from gen2.core import canonical, instants
+from gen2.core.control import DispatchAuthority
+from gen2.router.dispatch import DISPATCH_COMMANDS, Dispatch
 from gen2.router.accounting import ACCOUNTING_COMMANDS, Accounting, CoverageSnapshot, DossierInput
 from gen2.router.assessments import Assessments
 from gen2.router.acquisitions import ACQUISITION_COMMANDS, AcquisitionAdmission
@@ -110,7 +112,7 @@ class Router:
 
     def __init__(self, store: api.Store, spool, *, clock: Callable[[], str] = instants.utc_now, new_id: Callable[[str], str] = random_id,
                  extensions=None, fault: Callable[[str], None] | None = None, schemas: SchemaSet | None = None, gateway_captures=None,
-                 evaluate: Callable = gates.evaluate) -> None:
+                 evaluate: Callable = gates.evaluate, dispatch_authority: DispatchAuthority | None = None) -> None:
         self._store = store
         with self._snapshot():
             require_retained_support(self._store)
@@ -122,7 +124,9 @@ class Router:
         self._fault = fault or (lambda point: None)
         self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {
             **COMMANDS["$defs"], **LIFECYCLE_COMMANDS, **REGISTRY_COMMANDS, **AMENDMENT_COMMANDS, **SCHEDULING_COMMANDS,
-            **STATUS_COMMANDS, **CAPABILITY_COMMANDS, **ACQUISITION_COMMANDS, **EXTRACTOR_COMMANDS, **ACCOUNTING_COMMANDS}}})
+            **DISPATCH_COMMANDS, **STATUS_COMMANDS, **CAPABILITY_COMMANDS, **ACQUISITION_COMMANDS, **EXTRACTOR_COMMANDS, **ACCOUNTING_COMMANDS}}})
+        self._dispatch_authority = dispatch_authority
+        self._dispatch = Dispatch(self)
         self._status = Status(self)
         self._accounting = Accounting(self)
         self._capabilities = Capabilities(self)
@@ -262,8 +266,17 @@ class Router:
     def reconcile(self, request: Mapping) -> dict:
         return self._lifecycle.reconcile(request)
 
+    def authorize_dispatch(self, request: Mapping) -> dict:
+        return self._dispatch.authorize(request)
+
+    def record_dispatch_result(self, request: Mapping) -> dict:
+        return self._dispatch.record(request)
+
+    def _dispatch_launch_refusal(self, inv: dict, now: str) -> Refusal | None:
+        return self._launch_refusal(inv, now) or self._dispatch.start_refusal(inv, now)
+
     def invocation_status(self, request: Mapping) -> dict:
-        return self._lifecycle.invocation_status(request)
+        return self._guarded("request_invalid", lambda now: self._lifecycle.invocation_status(request, now=now))
 
     # -- scheduling's public routes and the members the rest of the Router reads (scheduling.py) -----
     def requeue(self, request: Mapping) -> dict:
@@ -620,7 +633,7 @@ class Router:
             raise Refusal("transition_not_allowed", f"{inv['invocation_id']} is already {target} (reached another way)")
         changes = {"state": target, "state_changed_at": now, **facts}
         if target == "launching":
-            refusal = self._launch_refusal(inv, now)
+            refusal = self._dispatch_launch_refusal(inv, now)
             if refusal is not None:
                 raise refusal
             changes["launch_intent_at"] = now
@@ -644,6 +657,7 @@ class Router:
             self._lifecycle._release_capacity(inv, now, target)
         if target == "outcome_unknown":
             self._lifecycle._open_unknown_hold(inv, facts["unknown_episode"], req["unknown_cause"], now)
+            self._dispatch.stop_uncertain(inv, now)
         self._audit("transition", now, {"from": inv["state"], "to": target, **({"cause": req["unknown_cause"]} if target == "outcome_unknown" else {})},
                     topic_id=inv["topic_id"], invocation_id=inv["invocation_id"])
         return {"status": "recorded", "invocation_id": inv["invocation_id"], "state": target}
