@@ -1,0 +1,1 @@
+{"fixture": {"schema": "search-proposal.schema.json", "expect": "invalid", "tests": "bounded: a zero-page search is not a search", "base": "valid-example.json", "patch": [{"op": "replace", "path": "/page_cap", "value": 0}], "errors": [{"keyword": "minimum", "path": "/page_cap"}]}}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/judgment-research.schema.json",
+  "$comment": "flow: S4 (the executor hand-off) | boundaries: Primary agent (per-station frontier LLM); Verifier | invariants: C-2; C-9; RG-5 | note: 2e2-min T12-D. research pass (flow S4 steps 1-7)",
+  "title": "Executor judgment: research",
+  "description": "The model's only output for the research purpose. Trusted builders bind identities, hashes and pins; the model authors none (C-9).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["judgment_version", "claims", "screening", "obligations", "triggers", "search_proposals", "next_queue_state"],
+  "properties": {
+    "judgment_version": {"const": "judgment-research/1"},
+    "claims": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"type": "object", "additionalProperties": false, "required": ["local_id", "text", "load_bearing", "required_access_tier", "sources"], "properties": {"local_id": {"$ref": "common.schema.json#/$defs/local_id"}, "text": {"$ref": "common.schema.json#/$defs/long_text"}, "load_bearing": {"type": "boolean"}, "required_access_tier": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/access_tier"}]}, "sources": {"type": "array", "maxItems": 50, "items": {"type": "object", "additionalProperties": false, "required": ["work_id", "obligation_id", "contribution"], "properties": {"work_id": {"$ref": "common.schema.json#/$defs/work_id"}, "obligation_id": {"$ref": "common.schema.json#/$defs/local_id"}, "contribution": {"$ref": "outcome-document.schema.json#/properties/claim_source_links/items/properties/contribution"}, "spans": {"type": "array", "maxItems": 50, "items": {"$ref": "verification-receipt.schema.json#/properties/cited_spans/items"}}}}}}}
+    },
+    "screening": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"type": "object", "additionalProperties": false, "required": ["work_id", "stage", "decision", "reason_code", "criteria"], "properties": {"work_id": {"$ref": "common.schema.json#/$defs/work_id"}, "stage": {"enum": ["metadata", "abstract", "full_text"]}, "decision": {"enum": ["include", "exclude", "borderline"]}, "reason_code": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/local_id"}]}, "criteria": {"type": "object", "maxProperties": 100, "propertyNames": {"$ref": "common.schema.json#/$defs/local_id"}, "additionalProperties": {"enum": ["met", "not_met", "unknown"]}}}}
+    },
+    "obligations": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"type": "object", "additionalProperties": false, "required": ["obligation_id", "outcome", "confidence", "summary"], "properties": {"obligation_id": {"$ref": "common.schema.json#/$defs/local_id"}, "outcome": {"enum": ["satisfied", "not_satisfied", "unknown"]}, "confidence": {"enum": ["low", "medium", "high"]}, "summary": {"$ref": "common.schema.json#/$defs/long_text"}}}
+    },
+    "triggers": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {"$ref": "outcome-document.schema.json#/properties/review_triggers/items/properties/reason_code"}
+    },
+    "search_proposals": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {"$ref": "search-proposal.schema.json"}
+    },
+    "next_queue_state": {"$ref": "outcome-document.schema.json#/properties/next_queue_state"}
+  }
+}

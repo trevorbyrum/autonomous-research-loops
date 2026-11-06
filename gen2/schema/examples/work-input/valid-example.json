@@ -1,0 +1,12 @@
+{"fixture": {"schema": "work-input.schema.json", "expect": "valid", "tests": "identity, pinned admission, limits and recorded truncation"},
+ "instance": {
+  "input_version": "work-input/1",
+  "kind": "research_pass",
+  "purpose": "research",
+  "invocation_id": "inv_aaaaaaaa",
+  "topic_id": "fleet:topic",
+  "admission": {"context": "contract/1", "contract": {"revision": 1, "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+  "limits": {"max_input_bytes": 1000000, "max_output_bytes": 100000},
+  "view": {"obligations": []},
+  "truncation": [{"family": "claims", "kept": 10, "total": 12}]
+ }}
