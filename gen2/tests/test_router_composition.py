@@ -12,12 +12,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from gen2.router import acquisitions, amendments, assessments, capabilities, evidence_writer, lifecycle, observations, registries, scheduling, service, status, verification
-from gen2.router import accounting, gates, detailed_checks, extractor_registry, extractions, history, protocols, support
+from gen2.router import dispatch, accounting, gates, detailed_checks, extractor_registry, extractions, history, protocols, support
 from gen2.core.instants import utc_instant_ns
 from gen2.tests.router_fixtures import RouterTestCase
 from gen2.tests.test_capability_probe import observation
 
-COLLABORATORS = ((accounting, accounting.Accounting, accounting.AccountingCore, "_accounting"),
+COLLABORATORS = ((dispatch, dispatch.Dispatch, dispatch.DispatchCore, "_dispatch"), (accounting, accounting.Accounting, accounting.AccountingCore, "_accounting"),
                  (status, status.Status, status.StatusCore, "_status"), (capabilities, capabilities.Capabilities, capabilities.CapabilityCore, "_capabilities"),
                  (registries, registries.Registries, registries.RegistriesCore, "_registries"), (lifecycle, lifecycle.Lifecycle, lifecycle.LifecycleCore, "_lifecycle"),
                  (scheduling, scheduling.Scheduling, scheduling.SchedulingCore, "_scheduling"), (amendments, amendments.Amendments, amendments.AmendmentsCore, "_amendments"),
@@ -31,7 +31,7 @@ COLLABORATORS = ((accounting, accounting.Accounting, accounting.AccountingCore, 
                  (detailed_checks, detailed_checks.DetailedChecks, detailed_checks.DetailedChecksCore, "_detailed_checks"))
 PUBLIC_API = {  # Router's public methods at be5b2f1 plus intentional additions (evidence_inventory, task 2c-2a)
     "ack_delivery", "activate_config_bundle", "admit_reaccess", "apply_operator_decision", "claim", "close", "close_brief", "commit_outcome", "config_bundle", "create_topic", "draft_contract",
-    "record_dossier", "candidate_units", "coverage_snapshot", "evidence_inventory", "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",
+    "authorize_dispatch", "record_dispatch_result", "record_dossier", "candidate_units", "coverage_snapshot", "evidence_inventory", "healthy", "invocation_status", "is_qualified", "mark_brief_overdue", "open", "open_brief", "open_reservation", "open_review", "propose_amendment", "raise_signal",
     "receipt", "reconcile", "record_capability_probe", "record_gateway_facts", "record_observation", "record_qualification", "record_transition", "register_works",
     "request_cancel", "requeue", "restore_config_bundle", "revoke_qualification", "status", "version_brief", "register_extractor_registry"}
 
@@ -94,7 +94,7 @@ class CollaboratorInterfaceTest(RouterTestCase):
             if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) and is_core(node.value.value)):
                 continue
             attribute = node.value.attr
-            if attribute in ("_store", "_schemas", "_spool", "_gateway_captures"):
+            if attribute in ("_store", "_schemas", "_spool", "_gateway_captures", "_dispatch_authority"):
                 continue
             self.assertIn(attribute, declared(core))
             target = registry[attribute]

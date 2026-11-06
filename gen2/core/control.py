@@ -67,6 +67,44 @@ class ExtensionRegistry(Protocol):
         accepted review (EXPORT-API.md §5, §7)."""
 
 
+class DispatchAuthority(Protocol):
+    """Composition-bound protected journal/collector, never a model or spool reader.
+
+    No production implementation is wired in 3a. Reads are local, bounded and
+    return detached JSON or None. The authority authenticates the qualified
+    whole-attempt enforcement, manifest/credential/route/backend, original job,
+    epoch and evidence generation. It enumerates EVERY referenced artifact;
+    Router rehashes and registers them. Labels inside artifacts prove nothing.
+    Admission records are immutable; is_current checks current qualification.
+    Result reads authenticate original provenance even after current expiry.
+    confirmed_end covers all senders/writers/descendants and closed ingress;
+    actual_minor_units is independently authoritative or None, never estimated.
+    epoch is the current supervisor epoch, fixed for this Router's lifetime.
+    """
+    epoch: str
+
+    def admission(self, invocation_id: str, run_id: str, attempt: int) -> Mapping | None:
+        """{origin, policy, upper_minor_units, artifacts}; policy is the qualified
+        policy_accounting fragment, origin pins Router and protected job state.
+        No qualified enforcement means None, including fixture-only real bounds."""
+
+    def is_current(self, origin: Mapping) -> bool:
+        """Local current qualification/enforcement view; no I/O or callbacks.
+        Checked under the writer lock at authorization and final start."""
+
+    def result(self, admission_ref: str, evidence_ref: str) -> Mapping | None:
+        """{origin, admission_ref, evidence_ref, artifacts, confirmed_end,
+        actual_minor_units, rejection?}; authenticated originals, not caller claims.
+        rejection is {started_at, observed_at, runner, affected_lanes}, supplied
+        only for a log/fixture/runner-authenticated credentials_rejected result.
+        Its evidence_ref names the execution-record/1 with exit1/exit_nonzero;
+        artifacts also enumerate every original raw log/fixture/runner reference.
+        Router persists the capability projection and hold in the result's ACK.
+        After ACK the supervisor uses record_transition(failed, exit_nonzero,
+        end_evidence_ref=evidence_ref); replay after a crash never relaunches.
+        Late safety retention grants no terminal transition or reconciliation."""
+
+
 class ControlBackend(Protocol):
     """Every authoritative state change goes through one of these (C-1).
     Each is one short transaction with no subprocess or network call inside
