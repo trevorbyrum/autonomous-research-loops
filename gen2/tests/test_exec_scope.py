@@ -27,7 +27,7 @@ SCHEMAS = SchemaSet()
 def observation(n, lane="semanticscholar", state="searched_ok"):
     return {"observation_id": f"obs_{n:08d}", "lane": lane, "coverage_state": state, "completeness": "complete",
             "result_count": 3, "error_class": None, "request": {"request": {"request_type": "find", "query": "q"}},
-            "gateway_call_ref": f"call-{n}", "topic_id": TOPIC}
+            "gateway_call_ref": f"call-{n}", "topic_id": TOPIC, "invocation_id": "inv_discover1"}
 
 
 def records(**over):

@@ -16,6 +16,7 @@ from gen2.exec.common import Refused
 
 FAMILIES = ("claims", "claim_source_links", "verification_receipts", "source_artifacts", "works", "retrieval_events", "record_work_links",
             "search_observations", "detailed_check_records", "source_acquisitions", "quote_checks")   # the last three are the support predicate's operands
+TIERS = ("bibliographic", "abstract", "full_text", "reproduced")
 CHECK_KINDS = 4
 RECEIPT_CAP = 64 // CHECK_KINDS   # one commit carries at most 64 detailed_check_records (outcome-document.schema.json), four per receipt
 
@@ -63,7 +64,7 @@ def verify_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], su
                 raise Refused(f"{link['work_id']}: the retained response is not the version the claim's link names")
             text = views.abstract_of(found)
             usable = text is not None and support.nonblank(text)
-            sources.append({"work_id": link["work_id"], "source_version": link["source_version"], "identity": found.provider_record_id,
+            sources.append({"work_id": link["work_id"], "source_version": link["source_version"], "content_hash": found.ref["content_hash"], "identity": found.provider_record_id,
                             "content_tier": "abstract" if usable else "bibliographic", "content": text if usable else None,
                             "acquisition": {"gateway_call_ref": found.gateway_call_ref, "retrieved_at": found.captured_at, "route": f"gateway:{found.lane}"}})
         if not sources:
@@ -74,6 +75,6 @@ def verify_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], su
             truncation.append({"family": "claims", "kept": len(claims), "total": len(chosen)})
             break
         receipts += len(sources)
-        claims.append({"claim_ref": claim["claim_id"], "revision": claim["revision"], "tier": claim["required_access_tier"],
+        claims.append({"claim_ref": claim["claim_id"], "revision": claim["revision"], "tier": claim["required_access_tier"], "producer": claim["producer_invocation_id"],
                        "text": text_of(claim["text_ref"]), "sources": sources})
     return {"as_of": as_of, "claims": claims}

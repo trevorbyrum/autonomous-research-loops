@@ -120,7 +120,7 @@ class ViewTest(unittest.TestCase):
         (item,) = view()["claims"]
         self.assertEqual((item["claim_ref"], item["tier"], item["text"]), ("clm_00000001", "abstract", "A claim."))
         (source,) = item["sources"]
-        self.assertEqual(source, {"work_id": "wrk_aaaaaaaa", "source_version": DIGEST, "identity": "doi:10.1/a", "content_tier": "abstract", "content": "An abstract.",
+        self.assertEqual(source, {"work_id": "wrk_aaaaaaaa", "source_version": DIGEST, "content_hash": DIGEST, "identity": "doi:10.1/a", "content_tier": "abstract", "content": "An abstract.",
                                   "acquisition": {"gateway_call_ref": "call-1", "retrieved_at": "2026-11-05T11:00:00Z", "route": "gateway:semanticscholar"}})
 
     def test_a_response_without_a_usable_abstract_is_labelled_bibliographic_with_no_content(self):

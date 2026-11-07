@@ -23,13 +23,17 @@ class Exchanges(Protocol):
         """(artifact_ref, bytes) staged for this topic's retained gateway response, or None."""
 
 
-def text_ref(stage: Stage, text: str) -> dict:
-    """Stage `text` as UTF-8 and return its artifact_ref, refused unless the ref is the bytes' own."""
-    data = text.encode("utf-8")
-    ref = dict(stage(data, "text/plain"))
+def stage_bytes(stage: Stage, data: bytes, media_type: str) -> dict:
+    """Stage `data` and return its artifact_ref, refused unless the ref is the bytes' own."""
+    ref = dict(stage(data, media_type))
     if ref.get("content_hash") != canonical.bytes_digest(data) or ref.get("size_bytes") != len(data):
-        raise Refused("the spool's reference is not the staged text's")
+        raise Refused("the spool's reference is not the staged bytes'")
     return ref
+
+
+def text_ref(stage: Stage, text: str) -> dict:
+    """Stage `text` as UTF-8 and return its artifact_ref."""
+    return stage_bytes(stage, text.encode("utf-8"), "text/plain")
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,7 @@ class Retained:
     observation_id: str
     gateway_call_ref: str
     captured_at: str
+    invocation_id: str   # the invocation that acquired the bytes (the observation's)
 
 
 def retained(work_id: str, records: Mapping[str, Sequence[Mapping]], exchanges: Exchanges) -> Retained:
@@ -63,7 +68,7 @@ def retained(work_id: str, records: Mapping[str, Sequence[Mapping]], exchanges: 
             ref, data = staged
             if canonical.bytes_digest(data) != ref["content_hash"]:
                 raise Refused(f"{work_id}: the staged response does not hash to its reference")
-            return Retained(ref, data, observation["lane"], event["provider_record_id"], event["event_id"], observation["observation_id"], call, event["captured_at"])
+            return Retained(ref, data, observation["lane"], event["provider_record_id"], event["event_id"], observation["observation_id"], call, event["captured_at"], observation["invocation_id"])
     raise Refused(f"{work_id}: no retained response is staged for it")
 
 
