@@ -56,6 +56,11 @@ and terminate exhausted. Every page must be fully captured. No cursor-bounded
 subwindows are supported, and pages from another research invocation cannot
 supply a missing prefix. Repeated lane/search identities earn no new window.
 
+Under pinned `proposal-discovery/1`, validated plan/admission facts attribute
+discovery to its proposer's window. Chains stay local to proposal/execution/
+attempt before population deduplication. Explicit empty plans owe no search;
+missing plans, skipped proposals or unbound captures retain uncertainty.
+
 Successful resolve/enrich/fetch/data work belongs to the invocation's capture
 inventory but adds no paging window and does not erase a completed find chain;
 its failures and partial capture still invalidate the window. Novelty arithmetic

@@ -230,6 +230,11 @@ authority. All relevant descendants must end before capacity release.
 
 ## Evidence accounting
 
+The Router authenticates proposal-discovery plan/admission facts from retained
+bundles and receipts; pure accounting consumes their detached ownership relation.
+Caller references grant no ownership. Material v2 binds exactly those facts,
+their relevant receipts and admission fields; review bookkeeping stays excluded.
+
 The internal Store `capture_topic` primitive (2d-6a D part 1) copies a fixed set
 of topic-related raw rows in a checked Store-owned read snapshot. Durable
 capture opens a DML-prohibited reader of the same authoritative WAL file;

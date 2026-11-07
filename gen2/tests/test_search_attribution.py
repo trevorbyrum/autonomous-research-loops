@@ -33,10 +33,10 @@ class AttributionTest(rf.Workflow):
     def discovery(self, source, iid="inv_discover01"):
         return self.started(iid, "discovery", requested_by_invocation_id=source["invocation_id"])
 
-    def capture(self, d, source, p=PROPOSAL, oid="obs_discover01", *, end="exhausted", next_cursor=None, **changes):
+    def capture(self, d, source, p=PROPOSAL, oid="obs_discover01", *, end="exhausted", next_cursor=None, failed=False, partial=False, **changes):
         request = {"lane": p["lane"], "page": 1, "request": gateway_request(p), "proposal_ref": source["invocation_id"] + ":" + p["proposal_id"]}
         request.update(changes)
-        return self.page(d, oid, request, end=end, next_cursor=next_cursor)
+        return self.page(d, oid, request, end=end, next_cursor=next_cursor, failed=failed, partial=partial)
 
     def finish_discovery(self, d):
         self.assertEqual(self.finish(d, "op_" + d["invocation_id"][4:])["status"], "committed")
@@ -83,6 +83,22 @@ class AttributionTest(rf.Workflow):
         self.capture(d2, p, proposal, oid="obs_discover02", page=2, request={**gateway_request(proposal), "cursors": {"crossref": "next"}})
         self.finish_discovery(d2)
         self.assertEqual((gates.coverage_state(self.inventory()), a.saturation_passes(self.inventory())), ("unknown", ()))
+
+    def test_degraded_attempts_keep_their_window_standing(self):
+        """Literal exclusion/uncertainty table; a later successful execution cannot erase a retained failed attempt."""
+        for options, expected in (({"failed": True}, "ineligible"), ({"end": "limit_reached", "next_cursor": "next"}, "ineligible"),
+                                  ({"partial": True, "end": "end_unknown"}, "indeterminate"), ({"end": "end_unknown"}, "indeterminate")):
+            with self.subTest(options=options):
+                p = self.proposer(iid=self.ids("inv_"))
+                d = self.discovery(p, self.ids("inv_"))
+                self.capture(d, p, oid=self.ids("obs_"), **options)
+                self.finish_discovery(d)
+                if options.get("failed"):
+                    retry = self.discovery(p, self.ids("inv_"))
+                    self.capture(retry, p, oid=self.ids("obs_"))
+                    self.finish_discovery(retry)
+                self.assertEqual(a.window_standings(self.inventory())[-1].state, expected)
+                self.assertEqual(a.saturation_passes(self.inventory()), ())
 
     def test_ownership_requires_both_facts_and_exact_pins(self):
         """Detached corruptions cannot gain ownership; material changes bind every used operand, without Store I/O."""

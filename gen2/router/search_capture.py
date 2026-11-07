@@ -90,7 +90,8 @@ def resolve(read, modes):
             proposals = [p for p in plans[source]["proposals"] if request.get("proposal_ref") == f"{source}:{p['proposal_id']}"]
             if len(proposals) == 1:
                 p, sent = proposals[0], request.get("request", {})
-                if ({k: v for k, v in sent.items() if k != "cursors"} == p["request"] and obs["lane"] in p["request"]["lanes"]
+                if (isinstance(sent, dict) and type(request.get("page")) is int
+                        and {k: v for k, v in sent.items() if k != "cursors"} == p["request"] and obs["lane"] in p["request"]["lanes"]
                         and obs["obligation_ids"] == p["obligation_ids"] and 1 <= request.get("page", 0) <= p["page_cap"]):
                     owned = {"proposed_by": source, "chain": (iid, obs["attempt"], p["proposal_id"])}
         labelled = isinstance(request, dict) and "proposal_ref" in request

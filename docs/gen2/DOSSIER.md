@@ -361,3 +361,10 @@ Source: `private/reviews/gen2-gate-s7-fable-20261107.md` and `gen2-sprint-record
 Topic status includes the exact current candidate's gates and bound sufficiency
 reviews, including insufficient outcomes and retained evidence excerpts, through
 core's single presentation builder. Reading it grants no completion authority.
+
+## Coverage attribution (2026-11-07)
+
+Pinned proposal-discovery capture uses atomic Router-derived plan and admission
+facts, exact receipt/pin joins and execution-local page chains. Empty plans owe
+no search; unbound or missing capture stays unknown. Material v2 and the new
+producer tag require a fresh dossier/review for approval; no SQL schema change.
