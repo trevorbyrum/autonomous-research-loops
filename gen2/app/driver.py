@@ -252,9 +252,9 @@ class Driver:
         topic = self.last_topic = self.topic()
         if topic["holds"]:
             hold = topic["holds"][0]
-            return Stop(f"open hold {hold['hold_id']}: {hold.get('clears_when')}")
+            return Stop(f"open hold {hold['hold_id']}: {hold.get('clears_when')}", "hold_open")
         if (stray := self.unsettled_elsewhere(topic)) is not None and topic["active_contract_revision"] is not None:
-            return Stop(stray)
+            return Stop(stray, "contract_changed")
         action = workflow.plan(topic["status"], self,
                                max_passes=self.max_passes, max_rounds=self.max_rounds, **self.facts(topic))
         if isinstance(action, Issue):
@@ -262,7 +262,7 @@ class Driver:
         elif isinstance(action, Advance):
             result = self.station.supervisor.advance(self.invocation_id(action.step))
             if result in HALTS:
-                return Stop(f"{action.step.kind}/{action.step.purpose} #{action.step.ordinal}: {result}")
+                return Stop(f"{action.step.kind}/{action.step.purpose} #{action.step.ordinal}: {result}", "needs_person")
         return action
 
     def run(self, max_ticks: int = 200) -> str:

@@ -26,10 +26,10 @@ class ComposeTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.world = World(self.tmp.name)
         self.station = self.world.station()
-        self.composition = compose.Composition(TOPIC).bind(self.station)
+        self.composition = compose.Composition().bind(self.station)
 
     def kits(self):
-        return self.composition.kits(lanes=["semanticscholar"], gateway={"commercial": False, "accept_per_item": False, "policy_version": 1},
+        return self.composition.kits(TOPIC, lanes=["semanticscholar"], gateway={"commercial": False, "accept_per_item": False, "policy_version": 1},
                                      validate=lambda name, document: None)
 
     def test_every_purpose_of_the_workflow_has_a_kit_and_every_recorded_purpose_a_recorder(self):

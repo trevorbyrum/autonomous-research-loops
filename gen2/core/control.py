@@ -312,6 +312,12 @@ class OperatorBackend(ControlBackend, Protocol):
         requested_by. The observation reaches the router as
         record_capability_probe, whose answer this returns."""
 
+    def walk(self, request: Mapping) -> dict:
+        """The station's, not the router's (gen2/app/walk.py): one tick of the driver for one topic, run on the owner thread.
+        {topic_id} -> {status: ok, action: issue|advance|wait|stop|done, code?, command?}, {status: stopped, code} where a tick
+        failed (the server never repeats it), or {status: refused, reason}. Fixed words only: no ids, hold text or exception text.
+        Nothing advances unless an operator calls; a client that gets no answer reconciles from status before calling again."""
+
     def activate_config_bundle(self, document: Mapping) -> dict:
         """Validate and activate a mounted config-bundle/1 (task 1d)."""
 

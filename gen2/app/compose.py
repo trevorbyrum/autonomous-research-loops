@@ -49,16 +49,15 @@ class Composition:
     """The station's collaborators that need the station itself (its spool and orders) but must be handed to `open_station` first:
     the recorders and the router's capture reader. `bind` gives them the opened station; before that they refuse to run."""
 
-    def __init__(self, topic_id: str) -> None:
-        self.topic_id, self.station = topic_id, None
+    def __init__(self) -> None:
+        self.station = None
 
     def bind(self, station) -> "Composition":
         self.station = station
         return self
 
-    def exchanges(self, topic_id: str | None = None) -> ExchangeIndex:
-        topic = topic_id or self.topic_id
-        return ExchangeIndex(self.station.spool, topic, discovery_scratches(self.station, topic))
+    def exchanges(self, topic_id: str) -> ExchangeIndex:
+        return ExchangeIndex(self.station.spool, topic_id, discovery_scratches(self.station, topic_id))
 
     @property
     def captures(self):
@@ -71,9 +70,9 @@ class Composition:
                 "verification/verify": verify_record.recorder(self.exchanges),
                 "checkpoint/dossier": dossier.record}
 
-    def kits(self, *, lanes: Sequence[str], gateway: Mapping, validate: Callable[[str, object], None]) -> dict:
-        """The kit of every purpose. `gateway` is the discovery child's policy view ({commercial, accept_per_item, policy_version})."""
-        spool, topic_id, exchanges = self.station.spool, self.topic_id, self.exchanges()
+    def kits(self, topic_id: str, *, lanes: Sequence[str], gateway: Mapping, validate: Callable[[str, object], None]) -> dict:
+        """The kit of every purpose for one topic. `gateway` is the discovery child's policy view ({commercial, accept_per_item, policy_version})."""
+        spool, exchanges = self.station.spool, self.exchanges(topic_id)
         read = lambda ref: spool.read(ref["content_hash"], topic_id=topic_id)
         text_of = lambda content_hash: (spool.read(content_hash, topic_id=topic_id) or b"").decode("utf-8", "replace") or None
 

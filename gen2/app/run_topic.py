@@ -1,68 +1,88 @@
-"""The command that walks one topic: open the station, wire the kits and recorders, run the driver until a wait or a stop, print it.
+"""The operator's command that walks one topic on the running engine: call `walk` until the next move is the operator's or the walk stops.
 
-Trace: 2e2-min design O17.4; the T17 brief (the driver only wires and prints: no scientific decision, alternate runner, retry or
-blocker clearing). Oracle: the driver's own printed line. Limits: the station opens from the bundle the router has active (none
-refuses to start); no options. The discovery gateway's URL and token FILE come from the environment (GEN2_GATEWAY_URL,
-GEN2_SECRET_GATEWAY_TOKEN_FILE), the token itself never; the station ids from GEN2_STATION_ID and GEN2_HOST_ID.
+Trace: process map v1 gap 3; Astra live-hosting design review (one outstanding call, fixed replies, no local store access); the T17 brief
+(the driver only wires and prints). The engine owns the store and the supervisor, so this client opens nothing: it asks the engine's
+operator listener for one tick at a time. Oracle: the engine's reply words; the completion hand-off prints the reviewed status block.
+Limits: an answer that never comes (timeout, cut connection, not JSON) is ambiguous, so it stops and says to reconcile from status; it is
+never repeated automatically. Exit 0 at a wait or done, 2 for a bad call, no answer or a refusal, 3 for a stopped walk.
 """
 from __future__ import annotations
 
+import http.client
+import json
 import os
 import sys
-from pathlib import Path
+import time
 from typing import Callable, Mapping, Sequence
+from urllib.parse import urlencode
 
-from gen2.app import compose
-from gen2.app.driver import Driver
-from gen2.app.station import StationRefused, open_station
-from gen2.core.instants import utc_now
-from gen2.exec.common import Refused
-from gen2.router.schemas import SchemaSet
+from gen2.app import cli, workflow
 
-PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
-# What a stopped walk says: a fixed code per kind of failure, never the exception's text, which can carry proposal keys or other
-# caller-controlled strings (commit 80303fd's rule for operator replies). The detail is in the retained job journals and the audit.
-STOPS = {Refused: "an input was refused", OSError: "a file operation failed", ValueError: "a record was malformed", KeyError: "a record lacked a field"}
-DETAIL = "details are in this topic's retained job journals and the router's audit"
-DISCOVERY = ("GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN_FILE")
+COMMANDS = {"apply_operator_decision kind=brief_confirmation", "apply_operator_decision kind=scope_approval",
+            "apply_operator_decision kind=contract_approval", "apply_operator_decision kind=completion_approval", "open_review"}
+STOPS = {"hold_open": "an open hold stops the walk; clear it, then run this again", "needs_person": "a step needs a person (see status)",
+         "contract_changed": "work from another contract revision has not settled", "budget": "the scoping rounds are spent",
+         "topic_blocked": "the topic is held, blocked or retired", "refused": "an input was refused", "io": "a file operation failed",
+         "malformed": "a record was malformed", "step_failed": "a step failed", "step_unknown": "a step's outcome is unknown", "step_held": "a step is held"}
+NO_ANSWER = "no answer from the engine; the tick may or may not have run: check status before running this again"
+MAX_CALLS = 1000
 
 
-def validate(name: str, document: object) -> None:
-    """The discovery intake's validator: it names a schema by its bare name (`search-proposal`); the schema set knows filenames."""
-    errors = SchemaSet().errors(document, f"{name}.schema.json")
-    if errors:
-        raise Refused(f"{name}: {errors[0]}")
-
-
-def main(argv: Sequence[str], *, environ: Mapping[str, str] = os.environ, opener=open_station, say: Callable[[str], None] = print) -> int:
-    """`python -m gen2.app.run_topic <root> <topic>`: 0 at a wait or done, 2 if the station will not start, 3 if the walk stopped."""
-    if len(argv) != 2:
-        say("usage: gen2.app.run_topic <root> <topic>")
+def main(argv: Sequence[str], *, environ: Mapping[str, str] = os.environ, call: Callable = cli.request, say: Callable[[str], None] = print,
+         sleep: Callable[[float], None] = time.sleep) -> int:
+    if len(argv) != 1:
+        say("usage: gen2.app.run_topic <topic>")
         return 2
-    root, topic = argv
-    composition = compose.Composition(topic)
-    try:
-        station = opener(Path(root), station_id=environ.get("GEN2_STATION_ID", "station-1"), host_id=environ.get("GEN2_HOST_ID", "host-1"), clock=utc_now,
-                         router_options={"gateway_captures": composition.captures}, supervisor_options={"recorders": composition.recorders()})
-    except StationRefused:
-        say(f"the station did not start; {DETAIL}")
-        return 2
-    try:
-        return _walk(station, composition, topic, environ, say)
-    except (Refused, OSError, ValueError, KeyError) as error:   # a refusal or a failed read stops the walk with a fixed code, not a traceback
-        say(f"stopped: {next(text for kind, text in STOPS.items() if isinstance(error, kind))}; {DETAIL}")
-        return 3
-    finally:
-        station.close()
+    topic = argv[0]
+    url, token = environ.get("GEN2_OPERATOR_URL", "http://127.0.0.1:8770"), environ.get("GEN2_OPERATOR_TOKEN")
+
+    def ask(method: str, path: str, body: bytes | None = None):
+        try:
+            code, reply = call(url, token, method, path, body)
+        except (OSError, ValueError, http.client.HTTPException):
+            say(NO_ANSWER)
+            return None
+        if code != 200 or not isinstance(reply, dict) or not isinstance(reply.get("status"), str):
+            say("the engine refused the request")
+            return None
+        return reply
+    for _ in range(MAX_CALLS):
+        reply = ask("POST", "/v1/commands/walk", json.dumps({"topic_id": topic}).encode())
+        if reply is None or reply["status"] == "refused":
+            if reply is not None:
+                say("the engine refused the request")
+            return 2
+        if reply["status"] == "stopped":
+            say(f"stopped: {STOPS.get(reply.get('code'), 'the walk stopped')}")
+            return 3
+        action = reply.get("action")
+        if action == "done":
+            say("done")
+            return 0
+        if action == "stop":
+            say(f"stopped: {STOPS.get(reply.get('code'), 'the walk stopped')}")
+            return 3
+        if action == "wait" and reply.get("command") in COMMANDS:
+            return _wait(ask, topic, reply["command"], say)
+        if action not in ("issue", "advance"):
+            say("the engine's reply was not understood")
+            return 2
+        sleep(1.0)
+    say("still working; run this again")
+    return 0
 
 
-def _walk(station, composition, topic, environ, say) -> int:
-    composition.bind(station)
-    kits = composition.kits(lanes=["semanticscholar"], validate=validate, gateway={"commercial": False, "accept_per_item": False, "policy_version": 1})
-    bundle = station.router.status({})["config_bundles"]["active"]["bundle_hash"]
-    text = Driver(station, topic_id=topic, bundle_hash=bundle, kits=kits, prompt_dir=PROMPTS,
-                  discovery_env={k: environ[k] for k in DISCOVERY if k in environ}, say=say).run()
-    return 0 if text == "done" or text.startswith("waiting for") else 3
+def _wait(ask, topic: str, command: str, say) -> int:
+    shown = None
+    if command == "apply_operator_decision kind=completion_approval":   # the operator reads the review and its evidence from the reviewed status block first
+        status = ask("GET", "/v1/status?" + urlencode({"topic": topic}))
+        topics = status.get("topics") if isinstance(status, dict) else None
+        shown = topics[0].get("review") if topics else None
+        if not (shown and shown.get("approvable")):
+            say("stopped: cannot show the review for approval: the status carries no sufficiency review for the latest dossier")
+            return 3
+    say(workflow.waiting_line(workflow.Wait("the next move is the operator's", command), shown))
+    return 0
 
 
 if __name__ == "__main__":
