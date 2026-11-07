@@ -4,17 +4,19 @@ Not collected as tests. `OfflineAgent` is the `agent` step of `gen2.exec.job.run
 responder for (kind, purpose), writes `out/judgment.json` and returns 0 (the wrapper contract: inputs/prompt.md and
 inputs/input.json read, out/judgment.json written). Each responder reads the view it is given and answers from it, so a
 changed input changes the answer; none writes an id, hash or pin (C-9). They prove wiring, not research quality.
-Limits: the verification responder is added with T15's view; the dossier job has no agent step. It is not the T6 HTTP
+Limits: the dossier job has no agent step. It is not the T6 HTTP
 responder, which scripts the real runner's model dialogue; that one belongs to lane C's real-wrapper run.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Callable, Mapping
 
 from gen2.core import canonical
 
 Responder = Callable[[Mapping], dict]
+TIERS = ("bibliographic", "abstract", "full_text", "reproduced")
 CLEAN = ("searched_ok", "searched_empty")
 
 
@@ -48,6 +50,35 @@ def research(work: Mapping) -> dict:
             "triggers": [], "search_proposals": [], "next_queue_state": "resting"}
 
 
+def plain_quote(content: str, limit: int = 60) -> str:
+    """The longest prefix of whole words, up to `limit` characters, that JSON would write unchanged (no quote mark, backslash or control
+    character): the quote the retained text can be located by, byte for byte."""
+    quote = ""
+    for word in content.split():
+        candidate = f"{quote} {word}".strip()
+        if len(candidate) > limit or json.dumps(candidate)[1:-1] != candidate:
+            break
+        quote = candidate
+    return quote
+
+
+def verify(work: Mapping) -> dict:
+    """One item per claim: supports it with a plain quote from the first source whose retained text reaches the claim's tier, else says the
+    tier cannot be assessed (the builder makes that call from the view anyway)."""
+    items = []
+    for claim in work["view"]["claims"]:
+        source = next((s for s in claim["sources"] if s["content"] and TIERS.index(s["content_tier"]) >= TIERS.index(claim["tier"])), None)
+        quote = plain_quote(source["content"]) if source else ""
+        note = lambda text: {"outcome": "succeeded", "note": text}   # noqa: E731
+        applicable = {"outcome": "not_applicable", "note": "Nothing of this kind is stated in the claim."}
+        items.append({"claim_ref": claim["claim_ref"], "verdict": "supports" if quote else "cannot_assess_at_required_tier",
+                      "cited_spans": [{"quote": quote, "locator": "abstract"}] if quote else [],
+                      "checks": {"numeric_units": applicable, "denominators": applicable, "negation": note("The claim and the quote have the same polarity."),
+                                 "qualifications": note("The claim keeps the abstract's limits.")} if quote else
+                                {k: {"outcome": "not_checked", "note": ""} for k in ("numeric_units", "denominators", "negation", "qualifications")}})
+    return {"judgment_version": "judgment-verify/1", "items": items}
+
+
 def challenge(work: Mapping) -> dict:
     view = work["view"]
     base = {"judgment_version": "judgment-challenge/1", "counterevidence": [], "explanations": [], "adjudications": [], "promotions": [], "search_proposals": []}
@@ -71,7 +102,7 @@ def review(work: Mapping) -> dict:
     return {"judgment_version": "judgment-review/1", "outcome": "sufficient", "summary": "The dossier answers the contract's one obligation within its stated limits."}
 
 
-RESPONDERS: dict[tuple[str, str], Responder] = {("research_pass", "scope"): scope, ("research_pass", "research"): research,
+RESPONDERS: dict[tuple[str, str], Responder] = {("research_pass", "scope"): scope, ("research_pass", "research"): research, ("verification", "verify"): verify,
                                                 ("checkpoint", "challenge"): challenge, ("checkpoint", "review"): review}
 
 

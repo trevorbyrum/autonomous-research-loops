@@ -11,7 +11,7 @@ from gen2.core import canonical
 from gen2.exec import common, job, orders
 from gen2.gateway_client.client import GatewayClient
 from gen2.router.schemas import SchemaSet
-from gen2.tests import offline_agent, offline_gateway
+from gen2.tests import offline_agent, offline_gateway, offline_world
 
 SCHEMAS = SchemaSet()
 INV, BASE = "inv_offline001", "http://gateway.invalid:8765"
@@ -140,6 +140,55 @@ class AgentTest(unittest.TestCase):
 
     def test_a_purpose_without_a_responder_exits_nonzero_and_writes_nothing(self):
         with tempfile.TemporaryDirectory() as root:
-            raw = canonical.canonical_bytes({"kind": "verification", "purpose": "verify", "view": {}})
+            raw = canonical.canonical_bytes({"kind": "discovery", "purpose": "search", "view": {}})
             self.assertEqual(offline_agent.OfflineAgent()(b"", raw, Path(root)), 2)
             self.assertEqual(list(Path(root).iterdir()), [])
+
+
+class VerifyResponderTest(unittest.TestCase):
+    CLAIM = {"claim_ref": "clm_aaaaaaaa", "revision": 1, "tier": "abstract", "text": "A claim.", "producer": "inv_producer01"}
+
+    def source(self, content, tier="abstract"):
+        return {"work_id": "wrk_aaaaaaaa", "source_version": HASH, "identity": "doi:10.1/a", "content_tier": tier, "content": content}
+
+    def judge(self, claim):
+        judgment = offline_agent.verify(work("verification", "verify", {"claims": [claim]}))
+        self.assertEqual(SCHEMAS.errors(judgment, "judgment-verify.schema.json"), [])
+        return judgment["items"][0]
+
+    def test_a_plain_quote_from_the_retained_text_supports_the_claim(self):
+        text = offline_gateway.WORKS["doi:10.1/offline-a"][1]
+        item = self.judge({**self.CLAIM, "sources": [self.source(text)]})
+        (cited,) = item["cited_spans"]
+        self.assertEqual(item["verdict"], "supports")
+        self.assertTrue(text.startswith(cited["quote"]) and 0 < len(cited["quote"]) <= 60)
+
+    def test_a_quote_is_only_what_json_writes_unchanged_and_ends_at_a_word(self):
+        quote = offline_agent.plain_quote('He said "yes" and then left the room quietly.')
+        self.assertEqual(quote, "He said")
+        self.assertEqual(offline_agent.plain_quote("Alpha beta gamma delta", limit=12), "Alpha beta")
+        self.assertEqual(offline_agent.plain_quote('"leading mark'), "")
+
+    def test_a_tier_the_text_cannot_reach_is_not_assessed(self):
+        for name, claim in (("abstract-only content for a full-text claim", {**self.CLAIM, "tier": "full_text", "sources": [self.source("An abstract.")]}),
+                            ("no usable content", {**self.CLAIM, "sources": [self.source(None, "bibliographic")]})):
+            with self.subTest(name):
+                item = self.judge(claim)
+                self.assertEqual((item["verdict"], item["cited_spans"]), ("cannot_assess_at_required_tier", []))
+
+
+class WorldTest(unittest.TestCase):
+    def test_the_contract_is_valid_hash_true_and_carries_the_confidence_scheme(self):
+        doc = offline_world.contract()
+        self.assertEqual(SCHEMAS.errors(doc, "contract-v2.schema.json"), [])
+        self.assertEqual(doc["content_hash"], canonical.content_hash(doc))
+        self.assertEqual(sorted(doc["confidence_scheme"]["labels"]), ["high", "low"])
+
+    def test_the_bundle_carries_the_executors_and_validates(self):
+        entry = {"kind": "research_pass", "purpose": "scope", "prompt": {"version": 1, "content_hash": "sha256:" + "a" * 64},
+                 "deadline_s": 60, "lease_s": 90, "max_input_bytes": 1000, "max_output_bytes": 1000}
+        doc = offline_world.bundle([entry])
+        self.assertEqual(SCHEMAS.errors(doc, "config-bundle.schema.json"), [])
+        self.assertEqual(orders.executor_entry(doc, "research_pass", "scope")["lease_s"], 90)
+        with self.assertRaises(common.Refused):
+            orders.executor_entry(doc, "verification", "verify")
