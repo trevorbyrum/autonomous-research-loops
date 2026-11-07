@@ -1,0 +1,66 @@
+{
+  "provider_response": {
+    "total": 1,
+    "data": [
+      {
+        "paperId": "t12g-fixture",
+        "externalIds": {
+          "DOI": "10.1234/abstract-fixture"
+        },
+        "title": "Offline abstract support fixture",
+        "abstract": "The retained fixture describes a qualitative retrieval result."
+      }
+    ]
+  },
+  "gateway_response": {
+    "request_type": "find",
+    "observation": {
+      "captured": true,
+      "call_ref": 101,
+      "invocation_id": "inv_producer01",
+      "attempt": 1
+    },
+    "lanes": [
+      {
+        "source": "semanticscholar",
+        "coverage": "searched_ok",
+        "completeness": "complete",
+        "retrieved": [
+          "doi:10.1234/abstract-fixture"
+        ]
+      }
+    ],
+    "records": [
+      {
+        "identity": "doi:10.1234/abstract-fixture",
+        "kind": "article",
+        "source_id": "semanticscholar",
+        "title": "Offline abstract support fixture",
+        "authors": [],
+        "year": null,
+        "venue": null,
+        "identifiers": {
+          "doi": "10.1234/abstract-fixture",
+          "s2": "t12g-fixture"
+        },
+        "links": [],
+        "license": null,
+        "attribution": "Semantic Scholar",
+        "retrieved_at": "2026-11-05T19:40:16+00:00",
+        "cited_by_count": null,
+        "reference_count": null,
+        "publication_types": null,
+        "redistributable": false,
+        "abstract": "The retained fixture describes a qualitative retrieval result.",
+        "raw": {
+          "paperId": "t12g-fixture",
+          "externalIds": {
+            "DOI": "10.1234/abstract-fixture"
+          },
+          "title": "Offline abstract support fixture",
+          "abstract": "The retained fixture describes a qualitative retrieval result."
+        }
+      }
+    ]
+  }
+}

@@ -31,6 +31,7 @@ class DockerBoundary(unittest.TestCase):
         self.manifest = {"version": 1, "tree": "reviewed-tree", "platform": "linux/amd64", "route": "fixture",
                          "socket": d.SOCKET, "cli_sha256": d.CLI_SHA, "daemon_version": "29.0.0",
                          "credential_ref": "dummy-seed", "credential_version": "v1",
+                         "supervision": "supervised", "qualification_state": "qualified", "qualification_ref": self.pin,
                          "images": {r: {"pin": "sha256:" + CID, "kind": "engine-image-id"} for r in d.ROLES},
                          "configurations": {r: {"pin": self.pin} for r in d.ROLES}}
         self.execute = mock.Mock(return_value=(0, b"", b""))
@@ -55,7 +56,9 @@ class DockerBoundary(unittest.TestCase):
         self.assertEqual(d.manifest_gate(self.manifest, lambda pin: b"configuration", "reviewed-tree"), self.manifest)
         for key, value, reason in (("version", 2, "manifest_tree"), ("socket", "/var/run/docker.sock", "manifest_runtime"),
                                    ("route", "real", "manifest_route"), ("platform", "linux/arm64", "manifest_route"),
-                                   ("daemon_version", "unbuilt", "manifest_daemon_version"), ("images", {}, "manifest_roles")):
+                                   ("daemon_version", "unbuilt", "manifest_daemon_version"),
+                                   ("supervision", "unattended", "manifest_not_supervised"), ("qualification_state", "stale", "manifest_not_qualified"),
+                                   ("qualification_ref", "dummy", "manifest_not_qualified"), ("images", {}, "manifest_roles")):
             with self.subTest(key=key):
                 bad = {**self.manifest, key: value}
                 self.refused(lambda: d.manifest_gate(bad, lambda pin: b"configuration", "reviewed-tree"), reason)
@@ -321,8 +324,9 @@ class DockerBoundary(unittest.TestCase):
             with self.subTest(reason=reason), contextlib.ExitStack() as stack:
                 batch, close, drain, ended, watch = mock.Mock(), mock.Mock(), mock.Mock(return_value=reason != "relay_drain"), mock.Mock(return_value=None if reason == "fixture_writers_live" else (0, GENERATION, (1, 2))), mock.Mock()
                 stack.enter_context(mock.patch.object(d.jobs, "members", return_value=[] if reason == "backend_unsupervised" else [os.getpid()]))
+                batch.held = {"access": b"", "events": b"", "fixture": b'{"v":1,"requests":[{"model":"gpt-5.4"}]}'}
                 batch.collect.return_value = batch.stage.return_value = {"content_hash": "sha256:" + CID}
-                actions = {"create_auxiliary": [CID, relay], "start": None, "end": [{"State": {"ExitCode": int(reason == "initializer_failed")}}, {}, {"State": {"ExitCode": int(reason == "relay_stop_failed")}}], "network": [NET, upstream], "endpoint": None, "create_runner": CID,
+                actions = {"create_auxiliary": [CID, relay], "start": None, "end": [{"State": {"ExitCode": int(reason == "initializer_failed")}}, {"State": {"ExitCode": 1}}, {"State": {"ExitCode": int(reason == "relay_stop_failed")}}], "network": [NET, upstream], "endpoint": None, "create_runner": CID,
                            "inspect": [fixture, connected, {"NetworkSettings": {"Networks": {}}}], "contain": None, "logs": (b"events", b"diagnostics"), "_command": json.dumps([{"Id": NET, "Containers": {relay: {}, **({CID: {}} if reason == "ingress_not_closed" else {})}}]).encode()}
                 for name, result in actions.items():
                     patched = stack.enter_context(mock.patch.object(self.cli, name, **({"side_effect": result} if isinstance(result, list) else {"return_value": result})))
@@ -337,7 +341,8 @@ class DockerBoundary(unittest.TestCase):
                     batch.collect.assert_not_called()
                 else:
                     refs = self.cli.run(close, lambda _: True, ended, drain, batch)
-                    self.assertEqual(len(refs), 5)
+                    self.assertEqual(len(refs), 6)
+                    self.assertEqual(self.job.read("docker-complete.json")["disposition"]["disposition"], "unknown")
                     watch.assert_has_calls([mock.call.start(CID), mock.call.end(CID, mock.ANY), mock.call.endpoint("disconnect", NET, CID), mock.call._command(("network", "inspect", NET)), mock.call.inspect(CID), mock.call.contain(relay, role="relay"), mock.call.end(relay, mock.ANY, "relay"), mock.call.logs(CID)])
                     close.assert_called_once_with()
                     self.assertEqual(batch.collect.call_count, 3)

@@ -26,6 +26,9 @@ LAUNCHER = (sys.executable, str(Path(__file__).with_name("jobshim.py")))
 TERMINAL = ("committed", "failed", "cancelled")
 # Refusals of a lifecycle write that no retry can change: another fact is already recorded under the write-once key,
 # or the router does not know this capability for this invocation. They stop at once rather than spend the budget.
+# "kind/purpose" keys (purpose is the order's GEN2_PURPOSE) whose result may not reach the router before the station's
+# recorder has written its evidence (2e2 design, T12-B). A key here without an installed recorder refuses at prepare.
+RECORDED = frozenset({"discovery/search", "verification/verify", "checkpoint/dossier"})
 FINAL_REFUSALS = frozenset({"transition_conflict", "reconciliation_conflict", "cancel_conflict",
                             "unknown_invocation", "capability_invalid", "capability_invocation_mismatch"})
 DIGEST = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
@@ -110,6 +113,10 @@ class Busy(Waiting):
         self.handle = handle
 
 
+class RecorderMissing(Exception):
+    """A purpose whose evidence a recorder must write has none installed on this station."""
+
+
 class Held(Waiting):
     """The chokepoint made no router call (Supervisor._call): the job the
     request is for is stalled on an open incident ("stalled"), or settled
@@ -141,8 +148,10 @@ class StaleJournal(ControlFailure):
 class Supervisor:
     def __init__(self, control, spool: Spool, jobs_root: str | Path, *, station_id: str, host_id: str, container_id: str | None = None,
                  policy: Policy = Policy(), policies: Callable[[str], Policy] | None = None, clock: Callable[[], str],
-                 launcher: tuple[str, ...] = LAUNCHER, fault: Callable[[str], None] | None = None) -> None:
+                 launcher: tuple[str, ...] = LAUNCHER, fault: Callable[[str], None] | None = None,
+                 recorders: Mapping[str, Callable] | None = None) -> None:
         self.control = control
+        self.recorders = dict(recorders or {})  # "kind/purpose" -> idempotent (control, order, grant, scratch) -> None
         self.spool = spool
         self.jobs_root = Path(jobs_root)
         self.jobs_root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -167,6 +176,9 @@ class Supervisor:
         a supplied profile also requires the gate, regardless of `live`."""
         if live or isolation_profile is not ABSENT_PROFILE:
             refuse_live_profile(isolation_profile)
+        key = self._recorder_key(asdict(order))
+        if key is not None and key not in self.recorders:
+            raise RecorderMissing(f"{key} needs a recorder and this station has none; nothing was written")
         if self._policies is not None:
             self._policies(order.config_bundle_hash)
         self.job(order.invocation_id).prepare({**asdict(order), "command": list(order.command), "env": dict(order.env),
@@ -843,6 +855,9 @@ class Supervisor:
         elif observation["findings"]:
             response = self._transition(job, journal, grant, "failed", failure_class=observation["findings"][0], **facts)
         else:
+            ended = self._recording(job, order, journal, grant, collected)
+            if ended is not None:
+                return ended
             response = self._transition(job, journal, grant, "result_ready", result_payload_digest=collected["result"]["content_hash"])
             if response.get("reason") in ("cancel_requested",):  # the cancellation won the race: the result stays retained (C-10)
                 return self._drive(job, order, journal)
@@ -851,6 +866,42 @@ class Supervisor:
             return self._result_ready(job, order, journal, grant, self._status(job, journal, grant))
         self._write(job, journal, response, "end")
         return self._settle(job, journal, response["state"])
+
+    def _recorder_key(self, order: Mapping) -> str | None:
+        """The recorder an order's evidence needs (a required purpose, or any with one installed); None if it has none."""
+        purpose = (order.get("env") or {}).get("GEN2_PURPOSE")
+        key = f"{order['kind']}/{purpose}"
+        return key if purpose and (key in RECORDED or key in self.recorders) else None
+
+    def _recording(self, job, order, journal, grant, collected) -> str | None:
+        """Run the order's recorder before its result goes to the router: replayable, not exactly once (Astra T12 F2). Every durable
+        effect has a stable identity of its own, so a repeat after a crash adds nothing. Each run draws a write attempt first, so a
+        crash does not refund it; past them the result is not committed (_unrecorded). Returns the job's end, or None once recorded."""
+        key = self._recorder_key(order)
+        if key is None or journal.get("recorded"):
+            return None
+        if not self._spend(job, journal, "write"):
+            self._exhausted(job, journal, "write", journal.get("record_failure"), collected["result"])
+            return self._end(job, order, journal, grant, "failed", self._unrecorded(collected["observation"]), "exit_observed")
+        try:
+            self.recorders[key](self.control, order, grant, job.scratch)
+        except Exception as failure:
+            journal["record_failure"] = {"reason": "recorder_failed", "detail": f"{type(failure).__name__}: {failure}"[:500]}
+            self._save(job, journal)
+            raise Waiting("record_failed") from failure
+        self._fault("recorded_effects")  # the effects are durable; the marker is not yet
+        journal["recorded"] = True
+        journal.pop("record_failure", None)
+        self._wrote(journal)
+        self._save(job, journal)
+        return None
+
+    @staticmethod
+    def _unrecorded(observation: dict) -> dict:
+        """The fail-closed end of a result whose recording is missing: the result stays retained and uncommitted, the operator
+        requeues. One place, for both routes (the ordinary exhaustion and the reconciled result). The finding is the existing
+        `result_rejected` class with the reason in the output detail: a class of its own is a schema change outside this lane."""
+        return {**observation, "findings": ["result_rejected"], "output": {**observation["output"], "detail": "result_not_recorded"}}
 
     def _result_ready(self, job, order, journal, grant, status) -> str:
         collected = journal["collected"]
@@ -916,6 +967,9 @@ class Supervisor:
                 return self._reconcile(job, order, journal, grant, status, "terminated_group", "execution_group_termination", observation)
             if observation["findings"]:
                 return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", observation)
+            if self._recorder_key(order) is not None and not journal.get("recorded"):
+                # recording needs a running invocation, which this path never had: the result is not committed (T12-B; Astra F2)
+                return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", self._unrecorded(observation))
             return self._reconcile(job, order, journal, grant, status, "found_result", "job_handle_lookup", observation, digest=collected["result"]["content_hash"])
         if view["verdict"] in ("starting", "unstarted"):
             view = self._await_identity(job, self._policy(job).start_grace_s)

@@ -67,6 +67,44 @@ class ExtensionRegistry(Protocol):
         accepted review (EXPORT-API.md §5, §7)."""
 
 
+class DispatchAuthority(Protocol):
+    """Composition-bound protected journal/collector, never a model or spool reader.
+
+    No production implementation is wired in 3a. Reads are local, bounded and
+    return detached JSON or None. The authority authenticates the qualified
+    whole-attempt enforcement, manifest/credential/route/backend, original job,
+    epoch and evidence generation. It enumerates EVERY referenced artifact;
+    Router rehashes and registers them. Labels inside artifacts prove nothing.
+    Admission records are immutable; is_current checks current qualification.
+    Result reads authenticate original provenance even after current expiry.
+    confirmed_end covers all senders/writers/descendants and closed ingress;
+    actual_minor_units is independently authoritative or None, never estimated.
+    epoch is the current supervisor epoch, fixed for this Router's lifetime.
+    """
+    epoch: str
+
+    def admission(self, invocation_id: str, run_id: str, attempt: int) -> Mapping | None:
+        """{origin, policy, upper_minor_units, artifacts}; policy is the qualified
+        policy_accounting fragment, origin pins Router and protected job state.
+        No qualified enforcement means None, including fixture-only real bounds."""
+
+    def is_current(self, origin: Mapping) -> bool:
+        """Local current qualification/enforcement view; no I/O or callbacks.
+        Checked under the writer lock at authorization and final start."""
+
+    def result(self, admission_ref: str, evidence_ref: str) -> Mapping | None:
+        """{origin, admission_ref, evidence_ref, artifacts, confirmed_end,
+        actual_minor_units, rejection?}; authenticated originals, not caller claims.
+        rejection is {started_at, observed_at, runner, affected_lanes}, supplied
+        only for a log/fixture/runner-authenticated credentials_rejected result.
+        Its evidence_ref names the execution-record/1 with exit1/exit_nonzero;
+        artifacts also enumerate every original raw log/fixture/runner reference.
+        Router persists the capability projection and hold in the result's ACK.
+        After ACK the supervisor uses record_transition(failed, exit_nonzero,
+        end_evidence_ref=evidence_ref); replay after a crash never relaunches.
+        Late safety retention grants no terminal transition or reconciliation."""
+
+
 class ControlBackend(Protocol):
     """Every authoritative state change goes through one of these (C-1).
     Each is one short transaction with no subprocess or network call inside
@@ -171,6 +209,23 @@ class ControlBackend(Protocol):
         """Link retrieved records of the invocation's topic to the works they
         are, by identity (task 2a; E-3), under the capability, while running
         and its lease current. Key: each record's link, recorded once."""
+
+    def record_dossier(self, request: Mapping) -> dict:
+        """Trusted station: {capability_id, invocation_id, topic_id} ->
+        {status: recorded|replayed, dossier_revision, content_hash} or refused.
+        A new native dossier requires a running checkpoint of that topic with
+        current lease/pins and no pause/cancellation. Invocation replay returns
+        its original revision/hash before liveness checks; it never reevaluates."""
+
+    def topic_records(self, request: Mapping) -> dict:
+        """Trusted station read: {topic_id, families, dossier_revision?} ->
+        {status: ok, topic_id, records: {family: [decoded rows]}} or refused.
+        Fixed family allow-list; one snapshot, no mutation or arbitrary filter.
+        Work/link rows follow only this topic's retrievals. dossiers requires
+        one named revision and includes its exact persisted document/gates.
+        intake_briefs includes versioned bodies for the invocation's brief pin.
+        Retained BLOB cells are {encoding: base64, data: ASCII base64 string}.
+        Governance/waiting state remains status; no dossier input hash changes."""
 
     def commit_outcome(self, envelope: Mapping) -> dict:
         """The commit protocol (design review §5 steps 1-5; C-2..C-5): replay

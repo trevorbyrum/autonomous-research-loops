@@ -23,7 +23,7 @@ reported as `other`, never dropped.
                      it and why; an entry whose file is not tracked, or whose
                      tool is not a tracked file naming that file's path,
                      fails the check too;
-                   * production reaching 15,000 lines: the growth-review
+                   * production reaching 17,500 lines: the growth-review
                      trigger. The build stops for a review with the operator
                      of what made it grow before building further.
                    The gateway service is its own budget (task 2b's split):
@@ -48,7 +48,7 @@ import sys
 import tomllib
 from pathlib import Path, PurePosixPath
 
-GROWTH_REVIEW = 15_000  # production lines: reaching it stops the build for a growth review with the operator
+GROWTH_REVIEW = 17_500  # production lines: reaching it stops the build for a growth review with the operator
 FILE_LIMIT = 1_500  # physical lines per hand-written file in the gen-2 surface; exactly 1,500 passes
 # The gen-2 surface the per-file limit covers: tracked files under these
 # prefixes, and these files.

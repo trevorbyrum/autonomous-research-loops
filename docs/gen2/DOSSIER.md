@@ -239,6 +239,30 @@ named) and the reviews in `private/reviews/`. No operator decision is open.
     - mechanical compaction batches may exceed the 25-edited-test-ID cap when the kill-set re-run proves every catch is preserved;
     - **routed to the next Gate S:** retiring the SQL copy of rules the Router also enforces, and folding the custom checkers into one lint.
 
+- **2026-11-03, Trevor's rulings on Gate S #5** (`private/reviews/gen2-gate-s5-fable-20261103.md` §6):
+  - **S5-2:** 2e1 stops are total 2,900, production 1,150 and tests 1,250; landings ≤600; the 1.3× tripwire is re-anchored to the §4 P50 baseline, cumulative from PR 1 and never reset.
+  - **S5-3:** D1–D3 (3b's B2 repeat contexts and late-rejection redating, 4b-i per-field usage normalization, the 4b-ii second "final refusals" witness layer) are deferred past the 2f start, as rows of DEBT-055.
+  - **S5-4:** tests ≤1.3× production per landing as the target, 2× the hard ceiling; the aggregate test stop is the production stop × 1.1.
+  - **S5-5:** the charter's Estimating block counts obligations in the design text, witness rows and named, verified reuse premises, and never subtracts from a prior plan.
+  - **S5-6:** 3b splits into 3b-i (safety retention, fact, hold, FAILED) and 3b-ii (route-wide history, B2).
+  - **S5-7:** acknowledged: 2f ≈ Dec 1 (P50) / Dec 9 (P80), superseded by the Gate S #6 plan below.
+- **2026-11-05, Trevor's rulings on Gate S #6** (`private/reviews/gen2-gate-s6-two-week-plan-fable-20261105.md` §6):
+  1. "Done" on Nov 18 is the five points of §1: one supervised topic from brief to approved completion, read from the local record.
+  2. **S3-6 is decided:** the primary executor runs the scoping pass under `pre-contract/1`; the operator does not submit a scoping report.
+  3. Discovery in the must-have is a code job running the primary's typed search proposals; LLM discovery and the delegate kinds are deferred (DEBT-057, Phase 3).
+  4. The two deterministic signal detectors and the automatic cadence are deferred to DEBT-045 (amends S2-5); the operator opens reviews.
+  5. DEBT-003 lands right after the run; the run's report states the limit; 2e2 stays open until it lands.
+  6. The host envelope of charter Build throughput replaces exact one-shot host rows inside the dedicated rootless domain.
+  7. Gate S #6 stands as the 15,000-line growth review; `GROWTH_REVIEW` becomes 17,500 in one reviewed edit.
+  8. Spend for the run is enforced by a dedicated provider key with a provider-side hard cap equal to the ceiling.
+  9. The supervised-only refusal (manifest `supervision: supervised`, one entrance refusal) and the store-upgrade rule (charter Standing rules, DEBT-056).
+  10. Veto window of 24 hours after a merge, with revert-first.
+  11. Trevor's time: Nov 14 for the genuine rejected-credential experiment (disposable credential); Nov 16–18 for the scope, contract and completion approvals; Nov 9 only if Q1 or Q2 fail.
+  12. Test compaction and the nightly portfolio stay paused to day 14; the 46k floor report stays at the Phase 2→3 gate.
+  13. Gate S #5's S5-3 and S5-6 confirmed (recorded above).
+  - **The 2f run's spend ceiling is $100**, enforced by a dedicated provider key with a provider-side hard cap at that ceiling.
+  - **Charter changes (§4):** four coders and lanes; High-tier auto-merge with a per-merge summary and Trevor's veto; code first with at most one design round; live supervised qualification; records travel with the code; store upgrades.
+
 ## Current contract
 
 **No slice is in flight.** 6a parts 1–3 are done (part 3 merged as `dbbdced`,
@@ -269,3 +293,26 @@ History: per-slice preflights, re-estimates, repair narratives and the earlier
 slice map and decisions text are in
 `~/work/research-loops-public/private/evidence/dossier-history/DOSSIER-2d-history-20261024.md`
 (outside the repository).
+
+## T2 / 2e1 3a (2026-11-05)
+
+Lane A adds serialized admission, immutable first-result charging and the permanent original-U uncertainty stop (F5, DEBT-052), serving 2f admission/spend qualification. Trusted-reader fixtures establish Router behavior only; productive dispatch remains closed pending the later gates. No schema change; 3b safety retention and rejection authority are deferred to T3/T4.
+
+## T3 / 2e1 3b-i (2026-11-05)
+
+Lane A retains original-U results after expired/released leases, terminal state,
+changed epoch, stale pins or uncertainty, with a permanent stop (DEBT-052).
+Authenticated rejection reuses the dated capability projection and owned,
+deadlined remediation hold; persistence ACK precedes the existing FAILED
+transition. Offline fixtures cover dates, atomic hold failure and replay; they
+qualify no real provider or runtime. Serves 2f spending and DEBT-004's rejection
+experiment. T4 owns the route-wide blocker/remediation subject (DEBT-053).
+
+## T12-A / 2e2 Router interface (2026-11-05)
+
+Trusted station calls can record a native dossier under a live checkpoint;
+invocation replay returns the original revision/hash. Fixed topic-record reads
+supply F3's operands and exact dossier bodies without changing dossier captures.
+Validated-only search proposals stay in committed payloads (P6); executor pins
+and bounds live in the bundle. Offline tests establish Router structure only;
+T13–T18 supply the production consumers for the supervised 2f workflow.

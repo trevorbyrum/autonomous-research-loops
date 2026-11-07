@@ -1,4 +1,5 @@
 """Checked capture entries and pure conversion of fixed detached operands."""
+import base64
 from dataclasses import dataclass
 from typing import Callable, Mapping, Protocol
 
@@ -11,6 +12,23 @@ from gen2.store import api
 from gen2.store.capture import Freshness, TopicCapture, input_hash
 from gen2.router.protocols import Rows, Schemas
 
+TOPIC_FAMILIES = tuple("""claim_source_links obligation_assessments source_acquisitions source_artifacts
+retrieval_events search_observations record_work_links works facets obligations contract_revisions
+claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers""".split())
+_ID = {"$ref": "common.schema.json#/$defs/topic_id"}
+ACCOUNTING_COMMANDS = {
+    "record_dossier": {"type": "object", "additionalProperties": False,
+        "required": ["capability_id", "invocation_id", "topic_id"], "properties": {
+            "capability_id": {"$ref": "common.schema.json#/$defs/capability_id"},
+            "invocation_id": {"$ref": "common.schema.json#/$defs/invocation_id"}, "topic_id": _ID}},
+    "topic_records": {"type": "object", "additionalProperties": False, "required": ["topic_id", "families"],
+        "properties": {"topic_id": _ID, "families": {"type": "array", "minItems": 1, "maxItems": len(TOPIC_FAMILIES),
+            "uniqueItems": True, "items": {"enum": list(TOPIC_FAMILIES)}},
+            "dossier_revision": {"$ref": "common.schema.json#/$defs/revision"}},
+        "if": {"properties": {"families": {"contains": {"const": "dossiers"}}}},
+        "then": {"required": ["dossier_revision"]}},
+}
+
 
 class AccountingCore(Protocol):
     _store: Rows[TopicCapture]
@@ -22,6 +40,30 @@ class AccountingCore(Protocol):
 class Accounting:
     def __init__(self, core: AccountingCore) -> None:
         self._core = core
+
+    def topic_records(self, req: dict) -> dict:
+        """Fixed decoded reads inside the core's snapshot; no dossier capture changes."""
+        families, topic = req["families"], req["topic_id"]
+        shared = {"record_work_links", "works"}
+        out = {name: self._core._store.select(name, {"topic_id": topic,
+            **({"dossier_revision": req["dossier_revision"]} if name == "dossiers" else {})})
+            for name in families if name not in shared}
+        if "dossiers" in out and not out["dossiers"]:
+            raise Refusal("unknown_dossier", "no dossier at the named topic/revision")
+        if shared.intersection(families):
+            events = self._core._store.select("retrieval_events", {"topic_id": topic})
+            links = [link for event in events for link in self._core._store.select("record_work_links", {"event_id": event["event_id"]})]
+            if "record_work_links" in families:
+                out["record_work_links"] = links
+            if "works" in families:
+                out["works"] = [work for wid in sorted({r["work_id"] for r in links})
+                                for work in self._core._store.select("works", {"work_id": wid})]
+        for rows in out.values():
+            for row in rows:
+                for key, value in row.items():
+                    if isinstance(value, bytes):
+                        row[key] = {"encoding": "base64", "data": base64.b64encode(value).decode("ascii")}
+        return {"status": "ok", "topic_id": topic, "records": out}
 
     def capture(self, topic_id: str, history: a.History) -> TopicCapture:
         if history not in ("native", "legacy_unknown"):
@@ -47,17 +89,23 @@ class Accounting:
         return DossierInput(raw, convert_coverage_snapshot(raw, topic_id, history), input_hash(raw, history))
 
     def commit_dossier_inputs(self, topic_id: str, *, history: a.History, prepare: Callable, commit: Callable, require_live: Callable,
-                              reason: str = "payload_invalid", audit_kind: str | None = "dossier_input_recaptures") -> object:
+                              reason: str = "payload_invalid", audit_kind: str | None = "dossier_input_recaptures", replay: Callable | None = None) -> object:
         """Compute outside the fence with caller-specific liveness and refusal policy.
 
         Only an effect-free generation mismatch permits up to two recaptures.
         """
         recaptures = 0
         for attempt in range(3):
+            prior = replay() if replay is not None else None
+            if prior is not None:
+                return prior
             def audit(now):
                 if audit_kind is not None:
                     return self._core._audit(audit_kind, now, {"recaptures": recaptures}, topic_id=topic_id)
             def fenced(now):
+                prior = replay() if replay is not None else None
+                if prior is not None:
+                    return prior
                 require_live(now)
                 result = commit(prepared, now)
                 audit(now)

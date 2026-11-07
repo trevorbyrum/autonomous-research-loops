@@ -12,7 +12,7 @@ from gen2.router.boundary import Refusal
 from gen2.router.schemas import SchemaSet
 from gen2.router.verification import hold_id
 from gen2.tests.router_fixtures import TOPIC, OTHER, HOLD, AttentionCase, empty_outcome
-from gen2.tests.test_dossier_record import FixtureEvaluator
+from gen2.tests.test_dossier_record import FixtureEvaluator, record_inputs
 from gen2.tests.test_registry_dispositions import example_disposition
 
 SCHEMA = "completion-record.schema.json"
@@ -31,7 +31,7 @@ class World(FixtureEvaluator, AttentionCase):
         self.assertEqual(self.send([], grant=self.capture_grant, refs=[text], claims=[claim])["status"], "committed")
         self.assertEqual(self.send([], grant=self.capture_grant, refs=[self.ref], registry_dispositions=[
             example_disposition(self.ref, 0), example_disposition(self.ref, 1, registry_kind="branch", registry_id="B-1", disposition="promote")])["status"], "committed")
-        self.dossier = self.router.record_dossier(TOPIC, invocation_id="inv_capture001", history="native")
+        self.dossier = record_inputs(self.router, TOPIC, invocation_id="inv_capture001", history="native")
         self.assertEqual(self.dossier["status"], "recorded")
 
     def completion(self, kind, **changes):

@@ -107,6 +107,9 @@ class Registries:
         try:
             doc = boundary.normalize(document, "bundle_invalid")
             boundary.require_schema(self._core._schemas, doc, "config-bundle.schema.json", "bundle_invalid")
+            executors = doc["policy"].get("executors", [])
+            if len({(e["kind"], e["purpose"]) for e in executors}) != len(executors):
+                raise Refusal("bundle_invalid", "an executor kind/purpose appears twice")
             keys = [(q["question_id"], q["version"]) for q in doc["questions"]]
             if len(set(keys)) != len(keys):
                 raise Refusal("bundle_invalid", "a question version appears twice")
