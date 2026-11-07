@@ -44,6 +44,8 @@ class Context:
     outcome: Callable[[Step], dict | None]   # a committed step's outcome document, or None
     as_of: str
     proposer: Step | None = None   # discovery only: the step whose committed proposals it executes
+    state_revision: int = 0
+    invocation_of: Callable[[Step], str] = lambda step: ""   # the durable order id of a step (the proposer's, for a discovery kit)
 
 
 class Kit(Protocol):
@@ -222,14 +224,15 @@ class Driver:
         entry = orders.executor_entry(self._bundle(), step.kind, step.purpose)
         prompt = orders.mounted_prompt(self.prompt_dir, entry)
         invocation = self.invocation_id(step)
-        records = self.station.router.topic_records({"topic_id": self.topic_id, "families": list(kit.families)})["records"] if kit.families else {}
+        revision = ((topic.get("review") or {}).get("dossier") or {}).get("revision")
+        request = {"topic_id": self.topic_id, "families": list(kit.families), **({"dossier_revision": revision} if "dossiers" in kit.families and revision else {})}
+        records = self.station.router.topic_records(request)["records"] if kit.families else {}
         admission, truncation = self.admission(topic), []
         episode = step.context.partition(".")[2] if step.kind == "checkpoint" else ""
         if step.kind == "discovery" and proposer is None:
             raise Refused("a discovery run needs the step whose proposals it executes")
-        context = Context(step, invocation, self.topic_id, admission, [episode] if episode else [],
-                          ((topic.get("review") or {}).get("dossier") or {}).get("revision"), self.outcome,
-                          self.clock().strftime("%Y-%m-%dT%H:%M:%SZ"), proposer)
+        context = Context(step, invocation, self.topic_id, admission, [episode] if episode else [], revision, self.outcome,
+                          self.clock().strftime("%Y-%m-%dT%H:%M:%SZ"), proposer, topic.get("state_revision", 0), self.invocation_id)
         view = kit.view(context, records, truncation)
         directory = self.station.supervisor.job(invocation).scratch   # the executor's cwd and where the supervisor collects outcome.json: one location
         self.set_aside(step, view, directory)   # before the inputs, and before prepare: a crash here leaves no job

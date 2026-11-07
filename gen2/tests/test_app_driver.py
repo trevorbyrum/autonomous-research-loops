@@ -42,7 +42,7 @@ class Router:
         self.world = world
 
     def status(self, request):
-        return {"status": "ok", "topics": [self.world.topic]}
+        return {"status": "ok", "topics": [self.world.topic], "config_bundles": {"active": {"bundle_hash": BUNDLE}}}
 
     def config_bundle(self, bundle_hash):
         return self.world.bundle
@@ -107,7 +107,10 @@ class World:
 
     def station(self):
         class Station:
-            pass
+            closed = False
+
+            def close(self):
+                self.closed = True
         station = Station()
         station.router, station.supervisor, station.spool = Router(self), Supervisor(self), Spool(self)
         return station
