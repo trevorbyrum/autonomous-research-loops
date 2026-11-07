@@ -15,9 +15,10 @@ from typing import Callable, Mapping
 
 from gen2.core import canonical, instants
 from gen2.core.control import ControlUnavailable
+from gen2.core.evidence_media import EVIDENCE, EVIDENCE_MEDIA
 from gen2.supervisor import jobs
 from gen2.supervisor.isolation import ABSENT_PROFILE, refuse_live_profile
-from gen2.supervisor.spool import Spool, SpoolFull, read_scratch
+from gen2.supervisor.spool import Spool, SpoolConflict, SpoolFull, read_scratch
 
 OUTPUT = "outcome.json"          # the executor's one result file; its name is the supervisor's (C-9)
 SELF_REPORT = "status.json"      # an agent's own claim about itself: recorded, never used (L-5)
@@ -26,12 +27,14 @@ LAUNCHER = (sys.executable, str(Path(__file__).with_name("jobshim.py")))
 TERMINAL = ("committed", "failed", "cancelled")
 # Refusals of a lifecycle write that no retry can change: another fact is already recorded under the write-once key,
 # or the router does not know this capability for this invocation. They stop at once rather than spend the budget.
-# "kind/purpose" keys (purpose is the order's GEN2_PURPOSE) whose result may not reach the router before the station's
+# "kind/purpose" keys (the order's GEN2_PURPOSE itself) whose result may not reach the router before the station's
 # recorder has written its evidence (2e2 design, T12-B). A key here without an installed recorder refuses at prepare.
 RECORDED = frozenset({"discovery/search", "verification/verify", "checkpoint/dossier"})
 FINAL_REFUSALS = frozenset({"transition_conflict", "reconciliation_conflict", "cancel_conflict",
                             "unknown_invocation", "capability_invalid", "capability_invocation_mismatch"})
 DIGEST = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
+MAX_EVIDENCE = 64          # files a job may set aside in its scratch (core.evidence_media names the form), and the bytes they may total
+MAX_EVIDENCE_BYTES = 32 << 20
 INVOCATION_ID = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")  # common.schema.json#/$defs/invocation_id: also the job's directory name
 
 
@@ -587,7 +590,7 @@ class Supervisor:
             findings.append("killed")
         elif exit_record["code"] != 0:
             findings.append("exit_nonzero")
-        found = self.spool.collect(order["topic_id"], job.scratch, OUTPUT, "application/json")  # a full spool fails the write (advance): the output stays in scratch
+        found = self._stage_output(order, job, journal)  # a full spool fails the write (advance): the output stays in scratch
         declared = self._agent_text(job, DECLARED_DIGEST)
         output = {"status": found["status"], "content_hash": None, "size_bytes": None,
                   "declared_digest": declared if declared and DIGEST.match(declared) else None, "detail": found["detail"]}
@@ -596,17 +599,86 @@ class Supervisor:
             findings.append("empty_output")
         elif found["status"] == "refused":
             findings.append("output_refused")
-        elif declared is not None and declared != found["ref"]["content_hash"]:
-            output.update(status="digest_mismatch", detail=f"the executor declared {declared[:80]}; the bytes hash to {found['ref']['content_hash']}")
+        elif declared is not None and declared != found.get("original", found["ref"]["content_hash"]):
+            output.update(status="digest_mismatch", detail=f"the executor declared {declared[:80]}; the bytes hash to {found.get('original', found['ref']['content_hash'])}")
             findings.append("output_digest_mismatch")
         else:
             output.update(content_hash=found["ref"]["content_hash"], size_bytes=found["ref"]["size_bytes"])
             result = found["ref"] if not findings else None
         observation = {"process": self._process(view["identity"]), "exit": exit_record, "termination": seen["termination"], "descendants": seen["descendants"],
                        "output": output, "self_report": self._agent_text(job, SELF_REPORT), "findings": findings}
-        journal["observing"] = {**seen, "observation": observation, "result": result, "method": "exit_observed"}
+        journal["observing"] = {**seen, "observation": observation, "result": result, "method": "exit_observed",
+                                "evidence": self._evidence(order, job) if result is not None else []}
         self._save(job, journal)
         self._retain(job, order, journal)
+
+    def _stage_output(self, order: dict, job: jobs.Job, journal: dict) -> dict:
+        """Stage the job's outcome.json. A verification job's receipts name the verifier's own capability, which is minted at the claim,
+        after the order was fixed, and must never reach the job: the supervisor, which holds the grant, fills that one field on
+        `verification_receipts` before staging and hashing. A receipt that already names another capability refuses the output; every
+        other kind, and an outcome with nothing to fill, is staged byte for byte as the job wrote it. `original` is the job's own digest,
+        which is what a declared digest is checked against."""
+        if order["kind"] != "verification":
+            return self.spool.collect(order["topic_id"], job.scratch, OUTPUT, "application/json")
+        raw = read_scratch(job.scratch, OUTPUT, self.spool.max_artifact_bytes)
+        if raw["status"] != "present":
+            return {"status": raw["status"], "ref": None, "detail": raw["detail"]}
+        data, capability = raw["data"], (journal.get("grant") or {}).get("capability_id")
+        try:
+            document = canonical.parse_json_strict(data)
+        except ValueError:
+            document = None
+        collection = document.get("verification_receipts") if isinstance(document, dict) else None
+        receipts = [r for r in collection if isinstance(r, dict)] if isinstance(collection, list) else []   # any other shape goes to the router as written
+        if any(r.get("verifier_capability_id") not in (None, capability) for r in receipts) or (receipts and capability is None):
+            return {"status": "refused", "ref": None, "detail": "a verification receipt names a capability that is not the verifier's own"}
+        if any("verifier_capability_id" not in r or r["verifier_capability_id"] is None for r in receipts):
+            for r in receipts:
+                r["verifier_capability_id"] = capability
+            data = canonical.canonical_bytes(document)
+        return {"status": "present", "ref": self.spool.stage(order["topic_id"], data, "application/json"), "detail": None,
+                "original": canonical.bytes_digest(raw["data"])}
+
+    def _evidence(self, order: dict, job: jobs.Job) -> list[dict]:
+        """Stage the files a successful job set aside as `evidence-<sha256><ext>` (core.evidence_media): at most MAX_EVIDENCE and
+        MAX_EVIDENCE_BYTES, each listed only if its bytes hash to the digest in its name. The job names no path and the extension fixes the
+        media type; these are the only refs its outcome may add. A mismatched file is staged (collect stages before the comparison) but
+        never listed, and so is one whose bytes the topic's spool already holds under another media type (a conflict, not an error)."""
+        try:
+            names = sorted(entry.name for entry in Path(job.scratch).iterdir() if EVIDENCE.match(entry.name))[:MAX_EVIDENCE]
+        except OSError:
+            return []
+        refs, total = [], 0
+        for name in names:
+            digest, extension = EVIDENCE.match(name).groups()
+            try:
+                found = self.spool.collect(order["topic_id"], job.scratch, name, EVIDENCE_MEDIA[extension])
+            except SpoolConflict:
+                continue
+            if found["status"] == "present" and found["ref"]["content_hash"] == "sha256:" + digest:
+                total += found["ref"]["size_bytes"]
+                if total > MAX_EVIDENCE_BYTES:
+                    break
+                refs.append(found["ref"])
+        return refs
+
+    def _named(self, order: dict, collected: dict) -> list[dict]:
+        """The job's staged evidence its outcome names (a dict equal to a staged ref, anywhere in the document); nothing else is added."""
+        staged = {ref["content_hash"]: ref for ref in collected.get("evidence", [])}
+        data = self.spool.read(collected["result"]["content_hash"], topic_id=order["topic_id"]) if staged else None
+        if data is None:
+            return []
+        try:
+            document = canonical.parse_json_strict(data)
+        except ValueError:
+            return []
+        found, pending = {}, [document]
+        while pending:
+            node = pending.pop()
+            if isinstance(node, dict) and isinstance(node.get("content_hash"), str) and node["content_hash"] in staged and node == staged[node["content_hash"]]:
+                found[node["content_hash"]] = node
+            pending.extend(node.values() if isinstance(node, dict) else node if isinstance(node, list) else ())
+        return [found[h] for h in sorted(found)]
 
     def _terminate(self, job: jobs.Job, order: dict, journal: dict, view: dict, reason: str) -> None:
         """End the execution group (timeout or cancellation) and record it;
@@ -625,7 +697,7 @@ class Supervisor:
         collected: retained until it is delivered (C-10)."""
         seen = journal["observing"]
         record = self._record(order, seen["method"], seen["observation"])
-        journal["collected"] = {"observation": seen["observation"], "result": seen["result"], "record": record,
+        journal["collected"] = {"observation": seen["observation"], "result": seen["result"], "record": record, "evidence": seen.get("evidence", []),
                                 **({"terminated": seen["terminated"]} if seen.get("terminated") else {})}
         del journal["observing"]
         self._wrote(journal)
@@ -869,9 +941,10 @@ class Supervisor:
 
     def _recorder_key(self, order: Mapping) -> str | None:
         """The recorder an order's evidence needs (a required purpose, or any with one installed); None if it has none."""
-        purpose = (order.get("env") or {}).get("GEN2_PURPOSE")
-        key = f"{order['kind']}/{purpose}"
-        return key if purpose and (key in RECORDED or key in self.recorders) else None
+        key = (order.get("env") or {}).get("GEN2_PURPOSE")   # the one purpose identity, "kind/purpose", as orders.build_order writes it
+        if key is not None and not key.startswith(order["kind"] + "/"):
+            raise RecorderMissing(f"the order is a {order['kind']} but names the purpose {key[:80]!r}; nothing was written")
+        return key if key and (key in RECORDED or key in self.recorders) else None
 
     def _recording(self, job, order, journal, grant, collected) -> str | None:
         """Run the order's recorder before its result goes to the router: replayable, not exactly once (Astra T12 F2). Every durable
@@ -931,7 +1004,8 @@ class Supervisor:
                 "operation_kind": "final_outcome", "invocation_id": grant["invocation_id"], "capability_id": grant["capability_id"],
                 "topic_id": grant["topic_id"], "admission": grant["admission"], "config_bundle_hash": grant["config_bundle_hash"],
                 "lease": {"lease_id": grant["lease"]["lease_id"], "generation": grant["lease"]["generation"]}, "expected_state_revision": state_revision,
-                "payload_digest": result["content_hash"], "payload_size_bytes": result["size_bytes"], "result_refs": [record], "submitted_at": self._now()}
+                "payload_digest": result["content_hash"], "payload_size_bytes": result["size_bytes"],
+                "result_refs": [record, *self._named(order, collected)], "submitted_at": self._now()}
 
     # -- outcome_unknown -----------------------------------------------------------
     def _enter_unknown(self, job, order, journal, grant, status, cause: str) -> str:

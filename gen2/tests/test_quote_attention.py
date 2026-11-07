@@ -4,7 +4,7 @@ NLI checks are literal historical fixtures, never executed by a provider.
 """
 import json
 
-from gen2.tests.router_fixtures import TOPIC
+from gen2.tests.router_fixtures import TOPIC, OTHER
 from gen2.tests.detailed_receipt_fixtures import unreferenced_checks
 from gen2.tests.router_fixtures import CaptureCase
 
@@ -51,6 +51,8 @@ class AttentionCase(CaptureCase):
         status = self.router.status({"topic_id": TOPIC})
         self.assertEqual([(h["hold_id"], h["owner"]) for h in status["topics"][0]["holds"]], [(HOLD, "primary:station-1")])
         self.assertEqual(self.rows("SELECT * FROM source_lifecycle"), [])
+        self.assertEqual([(q["check_id"], q["quote_quarantined"]) for q in self.router.topic_records({"topic_id": TOPIC, "families": ["quote_checks"]})["records"]["quote_checks"]],
+                         [("qck_quote00001", 1)])
 
 
 class AttentionTest(AttentionCase):
@@ -85,6 +87,7 @@ class AttentionTest(AttentionCase):
         self.assertEqual(self.rows("SELECT claim_revision, exact_match, quote_quarantined FROM quote_checks"), [(1, "mismatch", 1), (2, "matched", 0)])
 
     def test_nli_adjudication_control(self):
+        """F3: historical quarantine reads follow claim topic; literal rows/no-write oracle, fixture NLI only."""
         self.alarm()
         doc = {**self.receipt_document(), "adjudication": ADJ}
         out = self.send([], verification_receipts=[doc])
@@ -93,6 +96,9 @@ class AttentionTest(AttentionCase):
         self.assertEqual(json.loads(self.value("SELECT receipt FROM verification_receipts"))["adjudication"], ADJ)
         self.assertEqual(self.value("SELECT quote_quarantined FROM quote_checks"), 1)
         before = self.state(exclude=())
+        self.assertEqual([(q["check_id"], q["quote_quarantined"], q["topic_id"]) for q in self.router.topic_records({"topic_id": TOPIC, "families": ["quote_checks"]})["records"]["quote_checks"]],
+                         [("qck_quote00001", 1, None)])
+        self.assertEqual(self.router.topic_records({"topic_id": OTHER, "families": ["quote_checks"]})["records"]["quote_checks"], [])
         self.assertEqual(self.router.commit_outcome(self.env)["status"], "replayed")
         self.assertEqual(self.state(exclude=()), before)
 
