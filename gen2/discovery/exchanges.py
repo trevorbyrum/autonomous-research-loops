@@ -44,9 +44,9 @@ def build(result: Mapping) -> dict[str, tuple[bytes, bytes]]:
                 continue
             lane = (page["sent"].get("lanes") or [None])[0]
             asked = next((o for o in observed if o["observation"]["lane"] == lane), observed[0])
-            if "records" not in page:
-                raise Refused(f"{ref}: the page carries no full records")
-            records = page["records"]   # the client's full parsed records, abstract included; the observations' are metadata-only
+            if ref not in out["records_by_call"]:
+                raise Refused(f"{ref}: the client returned no full records for this captured call")
+            records = out["records_by_call"][ref]   # the client's full parsed records, abstract included; the observations' are metadata-only
             response = {"retained_form": FORM, "request_type": page["sent"]["request_type"],
                         "observation": {"captured": True, "call_ref": page["call_ref"], "invocation_id": inv, "attempt": attempt},
                         "effective_request": page["effective_request"],

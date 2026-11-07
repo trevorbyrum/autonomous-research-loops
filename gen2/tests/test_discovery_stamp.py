@@ -55,6 +55,23 @@ class ChildStampsTest(Fixture, unittest.TestCase):
         for item in (a, b):
             self.assertEqual(item["observation"]["request_identity"], canonical.logical_hash(item["observation"]["request"]))
 
+    def test_the_stamped_request_is_a_recorded_superset_of_what_was_sent_and_still_links_to_the_gateways_call(self):
+        self.run_child(self.stage([proposal(1, query="same", obligation_ids=[])]))
+        (search,) = result_of(self)["searches"]
+        (item,) = search["out"]["observations"]
+        doc, (page,) = item["observation"], search["out"]["pages"]
+        sent = [{"request_type": "find", **body} for path, _, body in self.gateway.calls if path == "/v1/find"]   # the client sends the type in the path
+        self.assertEqual(doc["request"]["request"], sent[0], "the sent payload is carried unchanged")
+        self.assertEqual(doc["request"]["request"], page["sent"])
+        self.assertEqual(doc["gateway_call_ref"], f"gw-call:{page['call_ref']}", "the link to the gateway's own call row is untouched")
+        original = {k: v for k, v in doc["request"].items() if k != "proposal_ref"}
+        unstamped = GatewayClient(BASE, "t", transport=Gateway(), clock=lambda: "2026-11-05T12:00:00Z", sleep=lambda s: None)
+        token = unstamped.grant(topic_id="fleet:topic", commercial=False, accept_per_item=True, invocation_id=INV)["token"]
+        again = unstamped.search(sent[0], invocation_id=INV, attempt=1, policy_version="gw/1", token=token)
+        self.assertEqual(canonical.logical_hash(original), again["observations"][0]["observation"]["request_identity"],
+                         "the identity the client alone would have given is recomputable from the stamped request")
+        self.assertNotEqual(doc["request_identity"], canonical.logical_hash(original))
+
     def test_a_degraded_attempt_is_stamped_too(self):
         self.gateway.fail = True
         self.run_child(self.stage([proposal(1, obligation_ids=[])]))

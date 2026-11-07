@@ -22,7 +22,7 @@ def sites(source: str) -> list[str]:
         if not isinstance(node, ast.Call):
             continue
         name = node.func.id if isinstance(node.func, ast.Name) else node.func.attr if isinstance(node.func, ast.Attribute) else None
-        if name in ("GatewayClient", "RetainingClient") or (name == "resolve" and imports_client and not node.args and not node.keywords):
+        if name == "GatewayClient" or (name == "resolve" and imports_client and not node.args and not node.keywords):
             found.append(name)
     return found
 
@@ -37,12 +37,11 @@ class ClientSitesTest(unittest.TestCase):
             if (hit := sites(path.read_text())):
                 found[relative] = hit
         self.assertEqual(set(found), ALLOWED, found)
-        self.assertEqual(sorted(found["gen2/discovery/child.py"]), ["RetainingClient", "resolve"])
+        self.assertEqual(sorted(found["gen2/discovery/child.py"]), ["GatewayClient", "resolve"])
 
     def test_the_scan_finds_a_second_construction_and_a_resolve_call(self):
         self.assertEqual(sites("from gen2.gateway_client.client import GatewayClient\nc = GatewayClient('u', 't')\nc.resolve()\n"), ["GatewayClient", "resolve"])
         self.assertEqual(sites("import gen2.gateway_client.client as g\ng.GatewayClient('u', 't')\n"), ["GatewayClient"])
-        self.assertEqual(sites("from gen2.discovery.child import RetainingClient\nRetainingClient('u', 't')\n"), ["RetainingClient"])
 
     def test_resolve_elsewhere_is_not_a_client_call(self):
         self.assertEqual(sites("from pathlib import Path\nPath('.').resolve()\n"), [])

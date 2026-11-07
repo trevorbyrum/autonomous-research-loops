@@ -25,26 +25,9 @@ INVOCATION = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")   # common.schema.json#/$def
 URL, TOKEN = "GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN"
 
 
-class RetainingClient(GatewayClient):
-    """A GatewayClient that also keeps each captured call's full parsed records. `search` projects them onto metadata-only
-    observation records (client.py `obs["records"] = observe.lane_records(...)`) and returns nothing else of them; the
-    content the router never stores (an abstract) is what the retained exchange must carry (the trusted post-ACK hand-off).
-    It overrides only `_answer`, adds a reader of what that returned, and changes no I/O, endpoint or observation."""
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.full_records: dict[int, list[dict]] = {}
-
-    def _answer(self, sent: dict, ctx: dict) -> dict:
-        answer = super()._answer(sent, ctx)
-        if answer["call_ref"] is not None:
-            self.full_records[answer["call_ref"]] = list(answer["records"])
-        return answer
-
-
 def _client(url: str, token: str) -> GatewayClient:
-    """The only construction of a client in gen2 outside tests (DEBT-001 inventory)."""
-    return RetainingClient(url, token)
+    """The only construction of a GatewayClient in gen2 outside tests (DEBT-001 inventory)."""
+    return GatewayClient(url, token)
 
 
 def run(directory: Path, *, environ: Mapping[str, str], validate: Callable[[str, object], None],
@@ -80,8 +63,6 @@ def run(directory: Path, *, environ: Mapping[str, str], validate: Callable[[str,
         out = client.search(request, invocation_id=invocation_id, attempt=view["attempt"], policy_version=gateway["policy_version"],
                             obligation_ids=proposal["obligation_ids"], pages=requests.pages(proposal), token=grant["token"])
         stamp.stamp(out, stamp.ref_of(view["proposed_by"], proposal["proposal_id"]), invocation_id=invocation_id, attempt=view["attempt"])
-        for page in out["pages"]:   # the full parsed records of each captured call, beside its metadata-only observations
-            page["records"] = list(getattr(client, "full_records", {}).get(page["call_ref"], [])) if page["call_ref"] is not None else []
         searches.append({"proposal_id": proposal["proposal_id"], "out": out})
     resolution = client.last_resolution
     document = {"result_version": "discovery-result/1", "invocation_id": invocation_id, "attempt": view["attempt"],

@@ -10,7 +10,7 @@ from pathlib import Path
 from gen2.core import canonical
 from gen2.discovery import child, requests
 from gen2.exec import common, orders
-from gen2.gateway_client.client import GrantRefused
+from gen2.gateway_client.client import GatewayClient, GrantRefused
 from gen2.router.schemas import SchemaSet
 
 SCHEMAS = SchemaSet()
@@ -111,7 +111,7 @@ class Fixture:
 
     def factory(self, url, token):
         self.built.append((url, token))
-        return child.RetainingClient(url, token, transport=self.gateway, clock=lambda: "2026-11-05T12:00:00Z", sleep=lambda s: None)
+        return GatewayClient(url, token, transport=self.gateway, clock=lambda: "2026-11-05T12:00:00Z", sleep=lambda s: None)
 
     def run_child(self, env):
         return child.run(self.root, environ=env, validate=validate, factory=self.factory)
