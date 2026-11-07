@@ -5,31 +5,28 @@ child, so the job deadline bounds the name lookup) and DEBT-002 (this child's cl
 the wrapper names (`inputs/input.json` read, `outcome.json` written in scratch). Oracle: the gateway client's own
 observations; the child adds none. Limits: it records nothing in the router (the station's recorder does, from
 `discovery-result.json`), picks no search, and a search that raises is not retried: the job fails and an operator
-requeues (L-6), because a zero-result stand-in would be a false negative. Every observation is stamped with its proposal's identity (stamp.py). The result is parsed JSON the client
+requeues (L-6), because a zero-result stand-in would be a false negative. The entry (`main`) builds a client only over a transport its caller injects: the ordinary `python -m` route refuses (pre-T19 fence). Every observation is stamped with its proposal's identity (stamp.py). The result is parsed JSON the client
 returned, not transport octets.
 """
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable, Mapping, Sequence
 
 from gen2.core import canonical
 from gen2.discovery import requests, stamp
 from gen2.exec import orders
 from gen2.exec.common import Refused, outcome_bytes, scaffold
-from gen2.gateway_client.client import GatewayClient
+from gen2.gateway_client.client import GatewayClient, GrantRefused
 
 RESULT, OUTCOME = "discovery-result.json", "outcome.json"
 URL, TOKEN_FILE = "GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN_FILE"   # the token is a file the supervisor mounts, never a value in order.json
 
 
-def _client(url: str, token: str) -> GatewayClient:
-    """The only construction of a GatewayClient in gen2 outside tests (DEBT-001 inventory)."""
-    return GatewayClient(url, token)
-
-
 def run(directory: Path, *, environ: Mapping[str, str], validate: Callable[[str, object], None],
-        factory: Callable[[str, str], GatewayClient] = _client) -> Path:
+        factory: Callable[[str, str], GatewayClient]) -> Path:
     """Run the proposals in `directory/inputs/input.json` one after another; returns the result path."""
     root = Path(directory)
     try:
@@ -76,3 +73,26 @@ def run(directory: Path, *, environ: Mapping[str, str], validate: Callable[[str,
     path = root / OUTCOME
     path.write_bytes(outcome_bytes(scaffold(invocation_id, work["topic_id"])))   # empty: discovery commits no scientific section
     return path
+
+
+def main(argv: Sequence[str], *, env: Mapping[str, str] | None = None, validate: Callable[[str, object], None] | None = None,
+         transport: Callable | None = None) -> int:
+    """`python -m gen2.discovery.child <scratch>`: read the pinned input, run the proposals, write `discovery-result.json` and `outcome.json`; 0, or 2
+    with a named reason and nothing written. THE PRE-T19 FENCE: the client is built only over a `transport` the caller injects; the ordinary
+    route (no transport) never builds a client from environment credentials, so it reaches no gateway: live use is refused until T19 opens it
+    deliberately. Offline, the caller (T18's entry) injects the canned gateway and the schema check."""
+    env = os.environ if env is None else env
+    try:
+        if len(argv) != 1:
+            raise Refused("usage: gen2.discovery.child <scratch>")
+        if transport is None or validate is None:
+            raise Refused("the live gateway entrance is closed: this child runs only over an injected transport (pre-T19)")
+        run(Path(argv[0]), environ=env, validate=validate, factory=lambda url, token: GatewayClient(url, token, transport=transport))
+    except (Refused, KeyError, TypeError, OSError, ValueError, GrantRefused) as error:
+        print(f"gen2.discovery.child: {type(error).__name__}: {error}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
