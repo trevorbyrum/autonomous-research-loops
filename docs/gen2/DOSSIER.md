@@ -316,3 +316,11 @@ supply F3's operands and exact dossier bodies without changing dossier captures.
 Validated-only search proposals stay in committed payloads (P6); executor pins
 and bounds live in the bundle. Offline tests establish Router structure only;
 T13–T18 supply the production consumers for the supervised 2f workflow.
+
+## T4a / 2e1 3b-ii blocker (2026-11-07)
+
+Authenticated real-route rejection blocks admission and final start across the
+owning deployment/provider route, including known-zero results. Capability
+recovery and generic hold clearance do not clear it. Fixture provenance never
+becomes genuine from artifact labels. T4b owns reviewed remediation; DEBT-053
+stays open until the separate pre-2f procedure and evidence are accepted.

@@ -76,6 +76,10 @@ class DispatchAuthority(Protocol):
     epoch and evidence generation. It enumerates EVERY referenced artifact;
     Router rehashes and registers them. Labels inside artifacts prove nothing.
     Admission records are immutable; is_current checks current qualification.
+    origin.route is fixture or real. A real origin also carries deployment_id
+    and provider_route: stable owning identities authenticated from deployment
+    provenance, independent of topic/run/policy/manifest/credential revisions.
+    Artifact labels cannot establish these identities or real-route provenance.
     Result reads authenticate original provenance even after current expiry.
     confirmed_end covers all senders/writers/descendants and closed ingress;
     actual_minor_units is independently authoritative or None, never estimated.

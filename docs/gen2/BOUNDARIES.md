@@ -363,3 +363,8 @@ revision including its stored body/gates. It changes no dossier capture/hash.
 `search_proposals` are validated primary proposals retained only in the payload;
 `policy.executors` carries hash-pinned prompts and explicit execution bounds.
 The fixed read families include `scoping_reports` for T14's scoping view; its `topic_id` key scopes full report bodies without adding them to dossier captures.
+
+**T4a:** Dispatch derives the retained-rejection blocker from immutable result
+history, keyed by trusted deployment/provider identities, outside topic, run,
+policy, manifest and credential versions. Admission and final-start transactions
+apply it independently of the spending stop and current capability projection.

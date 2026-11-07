@@ -274,3 +274,54 @@ class DispatchTests(rf.RouterTestCase):
         self.assertEqual((out["charge_state"], out["trial_stopped"]), ("worst_case", True))
         self.assertEqual(self.rows("SELECT since,last_success_at FROM capability_facts WHERE fact_id=?", out["fact_id"]), [("2026-10-31T12:00:00Z", None)])
         self.assertEqual(self.rows("SELECT * FROM invocations"), before)
+
+    def real_route(self, req=None, deployment="station-live", route="codex:responses"):
+        origin = self.authority.admissions[(req or self.req)["invocation_id"]]["origin"]
+        origin.update(route="real", deployment_id=deployment, provider_route=route)
+
+    def test_known_zero_genuine_rejection_blocks_route_after_probe_and_clearance(self):
+        """B2: known-zero history blocks another topic despite recovery/clearance; SQL and equality, no real send."""
+        self.clock.set("2026-10-31T12:00:00Z")
+        self.real_route()
+        result = self.rejection(self.authorize())
+        out = self.router.record_dispatch_result(result)
+        self.assertEqual((out["charge_state"], out["trial_stopped"]), ("actual", False))
+        self.assertEqual(self.detail()["charge_minor_units"], 0)
+        self.router.record_capability_probe(observation("b2", "usable", "2026-10-31T12:00:01Z"))
+        self.assertEqual(self.decide("opd_clearb2001", "hold_clearance", {"kind": "hold", "ref": out["hold_id"]}, tid=None)["status"], "applied")
+        other = self.prepare("inv_dispatch02", rf.OTHER)
+        self.real_route(other)
+        self.router = self.make_router(dispatch_authority=self.authority)
+        self.refused("authorize_dispatch", other, "provider_rejection_stopped")
+        before = self.state()
+        self.assertEqual(self.router.record_dispatch_result(result)["status"], "replayed")
+        self.assertEqual(self.state(), before)
+        self.real_route(other, route="codex:other-endpoint")
+        self.authorize(other)
+
+    def test_route_provenance_and_fixture_control(self):
+        """Trusted originals scope rejection; artifact text does not. Whole-store refusals, fixture authority only."""
+        self.real_route()
+        origin = self.authority.admissions[self.req["invocation_id"]]["origin"]
+        for key in ("deployment_id", "provider_route"):
+            with patch.dict(origin, {key: None}):
+                self.refused("authorize_dispatch", self.req, "dispatch_origin_invalid")
+        origin["route"] = "fixture"
+        self.clock.set("2026-10-31T12:00:00Z")
+        result = self.rejection(self.authorize())
+        self.assertEqual(self.router.record_dispatch_result(result)["charge_state"], "actual")
+        other = self.prepare("inv_dispatch02", rf.OTHER)
+        self.real_route(other)
+        self.authorize(other)
+
+    def test_final_start_checks_retained_route_history(self):
+        """Final-start writer fence sees authenticated prior history; literal retained fixture, no external qualification."""
+        self.real_route()
+        self.authorize()
+        origin = copy.deepcopy(self.authority.admissions[self.req["invocation_id"]]["origin"])
+        origin.update(invocation_id="inv_prior0001", topic_id=rf.OTHER)
+        self.x("INSERT INTO audit_events VALUES ('aud_prior0001', ?, 'dispatch_result', ?, 'inv_prior0001', NULL, ?)", rf.STAMP, rf.OTHER,
+            json.dumps({"admission_ref": "aud_priorintent", "evidence": {"origin": origin, "rejection": {}}, "charge_minor_units": 0, "trial_stopped": False}))
+        before = self.state()
+        self.assertEqual(self.launch(self.req)["reason"], "provider_rejection_stopped")
+        self.assertEqual(self.state(), before)

@@ -61,6 +61,26 @@ class Dispatch:
     def _intent(self, invocation_id: str) -> dict | None:
         return next((r for r in self._facts("dispatch_authorized") if r["invocation_id"] == invocation_id), None)
 
+    def _route(self, origin: dict) -> tuple[str, str] | None:
+        """Only the bound authority supplies real deployment/provider identities.
+        Manifests and credentials may change while that owning route stays blocked.
+        """
+        require(origin.get("route") in ("fixture", "real"), "dispatch_origin_invalid")
+        if origin["route"] == "fixture":
+            return None
+        for key in ("deployment_id", "provider_route"):
+            boundary.require_schema(self._core._schemas, origin.get(key), "common.schema.json#/$defs/short_text", "dispatch_origin_invalid")
+        return origin["deployment_id"], origin["provider_route"]
+
+    def _rejections(self, origin: dict) -> list[dict]:
+        """History is route-wide and independent of charge or capability projection."""
+        route = self._route(origin)
+        if route is None:
+            return []
+        return [row for row in self._facts("dispatch_result")
+                if row["detail"]["evidence"].get("rejection") is not None
+                and self._route(row["detail"]["evidence"]["origin"]) == route]
+
     def _read(self, request: Mapping, result: bool = False) -> tuple[dict, dict, dict]:
         req = boundary.normalize(request, "request_invalid")
         target = "dispatch_result" if result else "dispatch_authorize"
@@ -94,6 +114,7 @@ class Dispatch:
             self._core._authorize_artifact(ref["content_hash"], inv, now)
 
     def _predicate(self, doc: dict, now: str, own: str | None = None) -> None:
+        require(not self._rejections(doc["origin"]), "provider_rejection_stopped")
         require(not self._facts("dispatch_stopped"), "dispatch_trial_stopped")
         policy = doc["policy"]
         require(instant(now) < instant(policy["deadline_at"]), "dispatch_policy_expired")
@@ -112,6 +133,7 @@ class Dispatch:
             boundary.require_schema(self._core._schemas, doc.get("policy"), "live-vocabulary.schema.json#/$defs/policy_accounting", "spend_unbounded")
             boundary.require_schema(self._core._schemas, doc.get("upper_minor_units"), "live-vocabulary.schema.json#/$defs/count", "spend_unbounded")
             origin, policy = doc["origin"], doc["policy"]
+            self._route(origin)
             require(all(isinstance(origin.get(k), str) and origin[k] for k in RUNTIME_PINS), "dispatch_origin_invalid")
             refs = self._artifacts(inv, doc, origin["manifest_ref"])
             def write(now):
