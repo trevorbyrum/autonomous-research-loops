@@ -2,16 +2,21 @@
 topic_records' shape), the retained response bytes' own digest, and judgment-verify.schema.json for the prompt's example.
 Limits: the builder that turns the judgment into receipts is the next PR's; here nothing decides a verdict. The acquisition
 triple is compared with literal values taken from the rows, not recomputed with the code under test."""
+import base64
 import json
 import re
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from gen2.core import canonical
+from gen2.app.support_gate import RouterSupport
 from gen2.exec import artifacts, common, verify
 from gen2.router.schemas import SchemaSet
 from gen2.tests import children
-from gen2.tests.test_exec_scope import Exchanges, lineage, staged
+from gen2.tests.test_discovery_child import TOPIC, Fixture
+from gen2.tests.test_exec_scope import Exchanges, lineage
+from gen2.tests.test_verify_p7 import P7Test
 from gen2.tests.test_exec_research import ADMISSION, RAW, exchanges
 
 SCHEMAS = SchemaSet()
@@ -27,11 +32,6 @@ def link(n=1, revision=1, **over):
     return {"claim_id": f"clm_{n:08d}", "claim_revision": revision, "work_id": "wrk_aaaaaaaa", "source_version": DIGEST, **over}
 
 
-def receipt(n=1, revision=1, **over):
-    return {"claim_id": f"clm_{n:08d}", "claim_revision": revision, "verdict": "supports", "use": "load_bearing", "required_access_tier": "abstract",
-            "access_tier": "abstract", **over}
-
-
 def records(**over):
     base = {**lineage(), "claims": [claim()], "claim_source_links": [link()], "verification_receipts": [],
             "source_artifacts": [{"work_id": "wrk_aaaaaaaa", "source_version": DIGEST}]}
@@ -42,28 +42,77 @@ def ids(rows):
     return [c["claim_id"] for c in rows]
 
 
+class FakeSupport:
+    """Stands for the router's predicate in the structural cases: these ids are the ones it accepts."""
+    def __init__(self, accepted=()):
+        self.accepted = set(accepted)
+
+    def qualified(self, records):
+        return lambda claim: claim["claim_id"] in self.accepted
+
+    def nonblank(self, text):
+        return RouterSupport.nonblank(text)
+
+
 class SelectTest(unittest.TestCase):
     def test_table(self):
         table = [
-            ("a provisional load-bearing claim with a source and no receipt", records(), ["clm_00000001"]),
-            ("not load-bearing", records(claims=[claim(load_bearing=0)]), []),
-            ("already accepted", records(claims=[claim(status="accepted_support")]), []),
-            ("rejected", records(claims=[claim(status="rejected")]), []),
-            ("no retained source link", records(claim_source_links=[]), []),
-            ("a qualifying receipt exists", records(verification_receipts=[receipt()]), []),
-            ("a receipt that does not support", records(verification_receipts=[receipt(verdict="does_not_support")]), ["clm_00000001"]),
-            ("a receipt at a lower tier than required", records(claims=[claim(required_access_tier="full_text")], verification_receipts=[receipt(required_access_tier="full_text", access_tier="abstract")]), ["clm_00000001"]),
-            ("a sampled receipt", records(verification_receipts=[receipt(use="sampled")]), ["clm_00000001"]),
-            ("a receipt for another revision", records(claims=[claim(revision=2)], claim_source_links=[link(revision=2)], verification_receipts=[receipt(revision=1)]), ["clm_00000001"]),
-            ("only the latest revision is considered", records(claims=[claim(revision=1), claim(revision=2, status="rejected")], claim_source_links=[link(), link(revision=2)]), []),
+            ("a provisional load-bearing claim with a source the router does not accept", records(), (), ["clm_00000001"]),
+            ("the router's predicate accepts its support", records(), ("clm_00000001",), []),
+            ("not load-bearing", records(claims=[claim(load_bearing=0)]), (), []),
+            ("already accepted", records(claims=[claim(status="accepted_support")]), (), []),
+            ("rejected", records(claims=[claim(status="rejected")]), (), []),
+            ("no retained source link", records(claim_source_links=[]), (), []),
+            ("only the latest revision is considered", records(claims=[claim(revision=1), claim(revision=2, status="rejected")], claim_source_links=[link(), link(revision=2)]), (), []),
+            ("two claims, one accepted", records(claims=[claim(1), claim(2)], claim_source_links=[link(1), link(2)]), ("clm_00000002",), ["clm_00000001"]),
         ]
-        for name, recs, expected in table:
+        for name, recs, accepted, expected in table:
             with self.subTest(name):
-                self.assertEqual(ids(verify.select(recs)), expected)
+                self.assertEqual(ids(verify.select(recs, FakeSupport(accepted))), expected)
+
+
+class AuthorityTest(Fixture, unittest.TestCase):
+    """Exclusion is `support.require_support`'s answer, over real retained operands (the P7 witness's), never a label check."""
+
+    def world(self):
+        rows, acquisition, claim_row = P7Test.operands(self, "retained")
+        tables = {name: list(rows.tables.get(name, [])) for name in ("source_acquisitions", "search_observations", "source_artifacts", "verification_receipts", "detailed_check_records")}
+        claim_row = {**claim_row, "status": "provisional", "text_ref": "sha256:" + "0" * 64, "producer_invocation_id": "inv_producer01"}
+        tables.update(claims=[claim_row], claim_source_links=[{"claim_id": claim_row["claim_id"], "claim_revision": 1, "work_id": "wrk_abstract01", "source_version": "v1"}], quote_checks=[])
+        return tables
+
+    def chosen(self, tables):
+        return ids(verify.select(tables, RouterSupport))
+
+    def encoded(self, tables):
+        return {**tables, "source_acquisitions": [{**row, "response_bytes": {"encoding": "base64", "data": base64.b64encode(row["response_bytes"]).decode()}} for row in tables["source_acquisitions"]]}
+
+    def test_genuinely_qualified_support_is_excluded_even_in_topic_records_encoding(self):
+        tables = self.world()
+        self.assertEqual(self.chosen(tables), [])
+        self.assertEqual(self.chosen(self.encoded(tables)), [])
+
+    def test_support_the_router_would_refuse_leaves_the_claim_selected(self):
+        quarantined = {"check_id": "qck_00000001", "claim_id": "clm_abstract01", "claim_revision": 1, "topic_id": TOPIC, "quote_quarantined": True,
+                       "exact_match": "mismatch", "match_result": {"artifact_hash": "sha256:" + "0" * 64}}
+        cases = {"no detailed-check rows (historical, unbound)": lambda t: t.update(detailed_check_records=[]),
+                 "a quarantined capture": lambda t: t.update(quote_checks=[quarantined]),
+                 "no acquisition behind the receipt": lambda t: t.update(source_acquisitions=[]),
+                 "the receipt names a hash the acquisition lacks": lambda t: t.update(verification_receipts=[{**t["verification_receipts"][0], "obtained_content_hash": "sha256:" + "0" * 64}]),
+                 "a receipt below the required tier": lambda t: t.update(verification_receipts=[{**t["verification_receipts"][0], "access_tier": "bibliographic"}]),
+                 "an operand family missing altogether": lambda t: t.pop("detailed_check_records")}
+        for name, edit in cases.items():
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                tables = self.world()
+                self.assertEqual(self.chosen(tables), [], "control: the unedited world qualifies")
+                edit(tables)
+                self.assertEqual(self.chosen(tables), ["clm_abstract01"])
 
 
 def view(recs=None, ex=None, notes=None):
-    return verify.verify_view(ADMISSION, recs or records(), ex or exchanges(), lambda ref: "A claim.", "2026-11-05T12:00:00Z", [] if notes is None else notes)
+    return verify.verify_view(ADMISSION, recs or records(), RouterSupport, ex or exchanges(), lambda ref: "A claim.", "2026-11-05T12:00:00Z", [] if notes is None else notes)
 
 
 class ViewTest(unittest.TestCase):
@@ -75,7 +124,8 @@ class ViewTest(unittest.TestCase):
                                   "acquisition": {"gateway_call_ref": "call-1", "retrieved_at": "2026-11-05T11:00:00Z", "route": "gateway:semanticscholar"}})
 
     def test_a_response_without_a_usable_abstract_is_labelled_bibliographic_with_no_content(self):
-        for name, body in (("missing", {"records": [{"identity": "doi:10.1/a"}]}), ("blank", {"records": [{"identity": "doi:10.1/a", "abstract": " \t"}]})):
+        for name, body in (("missing", {"records": [{"identity": "doi:10.1/a"}]}), ("blank", {"records": [{"identity": "doi:10.1/a", "abstract": " \t"}]}),
+                           ("invisible only (the router's rule, not str.strip)", {"records": [{"identity": "doi:10.1/a", "abstract": "\u200b\u200b"}]})):
             with self.subTest(name):
                 data = canonical.canonical_bytes({"gateway_response": body})
                 recs = records(claim_source_links=[link(source_version=canonical.bytes_digest(data))], source_artifacts=[{"work_id": "wrk_aaaaaaaa", "source_version": canonical.bytes_digest(data)}])
@@ -93,14 +143,25 @@ class ViewTest(unittest.TestCase):
         with self.assertRaises(common.Refused):
             view(ex=exchanges(other))   # the retained response is not the version the link names
         with self.assertRaises(common.Refused):
-            verify.verify_view({"context": "pre-contract/1"}, records(), exchanges(), lambda ref: None, "2026-11-05T12:00:00Z", [])
+            verify.verify_view({"context": "pre-contract/1"}, records(), RouterSupport, exchanges(), lambda ref: None, "2026-11-05T12:00:00Z", [])
 
-    def test_one_pass_is_capped_and_the_cut_is_recorded(self):
-        n = verify.CLAIM_CAP + 3
+    def test_one_pass_is_capped_at_one_commits_receipts_and_the_cut_is_recorded(self):
+        n = verify.RECEIPT_CAP + 3
         recs = records(claims=[claim(i) for i in range(1, n + 1)], claim_source_links=[link(i) for i in range(1, n + 1)])
         notes: list = []
-        self.assertEqual(len(view(recs, notes=notes)["claims"]), verify.CLAIM_CAP)
-        self.assertEqual(notes, [{"family": "claims", "kept": verify.CLAIM_CAP, "total": n}])
+        self.assertEqual(len(view(recs, notes=notes)["claims"]), verify.RECEIPT_CAP)
+        self.assertEqual(notes, [{"family": "claims", "kept": verify.RECEIPT_CAP, "total": n}])
+        self.assertEqual(verify.RECEIPT_CAP * 4, 64, "four detailed checks per receipt against one commit's 64")
+
+    def test_a_claim_resting_on_more_sources_than_one_commit_carries_is_refused_not_silently_empty(self):
+        ref = {"content_hash": DIGEST, "size_bytes": len(RAW), "media_type": "application/json"}
+        recs = records(record_work_links=[{"event_id": "e1", "work_id": "wrk_aaaaaaaa"}, {"event_id": "e2", "work_id": "wrk_bbbbbbbb"}],
+                       claim_source_links=[link(), link(work_id="wrk_bbbbbbbb")],
+                       source_artifacts=[{"work_id": "wrk_aaaaaaaa", "source_version": DIGEST}, {"work_id": "wrk_bbbbbbbb", "source_version": DIGEST}])
+        both = Exchanges({"call-1": (ref, RAW), "call-2": (ref, RAW)})
+        self.assertEqual(len(view(recs, both)["claims"][0]["sources"]), 2, "control: two sources fit the real cap")
+        with mock.patch.object(verify, "RECEIPT_CAP", 1), self.assertRaisesRegex(common.Refused, "needs a split"):
+            view(recs, both)
 
     def test_the_retained_lineage_now_names_its_call_event_and_instant(self):
         found = artifacts.retained("wrk_aaaaaaaa", records(), exchanges())

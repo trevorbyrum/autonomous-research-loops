@@ -37,7 +37,8 @@ One file, `/out/judgment.json`, strict JSON, exactly these keys:
 1. A quote that is not in `content` exactly is rejected. Copy it; do not tidy it.
 2. A claim stronger than the text (a broader population, a causal word for a correlation, a number the text does not give)
    is `partially_supports` or `does_not_support`, with the mismatch in the relevant check's `note`.
-3. Write no ids, hashes, versions, receipt fields or timestamps. The system adds them.
+3. Copy `claim_ref` exactly and write the required `judgment_version`. Write no receipt ids, hashes, source versions,
+   acquisition fields, capability or invocation ids, or timestamps; the system adds those.
 4. Output only the file. If you cannot comply, write nothing.
 
 ## Example of the shape
