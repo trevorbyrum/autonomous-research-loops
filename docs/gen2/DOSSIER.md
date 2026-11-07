@@ -321,9 +321,9 @@ T13–T18 supply the production consumers for the supervised 2f workflow.
 
 Source: `private/reviews/gen2-gate-s7-fable-20261107.md` and `gen2-sprint-records-pending-20261107.md`. The T13, T16 and T17 decisions are recorded in those files and in the T13, T16 and T17 briefs.
 
-- **Host lane cap:** 900 → 1,170 (Trevor, 2026-11-06) → 1,250 (2026-11-07). Any further host code needs Trevor.
+- **Host lane cap:** 900 → 1,170 (Trevor, 2026-11-07 about 04:49 UTC) → 1,250 (2026-11-07). Any further host code needs Trevor.
 - **Production cap 950** (2e1 production stop, raised 850 → 950 on 2026-11-03; recorded above).
-- **2e2 cap:** 6,600 (approved with the 2e2 ticket plan, 2026-11-05) → **8,800** (Trevor, 2026-11-07, with the Gate S #7 cuts). Any further overrun goes back to Trevor. Merged plus accepted was already about 7,600 at `bd3490d`.
+- **2e2 cap:** 6,600 (approved with the 2e2 ticket plan, 2026-11-05 about 19:36 UTC) → **8,800** (Trevor, 2026-11-07, with the Gate S #7 cuts). Any further overrun goes back to Trevor. Merged plus accepted was already about 7,600 at `bd3490d`.
 - **L08 and L09 approved** (Trevor, 2026-11-07).
 - **The capability id is bearer authority,** so the supervisor fills `verifier_capability_id` (option 2, 2026-11-07, #141). Roadmap: after Nov 18, one Astra design round, then the Router derives it from the commit envelope (Gate S #7 §4 item A), amending this ruling; until then the supervisor fill stands.
 - **T21 (the result read) is cut** (Trevor, 2026-11-07). Operator status is the result-read route; the freshness-envelope shape moves to the §8 roadmap (R5, DEBT-043).
