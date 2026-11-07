@@ -1,0 +1,8 @@
+**
+!gen2/**
+!gateway/research_gateway/**
+!gateway/requirements-ci.txt
+!deploy/gen2/live/**
+**/tests
+**/__pycache__
+**/*.pyc

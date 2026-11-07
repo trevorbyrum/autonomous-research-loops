@@ -1,0 +1,28 @@
+
+[[source]]
+id = "q_2e1"
+name = "2e1 offline fixture"
+kind = "article"
+homepage = "http://172.31.251.3:18081/fixture"
+docs_url = "http://172.31.251.3:18081/fixture"
+capabilities = ["find"]
+identifiers = []
+base_for = ["article"]
+domains = []
+auth = "none"
+secret_ref = ""
+key_instructions = "offline fixture only"
+license = "CC0 fixture"
+use_commercial = "allow"
+use_evidence = "http://172.31.251.3:18081/fixture"
+freshness_lag = "fixture"
+substitution_group = ""
+enabled = true
+notes = "trusted offline qualification only"
+[source.rate]
+per_second = 2
+burst = 2
+per_day = 64
+cost_cap_per_day = 1
+verified = true
+evidence = "2e1 finite Q fixture; no external service"
