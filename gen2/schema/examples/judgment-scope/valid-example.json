@@ -1,0 +1,10 @@
+{"fixture": {"schema": "judgment-scope.schema.json", "expect": "valid", "tests": "the scoping judgment carries no ids, hashes or pins"},
+ "instance": {
+  "judgment_version": "judgment-scope/1",
+  "territory": "adolescent sleep and attention",
+  "traditions": ["psychology"],
+  "candidate_facets": ["duration"],
+  "deliberately_out": ["adult shift work"],
+  "gap_skeleton": "no meta-analysis located yet",
+  "search_proposals": [{"proposal_version": "search-proposal/1", "proposal_id": "prop-1", "proposer": "primary", "lane": "semanticscholar", "request_type": "find", "query": "counterevidence for the claim", "page_cap": 2, "obligation_ids": ["ob-1"], "rationale": "tests clm-1 against contrary findings", "subject_ref": {"claim_ref": "clm-1"}}]
+ }}

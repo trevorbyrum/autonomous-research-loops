@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://research-loops.invalid/gen2/schema/judgment-challenge.schema.json",
+  "$comment": "flow: S4 (the executor hand-off) | boundaries: Primary agent (per-station frontier LLM); Verifier | invariants: C-2; C-9; RG-5 | note: 2e2-min T12-D. deliberate challenge before any completion candidate (flow S6)",
+  "title": "Executor judgment: challenge",
+  "description": "The model's only output for the challenge purpose. Trusted builders bind identities, hashes and pins; the model authors none (C-9).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["judgment_version", "counterevidence", "explanations", "adjudications", "promotions", "search_proposals"],
+  "properties": {
+    "judgment_version": {"const": "judgment-challenge/1"},
+    "counterevidence": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"type": "object", "additionalProperties": false, "required": ["claim_ref", "outcome", "summary", "searched"], "properties": {"claim_ref": {"$ref": "common.schema.json#/$defs/local_id"}, "outcome": {"enum": ["resolved", "unresolved", "unknown"]}, "summary": {"$ref": "common.schema.json#/$defs/long_text"}, "searched": {"type": "array", "maxItems": 20, "items": {"$ref": "common.schema.json#/$defs/short_text"}}}}
+    },
+    "explanations": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {"type": "object", "additionalProperties": false, "required": ["disposition_id", "outcome", "summary"], "properties": {"disposition_id": {"$ref": "common.schema.json#/$defs/local_id"}, "outcome": {"enum": ["resolved", "unresolved", "unknown"]}, "summary": {"$ref": "common.schema.json#/$defs/long_text"}}}
+    },
+    "adjudications": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {"type": "object", "additionalProperties": false, "required": ["receipt_id", "outcome", "summary"], "properties": {"receipt_id": {"$ref": "common.schema.json#/$defs/verification_receipt_id"}, "outcome": {"enum": ["resolved", "unresolved", "unknown"]}, "summary": {"$ref": "common.schema.json#/$defs/long_text"}}}
+    },
+    "promotions": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/local_id"}
+    },
+    "search_proposals": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {"$ref": "search-proposal.schema.json"}
+    }
+  }
+}

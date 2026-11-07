@@ -69,6 +69,7 @@ RECORDS = (
 )
 # The other sections; RECORDS' sections are admitted by their own entries.
 SECTION_KINDS = {
+    "search_proposals": (PRIMARY, EITHER),
     "claims": (PRIMARY, EITHER),
     "claim_promotions": (PRIMARY, CONTRACT),
     "claim_source_links": (PRIMARY, CONTRACT),

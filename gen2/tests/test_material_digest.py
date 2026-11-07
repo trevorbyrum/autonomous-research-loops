@@ -1,6 +1,7 @@
 """6b2' PR 2: the material-operand digest binds scientific operands, not bookkeeping."""
 from dataclasses import replace
 
+from gen2.tests.test_dossier_record import record_inputs
 from gen2.core import canonical
 from gen2.router import material
 from gen2.store.capture import RawTable, input_hash
@@ -107,7 +108,7 @@ class DigestTest(World):
         self.assertNotEqual(self.digest(replace(self.raw, tables=(*self.raw.tables, synthetic))), self.base)  # default inclusion
 
     def test_the_assembled_document_carries_a_digest_that_survives_its_own_bookkeeping(self):
-        recorded = self.router.record_dossier(TOPIC, invocation_id="inv_capture001", history="native")
+        recorded = record_inputs(self.router, TOPIC, invocation_id="inv_capture001", history="native")
         document = self.store.select("dossiers", {"topic_id": TOPIC, "dossier_revision": recorded["dossier_revision"]})[0]["document"]
         self.assertEqual(document["material_digest"], material.digest(self.store.capture_topic(TOPIC), "native"))
         first = self.store.select("dossiers", {"topic_id": TOPIC, "dossier_revision": 1})[0]["document"]

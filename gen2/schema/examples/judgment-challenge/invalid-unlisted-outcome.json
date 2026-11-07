@@ -1,0 +1,1 @@
+{"fixture": {"schema": "judgment-challenge.schema.json", "expect": "invalid", "tests": "a challenge outcome is resolved, unresolved or unknown, never 'refuted'", "base": "valid-example.json", "patch": [{"op": "replace", "path": "/counterevidence/0/outcome", "value": "refuted"}], "errors": [{"keyword": "enum", "path": "/counterevidence/0/outcome"}]}}

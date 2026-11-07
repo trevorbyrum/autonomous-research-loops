@@ -26,6 +26,8 @@
     "exports"
   ],
   "properties": {
+    "search_proposals": {"description": "Validated-only discovery hand-off; the committed payload digest retains these proposals.",
+      "type": "array", "maxItems": 32, "items": {"$ref": "search-proposal.schema.json"}},
     "detailed_check_records": {"type": "array", "maxItems": 64, "items": {"$ref": "detailed-check-record.schema.json"}},
     "source_extractions": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/source_extraction"}},
     "extraction_validations_v2": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/extraction_validation_v2"}},

@@ -17,6 +17,30 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "executors": {
+          "description": "Hash-pinned mounted prompts and per-kind/purpose execution bounds. An absent entry grants no execution limits or prompt; the order builder refuses it.",
+          "type": "array", "maxItems": 64,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "purpose", "prompt", "deadline_s", "lease_s", "max_input_bytes", "max_output_bytes"],
+            "properties": {
+              "kind": {"$ref": "common.schema.json#/$defs/invocation_kind"},
+              "purpose": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"},
+              "prompt": {
+                "type": "object", "additionalProperties": false, "required": ["version", "content_hash"],
+                "properties": {
+                  "version": {"$ref": "common.schema.json#/$defs/revision"},
+                  "content_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+                }
+              },
+              "deadline_s": {"$ref": "#/$defs/seconds"},
+              "lease_s": {"$ref": "#/$defs/seconds"},
+              "max_input_bytes": {"type": "integer", "minimum": 1, "maximum": 16777216},
+              "max_output_bytes": {"type": "integer", "minimum": 1, "maximum": 16777216},
+              "max_passes": {"$ref": "#/$defs/attempts"}
+            }
+          }
+        },
         "supervisor": {
           "description": "Overrides of the supervisor's Policy fields (gen2/supervisor/supervisor.py); each absent one keeps its shipped default.",
           "type": "object",

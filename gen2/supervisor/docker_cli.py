@@ -13,7 +13,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from gen2.supervisor import jobs
+from gen2.supervisor import jobs, rejection
 from gen2.supervisor.isolation import LiveProfileRefused, PIN, PLACEHOLDERS
 from gen2.supervisor.spool import read_scratch
 
@@ -24,6 +24,7 @@ CID = re.compile(r"[0-9a-f]{64}")
 ROLES = frozenset({"engine", "runner", "relay", "gateway", "db", "fixture"})
 BATCH = 32 << 20
 COMMANDS = frozenset({"create", "start", "wait", "inspect", "logs", "stop", "kill", "rm"})
+MODEL = "gpt-5.4"
 NETWORKS = {"job": "172.31.254.0/29", "fixture": "172.31.252.0/29"}
 
 
@@ -44,6 +45,10 @@ def manifest_gate(manifest, retained, tree):
     require(manifest.get("version") == 1 and manifest.get("tree") == tree, "manifest_tree")
     require(manifest.get("socket") == SOCKET and manifest.get("cli_sha256") == CLI_SHA, "manifest_runtime")
     require(manifest.get("platform") == "linux/amd64" and manifest.get("route") == "fixture", "manifest_route")
+    # Seam e: productive dispatch needs a supervised profile with a pinned qualified claim; a claim is not proof (v7 §2).
+    require(manifest.get("supervision") == "supervised", "manifest_not_supervised")
+    require(manifest.get("qualification_state") == "qualified" and isinstance(manifest.get("qualification_ref"), str)
+            and bool(PIN.fullmatch(manifest["qualification_ref"])), "manifest_not_qualified")
     for key in ("daemon_version", "credential_ref", "credential_version"):
         require(isinstance(manifest.get(key), str) and manifest[key] not in PLACEHOLDERS, "manifest_" + key)
     for key in ("images", "configurations"):
@@ -273,8 +278,10 @@ class DockerCLI:
         self.start(relay, "relay")
         runner = self.create_runner(network, self.plan["binds"])
         self.start(runner)
+        started = self.now()
         close_admission()
-        self.end(runner, descendants_ended)
+        ended = self.end(runner, descendants_ended)
+        elapsed = self.now() - started
         self.endpoint("disconnect", network, runner)
         view = json.loads(self._command(("network", "inspect", network)))[0]
         require(view["Id"] == network and set(view["Containers"]) == {relay}
@@ -286,19 +293,33 @@ class DockerCLI:
         fixture_file = fixture_ended()
         require(fixture_file, "fixture_writers_live")
         refs = [batch.collect(*fixture_file, writers_ended=True, kind="fixture")]
-        refs.extend(batch.stage(data, "application/octet-stream") for data in self.logs(runner))
+        refs.extend(batch.stage(data, "application/octet-stream", kind) for kind, data in zip(("events", "diagnostics"), self.logs(runner)))
         for kind, name in (("outcome", "out"), ("access", "evidence")):
             fd = slot(self.plan["slots"][name])
             try:
                 refs.append(batch.collect(fd, self.plan["generation"], originals[kind], writers_ended=True, kind=kind))
             finally:
                 os.close(fd)
-        self.job.write("docker-complete.json", {"origin": self.plan["origin"], "refs": refs})
+        held = batch.held
+        disposition = rejection.classify(held["access"], held["events"], held["fixture"], ended["State"]["ExitCode"], model=MODEL)
+        refs.append(batch.stage(json.dumps(rejection.usage_record(
+            {"origin": self.plan["origin"]}, held["events"], elapsed=elapsed, gateway_refs=[], raw_refs=list(refs),
+            observed_model=_observed_model(held["fixture"]), configured_model=MODEL), sort_keys=True).encode(), "application/json"))
+        self.job.write("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition})
         return refs
 
     def remove(self, cid, ack):
         require(ack and (self.job.read("runner-end.json") or {}).get("Id") == cid, "remove_before_ack")
         return self._command(("rm", cid))
+
+
+def _observed_model(fixture):
+    """The one model the fixture saw in the actual requests, else None (the usage record then refuses)."""
+    try:
+        models = {request.get("model") for request in json.loads(fixture)["requests"]}
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return models.pop() if len(models) == 1 else None
 
 
 def free_space(paths, floor):
@@ -327,13 +348,15 @@ class EvidenceBatch:
     """E: enforced aggregate cap, including channels and all fixed files."""
     def __init__(self, spool, topic):
         require(spool.quota_bytes <= 64 << 20, "evidence_spool_quota")
-        self.spool, self.topic, self.used = spool, topic, 0
+        self.spool, self.topic, self.used, self.held = spool, topic, 0, {}
 
-    def stage(self, data, media):
+    def stage(self, data, media, kind=None):
         require(self.used + len(data) <= BATCH, "collection_batch_cap")
         free_space([self.spool.root], (2 << 30) + self.used + len(data))
         ref = self.spool.stage(self.topic, data, media)
         self.used += len(data)
+        if kind:
+            self.held[kind] = data  # bytes the classifier reads; the same bytes that were published
         return ref
 
     def collect(self, slot_fd, generation, identity, *, writers_ended, kind="outcome"):
@@ -350,7 +373,7 @@ class EvidenceBatch:
             require(found["status"] == "present", "collection_" + found["status"])
             after = os.stat(generation, dir_fd=slot_fd, follow_symlinks=False)
             require((after.st_dev, after.st_ino) == identity, "collection_replaced")
-            return self.stage(found["data"], media)
+            return self.stage(found["data"], media, kind)
         finally:
             os.close(fd)
 

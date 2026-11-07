@@ -1,0 +1,5 @@
+{"fixture": {"schema": "judgment-verify.schema.json", "expect": "valid", "tests": "a verdict, cited spans and the four detailed-check assessments"},
+ "instance": {
+  "judgment_version": "judgment-verify/1",
+  "items": [{"claim_ref": "clm-1", "verdict": "supports", "cited_spans": [{"quote": "sleep loss lowered attention", "locator": "abstract"}], "checks": {"numeric_units": {"outcome": "succeeded", "note": "ok"}, "denominators": {"outcome": "succeeded", "note": "ok"}, "negation": {"outcome": "succeeded", "note": "ok"}, "qualifications": {"outcome": "succeeded", "note": "ok"}}}]
+ }}
