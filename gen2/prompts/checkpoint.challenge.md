@@ -11,7 +11,9 @@ write these claims. Your job is to look for what would break them, not to confir
 - `claims`: the load-bearing claims (`claim_ref`, `text`, required `tier`, `status`).
 - `adverse_receipts`: verification receipts that did not fully support a claim.
 - `contradictions`: open contradictions between records.
-- `searches` (pass 2): per proposal, the observations it produced. Read `coverage_state` literally:
+- `searches` (pass 2): per proposal, the observations it produced, each with its `content`: an excerpt of what
+  the search returned (`cut` is true when shortened; `text` null means the response is not retained). Read it;
+  the labels alone do not tell you whether a result contradicts the claim. Read `coverage_state` literally:
   `searched_empty` means looked and found nothing; `provider_unavailable`, `auth_failed`, `not_searched`
   and `unknown` mean nothing was learned. A degraded or missing search is never evidence that nothing exists.
 
@@ -25,10 +27,10 @@ arrays empty. A non-empty `search_proposals` means: run these first, record noth
 
 Leave `search_proposals` empty. Then:
 - `counterevidence`: one entry per claim. `searched` lists the `proposal_id`s of the searches you relied on;
-  cite only searches of that claim. `outcome`: `resolved` (searched, nothing contradicts the claim),
+  cite only searches of that claim, and for `resolved` cite every search proposed for it. `outcome`: `resolved` (searched, nothing contradicts the claim),
   `unresolved` (counterevidence found), `unknown` (the searches do not let you tell). If a search you
   relied on is degraded or empty of results you could read, the system will record the outcome as
-  incomplete whatever you wrote.
+  incomplete whatever you wrote; so it will if you leave one of the claim's searches uncited.
 - `explanations`: one per open contradiction (`disposition_id`): `resolved` (the rival explanation is
   rejected), `unresolved` (it stands), `unknown`.
 - `adjudications`: one per adverse receipt (`receipt_id`): `resolved` (the adverse verdict is upheld),

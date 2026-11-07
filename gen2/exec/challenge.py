@@ -5,10 +5,12 @@ the searches, the existing discovery job runs them, pass 2 records only what the
 INVARIANTS E-6, RG-4 (coverage is read from recorded observations, never the model's word), C-9 (the model authors no
 id, hash or pin), V-4 (promotions are proposals; the store gate decides). Oracle: outcome-document and
 completion-record schemas, and the router's own checks (producer != challenger, load-bearing subject, evidence refs).
-Limits: `none_found` is written only when the claim has searches, the model cites only those searches, and each is a
-clean, complete observation with a staged response; otherwise the record is `incomplete`, or absent when no response is
-staged at all (a record needs one artifact, and none is invented). A search belongs to a proposal when lane and query
-equal the proposal's: T13 must keep that identity stable. The judgment's outcome words are mapped, not interpreted:
+Limits: `none_found` is written only when the claim has proposals, the judgment cites every one, and every observation of
+every one is clean and complete with a staged response; the model's citations never remove an obligation. Otherwise the
+record is `incomplete`, or absent when no response is staged at all (a record needs one artifact, and none is invented).
+An observation belongs to a proposal only by identity: the discovery job stamps `proposal_ref` (`<proposing invocation>:<proposal
+id>`) into the request it executes from the committed proposal, so an earlier search of the same lane and query, or another
+round's `p1`, never attaches. That stamp is T13's trusted act; this module trusts only a ref that names its own pass-1 invocation. The judgment's outcome words are mapped, not interpreted:
 resolved/unresolved/unknown become none_found/counterevidence_found/incomplete, explanation_rejected/stands/incomplete,
 verdict_upheld/verdict_overturned/(no record). Only a provisional claim is promoted (the store gate refuses a repeat). Open review episodes are given by the caller (status carries them).
 """
@@ -24,6 +26,7 @@ FAMILIES = ("claims", "verification_receipts", "registry_dispositions", "search_
 ADVERSE = ("partially_supports", "does_not_support")
 CLEAN = ("searched_ok", "searched_empty")
 ROW_CAP = 200
+EXCERPT = 4000
 OBSERVATION_KEYS = ("observation_id", "coverage_state", "completeness", "result_count", "error_class")
 COUNTER = {"resolved": "none_found", "unresolved": "counterevidence_found", "unknown": "incomplete"}
 EXPLANATION = {"resolved": "explanation_rejected", "unresolved": "explanation_stands", "unknown": "incomplete"}
@@ -45,13 +48,25 @@ def _latest_claims(rows: Iterable[Mapping], invocation_id: str) -> list[Mapping]
             if c["load_bearing"] and c["status"] not in ("rejected", "superseded") and c["producer_invocation_id"] != invocation_id]
 
 
-def _matches(proposal: Mapping, row: Mapping) -> bool:
-    return row["lane"] == proposal["lane"] and row["request"]["request"].get("query") == proposal["query"]
+def proposal_ref(invocation_id: str, proposal_id: str) -> str:
+    return f"{invocation_id}:{proposal_id}"
 
 
-def challenge_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], text_of: Callable[[str], str], *, invocation_id: str,
-                   review_episodes: Sequence[str], proposals: Sequence[Mapping], as_of: str, truncation: list[dict]) -> dict:
-    """Pass 1 (no `proposals`): the claims to challenge. Pass 2: the same, plus what each proposed search recorded."""
+def _content(exchanges: "Exchanges", call: str | None) -> dict:
+    """The returned content the assessor reads: a bounded excerpt of the retained response, or None when it is not retained."""
+    staged = exchanges.response(call) if call else None
+    if staged is None or canonical.bytes_digest(staged[1]) != staged[0]["content_hash"]:
+        return {"text": None, "cut": False}
+    return {"text": staged[1][:EXCERPT].decode("utf-8", "replace"), "cut": len(staged[1]) > EXCERPT}
+
+
+def challenge_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], text_of: Callable[[str], str], exchanges: "Exchanges", *,
+                   invocation_id: str, review_episodes: Sequence[str], proposals: Sequence[Mapping], proposed_by: str | None, as_of: str,
+                   truncation: list[dict]) -> dict:
+    """Pass 1 (no `proposals`): the claims to challenge. Pass 2: the same, plus, for each proposal of the pass-1 invocation
+    `proposed_by`, the observations stamped with its ref and the content their retained responses returned."""
+    if bool(proposals) != (proposed_by is not None):
+        raise Refused("pass 2 names the invocation that proposed the searches, and pass 1 names none")
     if admission.get("context") != "contract/1":
         raise Refused("a challenge view needs a contract/1 admission")
     claims = _latest_claims(records["claims"], invocation_id)
@@ -65,10 +80,12 @@ def challenge_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]],
         ref = proposal.get("subject_ref")
         if ref is None or not any(c["claim_id"] == ref["claim_ref"] for c in claims):
             raise Refused(f"proposal {proposal.get('proposal_id')} tests no claim of this view")
+        wanted = proposal_ref(proposed_by, proposal["proposal_id"])
         searches.append({"proposal_id": proposal["proposal_id"], "claim_ref": ref["claim_ref"], "lane": proposal["lane"],
                          "query": proposal["query"],
-                         "observations": [{**{k: row.get(k) for k in OBSERVATION_KEYS}, "gateway_call_ref": row.get("gateway_call_ref")}
-                                          for row in records["search_observations"] if _matches(proposal, row)]})
+                         "observations": [{**{k: row.get(k) for k in OBSERVATION_KEYS}, "gateway_call_ref": row.get("gateway_call_ref"),
+                                           "content": _content(exchanges, row.get("gateway_call_ref"))}
+                                          for row in records["search_observations"] if row["request"].get("proposal_ref") == wanted]})
     return {"as_of": as_of, "pass": 2 if proposals else 1, "review_episodes": sorted(review_episodes),
             "claims": [{"claim_ref": c["claim_id"], "revision": c["revision"], "tier": c["required_access_tier"], "status": c["status"], "text": text_of(c["text_ref"])}
                        for c in claims],
@@ -121,9 +138,11 @@ def make_builder(exchanges: Exchanges, stage: Stage) -> Callable[[Mapping, Mappi
         outcome = COUNTER[item["outcome"]]
         used = [o for name in (sorted(cited) or sorted(mine)) for o in mine[name]]
         refs = evidence(o["gateway_call_ref"] for o in used)
-        clean = bool(cited) and bool(used) and all(mine[name] for name in cited) and all(
-            o["coverage_state"] in CLEAN and o["completeness"] == "complete" and o["error_class"] is None for o in used)
-        if outcome == "none_found" and not (clean and len(refs) == len({o["gateway_call_ref"] for o in used})):
+        every = [o for name in sorted(mine) for o in mine[name]]   # all of the claim's searches, whatever the judgment cites
+        clean = bool(mine) and cited == set(mine) and all(mine[name] for name in mine) and all(
+            o["coverage_state"] in CLEAN and o["completeness"] == "complete" and o["error_class"] is None and o["content"]["text"] is not None
+            for o in every)
+        if outcome == "none_found" and not (clean and len(evidence(o["gateway_call_ref"] for o in every)) == len({o["gateway_call_ref"] for o in every})):
             outcome = "incomplete"
         return (outcome, refs) if refs else None
 

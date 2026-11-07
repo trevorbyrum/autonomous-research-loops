@@ -19,6 +19,7 @@ TOPIC = "fleet:topic"
 SCHEMAS = SchemaSet()
 ADMISSION = {"context": "contract/1", "contract": {"revision": 1, "content_hash": "sha256:" + "a" * 64}}
 ME = "inv_challenger"
+P1 = "inv_pass_one1"   # the invocation that proposed the searches
 
 
 def claim(n, revision=1, **over):
@@ -26,14 +27,15 @@ def claim(n, revision=1, **over):
             "producer_invocation_id": "inv_producer1", "text_ref": f"sha256:{n:064x}", **over}
 
 
-def observation(n, state="searched_ok", **over):
+def observation(n, state="searched_ok", proposed_by=P1, proposal=None, **over):
     return {"observation_id": f"obs_{n:08d}", "lane": "semanticscholar", "coverage_state": state, "completeness": "complete", "result_count": 2,
-            "error_class": None, "gateway_call_ref": f"call-{n}", "request": {"request": {"request_type": "find", "query": f"q{n}"}}, **over}
+            "error_class": None, "gateway_call_ref": f"call-{n}",
+            "request": {"request": {"request_type": "find", "query": "same query"}, "proposal_ref": f"{proposed_by}:{proposal or f'p{n}'}"}, **over}
 
 
 def proposal(n, claim_n=1, **over):
     return {"proposal_version": "search-proposal/1", "proposal_id": f"p{n}", "proposer": "x", "lane": "semanticscholar", "request_type": "find",
-            "query": f"q{n}", "page_cap": 1, "obligation_ids": [], "rationale": "tests the claim",
+            "query": "same query", "page_cap": 1, "obligation_ids": [], "rationale": "tests the claim",
             "subject_ref": {"claim_ref": f"clm_{claim_n:08d}"}, **over}
 
 
@@ -42,20 +44,21 @@ def records(**over):
     return {**base, **over}
 
 
-def view(recs=None, proposals=(), **over):
-    args = dict(invocation_id=ME, review_episodes=["rev_aaaaaaaa"], proposals=list(proposals), as_of="2026-11-07T10:00:00Z", truncation=[])
-    return challenge.challenge_view(ADMISSION, recs or records(), lambda ref: "text " + ref[-4:], **{**args, **over})
+def view(recs=None, proposals=(), exchanges=None, **over):
+    args = dict(invocation_id=ME, review_episodes=["rev_aaaaaaaa"], proposals=list(proposals), proposed_by=P1 if proposals else None,
+                as_of="2026-11-07T10:00:00Z", truncation=[])
+    return challenge.challenge_view(ADMISSION, recs or records(), lambda ref: "text " + ref[-4:], exchanges or Exchanges(), **{**args, **over})
 
 
 class Exchanges:
     """Stages a response for every call except those listed as missing."""
-    def __init__(self, missing=()):
-        self.missing = set(missing)
+    def __init__(self, missing=(), content=None):
+        self.missing, self.content = set(missing), content or {}
 
     def response(self, call):
         if call in self.missing:
             return None
-        data = call.encode()
+        data = self.content.get(call, call.encode())
         return {"content_hash": canonical.bytes_digest(data), "size_bytes": len(data), "media_type": "application/json"}, data
 
 
@@ -101,9 +104,38 @@ class ViewTest(unittest.TestCase):
                          [("p1", ["obs_00000001"]), ("p2", ["obs_00000002"])])
         self.assertEqual(view()["pass"], 1)
 
+    def test_an_observation_attaches_by_proposal_identity_never_by_lane_and_query(self):
+        """Every observation here has the same lane and query; only the stamped ref says which proposal it executed."""
+        recs = records(search_observations=[observation(1), observation(2, proposed_by="inv_older_round", proposal="p1"),   # another round's p1
+                                            observation(3, proposed_by=P1, proposal="p9"),                                   # a proposal not made
+                                            observation(4, proposal="p1")])                                                  # p1 of this round, run again
+        got = view(recs, [proposal(1)])
+        self.assertEqual([o["observation_id"] for o in got["searches"][0]["observations"]], ["obs_00000001", "obs_00000004"])
+        self.assertEqual(view(records(search_observations=[observation(2, proposed_by="inv_older_round", proposal="p1")]), [proposal(1)])
+                         ["searches"][0]["observations"], [])
+
+    def test_the_assessor_is_given_the_returned_content_bound_to_its_observation(self):
+        recs = records(search_observations=[observation(1)])
+        seen = []
+        for body in (b"Trial A: no effect", b"Trial A: strong contrary effect"):
+            seen.append(view(recs, [proposal(1)], Exchanges(content={"call-1": body})))
+        (first,), (second,) = ([o for o in v["searches"][0]["observations"]] for v in seen)
+        self.assertEqual((first["observation_id"], first["content"]), ("obs_00000001", {"text": "Trial A: no effect", "cut": False}))
+        self.assertNotEqual(first["content"], second["content"])   # materially different returned content reaches the input
+        gone = view(recs, [proposal(1)], Exchanges(missing=["call-1"]))["searches"][0]["observations"][0]
+        self.assertEqual(gone["content"], {"text": None, "cut": False})
+        big = view(recs, [proposal(1)], Exchanges(content={"call-1": b"y" * (challenge.EXCERPT + 1)}))["searches"][0]["observations"][0]["content"]
+        self.assertEqual((len(big["text"]), big["cut"]), (challenge.EXCERPT, True))
+
+    def test_a_round_is_named_exactly_when_it_has_proposals(self):
+        for case, call in (("proposals without their round", lambda: view(proposals=[proposal(1)], proposed_by=None)),
+                           ("a round without proposals", lambda: view(proposed_by=P1))):
+            with self.subTest(case), self.assertRaises(common.Refused):
+                call()
+
     def test_refusals(self):
-        for case, call in (("other admission", lambda: challenge.challenge_view({"context": "pre-contract/1"}, records(), str, invocation_id=ME,
-                                                                                 review_episodes=[], proposals=[], as_of="x", truncation=[])),
+        for case, call in (("other admission", lambda: challenge.challenge_view({"context": "pre-contract/1"}, records(), str, Exchanges(), invocation_id=ME,
+                                                                                 review_episodes=[], proposals=[], proposed_by=None, as_of="x", truncation=[])),
                            ("proposal for a claim not in the view", lambda: view(proposals=[proposal(1, claim_n=9)])),
                            ("proposal with no subject", lambda: view(proposals=[{k: v for k, v in proposal(1).items() if k != "subject_ref"}]))):
             with self.subTest(case), self.assertRaises(common.Refused):
@@ -156,6 +188,19 @@ class PassTwoTest(unittest.TestCase):
             with self.subTest(case):
                 records_ = self.counter(outcome, searched, v, exchanges)
                 self.assertEqual([r["assessment"]["outcome"] for r in records_], [expected] if expected else [])
+
+    def test_every_proposal_of_the_claim_must_be_cited_and_clean_for_none_found(self):
+        """A cited clean search cannot hide an uncited degraded, empty-handed or missing one (the model's citations remove nothing)."""
+        two = [proposal(1), proposal(2)]
+        for case, observations, searched, exchanges, expected in (
+                ("uncited degraded proposal", [observation(1), observation(2, "provider_unavailable", error_class="timeout")], ("p1",), None, "incomplete"),
+                ("uncited proposal with no observation at all", [observation(1)], ("p1",), None, "incomplete"),
+                ("both cited, one degraded", [observation(1), observation(2, "provider_unavailable", error_class="timeout")], ("p1", "p2"), None, "incomplete"),
+                ("both cited, one response not retained", [observation(1), observation(2)], ("p1", "p2"), Exchanges(["call-2"]), "incomplete"),
+                ("both cited, both clean", [observation(1), observation(2)], ("p1", "p2"), None, "none_found")):
+            with self.subTest(case):
+                v = view(records(search_observations=observations), two)
+                self.assertEqual([r["assessment"]["outcome"] for r in self.counter("resolved", searched, v, exchanges)], [expected])
 
     def test_evidence_is_the_searchs_own_retained_response(self):
         record = self.counter("resolved")[0]
@@ -226,8 +271,8 @@ class RouterAdmitsTest(rf.ContractWorld):
         self.staged = []
         records_ = self.router.topic_records({"topic_id": rf.TOPIC, "families": list(challenge.FAMILIES)})["records"]
         grant = self.started(self.ids("inv_"), "checkpoint")
-        v = challenge.challenge_view(ADMISSION, records_, lambda ref: "text", invocation_id=grant["invocation_id"], review_episodes=[],
-                                     proposals=[], as_of=rf.STAMP, truncation=[])
+        v = challenge.challenge_view(ADMISSION, records_, lambda ref: "text", Exchanges(), invocation_id=grant["invocation_id"], review_episodes=[],
+                                     proposals=[], proposed_by=None, as_of=rf.STAMP, truncation=[])
         ref = self.f.ref
         exchanges = type("E", (), {"response": staticmethod(lambda call: (ref, b"independent review and challenge evidence"))})()
         w = {"invocation_id": grant["invocation_id"], "topic_id": rf.TOPIC, "admission": {"context": "contract/1", "contract": {"revision": self.f.pin}}, "view": v}
