@@ -7,7 +7,7 @@ lane and no query; the model's proposal does, and the gateway's grant decides wh
 """
 from __future__ import annotations
 
-from typing import Callable, Mapping
+from typing import Callable, Mapping, NamedTuple, Sequence
 
 from gen2.core import canonical
 from gen2.exec.common import Refused
@@ -17,21 +17,43 @@ FILTERS = {"find": {"kind": str, "domain": str, "published_after": str, "year_fr
            "resolve": {}, "enrich": {"what": str}, "fetch": {"params": dict}, "data": {"params": dict}}
 
 
-def intake(payload: bytes, receipt_digest: str, max_bytes: int, validate: Callable[[str, object], None]) -> list[dict]:
-    """The `search_proposals` of a committed outcome payload, once its bytes are the receipt's. An oversize
-    payload or list, a repeated proposal id, or a proposal the schema refuses is refused whole."""
-    if canonical.bytes_digest(payload) != receipt_digest:
+class Committed(NamedTuple):
+    """The proposals of one committed outcome and the invocation that committed them: both from the same bytes."""
+    invocation_id: str
+    proposals: list
+
+
+def intake(payload: bytes, receipt: Mapping, topic_id: str, max_bytes: int, validate: Callable[[str, object], None]) -> Committed:
+    """The `search_proposals` of a committed outcome payload, and the invocation that committed it, once the bytes are the
+    receipt's: their digest is the receipt's, and the document's own invocation and topic are the receipt's and this
+    topic's (a payload cannot be replayed under another invocation). The proposer is read from those bytes, never supplied
+    beside them (Astra #127 F1). An oversize payload or list, a repeated proposal id, or a proposal the schema refuses is
+    refused whole."""
+    if canonical.bytes_digest(payload) != receipt["payload_digest"]:
         raise Refused("the payload is not the receipt's")
     if len(payload) > max_bytes:
         raise Refused(f"the payload is {len(payload)} bytes, over the {max_bytes} cap")
-    proposals = canonical.parse_json_strict(payload).get("search_proposals", [])
+    document = canonical.parse_json_strict(payload)
+    if (document.get("invocation_id"), document.get("topic_id")) != (receipt["invocation_id"], topic_id):
+        raise Refused("the payload names another invocation or topic than its receipt")
+    proposals = document.get("search_proposals", [])
     if not isinstance(proposals, list) or len(proposals) > MAX_PROPOSALS:
         raise Refused(f"search_proposals must be a list of at most {MAX_PROPOSALS}")
     for proposal in proposals:
         validate("search-proposal", proposal)
     if len({p["proposal_id"] for p in proposals}) != len(proposals):
         raise Refused("a proposal id is repeated")
-    return proposals
+    return Committed(receipt["invocation_id"], proposals)
+
+
+def select(committed: Committed, only: Sequence[str] | None) -> list[dict]:
+    """The proposals to run: all of them, or the named ones; a name the committed payload does not contain is refused."""
+    if only is None:
+        return committed.proposals
+    known = {p["proposal_id"] for p in committed.proposals}
+    if set(only) - known:
+        raise Refused(f"proposal ids not in the committed payload: {sorted(set(only) - known)}")
+    return [p for p in committed.proposals if p["proposal_id"] in set(only)]
 
 
 def gateway_request(proposal: Mapping) -> dict:

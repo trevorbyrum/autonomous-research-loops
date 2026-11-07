@@ -30,6 +30,15 @@ def proposal(n=1, **over):
             "query": f"query {n}", "page_cap": 1, "obligation_ids": ["ob-1"], "rationale": "r", **over}
 
 
+PROPOSER = "inv_proposer01"
+
+
+def committed(proposals, by=PROPOSER, topic=TOPIC):
+    """The `committed` part of a discovery view: an outcome payload as the router would have committed it, and its receipt."""
+    payload = canonical.canonical_bytes({"outcome_version": "outcome/1", "invocation_id": by, "topic_id": topic, "search_proposals": proposals})
+    return {"committed": {"payload": payload.decode(), "receipt": {"invocation_id": by, "payload_digest": canonical.bytes_digest(payload)}}}
+
+
 class Gateway:
     """A canned gateway: mints a grant, answers a find with one lane that retrieved one record, or fails as told."""
     def __init__(self, grant_status=201, fail=False):
@@ -50,23 +59,36 @@ class Gateway:
 
 
 class RequestsTest(unittest.TestCase):
-    def payload(self, proposals):
-        return canonical.canonical_bytes({"search_proposals": proposals})
+    def payload(self, proposals, by=PROPOSER, topic=TOPIC):
+        c = committed(proposals, by, topic)["committed"]
+        return c["payload"].encode(), c["receipt"]
 
-    def test_intake_returns_the_receipts_proposals(self):
-        data = self.payload([proposal(1), proposal(2)])
-        self.assertEqual([p["proposal_id"] for p in requests.intake(data, canonical.bytes_digest(data), 10_000, validate)], ["p1", "p2"])
+    def test_intake_returns_the_proposals_and_the_invocation_that_committed_them(self):
+        data, receipt = self.payload([proposal(1), proposal(2)])
+        got = requests.intake(data, receipt, TOPIC, 10_000, validate)
+        self.assertEqual((got.invocation_id, [p["proposal_id"] for p in got.proposals]), (PROPOSER, ["p1", "p2"]))
 
     def test_intake_refuses_whole(self):
-        ok = self.payload([proposal(1)])
-        cases = {"not the receipt's bytes": (ok, "sha256:" + "0" * 64, 10_000),
-                 "over the byte cap": (ok, canonical.bytes_digest(ok), 10),
-                 "too many": (self.payload([proposal(n) for n in range(33)]), None, 10**7),
-                 "repeated id": (self.payload([proposal(1), proposal(1, query="other")]), None, 10_000),
-                 "schema refusal": (self.payload([proposal(1, page_cap=0)]), None, 10_000)}
-        for name, (data, digest, cap) in cases.items():
+        ok, receipt = self.payload([proposal(1)])
+        other, _ = self.payload([proposal(1)], by="inv_forged0001")
+        cases = {"not the receipt's bytes": (other, receipt, 10_000),
+                 "document names another invocation than its receipt": (other, {**receipt, "payload_digest": canonical.bytes_digest(other)}, 10_000),
+                 "document names another topic": (*self.payload([proposal(1)], topic="fleet:other")[:1], self.payload([proposal(1)], topic="fleet:other")[1], 10_000),
+                 "over the byte cap": (ok, receipt, 10),
+                 "too many": (*self.payload([proposal(n) for n in range(33)]), 10**7),
+                 "repeated id": (*self.payload([proposal(1), proposal(1, query="other")]), 10_000),
+                 "schema refusal": (*self.payload([proposal(1, page_cap=0)]), 10_000)}
+        for name, (data, rcpt, cap) in cases.items():
             with self.subTest(name), self.assertRaises(common.Refused):
-                requests.intake(data, digest or canonical.bytes_digest(data), cap, validate)
+                requests.intake(data, rcpt, TOPIC, cap, validate)
+
+    def test_select_runs_all_or_only_named_proposals_and_refuses_a_name_the_payload_lacks(self):
+        data, receipt = self.payload([proposal(1), proposal(2)])
+        got = requests.intake(data, receipt, TOPIC, 10_000, validate)
+        self.assertEqual([p["proposal_id"] for p in requests.select(got, None)], ["p1", "p2"])
+        self.assertEqual([p["proposal_id"] for p in requests.select(got, ["p2"])], ["p2"])
+        with self.assertRaises(common.Refused):
+            requests.select(got, ["p2", "p9"])
 
     def test_requests_by_type_are_deterministic(self):
         table = [(proposal(request_type="find", filters={"kind": "article", "limit": 5}), {"request_type": "find", "query": "query 1", "lanes": ["crossref"], "kind": "article", "limit": 5}, 1),
@@ -98,11 +120,11 @@ class Fixture:
     def tearDown(self):
         self.tmp.cleanup()
 
-    def stage(self, proposals, **view):
+    def stage(self, proposals, committed_by=PROPOSER, **view):
         document = orders.work_input(kind="discovery", purpose="search", invocation_id=INV, topic_id=TOPIC,
                                      admission={"context": "contract/1", "contract": {"revision": 1, "content_hash": "sha256:" + "a" * 64}},
                                      entry={"max_input_bytes": 100_000, "max_output_bytes": 100_000},
-                                     view={"proposals": proposals, "proposed_by": "inv_proposer01", "attempt": 1, "gateway": {"policy_version": "gw/1", "commercial": False, "accept_per_item": True}, **view},
+                                     view={**committed(proposals, committed_by), "attempt": 1, "gateway": {"policy_version": "gw/1", "commercial": False, "accept_per_item": True}, **view},
                                      truncation=[])
         (self.root / "inputs").mkdir()
         data = canonical.canonical_bytes(document)

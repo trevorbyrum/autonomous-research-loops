@@ -9,7 +9,7 @@ from gen2.core import canonical
 from gen2.discovery import child, recorder, stamp
 from gen2.exec.common import Refused
 from gen2.tests.router_fixtures import RouterTestCase
-from gen2.tests.test_discovery_child import INV, Fixture, Gateway, proposal
+from gen2.tests.test_discovery_child import INV, Fixture, Gateway, committed, proposal
 from gen2.gateway_client.client import GatewayClient
 
 BASE = "http://127.0.0.1:8765"
@@ -80,8 +80,16 @@ class ChildStampsTest(Fixture, unittest.TestCase):
         self.assertEqual((doc["coverage_state"], doc["error_class"], doc["request"]["proposal_ref"]), ("unknown", "timeout", f"{REF}:p1"))
         self.assertEqual(doc["request_identity"], canonical.logical_hash(doc["request"]))
 
-    def test_the_ref_is_the_drivers_not_the_models_and_must_be_an_invocation_id(self):
-        env = self.stage([proposal(1, obligation_ids=[])], proposed_by="forged text: p9")
+    def test_the_proposer_comes_only_from_the_committed_outcome(self):
+        """A proposer supplied beside the committed bytes, or a receipt that names another (well-formed) invocation, refuses before any request."""
+        env = self.stage([proposal(1, obligation_ids=[])], proposed_by="inv_forged0001")
+        with self.assertRaises(Refused):
+            self.run_child(env)
+        self.tearDown()
+        self.setUp()
+        view = committed([proposal(1, obligation_ids=[])])
+        view["committed"]["receipt"]["invocation_id"] = "inv_forged0001"
+        env = self.stage([], **{"committed": view["committed"]})
         with self.assertRaises(Refused):
             self.run_child(env)
         self.assertEqual((self.built, self.gateway.calls), ([], []))

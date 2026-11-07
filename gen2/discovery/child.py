@@ -10,7 +10,6 @@ returned, not transport octets.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -21,7 +20,6 @@ from gen2.exec.common import Refused, outcome_bytes, scaffold
 from gen2.gateway_client.client import GatewayClient
 
 RESULT, OUTCOME = "discovery-result.json", "outcome.json"
-INVOCATION = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")   # common.schema.json#/$defs/invocation_id
 URL, TOKEN = "GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN"
 
 
@@ -44,13 +42,10 @@ def run(directory: Path, *, environ: Mapping[str, str], validate: Callable[[str,
     if (work["kind"], work["purpose"]) != ("discovery", "search"):
         raise Refused("input.json is not a discovery/search input")
     view, invocation_id = work["view"], work["invocation_id"]
-    if not INVOCATION.fullmatch(view["proposed_by"]):
-        raise Refused("proposed_by is not the proposing invocation's id")
-    proposals = view["proposals"]
-    if len(proposals) > requests.MAX_PROPOSALS:
-        raise Refused("too many proposals")
-    for proposal in proposals:
-        validate("search-proposal", proposal)
+    if {"proposals", "proposed_by"} & set(view):
+        raise Refused("proposals and their proposer come from the committed outcome only, never beside it")
+    committed = requests.intake(view["committed"]["payload"].encode(), view["committed"]["receipt"], work["topic_id"], work["limits"]["max_input_bytes"], validate)
+    proposals = requests.select(committed, view.get("only"))
     built = [(p, requests.gateway_request(p)) for p in proposals]   # every request is built before any I/O
     client = factory(environ[URL], environ[TOKEN])
     gateway = view["gateway"]
@@ -62,7 +57,7 @@ def run(directory: Path, *, environ: Mapping[str, str], validate: Callable[[str,
             client.resolve()
         out = client.search(request, invocation_id=invocation_id, attempt=view["attempt"], policy_version=gateway["policy_version"],
                             obligation_ids=proposal["obligation_ids"], pages=requests.pages(proposal), token=grant["token"])
-        stamp.stamp(out, stamp.ref_of(view["proposed_by"], proposal["proposal_id"]), invocation_id=invocation_id, attempt=view["attempt"])
+        stamp.stamp(out, stamp.ref_of(committed.invocation_id, proposal["proposal_id"]), invocation_id=invocation_id, attempt=view["attempt"])
         searches.append({"proposal_id": proposal["proposal_id"], "out": out})
     resolution = client.last_resolution
     document = {"result_version": "discovery-result/1", "invocation_id": invocation_id, "attempt": view["attempt"],
