@@ -5,6 +5,11 @@ The operational boundary specification the code must conform to; Astra's Gate A 
 Format per component: *Definition* (what it is) / *Owns* (decisions only it makes) / *Produces* (typed hand-off artifacts) / *Must never* / *Checked by*.
 
 ## Router
+
+Final sufficient review may hand a fresh satisfied candidate to operator waiting
+atomically. New holds/signals/material effects cannot hide behind that review.
+Explicit authenticated rework opens an episode and queues once; it grants no
+completion authority. Status reads never mutate the queue.
 - **Definition:** the single logical writer to authoritative engine state; code, no model calls in its decision path.
 - **Owns:** scheduling and leases; every state commit via `commit_outcome` (authenticated, revision-bound, idempotent envelopes; fenced finalization); checkpoint cadence and the coalesced signal queue; decision-policy application (mapping a provider answer + confidence + class to a permitted action); completion-candidate assembly; export outbox commits with immutable export manifests (operator ruling 2026-09-26: the one outbound path, `docs/gen2/EXPORT-API.md`).
 - **Produces:** commit receipts (linking decision receipt ↔ transition ↔ evidence, one invocation ID); leases with generations; holds (typed, owned, deadlined); dossier snapshots; outbox events.

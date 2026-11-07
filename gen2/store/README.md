@@ -203,7 +203,8 @@ Each vocabulary below is a draft: it may change only by amendment (a README/INVA
 | active | stopped_for_resources | router: a resource limit — never saturation (G-9) |
 | stopped_for_resources | queued / awaiting_judgment | budget restored / operator judgment needed |
 | active, stopped_for_resources | awaiting_judgment | router: pending an operator judgment — not an outcome |
-| awaiting_judgment | active / queued / stopped_for_resources | operator judgment |
+| resting | awaiting_judgment | router: committed sufficient review of the current satisfied, fresh dossier, with no remaining blockers (Trevor D1, 2026-11-07) |
+| awaiting_judgment | active / queued / stopped_for_resources | operator judgment; authenticated `open_review` with explicit `rework` queues and opens an episode atomically |
 | active, awaiting_judgment | completed_with_qualified_conclusions | operator `completion_approval` of the current dossier (G-8, G-13) |
 | completed_with_qualified_conclusions | queued | an approved amendment, or mandatory surveillance review (G-12) |
 | every non-retired state | retired | operator `retirement` decision at the state revision being left (G-13) |

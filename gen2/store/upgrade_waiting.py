@@ -8,7 +8,7 @@ from contextlib import closing
 from pathlib import Path
 
 from gen2.core import canonical
-from gen2.store import api, db
+from gen2.store import api, db, compat
 
 PREDECESSOR = "sha256:b2b2a5acd4b700f7d76372edb173fa83971ff374bfa13ead2b51fe868a644982"
 TRIGGER = ("trigger", "queue_status_transitions")
@@ -23,6 +23,7 @@ def _previous(conn):
 
 def _replace(path):
     with closing(sqlite3.connect(path, isolation_level=None)) as conn:
+        compat.apply_connection_contract(conn)
         conn.execute("BEGIN IMMEDIATE")
         try:
             _previous(conn)
