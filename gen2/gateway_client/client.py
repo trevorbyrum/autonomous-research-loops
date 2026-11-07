@@ -482,8 +482,16 @@ class GatewayClient:
         """One logical request: `request` is a gateway payload with its `request_type`. Returns
         {"observations": [{"observation", "retrieval_events", "records", "delivery"}],
         "capability_facts", "telemetry_losses", "pages": [{"page", "sent", "effective_request",
-        "gateway_request_identity", "delivery", "call_ref"}]} — one observation per lane per page. It owns
-        the client until it returns, every page and poll of it: ClientBusy when another operation is running."""
+        "gateway_request_identity", "delivery", "call_ref"}], "records_by_call": {"gw-call:<id>": [record]}}
+        — one observation per lane per page. It owns the client until it returns, every page and poll
+        of it: ClientBusy when another operation is running.
+
+        records_by_call retains full parsed record dicts, including content such as abstract, for the
+        trusted post-ACK discovery hand-off. Keys use observation.gateway_call_ref's string form,
+        one entry per captured call across pages; an empty captured result has an empty list.
+        An uncaptured request or final poll has no entry. Observations retain their metadata-only
+        records. This output acknowledges neither Router persistence nor permission to screen;
+        the trusted consumer must obtain that separate ACK before handing records onward."""
         rt = request.get("request_type")
         if rt not in REQUEST_TYPES or not isinstance(attempt, int) or attempt < 1 or pages < 1:
             raise ValueError("a search is a find/resolve/enrich/fetch/data request, attempt >= 1, pages >= 1")
@@ -491,7 +499,7 @@ class GatewayClient:
             raise ValueError("only find answers page")
         ctx = {"invocation_id": invocation_id, "attempt": attempt, "obligation_ids": list(obligation_ids),
                "policy_version": policy_version, "token": token or self.token}
-        out = {"observations": [], "capability_facts": [], "telemetry_losses": [], "pages": []}
+        out = {"observations": [], "capability_facts": [], "telemetry_losses": [], "pages": [], "records_by_call": {}}
         sent = request
         for page in range(1, pages + 1):
             started = self._clock()
@@ -504,6 +512,8 @@ class GatewayClient:
                                  "call_ref": answer["call_ref"]})
             fact_id = next((f["fact_id"] for f in answer["facts"] if f["capability"].startswith("gateway.secrets")), None)
             call_ref = f"gw-call:{answer['call_ref']}" if answer["call_ref"] is not None else None
+            if answer["captured"]:
+                out["records_by_call"][call_ref] = answer["records"]
             going = {e["source"]: observe.cursor_of(e) for e in answer["lanes"]
                      if e.get("completeness") == "complete" and observe.cursor_of(e) is not None}
             for entry in answer["lanes"]:
@@ -523,12 +533,13 @@ class GatewayClient:
 
     def _answer(self, sent: dict, ctx: dict) -> dict:
         """One gateway request, polled to completion: its lanes (each validated, or replaced by
-        an unknown one), records, capability facts, capture losses, delivery and echo."""
+        an unknown one), records, capability facts, capture losses, delivery and echo.
+        captured is true only after validation, including the final poll's capture ACK."""
         payload = {k: v for k, v in sent.items() if k != "request_type"}
         status, doc, error = self._exchange("POST", f"/v1/{sent['request_type']}", payload, ctx["token"], _headers(ctx))
         named = sent.get("lanes") or [observe.GATEWAY_LANE]
         result = {"lanes": [], "records": [], "facts": [], "losses": [], "call_ref": None, "delivery": None,
-                  "effective": None, "gateway_identity": None}
+                  "effective": None, "gateway_identity": None, "captured": False}
 
         def failed(coverage: str, error_class: str | None, loss: str | None = None) -> dict:
             result["lanes"] = [observe.unobserved(sid, coverage, error_class) for sid in named]
@@ -586,6 +597,7 @@ class GatewayClient:
         answered = {e["source"] for e in result["lanes"]}
         result["lanes"] += [observe.unobserved(sid, "unknown", "payload_invalid") for sid in sent.get("lanes") or [] if sid not in answered]
         result["records"] = [r for r in records if isinstance(r, dict)]
+        result["captured"] = captured
         result["facts"] = [f for f in (observe.capability_fact(x) for x in doc.get("capability_facts") or []) if f]
         return result
 

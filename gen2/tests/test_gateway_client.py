@@ -111,6 +111,20 @@ def answering(body_of) -> callable:
 
 
 class RecordedAnswers(unittest.TestCase):
+    def test_full_records_keep_abstracts_separate_from_router_metadata(self):
+        """T12-G2: captured per-call content survives; the retained observation oracle is unchanged."""
+        original = search(self, "find_paged_complete", FIND_PAGED, pages=2)
+        exchanges = fixture("find_paged_complete")["exchanges"]
+        expected = {}
+        for exchange in exchanges:
+            body = exchange["response"]["body"]
+            body["records"][0]["abstract"] = "An adapter-shaped abstract."
+            expected[f"gw-call:{body['observation']['call_ref']}"] = body["records"]
+        out = search(self, "find_paged_complete", FIND_PAGED, exchanges=exchanges, pages=2)
+        self.assertEqual(out.get("records_by_call"), expected)
+        self.assertEqual(out["observations"], original["observations"])
+        self.assertTrue(all("abstract" not in r for o in out["observations"] for r in o["records"]))
+
     def test_a_complete_answer_is_one_observation_per_lane(self):
         out = search(self, "find_complete")
         lanes = by_lane(out)
@@ -150,6 +164,7 @@ class RecordedAnswers(unittest.TestCase):
         self.assertEqual(summary(lanes["crossref"]), ("searched_ok", "partial", 1, "telemetry_missing", ["doi:10.1234/abc"]))
         self.assertEqual(summary(lanes["doaj"]), ("unknown", "unobserved", None, "telemetry_missing", []))
         self.assertTrue(all(o["observation"]["gateway_call_ref"] is None for o in out["observations"]))
+        self.assertEqual(out["records_by_call"], {})
 
     def test_control_an_uncaptured_lane_with_records_keeps_them_as_a_lower_bound(self):
         ex = mutated("find_not_captured", 0, lambda r: r["body"]["lanes"].pop(1))
@@ -256,6 +271,7 @@ class UnreadableAnswers(unittest.TestCase):
                 out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
                 self.assertEqual([summary(o) for o in out["observations"]], [("unknown", "unobserved", None, "payload_invalid", [])])
                 self.assertIn("did not echo", out["telemetry_losses"][0]["reason"])
+                self.assertEqual(out["records_by_call"], {})
 
     def test_a_count_without_its_identities_is_not_a_count(self):
         for label, mutate in (("count up", lambda r: r["body"]["lanes"][0].__setitem__("count", 5)),
@@ -554,7 +570,9 @@ class TransportOutcomes(unittest.TestCase):
         done, queued = self.done()
         seen = []
         c = self.queued_client([(202, queued), (200, {"status": "running"}), (200, {"status": "done", "result": done, "observation": self.POLLED})], seen)
-        lanes = by_lane(c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1"))
+        out = c.search(FIND, invocation_id=INV, attempt=1, policy_version="gw-policy/1")
+        lanes = by_lane(out)
+        self.assertEqual(out["records_by_call"], {"gw-call:101": done["records"]})
         self.assertIn("crossref", lanes, "the polled job's lanes, not the queued answer's (which has none)")
         self.assertEqual(summary(lanes["crossref"]), ("searched_ok", "complete", 1, None, ["doi:10.1234/abc"]))
         self.assertEqual(seen, [("POST", INV, "1"), ("GET", INV, "1"), ("GET", INV, "1")], "every poll carries this invocation and attempt (A5)")
@@ -583,6 +601,7 @@ class TransportOutcomes(unittest.TestCase):
         self.assertEqual({k: summary(v)[:4] for k, v in by_lane(out).items()},
                          {"crossref": ("searched_ok", "partial", 1, "telemetry_missing"), "doaj": ("unknown", "unobserved", None, "telemetry_missing")})
         self.assertEqual(out["telemetry_losses"][-1]["reason"], "poll row not written: OperationalError")
+        self.assertEqual(out["records_by_call"], {})
 
     def test_a_refused_grant_raises(self):
         c = GatewayClient(BASE, ENGINE_TOKEN, transport=lambda *a: (403, HEADERS, b'{"error": "only a configured grantor may mint grants"}', None))
