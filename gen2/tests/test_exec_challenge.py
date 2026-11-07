@@ -75,8 +75,8 @@ def work(v, **over):
     return {"invocation_id": ME, "topic_id": TOPIC, "admission": ADMISSION, "view": v, **over}
 
 
-def build(v, j, exchanges=None):
-    out = challenge.make_builder(exchanges or Exchanges(), stage)(work(v), j)
+def build(v, j):
+    out = challenge.make_builder(stage)(work(v), j)
     assert SCHEMAS.errors(out, "outcome-document.schema.json") == [], SCHEMAS.errors(out, "outcome-document.schema.json")
     return out
 
@@ -182,25 +182,26 @@ class PassTwoTest(unittest.TestCase):
         self.recs = records(search_observations=[observation(1)])
         self.view = view(self.recs, [proposal(1)])
 
-    def counter(self, outcome, searched=("p1",), v=None, exchanges=None):
+    def counter(self, outcome, searched=("p1",), v=None):
         j = judgment(counterevidence=[{"claim_ref": "clm_00000001", "outcome": outcome, "summary": "s", "searched": list(searched)}])
-        return build(v or self.view, j, exchanges)["completion_records"]
+        return build(v or self.view, j)["completion_records"]
 
     def test_counterevidence_outcome_follows_the_recorded_searches(self):
         degraded = view(records(search_observations=[observation(1, "provider_unavailable", error_class="timeout")]), [proposal(1)])
         partial = view(records(search_observations=[observation(1, completeness="partial")]), [proposal(1)])
         empty = view(records(search_observations=[observation(1, "searched_empty", result_count=0)]), [proposal(1)])
-        for case, outcome, searched, v, exchanges, expected in (
-                ("clean search, nothing contradicts", "resolved", ("p1",), None, None, "none_found"),
-                ("clean empty search is still a search", "resolved", ("p1",), empty, None, "none_found"),
-                ("degraded search never reads as none_found", "resolved", ("p1",), degraded, None, "incomplete"),
-                ("partial pagination never reads as none_found", "resolved", ("p1",), partial, None, "incomplete"),
-                ("no staged response for the search", "resolved", ("p1",), None, Exchanges(["call-1"]), None),
-                ("no search cited", "resolved", (), None, None, "incomplete"),
-                ("counterevidence the model reports stands", "unresolved", ("p1",), degraded, None, "counterevidence_found"),
-                ("the model cannot tell", "unknown", ("p1",), None, None, "incomplete")):
+        unretained = view(self.recs, [proposal(1)], Exchanges(["call-1"]))
+        for case, outcome, searched, v, expected in (
+                ("clean search, nothing contradicts", "resolved", ("p1",), None, "none_found"),
+                ("clean empty search is still a search", "resolved", ("p1",), empty, "none_found"),
+                ("degraded search never reads as none_found", "resolved", ("p1",), degraded, "incomplete"),
+                ("partial pagination never reads as none_found", "resolved", ("p1",), partial, "incomplete"),
+                ("no staged response for the search", "resolved", ("p1",), unretained, None),
+                ("no search cited", "resolved", (), None, "incomplete"),
+                ("counterevidence the model reports stands", "unresolved", ("p1",), degraded, "counterevidence_found"),
+                ("the model cannot tell", "unknown", ("p1",), None, "incomplete")):
             with self.subTest(case):
-                records_ = self.counter(outcome, searched, v, exchanges)
+                records_ = self.counter(outcome, searched, v)
                 self.assertEqual([r["assessment"]["outcome"] for r in records_], [expected] if expected else [])
 
     def test_every_proposal_of_the_claim_must_be_cited_and_clean_for_none_found(self):
@@ -213,8 +214,8 @@ class PassTwoTest(unittest.TestCase):
                 ("both cited, one response not retained", [observation(1), observation(2)], ("p1", "p2"), Exchanges(["call-2"]), "incomplete"),
                 ("both cited, both clean", [observation(1), observation(2)], ("p1", "p2"), None, "none_found")):
             with self.subTest(case):
-                v = view(records(search_observations=observations), two)
-                self.assertEqual([r["assessment"]["outcome"] for r in self.counter("resolved", searched, v, exchanges)], [expected])
+                v = view(records(search_observations=observations), two, exchanges)
+                self.assertEqual([r["assessment"]["outcome"] for r in self.counter("resolved", searched, v)], [expected])
 
     def test_evidence_is_the_searchs_own_retained_response(self):
         record = self.counter("resolved")[0]
@@ -254,13 +255,13 @@ class PassTwoTest(unittest.TestCase):
             with self.subTest(case), self.assertRaises(common.Refused):
                 build(self.view, judgment(**over))
 
-    def test_a_staged_response_that_does_not_hash_to_its_reference_is_refused(self):
+    def test_a_staged_response_that_does_not_hash_to_its_reference_is_not_retained_in_the_view(self):
         class Lying(Exchanges):
             def response(self, call):
                 ref, data = super().response(call)
                 return ref, data + b"x"
-        with self.assertRaises(common.Refused):
-            self.counter("resolved", exchanges=Lying())
+        (observed,) = view(self.recs, [proposal(1)], Lying())["searches"][0]["observations"]
+        self.assertEqual((observed["artifact_ref"], observed["content"]["text"]), (None, None))
 
     def test_the_example_judgment_and_prompt_agree_with_the_schema(self):
         example = json.loads(Path(children.path("gen2/schema/examples/judgment-challenge/valid-example.json")).read_text())["instance"]
@@ -285,12 +286,12 @@ class RouterAdmitsTest(rf.ContractWorld):
         self.staged = []
         records_ = self.router.topic_records({"topic_id": rf.TOPIC, "families": list(challenge.FAMILIES)})["records"]
         grant = self.started(self.ids("inv_"), "checkpoint")
-        v = challenge.challenge_view(ADMISSION, records_, lambda ref: "text", Exchanges(), invocation_id=grant["invocation_id"], review_episodes=[],
-                                     proposals=[], proposed_by=None, as_of=rf.STAMP, truncation=[])
         ref = self.f.ref
         exchanges = type("E", (), {"response": staticmethod(lambda call: (ref, b"independent review and challenge evidence"))})()
+        v = challenge.challenge_view(ADMISSION, records_, lambda ref: "text", exchanges, invocation_id=grant["invocation_id"], review_episodes=[],
+                                     proposals=[], proposed_by=None, as_of=rf.STAMP, truncation=[])
         w = {"invocation_id": grant["invocation_id"], "topic_id": rf.TOPIC, "admission": {"context": "contract/1", "contract": {"revision": self.f.pin}}, "view": v}
-        return grant, v, challenge.make_builder(exchanges, self.stage_ref)(w, outcome_judgment)
+        return grant, v, challenge.make_builder(self.stage_ref)(w, outcome_judgment)
 
     def test_a_challenge_built_from_the_real_records_commits(self):
         records_ = self.router.topic_records({"topic_id": rf.TOPIC, "families": list(challenge.FAMILIES)})["records"]

@@ -89,12 +89,12 @@ class CommitCase(QuotesCase):
         """What the job writes: the builder over the real router's rows, then the supervisor's fill of the capability id."""
         events = self.router.topic_records({"topic_id": TOPIC, "families": ["retrieval_events"]})["records"]["retrieval_events"]
         view = {"as_of": "2026-09-27T10:00:00Z", "claims": [{"claim_ref": "clm_quote00001", "revision": revision, "tier": tier, "producer": "inv_capture001", "text": ABSTRACT,
-                "sources": [{"work_id": self.work, "source_version": "v1", "content_hash": self.source["content_hash"], "identity": RECORD, "content_tier": "abstract",
+                "sources": [{"work_id": self.work, "source_version": "v1", "artifact_ref": self.source, "acquired_by": "inv_capture001", "identity": RECORD, "content_tier": "abstract",
                              "content": ABSTRACT, "acquisition": {"gateway_call_ref": "gw-call:1", "retrieved_at": events[0]["captured_at"], "route": "gateway:crossref"}}]}]}
         check = {"outcome": "succeeded", "note": "Checked against the abstract."}
         judgment = {"judgment_version": "judgment-verify/1", "items": [{"claim_ref": "clm_quote00001", "verdict": "supports",
                     "cited_spans": [{"quote": "observed", "locator": "abstract"}], "checks": {k: check for k in receipts.KINDS}}]}
-        build = receipts.make_builder(self.router, self.reader(), lambda data, media: self.artifact(data, media), normalization="/".join(quote_matching.NORMALIZATION))
+        build = receipts.make_builder(lambda data, media: self.artifact(data, media), lambda digest: self.reader().response("gw-call:1")[1], normalization="/".join(quote_matching.NORMALIZATION))
         outcome = build({"invocation_id": "inv_verify0001", "topic_id": TOPIC, "view": view}, judgment)
         for doc in outcome["verification_receipts"]:
             doc["verifier_capability_id"] = self.grant["capability_id"]

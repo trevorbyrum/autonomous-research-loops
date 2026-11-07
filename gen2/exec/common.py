@@ -8,7 +8,7 @@ purpose builders map judgment to sections, and the router fills producer, contra
 from __future__ import annotations
 
 import hashlib
-from typing import Mapping
+from typing import Iterable, Mapping, Protocol, Sequence
 
 from gen2.core import canonical
 
@@ -17,6 +17,25 @@ REQUIRED_SECTIONS = ("claims", "claim_promotions", "claim_source_links", "verifi
                      "source_proposals", "holds", "exports")
 OPTIONAL_SECTIONS = ("search_proposals", "source_artifacts", "obligation_assessments", "completion_records",
                      "quote_checks", "detailed_check_records")
+
+
+class Exchanges(Protocol):
+    def response(self, gateway_call_ref: str) -> tuple[Mapping, bytes] | None:
+        """(artifact_ref, bytes) staged for this topic's retained gateway response, or None."""
+
+
+class RecordsReader(Protocol):
+    def topic_records(self, request: Mapping) -> dict:
+        """{topic_id, families} -> {status: ok, topic_id, records: {family: [row, ...]}} or {status: refused, ...}."""
+
+
+def latest_revision(rows: Iterable[Mapping], key: str = "claim_id") -> dict[str, Mapping]:
+    """The highest-revision row for each `key` value."""
+    latest: dict[str, Mapping] = {}
+    for row in rows:
+        if row[key] not in latest or row["revision"] > latest[row[key]]["revision"]:
+            latest[row[key]] = row
+    return latest
 
 
 class Refused(ValueError):

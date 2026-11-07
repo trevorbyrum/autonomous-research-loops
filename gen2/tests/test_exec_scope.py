@@ -178,11 +178,9 @@ class ArtifactsTest(unittest.TestCase):
     def test_record_binds_the_earliest_staged_retained_response(self):
         ref, data = staged(b"second")
         first = staged(b"first")
-        found = artifacts.source_artifacts(["wrk_aaaaaaaa"], lineage(), Exchanges({"call-1": first, "call-2": (ref, data)}))
-        self.assertEqual(found, [{"work_id": "wrk_aaaaaaaa", "source_version": first[0]["content_hash"], "artifact_ref": first[0]}])
-        self.assertEqual(SCHEMAS.errors(found[0], "source-artifact.schema.json"), [])
-        later = artifacts.source_artifacts(["wrk_aaaaaaaa"], lineage(), Exchanges({"call-2": (ref, data)}))
-        self.assertEqual(later[0]["artifact_ref"], ref)
+        found = artifacts.retained("wrk_aaaaaaaa", lineage(), Exchanges({"call-1": first, "call-2": (ref, data)}))
+        self.assertEqual(found.ref, first[0])
+        self.assertEqual(artifacts.retained("wrk_aaaaaaaa", lineage(), Exchanges({"call-2": (ref, data)})).ref, ref)
 
     def test_nothing_is_invented_for_a_source_without_lineage_or_bytes(self):
         good = {"call-1": staged()}
@@ -192,7 +190,7 @@ class ArtifactsTest(unittest.TestCase):
                 ("no staged exchange", "wrk_aaaaaaaa", lineage(), {}),
                 ("bytes differ from the reference", "wrk_aaaaaaaa", lineage(), {"call-1": staged(lie=True)})):
             with self.subTest(case), self.assertRaises(common.Refused):
-                artifacts.source_artifacts([work_id], recs, Exchanges(exchanges))
+                artifacts.retained(work_id, recs, Exchanges(exchanges))
 
 
 class PromptTest(unittest.TestCase):

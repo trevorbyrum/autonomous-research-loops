@@ -1,26 +1,20 @@
-"""Bind bytes to artifact references: staged claim text, and the source_artifacts of selected retained sources.
+"""Bind bytes to artifact references: staged claim text, and the retained lineage of a work, read once by the parent (the views).
 
-Trace: 2e2-min design O14.5, O14.10; Astra T11 F3 (the research builder commits source_artifacts bound to the
-trusted retained bytes and the real retrieval and work lineage, before re-access is admitted; the verifier never
-fabricates a source row, and discovery gets no PRIMARY authority). Oracle: the digest recomputed from the bytes.
-Limits: the stage function is the topic spool's `stage`; `Exchanges` is the retained-exchange read T13 stages and
-T15's capture reader consumes, coded here against its ticket-plan shape; `source_version` is the response
-bytes' own digest, so a version names exactly the bytes it was taken from.
+Trace: 2e2-min design O14.5, O14.10; Astra T11 F3 (source_artifacts are bound to the trusted retained bytes and the real retrieval
+and work lineage, before re-access is admitted; the verifier never fabricates a source row, and discovery gets no PRIMARY authority);
+Gate S #7 (builders read only the view and the bytes it names, so the lineage is computed here by the parent and carried in the view).
+Oracle: the digest recomputed from the bytes. Limits: the stage function is the child's evidence stage; `Exchanges` is the retained-exchange
+read the discovery job stages; `source_version` is the response bytes' own digest, so a version names exactly the bytes it was taken from.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterable, Mapping, Protocol, Sequence
+from typing import Callable, Mapping, Sequence
 
 from gen2.core import canonical
-from gen2.exec.common import Refused
+from gen2.exec.common import Exchanges, Refused
 
 Stage = Callable[[bytes, str], Mapping]
-
-
-class Exchanges(Protocol):
-    def response(self, gateway_call_ref: str) -> tuple[Mapping, bytes] | None:
-        """(artifact_ref, bytes) staged for this topic's retained gateway response, or None."""
 
 
 def stage_bytes(stage: Stage, data: bytes, media_type: str) -> dict:
@@ -70,12 +64,3 @@ def retained(work_id: str, records: Mapping[str, Sequence[Mapping]], exchanges: 
                 raise Refused(f"{work_id}: the staged response does not hash to its reference")
             return Retained(ref, data, observation["lane"], event["provider_record_id"], event["event_id"], observation["observation_id"], call, event["captured_at"], observation["invocation_id"])
     raise Refused(f"{work_id}: no retained response is staged for it")
-
-
-def source_artifacts(work_ids: Iterable[str], records: Mapping[str, Sequence[Mapping]], exchanges: Exchanges) -> list[dict]:
-    """One source_artifacts record per selected work, bound to its retained response."""
-    out = []
-    for work_id in sorted(set(work_ids)):
-        found = retained(work_id, records, exchanges)
-        out.append({"work_id": work_id, "source_version": found.ref["content_hash"], "artifact_ref": dict(found.ref)})
-    return out
