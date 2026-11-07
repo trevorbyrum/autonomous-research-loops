@@ -1,0 +1,51 @@
+"""Proposal intake and the proposal-to-gateway-request builder.
+
+Trace: 2e2-min design O13.1, O13.2; Astra T11 decision 3; RG-4 (a refused list is refused, never truncated into
+fewer searches). Oracle: the committed payload's byte digest and the search-proposal schema (injected check);
+the gateway's own field table (research_gateway/app.py FIELD_TYPES), restated as FILTERS. Limits: it picks no
+lane and no query; the model's proposal does, and the gateway's grant decides what the lane may do.
+"""
+from __future__ import annotations
+
+from typing import Callable, Mapping
+
+from gen2.core import canonical
+from gen2.exec.common import Refused
+
+MAX_PROPOSALS = 32
+FILTERS = {"find": {"kind": str, "domain": str, "published_after": str, "year_from": int, "limit": int, "within": str},
+           "resolve": {}, "enrich": {"what": str}, "fetch": {"params": dict}, "data": {"params": dict}}
+
+
+def intake(payload: bytes, receipt_digest: str, max_bytes: int, validate: Callable[[str, object], None]) -> list[dict]:
+    """The `search_proposals` of a committed outcome payload, once its bytes are the receipt's. An oversize
+    payload or list, a repeated proposal id, or a proposal the schema refuses is refused whole."""
+    if canonical.bytes_digest(payload) != receipt_digest:
+        raise Refused("the payload is not the receipt's")
+    if len(payload) > max_bytes:
+        raise Refused(f"the payload is {len(payload)} bytes, over the {max_bytes} cap")
+    proposals = canonical.parse_json_strict(payload).get("search_proposals", [])
+    if not isinstance(proposals, list) or len(proposals) > MAX_PROPOSALS:
+        raise Refused(f"search_proposals must be a list of at most {MAX_PROPOSALS}")
+    for proposal in proposals:
+        validate("search-proposal", proposal)
+    if len({p["proposal_id"] for p in proposals}) != len(proposals):
+        raise Refused("a proposal id is repeated")
+    return proposals
+
+
+def gateway_request(proposal: Mapping) -> dict:
+    """The gateway payload for one proposal: the same proposal always gives the same request (and so the same
+    request identity). A filter the request type does not take is refused, not dropped."""
+    kind, filters = proposal["request_type"], dict(proposal.get("filters") or {})
+    allowed = FILTERS[kind]
+    for key, value in filters.items():
+        if key not in allowed or not isinstance(value, allowed[key]) or isinstance(value, bool):
+            raise Refused(f"{proposal['proposal_id']}: filter {key!r} is not a {kind} filter of the right type")
+    target = {"find": "query", "resolve": "identity"}.get(kind, "target")
+    return {"request_type": kind, target: proposal["query"], "lanes": [proposal["lane"]], **filters}
+
+
+def pages(proposal: Mapping) -> int:
+    """Only a find pages; its page cap is the proposal's."""
+    return proposal["page_cap"] if proposal["request_type"] == "find" else 1
