@@ -313,6 +313,11 @@ experiment. T4 owns the route-wide blocker/remediation subject (DEBT-053).
 Trusted station calls can record a native dossier under a live checkpoint;
 invocation replay returns the original revision/hash. Fixed topic-record reads
 supply F3's operands and exact dossier bodies without changing dossier captures.
+
+Topic reads also expose topic-scoped operation receipts for discovery's final
+outcome binding. Dossier captures and input-hash preimages remain unchanged.
+Quote-check reads use the claim/revision's topic, including historical rows with
+no direct topic key, so verification sees every retained quarantine.
 Validated-only search proposals stay in committed payloads (P6); executor pins
 and bounds live in the bundle. Offline tests establish Router structure only;
 T13–T18 supply the production consumers for the supervised 2f workflow.
@@ -350,3 +355,16 @@ Source: `private/reviews/gen2-gate-s7-fable-20261107.md` and `gen2-sprint-record
 - **T18 drops the three "required failures through production routes"** (orchestrator decision, 2026-11-07, Gate S #7 §4 #2). They are proven at their own layers (`RecorderMissing`, #142's missing-tier hold, #125's `incomplete`); T18 keeps the happy path on a fresh store and "removing any recorder fails" (DEBT-051).
 - **S5 re-baseline:** S5-2 (2026-11-03, recorded above): 2e1 stops total 2,900, production 1,150, tests 1,250; the 1.3× tripwire anchored to the §4 P50 baseline.
 - **Gate S candidate (lane B "one parse at collection") not taken:** replaced by roadmap item A (Gate S #7 §2 family A).
+
+## Operator review status (2026-11-07)
+
+Topic status includes the exact current candidate's gates and bound sufficiency
+reviews, including insufficient outcomes and retained evidence excerpts, through
+core's single presentation builder. Reading it grants no completion authority.
+
+## Coverage attribution (2026-11-07)
+
+Pinned proposal-discovery capture uses atomic Router-derived plan and admission
+facts, exact receipt/pin joins and execution-local page chains. Empty plans owe
+no search; unbound or missing capture stays unknown. Material v2 and the new
+producer tag require a fresh dossier/review for approval; no SQL schema change.

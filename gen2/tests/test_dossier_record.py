@@ -75,7 +75,7 @@ class RecordTest(DossierCase):
         doc = row['document']
         self.assertEqual(row['content_hash'], canonical.content_hash(doc))
         self.assertEqual(out, {'status': 'recorded', 'dossier_revision': 1, 'content_hash': canonical.content_hash(doc)})
-        self.assertEqual((doc['schema_version'], doc['evaluator_version'], doc['history']), ('dossier/2', 'stopping-result/1', 'native'))
+        self.assertEqual((doc['schema_version'], doc['evaluator_version'], doc['history']), ('dossier/2', 'stopping-result/1+coverage-attribution/1', 'native'))
         self.assertEqual((row['topic_id'], row['contract_revision']), (doc['result']['context']['topic_id'], doc['result']['context']['contract_revision']))
         for field in ('dossier_revision', 'evaluator_version', 'invocation_id'):
             self.assertEqual(row[field], doc[field])

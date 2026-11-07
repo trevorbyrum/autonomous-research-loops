@@ -22,6 +22,7 @@ ADMISSION = {"context": "contract/1", "contract": {"revision": 1, "content_hash"
 JUDGMENT = {**json.loads(Path(children.path("gen2/schema/examples/judgment-research/valid-example.json")).read_text())["instance"]}
 JUDGMENT["claims"][0]["sources"][0]["contribution"] = "answer"
 RAW = canonical.canonical_bytes({"gateway_response": {"records": [{"identity": "doi:10.1/a", "abstract": "An abstract."}]}})
+DIGEST = canonical.bytes_digest(RAW)
 
 
 RUBRICS = {"low": "One study, or studies that disagree.", "high": "Two or more independent studies agree."}
@@ -71,14 +72,18 @@ def work(recs=None, ex=None, truncation=None):
     return {"invocation_id": "inv_aaaaaaaa", "topic_id": TOPIC, "view": view}
 
 
-def build(w=None, judgment=None, recs=None, ex=None, stager=stage):
-    return research.build_research(w or work(), judgment or copy.deepcopy(JUDGMENT), Reader(recs or records()), ex or exchanges(), stager)
+def build(w=None, judgment=None, stager=stage):
+    return research.build_research(w or work(), judgment or copy.deepcopy(JUDGMENT), stager)
+
+
+REF = {"content_hash": DIGEST, "size_bytes": len(RAW), "media_type": "application/json"}   # the retained response the fixtures stage
 
 
 class ViewTest(unittest.TestCase):
     def test_only_retained_works_appear_with_their_retained_abstract(self):
         view = work()["view"]
-        self.assertEqual(view["works"], [{"work_id": "wrk_aaaaaaaa", "identity": "doi:10.1/a", "abstract": "An abstract."}])
+        self.assertEqual(view["works"], [{"work_id": "wrk_aaaaaaaa", "identity": "doi:10.1/a", "abstract": "An abstract.", "artifact_ref": REF,
+                                          "lane": "semanticscholar", "provider_record_id": "doi:10.1/a"}])
         self.assertEqual(view["claims"][0]["text"], "prior text")
         self.assertEqual((view["state_revision"], view["contract"]["framing_version"]), (7, 2))
 
@@ -111,7 +116,9 @@ class ViewTest(unittest.TestCase):
                            ("other record", canonical.canonical_bytes({"gateway_response": {"records": [{"identity": "doi:10.1/z", "abstract": "x"}]}})),
                            ("not json", b"\xff")):
             with self.subTest(case):
-                self.assertEqual(work(ex=exchanges(data))["view"]["works"], [{"work_id": "wrk_aaaaaaaa", "identity": "doi:10.1/a"}])
+                ref = {"content_hash": canonical.bytes_digest(data), "size_bytes": len(data), "media_type": "application/json"}
+                self.assertEqual(work(ex=exchanges(data))["view"]["works"], [{"work_id": "wrk_aaaaaaaa", "identity": "doi:10.1/a", "artifact_ref": ref,
+                                                                              "lane": "semanticscholar", "provider_record_id": "doi:10.1/a"}])
 
     def test_a_long_abstract_is_cut_and_the_cut_is_recorded(self):
         data = canonical.canonical_bytes({"gateway_response": {"records": [{"identity": "doi:10.1/a", "abstract": "x" * 2000}]}})
@@ -177,13 +184,11 @@ class BuilderTest(unittest.TestCase):
         cases = {"load-bearing claim without a tier": dict(judgment=judged(lambda j: j["claims"][0].update(required_access_tier=None))),
                  "off-enum contribution": dict(judgment=judged(lambda j: j["claims"][0]["sources"][0].update(contribution="primary estimate"))),
                  "work never retrieved": dict(judgment=judged(lambda j: j["claims"][0]["sources"][0].update(work_id="wrk_bbbbbbbb"))),
-                 "no staged response": dict(ex=Exchanges({})),
-                 "staged bytes differ from their reference": dict(ex=Exchanges({"call-1": staged(lie=True)})),
                  "spool returns another text's reference": dict(stager=lambda data, media: {**stage(data, media), "content_hash": HASH}),
                  "more links than one commit carries": dict(judgment=judged(lambda j: j["claims"][0].update(sources=j["claims"][0]["sources"] * 257)))}
         for name, kwargs in cases.items():
             with self.subTest(name), self.assertRaises(common.Refused):
-                build(w=work(), **kwargs)
+                build(**kwargs)
 
 
 class PromptTest(unittest.TestCase):

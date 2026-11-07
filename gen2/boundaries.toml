@@ -177,7 +177,7 @@ third_party = []
 path = "gen2/app"
 purpose = "Composition root: constructs the router (which owns its store) and hands the core ControlBackend protocol to supervisor, exporter and operator. Exists so router and supervisor never import each other. No domain logic. Task 1e: it also carries the operator service's transports — the engine's HTTP listener (http.server; DEPLOYMENT-CONTRACT.md §1.1) and the operator CLI's client of it (http.client) — which only move bytes to and from gen2/operator/service.py."
 boundaries = []
-may_import = ["core", "router", "supervisor", "gateway_client", "operator"]
+may_import = ["core", "router", "supervisor", "gateway_client", "operator", "exec", "discovery"]
 stdlib_capabilities = ["http.server", "http.client"]
 third_party = []
 

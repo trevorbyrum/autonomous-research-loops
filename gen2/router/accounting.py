@@ -5,7 +5,7 @@ from typing import Callable, Mapping, Protocol
 
 from gen2 import accounting as a
 from gen2.accounting import views as v, dossier
-from gen2.router import boundary, material
+from gen2.router import boundary, material, search_capture
 from gen2.core import canonical, pagination
 from gen2.router.boundary import Refusal
 from gen2.store import api
@@ -14,7 +14,8 @@ from gen2.router.protocols import Rows, Schemas
 
 TOPIC_FAMILIES = tuple("""claim_source_links obligation_assessments source_acquisitions source_artifacts
 retrieval_events search_observations record_work_links works facets obligations contract_revisions
-claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers""".split())
+claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers
+operation_receipts quote_checks""".split())
 _ID = {"$ref": "common.schema.json#/$defs/topic_id"}
 ACCOUNTING_COMMANDS = {
     "record_dossier": {"type": "object", "additionalProperties": False,
@@ -33,6 +34,7 @@ ACCOUNTING_COMMANDS = {
 class AccountingCore(Protocol):
     _store: Rows[TopicCapture]
     _schemas: Schemas
+    def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
     def _guarded(self, reason: str, body: Callable, *, freshness: Freshness | None = None) -> object: ...  # pragma: no mutate - Protocol declaration has no execution behavior
     def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None) -> str: ...  # pragma: no mutate - Protocol declaration has no execution behavior
 
@@ -42,14 +44,17 @@ class Accounting:
         self._core = core
 
     def topic_records(self, req: dict) -> dict:
-        """Fixed decoded reads inside the core's snapshot; no dossier capture changes."""
+        """Topic-scoped decoded rows, including commit receipts; no dossier capture changes."""
         families, topic = req["families"], req["topic_id"]
         shared = {"record_work_links", "works"}
         out = {name: self._core._store.select(name, {"topic_id": topic,
             **({"dossier_revision": req["dossier_revision"]} if name == "dossiers" else {})})
-            for name in families if name not in shared}
+            for name in families if name not in shared and name != "quote_checks"}
         if "dossiers" in out and not out["dossiers"]:
             raise Refusal("unknown_dossier", "no dossier at the named topic/revision")
+        if "quote_checks" in families:  # Historical checks bind through claims; their topic_id may be null.
+            out["quote_checks"] = [check for claim in self._core._store.select("claims", {"topic_id": topic})
+                                   for check in self._core._store.select("quote_checks", {"claim_id": claim["claim_id"], "claim_revision": claim["revision"]})]
         if shared.intersection(families):
             events = self._core._store.select("retrieval_events", {"topic_id": topic})
             links = [link for event in events for link in self._core._store.select("record_work_links", {"event_id": event["event_id"]})]
@@ -74,19 +79,24 @@ class Accounting:
         return raw
 
     def candidate_units(self, topic_id: str, *, history: a.History) -> a.CandidateUnits:
-        return a.candidate_units(convert_inventory(topic_id, self.capture(topic_id, history), history))
+        return a.candidate_units(self.coverage_snapshot(topic_id, history=history).inventory)
 
     def evidence_inventory(self, topic_id: str, *, history: a.History) -> a.Inventory:
-        return convert_inventory(topic_id, self.capture(topic_id, history), history)
+        return self.coverage_snapshot(topic_id, history=history).inventory
 
     def coverage_snapshot(self, topic_id: str, *, history: a.History) -> "CoverageSnapshot":
-        return convert_coverage_snapshot(self.capture(topic_id, history), topic_id, history)
+        return self._coverage(self.capture(topic_id, history), topic_id, history)
+
+    def _coverage(self, raw, topic_id, history):
+        modes = {r["config_bundle_hash"]: self._core._one("config_bundles", {"bundle_hash": r["config_bundle_hash"]})["document"]["policy"].get("search_capture") == search_capture.MODE
+                 for r in records(raw, "invocations")}
+        return convert_coverage_snapshot(raw, topic_id, history, modes=modes)
 
     def dossier_inputs(self, topic_id: str, *, history: a.History) -> "DossierInput":
         raw = self.capture(topic_id, history)
         if not any(r["status"] == "approved" and r["approved_by_decision_id"] is not None for r in records(raw, "contract_revisions")):
             raise Refusal("no_approved_contract", topic_id)
-        return DossierInput(raw, convert_coverage_snapshot(raw, topic_id, history), input_hash(raw, history))
+        return DossierInput(raw, self._coverage(raw, topic_id, history), input_hash(raw, history))
 
     def commit_dossier_inputs(self, topic_id: str, *, history: a.History, prepare: Callable, commit: Callable, require_live: Callable,
                               reason: str = "payload_invalid", audit_kind: str | None = "dossier_input_recaptures", replay: Callable | None = None) -> object:
@@ -140,7 +150,7 @@ class Accounting:
             raise Refusal("stale_inputs", "dossier context differs from captured approved contract")
         doc = {"schema_version": "dossier/2", "invocation_id": invocation_id,
                "dossier_revision": 1 + max((r["dossier_revision"] for r in records(inputs.raw, "dossiers")), default=0),
-               "evaluator_version": "stopping-result/1", "history": history, "input_hash": inputs.input_hash,
+               "evaluator_version": material.EVALUATOR, "history": history, "input_hash": inputs.input_hash,
                "material_digest": material.digest(inputs.raw, history),
                "result": dossier.encode(result)}
         boundary.require_schema(self._core._schemas, doc, "dossier-v2.schema.json", "payload_invalid")
@@ -180,8 +190,8 @@ class DossierInput:
     input_hash: str
 
 
-def convert_coverage_snapshot(rows: TopicCapture, topic_id: str, history: a.History) -> CoverageSnapshot:
-    inventory = convert_inventory(topic_id, rows, history)
+def convert_coverage_snapshot(rows: TopicCapture, topic_id: str, history: a.History, *, modes=None) -> CoverageSnapshot:
+    inventory = convert_inventory(topic_id, rows, history, modes=modes)
     pins = convert_window_pins(rows, topic_id)
     windows = {p.invocation_id for p in pins}
     branches = {r.disposition_id: r for r in inventory.registry_dispositions if r.registry_kind == "branch"}
@@ -209,11 +219,12 @@ def convert_window_pins(rows: TopicCapture, topic_id: str) -> tuple[v.WindowPin,
     return tuple(pins)
 
 
-def convert_inventory(topic_id: str, rows: TopicCapture, history: a.History) -> a.Inventory:
+def convert_inventory(topic_id: str, rows: TopicCapture, history: a.History, *, modes=None) -> a.Inventory:
     where = {"topic_id": topic_id}
+    passes, attribution = search_capture.resolve(lambda name: records(rows, name), modes or {})
     observations = tuple(a.Observation(o["observation_id"], o["invocation_id"], o["lane"], o["request_identity"],
                                        pagination.request_type(o["request"]), o["completeness"], o["page_outcome"], o["result_count"],
-                                       read_page(o))
+                                       read_page(o), **attribution[o["observation_id"]])
                          for o in records(rows, "search_observations"))
     retrievals = tuple(a.Retrieval(r["event_id"], r["observation_id"]) for r in records(rows, "retrieval_events"))
     events = {r.event_id for r in retrievals}
@@ -222,7 +233,6 @@ def convert_inventory(topic_id: str, rows: TopicCapture, history: a.History) -> 
                   if l["event_id"] in events and l["work_id"] in works)
     assessments = tuple(a.Assessment(s["work_id"]) for s in records(rows, "screening_assessments"))
     claims = tuple(a.Claim(c["claim_id"], c["revision"], c["status"]) for c in records(rows, "claims"))
-    passes = tuple(a.Pass(p["invocation_id"], p["kind"], p["state"], p["parent_invocation_id"]) for p in records(rows, "invocations"))
     semantic = tuple(a.SemanticAssessment(s["assessment_id"], s["work_id"], s["source_version"], s["contract_revision"],
         s["eligibility_protocol_version"], s["framing_version"], s["novelty"], s["independence"], s["applicability"], s["contribution"],
         tuple(a.EvidenceReference(**ref) for ref in s["evidence_refs"]), s["actor_kind"], s["invocation_id"],
