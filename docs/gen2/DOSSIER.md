@@ -317,6 +317,22 @@ Validated-only search proposals stay in committed payloads (P6); executor pins
 and bounds live in the bundle. Offline tests establish Router structure only;
 T13–T18 supply the production consumers for the supervised 2f workflow.
 
+## T4a / 2e1 3b-ii blocker (2026-11-07)
+
+Authenticated real-route rejection blocks admission and final start across the
+owning deployment/provider route, including known-zero results. Capability
+recovery and generic hold clearance do not clear it. Fixture provenance never
+becomes genuine from artifact labels. T4b owns reviewed remediation; DEBT-053
+stays open until the separate pre-2f procedure and evidence are accepted.
+
+## T4b / reviewed rejection remediation (2026-11-07)
+
+The existing operator-role decision route can approve one retained rejection,
+with topic/hash binding and retained procedure/review, manifest and qualification
+evidence. An append-only audit enables only the approved replacement pins;
+new rejections and unknown spending still block. No DDL or operator_decisions
+change. DEBT-053's real reviewed procedure remains a pre-2f operator gate.
+
 ## Sprint rulings, 2026-11-07 (Gate S #7 and after)
 
 Source: `private/reviews/gen2-gate-s7-fable-20261107.md` and `gen2-sprint-records-pending-20261107.md`. 

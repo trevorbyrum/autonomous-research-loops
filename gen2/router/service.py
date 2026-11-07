@@ -1017,6 +1017,8 @@ class Router:
         try:
             req = boundary.normalize(request, "request_invalid")
             boundary.require_schema(self._schemas, req, "router-commands#/$defs/operator_decision", "request_invalid")
+            if req["kind"] == "provider_auth_remediation":
+                return self._dispatch.remediate(req)
             if (req["kind"], req["disposition"]) in frozenset({("completion_approval", "approved")}) and self._one("operator_decisions", {"decision_id": req["decision_id"]}) is None:
                 stored = self._one("dossiers", {"topic_id": req["topic_id"], "dossier_revision": req["subject"]["revision"]})
                 if stored is not None:
@@ -1035,6 +1037,8 @@ class Router:
                     "reason": refusal.reason, "detail": _short(refusal.detail)}
 
     def _decision_in_transaction(self, req: dict, now: str) -> dict:
+        if self._dispatch.remediation_decision(req["decision_id"]) is not None:
+            raise Refusal("decision_id_conflict", "decision id already names provider-auth remediation")
         subject = req["subject"]
         row = {"decision_id": req["decision_id"], "topic_id": req["topic_id"], "kind": req["kind"], "disposition": req["disposition"],
                "subject_kind": subject["kind"], "subject_ref": subject["ref"], "subject_revision": subject["revision"], "subject_hash": subject["hash"],
