@@ -199,8 +199,9 @@ class Driver:
         spec = self._order(step, digest, str(directory))   # prepare() accepts a job directory that already holds the inputs
         self.station.supervisor.submit(WorkOrder(invocation_id=spec.invocation_id, kind=spec.kind, topic_id=spec.topic_id,
                                                  config_bundle_hash=spec.config_bundle_hash, deadline_at=spec.deadline_at,
-                                                 lease_expires_at=spec.lease_expires_at, command=spec.command,
-                                                 env={**spec.env, "GEN2_CONTEXT": step.context, "GEN2_STEP": f"{step.kind}/{step.purpose}#{step.ordinal}"}))
+                                                 lease_expires_at=spec.lease_expires_at,
+                                                 env={**spec.env, "GEN2_CONTEXT": step.context, "GEN2_STEP": f"{step.kind}/{step.purpose}#{step.ordinal}"},
+                                                 command=(spec.command[0], "-m", "gen2.app.child", str(directory))))   # the child, not exec.job: it builds the agent and builder
 
     def tick(self) -> workflow.Action:
         """One decision, and its one act. `present` is core.review_presentation.present, injected until it is merged. Any open hold of the topic stops the walk before anything is issued or advanced."""
