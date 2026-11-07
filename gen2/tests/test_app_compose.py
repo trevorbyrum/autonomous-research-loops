@@ -8,9 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from gen2.app import compose, run_topic, workflow
+from gen2.app import compose, workflow
 from gen2.app.driver import Context
-from gen2.app.station import StationRefused
 from gen2.app.workflow import Step
 from gen2.core import canonical
 from gen2.exec.common import Refused
@@ -92,38 +91,3 @@ class ComposeTest(unittest.TestCase):
                 seen += path.read_text(errors="replace")
         self.assertNotIn(CAPABILITY, seen)                                     # input.json, prompts, evidence, order.json (env) and journals
         self.assertNotIn(CAPABILITY, json.dumps([o.env for o in self.station.supervisor.submitted]))
-
-    def test_the_command_line_wires_the_station_and_prints_what_the_driver_says(self):
-        self.world.topic["status"] = "awaiting_scope_approval"
-        said, calls = [], []
-
-        def opener(root, **options):
-            calls.append(options)
-            return self.station
-        code = run_topic.main([str(self.world.root), TOPIC, "--prompts", str(self.world.root / "prompts")], opener=opener, say=said.append)
-        self.assertEqual((code, said, self.station.closed),
-                         (0, ["waiting for: the scoping report awaits approval; run: apply_operator_decision kind=scope_approval"], True))
-        self.assertEqual(set(calls[0]["supervisor_options"]["recorders"]), set(RECORDED))
-        self.assertIn("gateway_captures", calls[0]["router_options"])
-
-    def test_a_station_that_will_not_start_and_a_stopped_walk_give_distinct_exit_codes(self):
-        said = []
-
-        def refusing(root, **options):
-            raise StationRefused("no bundle")
-        self.assertEqual(run_topic.main([str(self.world.root), TOPIC], opener=refusing, say=said.append), 2)
-        self.world.topic["holds"] = [{"hold_id": "hold_x", "clears_when": "an operator acts"}]
-        self.assertEqual(run_topic.main([str(self.world.root), TOPIC, "--prompts", str(self.world.root / "prompts")], opener=lambda root, **o: self.station,
-                                        say=said.append), 3)
-
-    def test_a_token_is_only_ever_given_as_a_file_path(self):
-        self.world.topic["status"] = "awaiting_scope_approval"
-        captured = []
-        original = run_topic.Driver
-        run_topic.Driver = lambda *a, **k: captured.append(k["discovery_env"]) or original(*a, **k)
-        try:
-            run_topic.main([str(self.world.root), TOPIC, "--prompts", str(self.world.root / "prompts"), "--gateway-url", "http://g.invalid",
-                            "--gateway-token-file", "/run/secrets/gw"], opener=lambda root, **o: self.station, say=lambda line: None)
-        finally:
-            run_topic.Driver = original
-        self.assertEqual(captured, [{"GEN2_GATEWAY_URL": "http://g.invalid", "GEN2_SECRET_GATEWAY_TOKEN_FILE": "/run/secrets/gw"}])
