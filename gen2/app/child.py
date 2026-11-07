@@ -16,7 +16,9 @@ import sys
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
+from gen2.app import factories
 from gen2.core import canonical
+from gen2.core.evidence_media import EVIDENCE_MEDIA, evidence_name
 from gen2.exec import job
 from gen2.exec.common import Refused
 from gen2.router.schemas import SchemaSet
@@ -25,20 +27,35 @@ JUDGMENT = {"research_pass/scope": "judgment-scope", "research_pass/research": "
             "checkpoint/challenge": "judgment-challenge", "checkpoint/review": "judgment-review"}
 CODE_ONLY = ("checkpoint/dossier",)
 Stage = Callable[[bytes, str], Mapping]
-Factory = Callable[[Stage], job.Builder]
-TABLE: dict[str, Factory] = {}   # "kind/purpose" -> builder factory; installed by the composition
+BytesOf = Callable[[str], bytes]
+Factory = Callable[[Stage, BytesOf], job.Builder]
 
 
 def evidence_stage(directory: Path) -> Stage:
-    """Stage by setting the bytes aside in `directory` as `evidence-<sha256 hex>.json`, the only form the supervisor stages (JSON,
-    named by its own digest). The caller names no path; the returned ref is the bytes' own."""
+    """Stage by setting the bytes aside in `directory` as `evidence-<sha256 hex><ext>` (core.evidence_media: JSON or text, the
+    extension fixing the media), the only form the supervisor stages. The caller names no path; the returned ref is the bytes' own."""
     def stage(data: bytes, media_type: str) -> dict:
-        if media_type != "application/json":
-            raise Refused(f"evidence is staged as application/json, not {media_type}")
-        digest = canonical.bytes_digest(data)
-        (Path(directory) / f"evidence-{digest.removeprefix('sha256:')}.json").write_bytes(data)
-        return {"content_hash": digest, "size_bytes": len(data), "media_type": media_type}
+        try:
+            name = evidence_name(canonical.bytes_digest(data), media_type)
+        except ValueError as error:
+            raise Refused(str(error)) from None
+        (Path(directory) / name).write_bytes(data)
+        return {"content_hash": canonical.bytes_digest(data), "size_bytes": len(data), "media_type": media_type}
     return stage
+
+
+def bytes_of(directory: Path) -> BytesOf:
+    """The retained bytes a view names by hash, read from the evidence files the driver set aside, each checked against its name."""
+    def read(content_hash: str) -> bytes:
+        for extension in EVIDENCE_MEDIA:
+            path = Path(directory) / f"evidence-{content_hash.removeprefix('sha256:')}{extension}"
+            if path.is_file() and not path.is_symlink():
+                data = path.read_bytes()
+                if canonical.bytes_digest(data) != content_hash:
+                    raise Refused(f"{path.name} does not hash to its name")
+                return data
+        raise Refused(f"no retained bytes were set aside for {content_hash}")
+    return read
 
 
 def validator(key: str, schemas: SchemaSet | None = None) -> Callable[[str, object], None]:
@@ -57,10 +74,10 @@ def _no_judgment(prompt: bytes, raw_input: bytes, out: Path) -> int:
     return 0
 
 
-def run(key: str, directory: Path, *, input_digest: str, table: Mapping[str, Factory] = TABLE,
+def run(key: str, directory: Path, *, input_digest: str, table: Mapping[str, Factory] | None = None,
         agent: job.Agent | None = None, validate: Callable[[str, object], None] | None = None) -> Path:
     """Run one order's purpose in `directory` and return the written outcome.json path."""
-    factory = table.get(key)
+    factory = (factories.TABLE if table is None else table).get(key)
     if factory is None:
         raise Refused(f"no builder is installed for {key}")
     code_only = key in CODE_ONLY
@@ -68,10 +85,10 @@ def run(key: str, directory: Path, *, input_digest: str, table: Mapping[str, Fac
         raise Refused("the live runner entrance is closed: a model purpose needs an injected agent step")
     kind, purpose = key.split("/")
     return job.run(purpose, Path(directory), input_digest=input_digest, agent=_no_judgment if code_only else agent,
-                   builder=factory(evidence_stage(Path(directory))), validate=(lambda *_: None) if code_only else (validate or validator(key)))
+                   builder=factory(evidence_stage(Path(directory)), bytes_of(Path(directory))), validate=(lambda *_: None) if code_only else (validate or validator(key)))
 
 
-def main(argv: Sequence[str], *, env: Mapping[str, str] | None = None, table: Mapping[str, Factory] = TABLE, agent: job.Agent | None = None) -> int:
+def main(argv: Sequence[str], *, env: Mapping[str, str] | None = None, table: Mapping[str, Factory] | None = None, agent: job.Agent | None = None) -> int:
     """`python -m gen2.app.child <directory>`; the purpose and the input digest come from the order's environment."""
     env = os.environ if env is None else env
     try:

@@ -19,7 +19,9 @@ DOS, REV = S("checkpoint", "dossier", 1), S("checkpoint", "review", 1)
 
 
 def at(status, jobs=None, reviews=(), **budgets):
-    return w.plan(status, jobs or {}, reviews=reviews, **budgets)
+    """`reviews` stands for an open or begun checkpoint (the driver then supplies its context); without one there is no epoch to follow."""
+    began = bool(reviews) or any(step.kind == "checkpoint" for step in (jobs or {}))
+    return w.plan(status, jobs or {}, epoch="" if began else None, **budgets)
 
 
 class PlanTest(unittest.TestCase):
@@ -49,6 +51,14 @@ class PlanTest(unittest.TestCase):
             with self.subTest(case):
                 self.assertEqual(at("scoping", jobs, max_rounds=3), expected)
         self.assertEqual(at("scoping", {SCOPE1: C, SCOPE2: C}, max_rounds=2), w.Stop("scoping spent its 2 rounds"))
+
+    def test_a_discovery_issue_carries_the_step_whose_proposals_it_executes(self):
+        self.assertEqual(at("scoping", {SCOPE1: PROPOSING}).proposer, SCOPE1)
+        research = at("queued", {RES1: PROPOSING})
+        self.assertEqual((research, research.proposer), (w.Issue(DISC1), RES1))
+        challenge = at("resting", {RES1: C, VER: C, CH1: PROPOSING}, reviews=["rev_a"])
+        self.assertEqual((challenge.step.purpose, challenge.proposer), ("search", CH1))
+        self.assertIsNone(at("scoping").proposer)
 
     def test_the_contract_walk_in_order(self):
         steps = [({}, w.Issue(RES1)), ({RES1: PROPOSING}, w.Issue(DISC1)), ({RES1: PROPOSING, DISC1: C}, w.Issue(RES2)),

@@ -28,14 +28,14 @@ def inputs(directory: Path, kind: str, purpose: str) -> dict:
     return {"GEN2_PURPOSE": f"{kind}/{purpose}", "GEN2_INPUT_DIGEST": digest}
 
 
-def review_factory(stage):
+def review_factory(stage, bytes_of):
     def build(work, judgment):
         ref = stage(canonical.canonical_bytes(judgment), "application/json")
         return {**common.scaffold(work["invocation_id"], work["topic_id"]), "probe": ref}   # not an outcome section: only the staged ref is under test
     return build
 
 
-def empty_factory(stage):
+def empty_factory(stage, bytes_of):
     return lambda work, judgment: common.scaffold(work["invocation_id"], work["topic_id"])
 
 
@@ -60,8 +60,35 @@ class ChildTest(unittest.TestCase):
         self.assertEqual((ref, (self.dir / name).read_bytes()), ({"content_hash": "sha256:" + hashlib.sha256(data).hexdigest(), "size_bytes": 8, "media_type": "application/json"}, data))
         self.assertEqual(stage(data, "application/json"), ref)   # staging the same bytes again is a no-op
         with self.assertRaises(common.Refused):
-            stage(data, "text/plain")
-        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), [name])
+            stage(data, "application/octet-stream")                  # only the forms core.evidence_media names
+        text = stage("claim text".encode(), "text/plain")
+        self.assertEqual((text["media_type"], (self.dir / f"evidence-{hashlib.sha256(b'claim text').hexdigest()}.txt").read_bytes()), ("text/plain", b"claim text"))
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), sorted([name, f"evidence-{hashlib.sha256(b'claim text').hexdigest()}.txt"]))   # nothing written for the refused one
+
+    def test_bytes_of_reads_only_digest_checked_evidence_files(self):
+        stage, read = child.evidence_stage(self.dir), child.bytes_of(self.dir)
+        ref = stage(b'{"a": 1}', "application/json")
+        text = stage(b"words", "text/plain")
+        self.assertEqual((read(ref["content_hash"]), read(text["content_hash"])), (b'{"a": 1}', b"words"))
+        with self.assertRaises(common.Refused):
+            read("sha256:" + "0" * 64)                                # nothing was set aside for it
+        (self.dir / f"evidence-{ref['content_hash'].removeprefix('sha256:')}.json").write_bytes(b"tampered")
+        with self.assertRaises(common.Refused):
+            read(ref["content_hash"])                                 # the name is a claim the bytes must meet
+
+    def test_the_default_table_builds_a_pure_builder_for_every_purpose_in_a_fresh_process(self):
+        from unittest import mock
+        from gen2.app import factories
+        from gen2.exec import receipts, research
+        self.assertEqual(set(factories.TABLE), set(child.JUDGMENT) | set(child.CODE_ONLY))
+        stage, read = child.evidence_stage(self.dir), child.bytes_of(self.dir)
+        for key in ("research_pass/scope", "checkpoint/challenge", "checkpoint/review", "checkpoint/dossier"):
+            self.assertTrue(callable(factories.TABLE[key](stage, read)), key)
+        with mock.patch.object(research, "research_builder") as pure, mock.patch.object(receipts, "make_builder") as verify:
+            factories.TABLE["research_pass/research"](stage, read)
+            factories.TABLE["verification/verify"](stage, read)
+        pure.assert_called_once_with(stage)                              # no reader, exchanges or spool: the stage only
+        verify.assert_called_once_with(read, stage, normalization=factories.NORMALIZATION)
 
     def test_a_model_purpose_runs_the_agent_validates_and_writes_outcome_and_evidence_in_one_directory(self):
         env = inputs(self.dir, "checkpoint", "review")

@@ -5,10 +5,11 @@ recover; durable order identity; no scientific stopping; unknown-spend and rejec
 same job by its id), RG-9. Oracle: the supervisor's own journal (settled / incident), read per step by its deterministic order id,
 and the router's status; the driver keeps no state of its own. Limits: the per-purpose views, and the agent and builder behind each
 order's command, are `Kit`s the composition supplies (T13-T16 own them); the driver chooses no content, only which step is next.
-`present` is core.review_presentation.present, injected until it is merged. Any open hold of the topic (the unknown-spend and rejection blockers are holds) stops it; it clears nothing and requeues nothing.
+The completion wait prints the router's own status `review` block (core.review_presentation.present). Any open hold of the topic (the unknown-spend and rejection blockers are holds) stops it; it clears nothing and requeues nothing.
 """
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -18,13 +19,17 @@ from typing import Callable, Mapping, Protocol, Sequence
 from gen2.app import workflow
 from gen2.app.workflow import Advance, Done, Issue, Job, Step, Stop, Wait
 from gen2.core import canonical
+from gen2.core.evidence_media import evidence_name
 from gen2.exec import orders
 from gen2.exec.common import Refused
 from gen2.supervisor import jobs as supervisor_jobs
-from gen2.supervisor.supervisor import WorkOrder
+from gen2.supervisor.supervisor import MAX_EVIDENCE, MAX_EVIDENCE_BYTES, WorkOrder
 
 HALTS = ("unknown_unresolved", "stalled", "not_admitted", "backend_end_unconfirmed", "router_unavailable")  # advance results that need a person
 COMPLETION = "apply_operator_decision kind=completion_approval"
+# Where each purpose's view names the retained responses its builder cites (Gate S #7 §7.1: the builder reads nothing the view does not carry).
+NAMED = {("research_pass", "research"): ("works",), ("verification", "verify"): ("claims", "sources"), ("checkpoint", "challenge"): ("searches", "observations")}
+REF = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
 
 
 @dataclass(frozen=True)
@@ -35,9 +40,10 @@ class Context:
     topic_id: str
     admission: Mapping
     episodes: Sequence[str]   # the review episode this checkpoint step belongs to (from its context), else empty
-    dossier_revision: int | None
+    dossier_revision: int | None   # the status review's latest dossier for the active contract
     outcome: Callable[[Step], dict | None]   # a committed step's outcome document, or None
     as_of: str
+    proposer: Step | None = None   # discovery only: the step whose committed proposals it executes
 
 
 class Kit(Protocol):
@@ -52,11 +58,16 @@ def _now() -> datetime:
 
 class Driver:
     def __init__(self, station, *, topic_id: str, bundle_hash: str, kits: Mapping[tuple[str, str], Kit], prompt_dir: Path,
-                 present: Callable[..., dict], max_passes: int = 1, max_rounds: int = 3, clock: Callable[[], datetime] = _now, sleep: Callable[[float], None] = time.sleep,
+                 child_module: str = "gen2.app.child", discovery_module: str = "gen2.discovery.child", discovery_env: Mapping[str, str] | None = None,
+                 max_passes: int = 1, max_rounds: int = 3, clock: Callable[[], datetime] = _now, sleep: Callable[[float], None] = time.sleep,
                  say: Callable[[str], None] = print) -> None:
         self.station, self.topic_id, self.bundle_hash, self.kits = station, topic_id, bundle_hash, dict(kits)
         self.prompt_dir, self.max_passes, self.max_rounds = Path(prompt_dir), max_passes, max_rounds
-        self.clock, self.sleep, self.say, self.present = clock, sleep, say, present   # present: core.review_presentation.present
+        self.clock, self.sleep, self.say = clock, sleep, say
+        self.child_module, self.discovery_module, self.last_topic = child_module, discovery_module, {}
+        self.discovery_env = dict(discovery_env or {})
+        if any("TOKEN" in key and not key.endswith("_FILE") for key in self.discovery_env):
+            raise Refused("a token never rides in the order: give the path of a file (a *_FILE variable)")
 
     # -- facts ------------------------------------------------------------------
     def topic(self) -> dict:
@@ -107,19 +118,6 @@ class Driver:
 
     def __contains__(self, step: Step) -> bool:
         return self.get(step) is not None
-
-    def dossier_revision(self) -> int | None:
-        """The latest recorded dossier revision: ask the router for 1, 2, ... until it answers `unknown_dossier` (the end of the
-        history). Any other refusal is an error, never taken as the end."""
-        found, revision = None, 1
-        while True:
-            answer = self.station.router.topic_records({"topic_id": self.topic_id, "families": ["dossiers"], "dossier_revision": revision})
-            if answer.get("status") == "ok":
-                found, revision = revision, revision + 1
-            elif answer.get("reason") == "unknown_dossier":
-                return found
-            else:
-                raise Refused(f"topic_records refused dossier {revision}: {answer.get('reason')}")
 
     def _orders(self):
         """The orders of this topic that the supervisor holds (its own durable journal); each carries the context it was issued under."""
@@ -178,7 +176,44 @@ class Driver:
         return {"context": "contract/1", "contract": {"revision": contract["revision"], "content_hash": contract["content_hash"]}}
 
     # -- acting -----------------------------------------------------------------
-    def issue(self, step: Step, topic: Mapping) -> None:
+    def set_aside(self, step: Step, view: Mapping, directory: Path) -> None:
+        """Write the retained responses the view's named fields cite into the job's scratch as evidence files (core.evidence_media), so
+        the supervisor stages them with the commit (#131) and the pure builder can read them by hash. Only the named fields are read; a
+        missing or malformed one refuses the view, bytes missing or not matching their ref refuse, and the count and bytes are bounded
+        by the supervisor's own caps. A field of None means nothing is retained for it and is skipped."""
+        path = NAMED.get((step.kind, step.purpose))
+        if path is None:
+            return
+        items = [view]
+        for key in path:
+            lists = [item.get(key) if isinstance(item, Mapping) else None for item in items]
+            if not all(isinstance(found, list) for found in lists):
+                raise Refused(f"{step.kind}/{step.purpose}: the view has no list `{key}` where its builder reads one")
+            items = [entry for found in lists for entry in found]
+        refs = {}
+        for item in items:
+            if not isinstance(item, Mapping) or "artifact_ref" not in item:
+                raise Refused(f"{step.kind}/{step.purpose}: a view entry has no artifact_ref")
+            ref = item["artifact_ref"]
+            if ref is None:
+                continue
+            if not (isinstance(ref, Mapping) and set(ref) == {"content_hash", "size_bytes", "media_type"} and isinstance(ref["content_hash"], str)
+                    and REF.match(ref["content_hash"]) and isinstance(ref["size_bytes"], int) and isinstance(ref["media_type"], str)):
+                raise Refused(f"{step.kind}/{step.purpose}: an artifact_ref is malformed")
+            refs[ref["content_hash"]] = ref
+        if len(refs) > MAX_EVIDENCE or sum(r["size_bytes"] for r in refs.values()) > MAX_EVIDENCE_BYTES:
+            raise Refused(f"resource: {len(refs)} retained responses ({sum(r['size_bytes'] for r in refs.values())} bytes) exceed the evidence caps")
+        directory.mkdir(parents=True, exist_ok=True)
+        for ref in refs.values():
+            data = self.station.spool.read(ref["content_hash"], topic_id=self.topic_id)
+            if data is None or canonical.bytes_digest(data) != ref["content_hash"] or len(data) != ref["size_bytes"]:
+                raise Refused(f"the retained response {ref['content_hash']} is missing or does not match its reference")
+            try:
+                (directory / evidence_name(ref["content_hash"], ref["media_type"])).write_bytes(data)
+            except ValueError as error:
+                raise Refused(str(error)) from None
+
+    def issue(self, step: Step, topic: Mapping, proposer: Step | None = None) -> None:
         """Assemble the step's input, write it, build its order from the bundle's pins and submit it. Nothing is durable until the
         supervisor's prepare, so a crash before it leaves no job and the step is issued again from the same facts."""
         kit = self.kits.get((step.kind, step.purpose))
@@ -190,31 +225,37 @@ class Driver:
         records = self.station.router.topic_records({"topic_id": self.topic_id, "families": list(kit.families)})["records"] if kit.families else {}
         admission, truncation = self.admission(topic), []
         episode = step.context.partition(".")[2] if step.kind == "checkpoint" else ""
-        context = Context(step, invocation, self.topic_id, admission, [episode] if episode else [], self.dossier_revision(),
-                          self.outcome, self.clock().strftime("%Y-%m-%dT%H:%M:%SZ"))
-        document = orders.work_input(kind=step.kind, purpose=step.purpose, invocation_id=invocation, topic_id=self.topic_id, admission=admission,
-                                     entry=entry, view=kit.view(context, records, truncation), truncation=truncation)
+        if step.kind == "discovery" and proposer is None:
+            raise Refused("a discovery run needs the step whose proposals it executes")
+        context = Context(step, invocation, self.topic_id, admission, [episode] if episode else [],
+                          ((topic.get("review") or {}).get("dossier") or {}).get("revision"), self.outcome,
+                          self.clock().strftime("%Y-%m-%dT%H:%M:%SZ"), proposer)
+        view = kit.view(context, records, truncation)
         directory = self.station.supervisor.job(invocation).scratch   # the executor's cwd and where the supervisor collects outcome.json: one location
+        self.set_aside(step, view, directory)   # before the inputs, and before prepare: a crash here leaves no job
+        document = orders.work_input(kind=step.kind, purpose=step.purpose, invocation_id=invocation, topic_id=self.topic_id, admission=admission,
+                                     entry=entry, view=view, truncation=truncation)
         digest = orders.write_inputs(directory, entry=entry, prompt=prompt, document=document)
         spec = self._order(step, digest, str(directory))   # prepare() accepts a job directory that already holds the inputs
         self.station.supervisor.submit(WorkOrder(invocation_id=spec.invocation_id, kind=spec.kind, topic_id=spec.topic_id,
                                                  config_bundle_hash=spec.config_bundle_hash, deadline_at=spec.deadline_at,
                                                  lease_expires_at=spec.lease_expires_at,
-                                                 env={**spec.env, "GEN2_CONTEXT": step.context, "GEN2_STEP": f"{step.kind}/{step.purpose}#{step.ordinal}"},
-                                                 command=(spec.command[0], "-m", "gen2.app.child", str(directory))))   # the child, not exec.job: it builds the agent and builder
+                                                 env={**spec.env, "GEN2_CONTEXT": step.context, "GEN2_STEP": f"{step.kind}/{step.purpose}#{step.ordinal}",
+                                                      **(self.discovery_env if step.kind == "discovery" else {})},
+                                                 command=(spec.command[0], "-m", self.discovery_module if step.kind == "discovery" else self.child_module, str(directory))))
 
     def tick(self) -> workflow.Action:
-        """One decision, and its one act. `present` is core.review_presentation.present, injected until it is merged. Any open hold of the topic stops the walk before anything is issued or advanced."""
-        topic = self.topic()
+        """One decision, and its one act. The completion wait prints the router's own status `review` block (core.review_presentation.present). Any open hold of the topic stops the walk before anything is issued or advanced."""
+        topic = self.last_topic = self.topic()
         if topic["holds"]:
             hold = topic["holds"][0]
             return Stop(f"open hold {hold['hold_id']}: {hold.get('clears_when')}")
         if (stray := self.unsettled_elsewhere(topic)) is not None and topic["active_contract_revision"] is not None:
             return Stop(stray)
-        action = workflow.plan(topic["status"], self, reviews=[r["episode_id"] for r in topic["reviews"]],
+        action = workflow.plan(topic["status"], self,
                                max_passes=self.max_passes, max_rounds=self.max_rounds, **self.facts(topic))
         if isinstance(action, Issue):
-            self.issue(action.step, topic)
+            self.issue(action.step, topic, action.proposer)
         elif isinstance(action, Advance):
             result = self.station.supervisor.advance(self.invocation_id(action.step))
             if result in HALTS:
@@ -231,23 +272,11 @@ class Driver:
             self.sleep(0.2)
         return self._say(Stop(f"still working after {max_ticks} ticks; run the driver again"))
 
-    def _shown(self) -> dict:
-        """present() for the dossier revision the newest sufficiency review is bound to: the exact one the operator would approve."""
-        reviews = self.station.router.topic_records({"topic_id": self.topic_id, "families": ["completion_records"]})["records"]["completion_records"]
-        bound = [r["subject_revision"] for r in reviews if r["kind"] == "sufficiency_review"]
-        if not bound:
-            raise Refused("no sufficiency review is recorded")
-        answer = self.station.router.topic_records({"topic_id": self.topic_id, "dossier_revision": bound[-1], "families": ["dossiers", "completion_records"]})
-        if answer.get("status") != "ok":
-            raise Refused(f"dossier {bound[-1]}: {answer.get('reason')}")
-        return self.present(answer["records"], lambda ref: self.station.spool.read(ref["content_hash"], topic_id=self.topic_id), dossier_revision=bound[-1])
-
     def _say(self, action: workflow.Action) -> str:
         if isinstance(action, Wait):
-            try:
-                shown = self._shown() if action.command == COMPLETION else None
-            except (Refused, ValueError, KeyError) as error:   # never a bare approval wait: the operator must see the review first
-                return self._say(Stop(f"cannot show the review for approval: {error}"))
+            shown = self.last_topic.get("review") if action.command == COMPLETION else None
+            if action.command == COMPLETION and not (shown and shown.get("approvable")):   # never a bare approval wait: the operator must see the review first
+                return self._say(Stop("cannot show the review for approval: the status carries no sufficiency review for the latest dossier"))
             text = workflow.waiting_line(action, shown)
         else:
             text = "done" if isinstance(action, Done) else f"stopped: {action.reason}"

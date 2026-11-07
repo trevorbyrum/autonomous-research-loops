@@ -59,3 +59,25 @@ class Evidence(SupervisedTestCase):
                 self.assertEqual(self.run_job(EVIDENCE, {self.name(): EVIDENCE}, content_hash=malformed), "failed")
                 self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "failed")
                 self.assertEqual(self.dispositions(), 0)
+
+    def test_text_evidence_is_staged_as_text_and_unsupported_forms_are_ignored(self) -> None:
+        text = b"claim words"
+        name = "evidence-" + canonical.bytes_digest(text)[len("sha256:"):] + ".txt"
+        outcome = {**rf.empty_outcome(MAIN), "registry_dispositions": [example_disposition({**ref_of(text), "media_type": "text/plain"}, 0)]}
+        self.supervisor.prepare(self.order("checkpoint", [{"op": "write", "name": name, "hex": text.hex()},
+                                                           {"op": "write", "name": name.replace(".txt", ".bin"), "hex": text.hex()},
+                                                           {"op": "write", "name": "outcome.json", "text": canonical.canonical_bytes(outcome).decode()}]))
+        self.assertEqual(self.supervisor.run(MAIN), "committed")
+        collected = self.supervisor.job(MAIN).read("journal.json")["collected"]
+        self.assertEqual([r["media_type"] for r in collected["evidence"]], ["text/plain"])     # the .bin file was never a candidate
+
+    def test_more_than_sixteen_files_and_a_media_conflict_are_handled_without_an_error(self) -> None:
+        from gen2.supervisor import supervisor as module
+        files = {"evidence-" + canonical.bytes_digest(b"n%d" % n)[len("sha256:"):] + ".json": b"n%d" % n for n in range(module.MAX_EVIDENCE - 1)}
+        self.assertEqual(self.run_job(EVIDENCE, {**files, self.name(): EVIDENCE}), "committed")    # well past the old cap of 16, and the citation is still listed
+        self.assertEqual(len(self.supervisor.job(MAIN).read("journal.json")["collected"]["evidence"]), module.MAX_EVIDENCE)
+
+    def test_bytes_the_topic_already_holds_under_another_media_are_not_listed_and_do_not_raise(self) -> None:
+        self.spool.stage(rf.TOPIC, EVIDENCE, "text/plain")                                      # the same bytes, staged earlier as text
+        self.assertEqual(self.run_job(EVIDENCE, {self.name(): EVIDENCE}), "failed")             # payload_missing, a normal refusal
+        self.assertEqual(self.dispositions(), 0)

@@ -10,7 +10,7 @@ is unknown or is held stops the walk; nothing here retries, requeues or clears a
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
 from gen2.exec.common import Refused
@@ -57,6 +57,7 @@ class Job:
 @dataclass(frozen=True)
 class Issue:
     step: Step
+    proposer: Step | None = field(default=None, compare=False)   # the step whose committed proposals a discovery run executes
 
 
 @dataclass(frozen=True)
@@ -92,13 +93,12 @@ def _context(prefix: str, *values: object) -> str:
     return "" if all(v is None for v in values) else prefix + ".".join(str(v) for v in values)
 
 
-def plan(status: str, jobs: Mapping[Step, Job], *, reviews: Sequence[str], max_passes: int = 1, max_rounds: int = 3,
-         brief: int | None = None, contract: int | None = None, epoch: str | None = "", finished: bool = False) -> Action:
-    """The next action for a topic with this queue status, open review episodes and step jobs. `brief` is the confirmed brief's
+def plan(status: str, jobs: Mapping[Step, Job], *, max_passes: int = 1, max_rounds: int = 3,
+         brief: int | None = None, contract: int | None = None, epoch: str | None, finished: bool = False) -> Action:
+    """The next action for a topic with this queue status and step jobs. `brief` is the confirmed brief's
     version and `contract` the approved contract revision: they give each phase its own step identities. `epoch` is the checkpoint's
     context, `c<revision>.<episode_id>` of the router's review episode the driver follows (an epoch is one episode's challenge,
-    dossier and review); None means no episode is open or unfinished, and `finished` says an earlier epoch reached its review. The
-    default "" is the caller with no phases, which looks at `reviews` instead."""
+    dossier and review); None means no episode is open or unfinished, and `finished` says an earlier epoch reached its review."""
     if status == "completed_with_qualified_conclusions":
         return Done()
     if status in OPERATOR:
@@ -120,7 +120,8 @@ def plan(status: str, jobs: Mapping[Step, Job], *, reviews: Sequence[str], max_p
         done = run(step)
         if done is not None or not jobs[step].proposals:
             return done
-        return run(Step("discovery", "search", next(searches), step.context))
+        action = run(Step("discovery", "search", next(searches), step.context))
+        return Issue(action.step, proposer=step) if isinstance(action, Issue) else action
     if status == "scoping":
         pre = _context("p", brief)
         for round_ in range(1, max_rounds + 1):
@@ -141,8 +142,6 @@ def plan(status: str, jobs: Mapping[Step, Job], *, reviews: Sequence[str], max_p
     if epoch is None:
         return Wait(*COMPLETION_WAIT) if finished else Wait("no review is open for the checkpoint", "open_review")
     first = Step("checkpoint", "challenge", 1, epoch)
-    if first not in jobs and not reviews and epoch == "":
-        return Wait("no review is open for the checkpoint", "open_review")
     action = then_search(first)
     if action is None and jobs[first].proposals:
         action = run(Step("checkpoint", "challenge", 2, epoch))

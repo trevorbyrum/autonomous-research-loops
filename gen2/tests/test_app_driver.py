@@ -117,11 +117,10 @@ class World:
             families = ("intake_briefs",)
 
             def view(self, context, records, truncation):
-                return {"step": [context.step.purpose, context.step.ordinal], "admission": context.admission["context"]}
+                shape = {("research_pass", "research"): {"works": []}, ("verification", "verify"): {"claims": []}, ("checkpoint", "challenge"): {"searches": []}}
+                return {"step": [context.step.purpose, context.step.ordinal], "admission": context.admission["context"], **shape.get((context.step.kind, context.step.purpose), {})}
         kits = {key: Kit() for key in workflow.LIMITS}
         return driver.Driver(station or self.station(), topic_id=TOPIC, bundle_hash=BUNDLE, kits=kits, prompt_dir=self.root / "prompts",
-                             present=lambda records, read, dossier_revision: {"dossier": {"revision": dossier_revision, "content_hash": HASH, "state": "satisfied", "gates": []},
-                                                                              "reviews": [{"outcome": "insufficient", "summary": "claim 2 unsearched", "evidence": []}], "approvable": True},
                              clock=lambda: NOW, sleep=lambda s: None, say=self.said.append, **options)
 
 
@@ -232,37 +231,36 @@ class DriverTest(unittest.TestCase):
     def commit(self, d, *steps, proposals=()):
         """Each step is ISSUED through the driver's own submission path, then only the journal says it settled."""
         for step in steps:
-            d.issue(step, self.world.topic)
+            d.issue(step, self.world.topic, proposer=scope(1) if step.kind == "discovery" else None)
             self.settle(d, step, step in proposals)
 
-    def test_the_completion_wait_prints_the_review_and_its_evidence_for_the_dossier_the_review_is_bound_to(self):
-        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[])
-        self.world.dossiers = {1: {}, 2: {}, 3: {}}      # a later dossier exists; the review, and so the approval, is of revision 2
-        self.world.records["completion_records"] = [self.REVIEW]
+    SHOWN = {"dossier": {"revision": 2, "content_hash": HASH, "state": "satisfied", "gates": []}, "approvable": True,
+             "reviews": [{"outcome": "insufficient", "summary": "claim 2 unsearched", "evidence": []}]}
+
+    def test_the_completion_wait_prints_the_status_review_block_with_the_review_and_its_evidence(self):
+        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[], review=self.SHOWN)
         d = self.world.driver()
         self.commit(d, contract("research_pass", "research"), contract("verification", "verify"), checkpoint("challenge"), checkpoint("dossier"), checkpoint("review"))
         text = d.run()
         for fragment in ("run: apply_operator_decision kind=completion_approval", "dossier revision 2", "review insufficient: claim 2 unsearched"):
             self.assertIn(fragment, text)
 
-    def test_a_completion_wait_that_cannot_show_the_review_is_refused_not_printed_bare(self):
-        self.world.topic.update(status="resting", active_contract_revision=1)
+    def test_a_completion_wait_without_a_reviewed_status_block_is_refused_not_printed_bare(self):
+        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[])
         d = self.world.driver()
         self.commit(d, contract("research_pass", "research"), contract("verification", "verify"), checkpoint("challenge"), checkpoint("dossier"), checkpoint("review"))
-        self.assertIn("stopped: cannot show the review for approval: no sufficiency review is recorded", d.run())   # no review row
-        self.world.records["completion_records"] = [self.REVIEW]
-        self.world.dossiers = {}                                                                                      # review bound to a dossier the router lacks
-        self.assertIn("stopped: cannot show the review for approval", d.run())
+        for review in (None, {**self.SHOWN, "approvable": False, "reviews": []}):
+            with self.subTest(review=review):
+                self.world.topic["review"] = review
+                self.assertIn("stopped: cannot show the review for approval", d.run())
 
-    def test_the_latest_dossier_is_found_past_fifty_and_only_unknown_dossier_ends_the_history(self):
-        self.world.dossiers = dict.fromkeys(range(1, 61), {})
-        self.assertEqual(self.world.driver().dossier_revision(), 60)
-        self.world.dossiers = {}
-        self.assertIsNone(self.world.driver().dossier_revision())
+    def test_the_review_kit_is_given_the_status_blocks_latest_dossier_revision(self):
+        seen = []
+        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[], review=self.SHOWN)
         d = self.world.driver()
-        d.station.router.topic_records = lambda request: {"status": "refused", "reason": "store_busy"}
-        with self.assertRaises(Refused):
-            d.dossier_revision()
+        d.kits[("checkpoint", "review")].view = lambda context, records, truncation: seen.append(context.dossier_revision) or {}
+        d.issue(checkpoint("review"), self.world.topic)
+        self.assertEqual(seen, [2])
 
     def test_the_scoping_and_research_phases_do_not_share_a_discovery_identity(self):
         """Scoping discovery #1 is committed; the contract's research proposed searches, so ITS discovery #1 is next, not verification."""
@@ -363,6 +361,103 @@ class DriverTest(unittest.TestCase):
         step = checkpoint("challenge", episode="rev_two")
         self.assertEqual(self.world.driver().invocation_id(step), self.world.driver(self.world.station()).invocation_id(step))
         self.assertNotEqual(self.world.driver().invocation_id(step), self.world.driver().invocation_id(checkpoint("challenge", episode="rev_one")))
+
+    def ref(self, data: bytes, media="application/json"):
+        self.world.blobs[canonical.bytes_digest(data)] = data
+        return {"content_hash": canonical.bytes_digest(data), "size_bytes": len(data), "media_type": media}
+
+    def aside(self, step, view, directory=None):
+        directory = directory or self.world.root / "scratch"
+        self.world.driver().set_aside(step, view, directory)
+        return directory
+
+    def test_only_the_views_named_fields_are_set_aside_as_evidence_files_named_by_digest(self):
+        one, two, text = self.ref(b'{"a": 1}'), self.ref(b'{"b": 2}'), self.ref(b"abstract words", "text/plain")
+        stray = self.ref(b"not named")
+        for step, view in ((contract("research_pass", "research"), {"works": [{"artifact_ref": one}, {"artifact_ref": one}, {"artifact_ref": text}], "elsewhere": {"artifact_ref": stray}}),
+                           (contract("verification", "verify"), {"claims": [{"sources": [{"artifact_ref": one}]}, {"sources": [{"artifact_ref": two}]}]}),
+                           (checkpoint("challenge"), {"searches": [{"observations": [{"artifact_ref": one}, {"artifact_ref": None}]}]})):
+            with self.subTest(step.purpose):
+                directory = self.aside(step, view)
+                names = sorted(p.name for p in directory.iterdir())
+                expected = {"research": 2, "verify": 2, "challenge": 1}[step.purpose]
+                self.assertEqual(len(names), expected)
+                self.assertTrue(all(n.startswith("evidence-") for n in names))
+                self.assertNotIn(stray["content_hash"].removeprefix("sha256:"), " ".join(names))
+                for p in directory.iterdir():
+                    p.unlink()
+
+    def test_text_evidence_gets_the_text_form(self):
+        text = self.ref(b"abstract words", "text/plain")
+        directory = self.aside(contract("research_pass", "research"), {"works": [{"artifact_ref": text}]})
+        self.assertEqual([p.name for p in directory.iterdir()], [f"evidence-{text['content_hash'].removeprefix('sha256:')}.txt"])
+
+    def test_a_view_with_a_named_field_missing_or_malformed_is_refused_and_nothing_is_written(self):
+        good = self.ref(b"x")
+        for case, step, view in (("no list", contract("research_pass", "research"), {}),
+                                 ("entry without the field", contract("research_pass", "research"), {"works": [{"work_id": "w"}]}),
+                                 ("not a ref", contract("research_pass", "research"), {"works": [{"artifact_ref": "sha256:" + "0" * 64}]}),
+                                 ("extra key", contract("research_pass", "research"), {"works": [{"artifact_ref": {**good, "x": 1}}]}),
+                                 ("bad digest", contract("research_pass", "research"), {"works": [{"artifact_ref": {**good, "content_hash": "sha256:zz"}}]}),
+                                 ("nested list missing", contract("verification", "verify"), {"claims": [{"text": "t"}]}),
+                                 ("unsupported media", contract("research_pass", "research"), {"works": [{"artifact_ref": self.ref(b"bin", "application/octet-stream")}]})):
+            with self.subTest(case), self.assertRaises(Refused):
+                self.aside(step, view, self.world.root / f"s-{case.replace(' ', '-')}")
+
+    def test_retained_bytes_that_are_missing_or_do_not_match_their_reference_refuse(self):
+        good = self.ref(b"hello")
+        for case, ref in (("not retained", {**good, "content_hash": "sha256:" + "1" * 64}), ("wrong size", {**good, "size_bytes": 99})):
+            with self.subTest(case), self.assertRaises(Refused):
+                self.aside(contract("research_pass", "research"), {"works": [{"artifact_ref": ref}]}, self.world.root / f"m-{case.replace(' ', '-')}")
+        self.world.blobs[good["content_hash"]] = b"tampered"
+        with self.assertRaises(Refused):
+            self.aside(contract("research_pass", "research"), {"works": [{"artifact_ref": good}]}, self.world.root / "m-tampered")
+
+    def test_the_count_and_total_bytes_are_bounded_by_the_supervisors_caps(self):
+        from gen2.supervisor import supervisor
+        many = [{"artifact_ref": self.ref(f"r{n}".encode())} for n in range(supervisor.MAX_EVIDENCE + 1)]
+        with self.assertRaisesRegex(Refused, "resource"):
+            self.aside(contract("research_pass", "research"), {"works": many}, self.world.root / "many")
+        huge = {"content_hash": "sha256:" + "2" * 64, "size_bytes": supervisor.MAX_EVIDENCE_BYTES + 1, "media_type": "application/json"}
+        with self.assertRaisesRegex(Refused, "resource"):
+            self.aside(contract("research_pass", "research"), {"works": [{"artifact_ref": huge}]}, self.world.root / "huge")
+
+    def test_the_set_aside_files_exist_before_the_order_is_durable(self):
+        one = self.ref(b'{"a": 1}')
+        station = self.world.station()
+        d = self.world.driver(station)
+        d.kits[("research_pass", "research")].view = lambda context, records, truncation: {"works": [{"artifact_ref": one}]}
+        self.world.topic.update(status="queued", active_contract_revision=1)
+        self.world.fail_submit = True
+        with self.assertRaises(OSError):
+            d.issue(contract("research_pass", "research"), self.world.topic)
+        scratch = station.supervisor.job(d.invocation_id(contract("research_pass", "research"))).scratch
+        self.assertTrue(list(scratch.glob("evidence-*.json")))                                   # written first
+        self.assertEqual(list((self.world.root / "jobs").glob("*/order.json")), [])               # no order was made durable
+
+    def test_the_child_module_discovery_routing_and_token_by_file(self):
+        station = self.world.station()
+        d = self.world.driver(station, child_module="gen2.fixture.child", discovery_env={"GEN2_GATEWAY_URL": "http://gateway.invalid", "GEN2_SECRET_GATEWAY_TOKEN_FILE": "/run/secrets/gw"})
+        d.issue(contract("research_pass", "research"), {**self.world.topic, "status": "queued", "active_contract_revision": 1})
+        d.issue(Step("discovery", "search", 1, "c1"), {**self.world.topic, "status": "queued", "active_contract_revision": 1}, proposer=contract("research_pass", "research"))
+        research, discovery = station.supervisor.submitted
+        self.assertEqual((research.command[1:3], discovery.command[1:3]), (("-m", "gen2.fixture.child"), ("-m", "gen2.discovery.child")))
+        self.assertNotIn("GEN2_GATEWAY_URL", research.env)                                       # discovery's variables go to discovery alone
+        self.assertEqual((discovery.env["GEN2_GATEWAY_URL"], discovery.env["GEN2_SECRET_GATEWAY_TOKEN_FILE"]), ("http://gateway.invalid", "/run/secrets/gw"))
+        for case, env in (("the token itself", {"GEN2_SECRET_GATEWAY_TOKEN": "s3cret"}), ("any token variable", {"GEN2_TOKEN": "x"})):
+            with self.subTest(case), self.assertRaises(Refused):
+                self.world.driver(discovery_env=env)
+
+    def test_a_discovery_run_needs_its_proposer_and_the_context_carries_it(self):
+        station = self.world.station()
+        d = self.world.driver(station)
+        seen = []
+        d.kits[("discovery", "search")].view = lambda context, records, truncation: seen.append(context.proposer) or {}
+        topic = {**self.world.topic, "status": "queued", "active_contract_revision": 1}
+        with self.assertRaises(Refused):
+            d.issue(Step("discovery", "search", 1, "c1"), topic)
+        d.issue(Step("discovery", "search", 1, "c1"), topic, proposer=contract("research_pass", "research"))
+        self.assertEqual(seen, [contract("research_pass", "research")])
 
     def test_a_missing_kit_or_active_contract_is_refused_not_guessed(self):
         d = self.world.driver()
