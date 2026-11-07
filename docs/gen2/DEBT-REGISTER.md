@@ -575,6 +575,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - owner: phase 2
 - what: after a genuine provider rejection, 2e1-minimum blocks productive dispatch for that deployment and provider route. A local usable probe, a generic hold clearance, a policy reactivation and an old qualification each leave the block in place. Productive use after the genuine negative-auth experiment (DEBT-004) needs a separately reviewed operator remediation procedure.
 - source: 2e1 design v2 B2 (Astra rounds 1–2, private/reviews/gen2-2e1-design-review-astra-20261031.md)
+  T4a implements the route-wide retained-rejection predicate, including known-zero cost; reviewed remediation remains T4b and the pre-2f operator procedure.
 - removal: a reviewed remediation procedure exists and passes before 2f's productive dispatch.
 
 ### DEBT-054 - the gateway client output cut and P9 transport, deferred past the 2f start (Phase 2)
