@@ -438,15 +438,28 @@ class DriverTest(unittest.TestCase):
         self.assertTrue(list(scratch.glob("evidence-*.json")))                                   # written first
         self.assertEqual(list((self.world.root / "jobs").glob("*/order.json")), [])               # no order was made durable
 
-    def test_the_child_module_discovery_routing_and_token_by_file(self):
+    def test_the_issued_commands_run_in_fresh_processes_and_both_refuse_the_live_route_writing_nothing(self):
+        """The routing is exercised by running what the driver submitted: each entry exists, takes the scratch directory, and is fenced pre-T19."""
+        from gen2.discovery import child as discovery_child
+        from gen2.tests import children
         station = self.world.station()
-        d = self.world.driver(station, child_module="gen2.fixture.child", discovery_env={"GEN2_GATEWAY_URL": "http://gateway.invalid", "GEN2_SECRET_GATEWAY_TOKEN_FILE": "/run/secrets/gw"})
-        d.issue(contract("research_pass", "research"), {**self.world.topic, "status": "queued", "active_contract_revision": 1})
-        d.issue(Step("discovery", "search", 1, "c1"), {**self.world.topic, "status": "queued", "active_contract_revision": 1}, proposer=contract("research_pass", "research"))
+        gateway = {"GEN2_GATEWAY_URL": "http://gateway.invalid", "GEN2_SECRET_GATEWAY_TOKEN_FILE": str(self.world.root / "no-such-token")}
+        d = self.world.driver(station, discovery_env=gateway)
+        topic = {**self.world.topic, "status": "queued", "active_contract_revision": 1}
+        d.issue(contract("research_pass", "research"), topic)
+        d.issue(Step("discovery", "search", 1, "c1"), topic, proposer=contract("research_pass", "research"))
         research, discovery = station.supervisor.submitted
-        self.assertEqual((research.command[1:3], discovery.command[1:3]), (("-m", "gen2.fixture.child"), ("-m", "gen2.discovery.child")))
+        self.assertEqual((research.command[1:3], discovery.command[1:3]), (("-m", "gen2.app.child"), ("-m", "gen2.discovery.child")))
         self.assertNotIn("GEN2_GATEWAY_URL", research.env)                                       # discovery's variables go to discovery alone
-        self.assertEqual((discovery.env["GEN2_GATEWAY_URL"], discovery.env["GEN2_SECRET_GATEWAY_TOKEN_FILE"]), ("http://gateway.invalid", "/run/secrets/gw"))
+        self.assertEqual({k: discovery.env[k] for k in gateway}, gateway)
+        for order, line in ((research, "the live runner entrance is closed"), (discovery, discovery_child.CLOSED)):
+            with self.subTest(order.command[2]):
+                before = sorted(p.name for p in Path(order.command[3]).iterdir())
+                done = children.python(["-m", order.command[2], order.command[3]], cwd=order.command[3], env={**order.env}, capture_output=True, text=True)
+                self.assertEqual(done.returncode, 2, done.stderr)                                # not a silent 0: the entry runs and refuses
+                self.assertIn(line, done.stderr)
+                self.assertEqual(sorted(p.name for p in Path(order.command[3]).iterdir()), before)   # nothing was written
+                self.assertNotIn("no-such-token", done.stderr + done.stdout)                     # the token file was neither read nor named
         for case, env in (("the token itself", {"GEN2_SECRET_GATEWAY_TOKEN": "s3cret"}), ("any token variable", {"GEN2_TOKEN": "x"})):
             with self.subTest(case), self.assertRaises(Refused):
                 self.world.driver(discovery_env=env)
