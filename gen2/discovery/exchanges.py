@@ -4,7 +4,7 @@ Trace: 2e2-min design O13.5; Astra T11 decision 3 (trusted retained exchanges); 
 reader and the research builder's source_artifacts); DEBT-003 (the audit evidence requirement, owned by 2e2).
 
 WHAT IS RETAINED, STATED PLAINLY. The response document is a canonical reconstruction of the client's parsed exchange
-(capture echo, each lane's coverage, completeness and retrieved identities, the records), not the raw transport octets:
+(capture echo, each lane's coverage, completeness and retrieved identities, the client's full parsed records), not the raw transport octets:
 GatewayClient parses the body and keeps no octets. It satisfies router.reaccess.check_reaccess; it does not let an auditor
 re-derive what the gateway literally sent. Retaining the octets is DEBT-003's. The request document is the canonical
 attempted lane/page/request the observation holds.
@@ -44,12 +44,9 @@ def build(result: Mapping) -> dict[str, tuple[bytes, bytes]]:
                 continue
             lane = (page["sent"].get("lanes") or [None])[0]
             asked = next((o for o in observed if o["observation"]["lane"] == lane), observed[0])
-            records, seen = [], set()
-            for o in observed:
-                for record in o["records"]:
-                    if record.get("identity") not in seen:
-                        seen.add(record.get("identity"))
-                        records.append(record)
+            if "records" not in page:
+                raise Refused(f"{ref}: the page carries no full records")
+            records = page["records"]   # the client's full parsed records, abstract included; the observations' are metadata-only
             response = {"retained_form": FORM, "request_type": page["sent"]["request_type"],
                         "observation": {"captured": True, "call_ref": page["call_ref"], "invocation_id": inv, "attempt": attempt},
                         "effective_request": page["effective_request"],

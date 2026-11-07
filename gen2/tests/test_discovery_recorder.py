@@ -14,7 +14,7 @@ from gen2.discovery import child, exchanges, recorder
 from gen2.exec.common import Refused
 from gen2.router import reaccess
 from gen2.supervisor.spool import Spool
-from gen2.tests.test_discovery_child import INV, TOPIC, Fixture, proposal
+from gen2.tests.test_discovery_child import ABSTRACT, INV, TOPIC, Fixture, proposal
 
 ORDER = {"invocation_id": INV, "topic_id": TOPIC}
 GRANT = {"capability_id": "cap_aaaaaaaa", "invocation_id": INV}
@@ -135,6 +135,7 @@ class RecorderTest(Fixture, unittest.TestCase):
         self.assertEqual(found.request_bytes, canonical.canonical_bytes(observation["request"]))
         document = canonical.parse_json_strict(found.response_bytes)
         self.assertIn("not the raw transport octets", document["retained_form"])
+        self.assertEqual([r.get("abstract") for r in document["records"]], [ABSTRACT], "the full parsed record, abstract included")
         with self.assertRaises(reaccess.ReaccessRefused):
             reaccess.check_reaccess(source={"topic_id": TOPIC, "work_id": "wrk_aaaaaaaa", "source_version": digest, "content_hash": digest},
                                     artifact={"content_hash": digest, "size_bytes": 1, "media_type": "application/json"},
@@ -158,6 +159,39 @@ class RecorderTest(Fixture, unittest.TestCase):
         tampered._spool = type("Bad", (), {"read": staticmethod(lambda h, topic_id: b"other bytes")})()
         self.assertIsNone(tampered.response(call["gateway_call_ref"]))
         self.assertIsNone(tampered.read(topic_id=TOPIC, invocation_id=INV, attempt=1, gateway_call_ref=call["gateway_call_ref"]))
+
+
+try:
+    from gen2.exec import views
+    from gen2.tests import test_exec_research as research_fixtures
+except ImportError:   # T14 PR3 (#119) is not in this tree yet; the witness runs once it is
+    views = research_fixtures = None
+
+
+@unittest.skipIf(views is None, "gen2.exec.views (T14 PR3) is not merged yet")
+class ResearchViewWitness(Fixture, unittest.TestCase):
+    """An adapter-shaped page whose record carries an abstract: recorded, staged, indexed, and seen by the research view."""
+    def setUp(self):
+        super().setUp()
+        self.spool_dir = tempfile.TemporaryDirectory()
+        self.spool = Spool(self.spool_dir.name)
+
+    def tearDown(self):
+        self.spool_dir.cleanup()
+        super().tearDown()
+
+    def test_the_view_shows_the_abstract_the_recorder_staged(self):
+        self.run_child(self.stage([proposal(1)]))
+        log = []
+        recorder.recorder(self.spool.stage)(Control(log), ORDER, GRANT, self.root)
+        observation = next(r["observation"] for m, r in log if m == "record_observation")
+        events = next(r["retrieval_events"] for m, r in log if m == "record_observation")
+        records = research_fixtures.records(
+            retrieval_events=[{**e, "observation_id": observation["observation_id"], "captured_at": "2026-11-05T11:00:00Z"} for e in events],
+            record_work_links=[{"event_id": events[0]["event_id"], "work_id": "wrk_aaaaaaaa"}], search_observations=[observation],
+            works=[{"work_id": "wrk_aaaaaaaa", "identity_scheme": "doi", "identity_value": "10.1/a"}])
+        view = views.research_view(research_fixtures.ADMISSION, records, ExchangeIndex(self), lambda ref: None, "2026-11-05T12:00:00Z", 1, [])
+        self.assertEqual(view["works"], [{"work_id": "wrk_aaaaaaaa", "identity": "doi:10.1/a", "abstract": ABSTRACT}])
 
 
 def ExchangeIndex(case):

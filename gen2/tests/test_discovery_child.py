@@ -10,11 +10,12 @@ from pathlib import Path
 from gen2.core import canonical
 from gen2.discovery import child, requests
 from gen2.exec import common, orders
-from gen2.gateway_client.client import GatewayClient, GrantRefused
+from gen2.gateway_client.client import GrantRefused
 from gen2.router.schemas import SchemaSet
 
 SCHEMAS = SchemaSet()
 INV, TOPIC, BASE = "inv_discover1", "fleet:topic", "http://127.0.0.1:8765"
+ABSTRACT = "The retained abstract of the adapter-shaped record."
 HEADERS = {"content-type": "application/json", "x-research-gateway": "result"}
 
 
@@ -44,7 +45,7 @@ class Gateway:
         lane = sent["lanes"][0]
         answer = {"observation": {"invocation_id": INV, "attempt": 1, "captured": True, "call_ref": 100 + len(self.calls)},
                   "lanes": [{"source": lane, "coverage": "searched_ok", "completeness": "complete", "count": 1, "retrieved": ["doi:10.1/a"], "exhausted": True}],
-                  "records": [{"identity": "doi:10.1/a", "title": "t", "source_id": lane}]}
+                  "records": [{"identity": "doi:10.1/a", "title": "t", "source_id": lane, "abstract": ABSTRACT}]}
         return 200, HEADERS, json.dumps(answer).encode(), None
 
 
@@ -110,7 +111,7 @@ class Fixture:
 
     def factory(self, url, token):
         self.built.append((url, token))
-        return GatewayClient(url, token, transport=self.gateway, clock=lambda: "2026-11-05T12:00:00Z", sleep=lambda s: None)
+        return child.RetainingClient(url, token, transport=self.gateway, clock=lambda: "2026-11-05T12:00:00Z", sleep=lambda s: None)
 
     def run_child(self, env):
         return child.run(self.root, environ=env, validate=validate, factory=self.factory)
