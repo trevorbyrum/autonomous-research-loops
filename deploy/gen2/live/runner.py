@@ -32,6 +32,14 @@ def read_file(directory, name, bound):
         os.close(fd)
 
 
+def work_prompt(directory):
+    prompt = read_file(directory, "prompt.md", 16384).decode("utf-8")
+    task = read_file(directory, "input.json", 1 << 20).decode("utf-8")
+    if not prompt.strip():
+        raise ValueError("empty prompt")
+    return prompt + "\n\nInput JSON:\n" + task
+
+
 def launch(seed="/seed", home="/auth/codex", inputs="/inputs"):
     if len(sys.argv) != 1:
         raise ValueError("runner accepts no arguments")
@@ -62,7 +70,7 @@ def launch(seed="/seed", home="/auth/codex", inputs="/inputs"):
         os.close(home_fd)
     input_fd = os.open(inputs, with_dir)
     try:
-        prompt = read_file(input_fd, "prompt.txt", 16384).decode("utf-8")
+        prompt = work_prompt(input_fd)
     finally:
         os.close(input_fd)
     invocation = os.environ["GEN2_INVOCATION_ID"]
@@ -73,7 +81,7 @@ def launch(seed="/seed", home="/auth/codex", inputs="/inputs"):
                SHELL="/bin/bash", LANG="C.UTF-8", LC_ALL="C.UTF-8", TMPDIR="/tmp", TERM="dumb",
                GEN2_INVOCATION_ID=invocation)
     os.execve("/usr/local/bin/codex", ["codex", "exec", "--strict-config", "--json", "--ephemeral",
-              "--skip-git-repo-check", "--ignore-rules", "--cd", "/work", "--color", "never", "--", prompt], env)
+              "--skip-git-repo-check", "--ignore-rules", "--cd", "/work", "--color", "never", "--output-last-message", "/out/judgment.json", "--", prompt], env)
 
 
 if __name__ == "__main__":
