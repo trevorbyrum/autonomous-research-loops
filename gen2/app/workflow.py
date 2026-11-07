@@ -93,10 +93,12 @@ def _context(prefix: str, *values: object) -> str:
 
 
 def plan(status: str, jobs: Mapping[Step, Job], *, reviews: Sequence[str], max_passes: int = 1, max_rounds: int = 3,
-         brief: int | None = None, contract: int | None = None, reviewed: int | None = None) -> Action:
+         brief: int | None = None, contract: int | None = None, epoch: str | None = "", finished: bool = False) -> Action:
     """The next action for a topic with this queue status, open review episodes and step jobs. `brief` is the confirmed brief's
-    version, `contract` the approved contract revision and `reviewed` how many sufficiency reviews the router holds: they give each
-    phase and each checkpoint epoch its own step identities (an epoch is one review episode's challenge, dossier and review)."""
+    version and `contract` the approved contract revision: they give each phase its own step identities. `epoch` is the checkpoint's
+    context, `c<revision>.<episode_id>` of the router's review episode the driver follows (an epoch is one episode's challenge,
+    dossier and review); None means no episode is open or unfinished, and `finished` says an earlier epoch reached its review. The
+    default "" is the caller with no phases, which looks at `reviews` instead."""
     if status == "completed_with_qualified_conclusions":
         return Done()
     if status in OPERATOR:
@@ -136,10 +138,11 @@ def plan(status: str, jobs: Mapping[Step, Job], *, reviews: Sequence[str], max_p
     action = run(Step("verification", "verify", 1, here))
     if action is not None:
         return action
-    epoch = _context("c", contract, None if reviewed is None else f"e{reviewed + 1}")
+    if epoch is None:
+        return Wait(*COMPLETION_WAIT) if finished else Wait("no review is open for the checkpoint", "open_review")
     first = Step("checkpoint", "challenge", 1, epoch)
-    if first not in jobs and not reviews:
-        return Wait(*COMPLETION_WAIT) if reviewed else Wait("no review is open for the checkpoint", "open_review")
+    if first not in jobs and not reviews and epoch == "":
+        return Wait("no review is open for the checkpoint", "open_review")
     action = then_search(first)
     if action is None and jobs[first].proposals:
         action = run(Step("checkpoint", "challenge", 2, epoch))

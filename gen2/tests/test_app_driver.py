@@ -13,6 +13,7 @@ from gen2.app import driver, workflow
 from gen2.app.workflow import Step
 from gen2.core import canonical
 from gen2.exec.common import Refused
+from gen2.supervisor import jobs as supervisor_jobs
 
 TOPIC = "fleet:topic"
 BUNDLE = "sha256:" + "b" * 64
@@ -28,16 +29,12 @@ def contract(kind, purpose, n=1, context="c1"):
     return Step(kind, purpose, n, context)                  # contract revision 1
 
 
-def checkpoint(purpose, n=1, epoch=1):
-    return Step("checkpoint", purpose, n, f"c1.e{epoch}")    # epoch = reviews held + 1
+def checkpoint(purpose, n=1, episode="rev_one"):
+    return Step("checkpoint", purpose, n, f"c1.{episode}")   # the router's review episode id, with the contract revision
 
 
-class FakeJob:
-    def __init__(self, files, scratch):
-        self.files, self.scratch = files, scratch
-
-    def read(self, name):
-        return self.files.get(name)
+def episode(name, opened=1):
+    return {"episode_id": name, "kind": "fixed_cadence", "opened_at": f"2026-11-08T0{opened}:00:00Z"}
 
 
 class Router:
@@ -61,21 +58,22 @@ class Supervisor:
     def __init__(self, world):
         self.world, self.submitted, self.recovered, self.script = world, [], 0, {}
 
+    jobs_root = property(lambda self: self.world.root / "jobs")
+
     def job(self, invocation_id):
-        return FakeJob(self.world.jobs.get(invocation_id, {}), self.world.root / "jobs" / ("job-" + invocation_id) / "scratch")
+        return supervisor_jobs.Job(self.jobs_root, "job-" + invocation_id)   # the real durable job files
 
     def submit(self, order):
         if self.world.fail_submit:
             raise OSError("disk full")
-        self.world.jobs[order.invocation_id] = {"order.json": {"invocation_id": order.invocation_id}, "journal.json": {}}
+        self.job(order.invocation_id).prepare({"invocation_id": order.invocation_id, "topic_id": order.topic_id, "env": dict(order.env)})
         self.submitted.append(order)
         return "running"
 
     def advance(self, invocation_id):
         result = self.script.get(invocation_id, "running")
         if result == "committed":
-            journal = self.world.jobs[invocation_id]["journal.json"]
-            journal.update(settled="committed", collected={"result": {"content_hash": f"sha256:{invocation_id}"}})
+            self.job(invocation_id).write("journal.json", {"settled": "committed", "collected": {"result": {"content_hash": f"sha256:{invocation_id}"}}})
         return result
 
     def recover(self):
@@ -105,7 +103,7 @@ class World:
         self.topic = {"status": "scoping", "holds": [], "reviews": [], "active_contract_revision": None}
         self.records = {"intake_briefs": [{"brief_id": "brief1", "version": 2, "content_hash": HASH, "status": "confirmed", "confirmed_by_decision_id": "opd_aaaaaaaa"}],
                         "contract_revisions": [{"revision": 1, "content_hash": HASH}]}
-        self.jobs, self.blobs, self.dossiers, self.fail_submit, self.said = {}, {}, {}, False, []
+        self.blobs, self.dossiers, self.fail_submit, self.said = {}, {}, False, []
 
     def station(self):
         class Station:
@@ -160,7 +158,7 @@ class DriverTest(unittest.TestCase):
         self.world.fail_submit = True
         with self.assertRaises(OSError):
             self.world.driver().tick()
-        self.assertEqual(self.world.jobs, {})
+        self.assertEqual(list((self.world.root / "jobs").glob("*/order.json")), [])   # inputs may be written; no order is durable
         self.world.fail_submit = False
         station = self.world.station()
         self.world.driver(station).tick()
@@ -184,9 +182,9 @@ class DriverTest(unittest.TestCase):
         for journal, state in (({"settled": "failed"}, "failed"), ({"exhausted": {"kind": "retry_exhausted"}}, "held"), ({"incident": {"kind": "x"}}, "held"),
                                ({"settled": "cancelled"}, "failed"), ({}, "live")):
             with self.subTest(journal):
-                self.world.jobs[iid] = {"order.json": {}, "journal.json": journal}
+                self.put(iid, journal)
                 self.assertEqual(d.get(scope(1)).state, state)
-        self.world.jobs[iid]["journal.json"] = {"exhausted": {"kind": "retry_exhausted"}}
+        self.put(iid, {"exhausted": {"kind": "retry_exhausted"}})
         self.assertEqual(d.tick(), workflow.Stop("research_pass/scope #1 is held"))
 
     def test_an_open_hold_stops_the_walk_before_anything_is_issued(self):
@@ -217,15 +215,23 @@ class DriverTest(unittest.TestCase):
 
     REVIEW = {"kind": "sufficiency_review", "subject_ref": TOPIC, "subject_revision": 2, "subject_hash": HASH}
 
+    def put(self, iid, journal, step=None):
+        """A job as the supervisor would hold it: a durable order (with the context it was issued under) and a journal."""
+        job = supervisor_jobs.Job(self.world.root / "jobs", "job-" + iid)
+        env = {"GEN2_CONTEXT": step.context, "GEN2_STEP": f"{step.kind}/{step.purpose}#{step.ordinal}"} if step else {}
+        order = {"invocation_id": iid, "topic_id": TOPIC, "env": env}
+        job.prepare(order) if job.read("order.json") is None else job.write("order.json", order)   # a test may restate a job the driver issued
+        job.write("journal.json", journal)
+
     def commit(self, d, *steps, proposals=None):
         for step in steps:
             iid = d.invocation_id(step)
-            self.world.jobs[iid] = {"order.json": {}, "journal.json": {"settled": "committed", "collected": {"result": {"content_hash": f"sha256:{iid}"}}}}
+            self.put(iid, {"settled": "committed", "collected": {"result": {"content_hash": f"sha256:{iid}"}}}, step)
             if proposals and step in proposals:
                 self.world.blobs[f"sha256:{iid}"] = canonical.canonical_bytes({"search_proposals": [{"proposal_id": "p1"}]})
 
     def test_the_completion_wait_prints_the_review_and_its_evidence_for_the_dossier_the_review_is_bound_to(self):
-        self.world.topic.update(status="resting", active_contract_revision=1)
+        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[])
         self.world.dossiers = {1: {}, 2: {}, 3: {}}      # a later dossier exists; the review, and so the approval, is of revision 2
         self.world.records["completion_records"] = [self.REVIEW]
         d = self.world.driver()
@@ -261,20 +267,71 @@ class DriverTest(unittest.TestCase):
         self.assertEqual(d.tick(), workflow.Issue(Step("discovery", "search", 1, "c1")))
         self.assertNotEqual(d.invocation_id(Step("discovery", "search", 1, "p2")), d.invocation_id(Step("discovery", "search", 1, "c1")))
 
-    def test_a_new_review_episode_starts_a_new_checkpoint_and_the_old_one_is_not_resumed(self):
-        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[{"episode_id": "rev_new"}])
-        self.world.records["completion_records"] = [self.REVIEW]       # the first epoch ended in a review
+    def finished_epoch(self, d, name="rev_old"):
+        self.commit(d, contract("research_pass", "research"), contract("verification", "verify"),
+                    *[checkpoint(p, episode=name) for p in ("challenge", "dossier", "review")])
+
+    def test_a_different_episode_with_an_unchanged_review_count_starts_a_new_checkpoint(self):
+        """The router's episode id, not any count of records, says which checkpoint this is."""
+        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[episode("rev_new")])
+        self.world.records["completion_records"] = [self.REVIEW]
         d = self.world.driver()
-        self.commit(d, contract("research_pass", "research"), contract("verification", "verify"), checkpoint("challenge"), checkpoint("dossier"), checkpoint("review"))
-        episodes, self.world.topic["reviews"] = self.world.topic["reviews"], []   # no new episode: the earlier review awaits approval
+        self.finished_epoch(d)
+        self.assertEqual(d.tick(), workflow.Issue(checkpoint("challenge", episode="rev_new")))
+        self.world.records["completion_records"] = []                                   # the count differs, the answer does not
+        self.assertEqual(self.world.driver().tick(), workflow.Advance(checkpoint("challenge", episode="rev_new")))
+
+    def test_with_no_new_episode_the_finished_checkpoint_waits_for_approval_not_for_a_review(self):
+        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[])
+        d = self.world.driver()
+        self.finished_epoch(d)
         self.assertEqual(d.tick(), workflow.Wait(*workflow.COMPLETION_WAIT))
-        self.world.topic["reviews"] = episodes
-        self.assertEqual(d.tick(), workflow.Issue(checkpoint("challenge", epoch=2)))
+
+    def test_a_review_recorded_while_the_same_episode_is_open_does_not_change_the_job_followed(self):
+        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[episode("rev_one")])
+        d = self.world.driver()
+        self.commit(d, contract("research_pass", "research"), contract("verification", "verify"), checkpoint("challenge"), checkpoint("dossier"))
+        self.put(d.invocation_id(checkpoint("review")), {}, checkpoint("review"))             # the review job is issued and unsettled
+        for records in ([], [self.REVIEW], [self.REVIEW, self.REVIEW]):                       # any number of sufficiency rows
+            with self.subTest(rows=len(records)):
+                self.world.records["completion_records"] = records
+                self.assertEqual(d.tick(), workflow.Advance(checkpoint("review")))
+
+    def test_a_restart_across_the_episode_closing_and_the_review_settling_follows_the_issued_job(self):
+        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[episode("rev_one")])
+        d = self.world.driver()
+        self.commit(d, contract("research_pass", "research"), contract("verification", "verify"), checkpoint("challenge"))
+        self.assertEqual(d.tick(), workflow.Issue(checkpoint("dossier")))
+        self.world.topic["reviews"] = []                                                      # the challenge commit closed the episode
+        restarted = self.world.driver(self.world.station())
+        self.commit(restarted, checkpoint("dossier"))
+        self.assertEqual(restarted.tick(), workflow.Issue(checkpoint("review")))              # read from the order issued, not the open list
+        self.put(restarted.invocation_id(checkpoint("review")), {}, checkpoint("review"))
+        self.assertEqual(self.world.driver(self.world.station()).tick(), workflow.Advance(checkpoint("review")))
+        self.commit(self.world.driver(), checkpoint("review"))                                # settled
+        self.assertEqual(self.world.driver(self.world.station()).tick(), workflow.Wait(*workflow.COMPLETION_WAIT))
+
+    def test_with_several_episodes_open_the_oldest_without_a_checkpoint_is_taken(self):
+        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[episode("rev_a", 3), episode("rev_z", 1), episode("rev_m", 1)])
+        d = self.world.driver()
+        self.commit(d, contract("research_pass", "research"), contract("verification", "verify"))
+        self.assertEqual(d.tick(), workflow.Issue(checkpoint("challenge", episode="rev_m")))   # oldest opened_at, ties by id
+
+    def test_work_issued_under_another_contract_revision_that_has_not_settled_stops_the_walk(self):
+        self.world.topic.update(status="resting", active_contract_revision=2, reviews=[episode("rev_one")])
+        self.world.records["contract_revisions"].append({"revision": 2, "content_hash": HASH})
+        d = self.world.driver()
+        self.put(d.invocation_id(checkpoint("challenge")), {}, checkpoint("challenge"))       # issued under c1, never settled
+        action = d.tick()
+        self.assertIsInstance(action, workflow.Stop)
+        self.assertIn("issued under c1 and has not settled", action.reason)
+        self.put(d.invocation_id(checkpoint("challenge")), {"settled": "failed"}, checkpoint("challenge"))
+        self.assertNotIsInstance(d.tick(), workflow.Stop)
 
     def test_the_same_context_gives_the_same_identity_after_a_restart(self):
-        step = checkpoint("challenge", epoch=2)
+        step = checkpoint("challenge", episode="rev_two")
         self.assertEqual(self.world.driver().invocation_id(step), self.world.driver(self.world.station()).invocation_id(step))
-        self.assertNotEqual(self.world.driver().invocation_id(step), self.world.driver().invocation_id(checkpoint("challenge", epoch=1)))
+        self.assertNotEqual(self.world.driver().invocation_id(step), self.world.driver().invocation_id(checkpoint("challenge", episode="rev_one")))
 
     def test_a_missing_kit_or_active_contract_is_refused_not_guessed(self):
         d = self.world.driver()

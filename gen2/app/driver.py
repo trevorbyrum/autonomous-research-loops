@@ -20,6 +20,7 @@ from gen2.app.workflow import Advance, Done, Issue, Job, Step, Stop, Wait
 from gen2.core import canonical
 from gen2.exec import orders
 from gen2.exec.common import Refused
+from gen2.supervisor import jobs as supervisor_jobs
 from gen2.supervisor.supervisor import WorkOrder
 
 HALTS = ("unknown_unresolved", "stalled", "not_admitted", "backend_end_unconfirmed", "router_unavailable")  # advance results that need a person
@@ -33,7 +34,7 @@ class Context:
     invocation_id: str
     topic_id: str
     admission: Mapping
-    reviews: Sequence[str]
+    episodes: Sequence[str]   # the review episode this checkpoint step belongs to (from its context), else empty
     dossier_revision: int | None
     outcome: Callable[[Step], dict | None]   # a committed step's outcome document, or None
     as_of: str
@@ -120,13 +121,48 @@ class Driver:
             else:
                 raise Refused(f"topic_records refused dossier {revision}: {answer.get('reason')}")
 
+    def _orders(self):
+        """The orders of this topic that the supervisor holds (its own durable journal); each carries the context it was issued under."""
+        root = Path(self.station.supervisor.jobs_root)
+        for path in sorted(root.iterdir()) if root.is_dir() else ():
+            order = supervisor_jobs.Job(root, path.name).read("order.json")
+            if order and order.get("topic_id") == self.topic_id and "GEN2_CONTEXT" in (order.get("env") or {}):
+                yield order
+
+    def follow(self, topic: Mapping) -> tuple[str | None, bool]:
+        """The checkpoint context to follow: the router's own review episode with the approved contract revision (`c<rev>.<episode_id>`).
+        An epoch already begun is followed until its review settles, whether or not its episode is still open (read from the order
+        issued, not the open list). Otherwise the oldest open episode (by opened_at, then id) that has no epoch yet begins one. Returns
+        (context or None, whether an epoch has finished)."""
+        prefix = f"c{topic['active_contract_revision']}."
+        begun = sorted({o["env"]["GEN2_CONTEXT"] for o in self._orders() if o["env"].get("GEN2_STEP") == "checkpoint/challenge#1"
+                        and o["env"]["GEN2_CONTEXT"].startswith(prefix)})
+        done = [c for c in begun if (self.get(Step("checkpoint", "review", 1, c)) or Job("none")).state == "committed"]
+        for context in begun:
+            if context not in done:
+                return context, bool(done)
+        taken = {c[len(prefix):] for c in begun}
+        fresh = [e["episode_id"] for e in sorted(topic["reviews"], key=lambda e: (e["opened_at"], e["episode_id"])) if e["episode_id"] not in taken]
+        return (prefix + fresh[0] if fresh else None), bool(done)
+
+    def unsettled_elsewhere(self, topic: Mapping) -> str | None:
+        """Work issued under another contract revision that has not settled: the driver stops rather than orphan it or start beside it."""
+        current = f"c{topic['active_contract_revision']}"
+        for order in self._orders():
+            context = order["env"]["GEN2_CONTEXT"]
+            if context.startswith("c") and context.split(".")[0] != current:
+                journal = self.station.supervisor.job(order["invocation_id"]).read("journal.json") or {}
+                if not journal.get("settled"):
+                    return f"{order['env'].get('GEN2_STEP')} was issued under {context.split('.')[0]} and has not settled; the contract is now {current}"
+        return None
+
     def facts(self, topic: Mapping) -> dict:
-        """The authoritative context of the program: the confirmed brief's version (scoping), the approved contract revision, and how
-        many sufficiency reviews the router holds. Read from the router; the driver keeps none of it."""
-        records = self.station.router.topic_records({"topic_id": self.topic_id, "families": ["intake_briefs", "completion_records"]})["records"]
+        """The authoritative context of the program: the confirmed brief's version (scoping), the approved contract revision and the
+        checkpoint epoch. Read from the router and the supervisor's journal; the driver keeps none of it."""
+        records = self.station.router.topic_records({"topic_id": self.topic_id, "families": ["intake_briefs"]})["records"]
         confirmed = [b["version"] for b in records["intake_briefs"] if b["status"] == "confirmed"]
-        return {"brief": max(confirmed, default=None), "contract": topic["active_contract_revision"],
-                "reviewed": sum(1 for r in records["completion_records"] if r["kind"] == "sufficiency_review")}
+        epoch, finished = self.follow(topic) if topic["active_contract_revision"] is not None else ("", False)
+        return {"brief": max(confirmed, default=None), "contract": topic["active_contract_revision"], "epoch": epoch, "finished": finished}
 
     def admission(self, topic: Mapping) -> dict:
         records = self.station.router.topic_records({"topic_id": self.topic_id, "families": ["intake_briefs", "contract_revisions"]})["records"]
@@ -153,7 +189,8 @@ class Driver:
         invocation = self.invocation_id(step)
         records = self.station.router.topic_records({"topic_id": self.topic_id, "families": list(kit.families)})["records"] if kit.families else {}
         admission, truncation = self.admission(topic), []
-        context = Context(step, invocation, self.topic_id, admission, [r["episode_id"] for r in topic["reviews"]], self.dossier_revision(),
+        episode = step.context.partition(".")[2] if step.kind == "checkpoint" else ""
+        context = Context(step, invocation, self.topic_id, admission, [episode] if episode else [], self.dossier_revision(),
                           self.outcome, self.clock().strftime("%Y-%m-%dT%H:%M:%SZ"))
         document = orders.work_input(kind=step.kind, purpose=step.purpose, invocation_id=invocation, topic_id=self.topic_id, admission=admission,
                                      entry=entry, view=kit.view(context, records, truncation), truncation=truncation)
@@ -170,6 +207,8 @@ class Driver:
         if topic["holds"]:
             hold = topic["holds"][0]
             return Stop(f"open hold {hold['hold_id']}: {hold.get('clears_when')}")
+        if (stray := self.unsettled_elsewhere(topic)) is not None and topic["active_contract_revision"] is not None:
+            return Stop(stray)
         action = workflow.plan(topic["status"], self, reviews=[r["episode_id"] for r in topic["reviews"]],
                                max_passes=self.max_passes, max_rounds=self.max_rounds, **self.facts(topic))
         if isinstance(action, Issue):
