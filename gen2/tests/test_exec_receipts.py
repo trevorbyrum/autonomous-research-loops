@@ -39,8 +39,9 @@ def judgment(verdict="supports", spans=(QUOTE,), checks=CHECKS, ref="clm_0000000
 
 
 def build(j=None, w=None, recs=None, ex=None):
-    recs = recs or records()
-    return receipts.make_builder(Reader(lineage() | {k: recs[k] for k in receipts.FAMILIES}), ex or exchanges(), stage, normalization=NORM)(w or work(recs, ex), j or judgment())
+    ex = ex or exchanges()
+    set_aside = lambda digest: next(data for ref, data in ex.staged.values() if ref["content_hash"] == digest)   # what the driver sets aside in scratch
+    return receipts.make_builder(stage, set_aside, normalization=NORM)(w or work(recs or records(), ex), j or judgment())
 
 
 def with_capability(outcome):

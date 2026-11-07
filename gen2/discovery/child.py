@@ -20,7 +20,7 @@ from gen2.exec.common import Refused, outcome_bytes, scaffold
 from gen2.gateway_client.client import GatewayClient
 
 RESULT, OUTCOME = "discovery-result.json", "outcome.json"
-URL, TOKEN = "GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN"
+URL, TOKEN_FILE = "GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN_FILE"   # the token is a file the supervisor mounts, never a value in order.json
 
 
 def _client(url: str, token: str) -> GatewayClient:
@@ -45,9 +45,12 @@ def run(directory: Path, *, environ: Mapping[str, str], validate: Callable[[str,
     if {"proposals", "proposed_by"} & set(view):
         raise Refused("proposals and their proposer come from the committed outcome only, never beside it")
     committed = requests.intake(view["committed"]["payload"].encode(), view["committed"]["receipt"], work["topic_id"], work["limits"]["max_input_bytes"], validate)
-    proposals = requests.select(committed, view.get("only"))
-    built = [(p, requests.gateway_request(p)) for p in proposals]   # every request is built before any I/O
-    client = factory(environ[URL], environ[TOKEN])
+    built = [(p, requests.gateway_request(p)) for p in committed.proposals]   # every request is built before any I/O
+    try:
+        token = Path(environ[TOKEN_FILE]).read_text(encoding="utf-8").strip()
+    except (KeyError, OSError) as error:
+        raise Refused(f"the gateway token file is unreadable: {type(error).__name__}") from None
+    client = factory(environ[URL], token)
     gateway = view["gateway"]
     grant = client.grant(topic_id=work["topic_id"], commercial=gateway["commercial"],
                          accept_per_item=gateway["accept_per_item"], invocation_id=invocation_id)

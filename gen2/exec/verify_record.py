@@ -4,8 +4,8 @@ Trace: 2e2-min design O15.5; flow S4.8; V-3; DEBT-051 (this is `Router.admit_rea
 check refuses a receipt that did not consume its admitted acquisition, so removing this recorder fails the commit); Astra T11 F2
 (replayable, stable effects: the acquisition key is (topic, work, source_version, event, verifier), so a repeat replays).
 Oracle: the router's `admitted` or `replayed` reply. Limits: it re-derives the retrieval event for each receipt from the topic's
-rows through the same `artifacts.retained` read the view and builder used, and refuses a receipt whose call ref or response is not
-the one it finds; it writes nothing but the admission.
+rows through the same `artifacts.retained` read the view used, and refuses a receipt whose response, call ref, acquiring invocation or
+route is not the one it finds (the pure builder checks none of this: Gate S #7); it writes nothing but the admission.
 """
 from __future__ import annotations
 
@@ -17,9 +17,9 @@ from typing import Callable, Mapping
 from gen2.core import canonical
 from gen2.exec import artifacts, views
 from gen2.exec.common import Refused
-from gen2.exec.receipts import FAMILIES
 
 OK = ("admitted", "replayed")
+FAMILIES = ("retrieval_events", "record_work_links", "search_observations")
 MAX_OUTCOME = 16 << 20
 
 
@@ -48,7 +48,8 @@ def recorder(exchanges_of: Callable[[str], artifacts.Exchanges]) -> Callable:
         exchanges = exchanges_of(order["topic_id"])
         for doc in receipts:
             found = artifacts.retained(doc["source"]["work_id"], records, exchanges)
-            if (found.ref["content_hash"], found.gateway_call_ref) != (doc["obtained_content_hash"], doc["acquisition"]["gateway_call_ref"]):
+            if (found.ref["content_hash"], found.gateway_call_ref, found.invocation_id, f"gateway:{found.lane}") != (
+                    doc["obtained_content_hash"], doc["acquisition"]["gateway_call_ref"], doc["extraction"]["produced_by_invocation_id"], doc["acquisition"]["route"]):
                 raise Refused(f"{doc['verification_receipt_id']}: the retained response is not the one the receipt rests on")
             reply = control.admit_reaccess({"capability_id": grant["capability_id"], "invocation_id": order["invocation_id"],
                                             "work_id": doc["source"]["work_id"], "source_version": doc["source"]["source_version"], "event_id": found.event_id})

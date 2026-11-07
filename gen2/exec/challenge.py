@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Callable, Iterable, Mapping, Protocol, Sequence
 
 from gen2.core import canonical
-from gen2.exec.common import Refused, derived_id, scaffold
+from gen2.exec.common import Exchanges, Refused, derived_id, latest_revision, scaffold
 
 PROPOSER = "checkpoint.challenge"
 FAMILIES = ("claims", "verification_receipts", "registry_dispositions", "search_observations")
@@ -34,17 +34,8 @@ ADJUDICATION = {"resolved": "verdict_upheld", "unresolved": "verdict_overturned"
 Stage = Callable[[bytes, str], Mapping]
 
 
-class Exchanges(Protocol):
-    def response(self, gateway_call_ref: str) -> tuple[Mapping, bytes] | None:
-        """(artifact_ref, bytes) staged for this topic's retained gateway response, or None."""
-
-
 def _latest_claims(rows: Iterable[Mapping], invocation_id: str) -> list[Mapping]:
-    latest: dict[str, Mapping] = {}
-    for row in rows:
-        if row["claim_id"] not in latest or row["revision"] > latest[row["claim_id"]]["revision"]:
-            latest[row["claim_id"]] = row
-    return [c for _, c in sorted(latest.items())
+    return [c for _, c in sorted(latest_revision(rows).items())
             if c["load_bearing"] and c["status"] not in ("rejected", "superseded") and c["producer_invocation_id"] != invocation_id]
 
 
@@ -52,16 +43,15 @@ def proposal_ref(invocation_id: str, proposal_id: str) -> str:
     return f"{invocation_id}:{proposal_id}"
 
 
-def _retained(exchanges: "Exchanges", call: str | None) -> dict:
-    """What the observation's retained response gives the view: the artifact ref the builder cites (None when nothing verified is
-    retained) and the bounded excerpt the assessor reads. The driver sets the same bytes aside for the commit."""
+def _retained(exchanges: Exchanges, call: str | None) -> tuple[dict | None, dict]:
+    """(the retained response's artifact_ref, and the bounded excerpt the assessor reads), or (None, no text) when it is not retained."""
     staged = exchanges.response(call) if call else None
     if staged is None or canonical.bytes_digest(staged[1]) != staged[0]["content_hash"]:
-        return {"artifact_ref": None, "content": {"text": None, "cut": False}}
-    return {"artifact_ref": dict(staged[0]), "content": {"text": staged[1][:EXCERPT].decode("utf-8", "replace"), "cut": len(staged[1]) > EXCERPT}}
+        return None, {"text": None, "cut": False}
+    return dict(staged[0]), {"text": staged[1][:EXCERPT].decode("utf-8", "replace"), "cut": len(staged[1]) > EXCERPT}
 
 
-def challenge_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], text_of: Callable[[str], str], exchanges: "Exchanges", *,
+def challenge_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], text_of: Callable[[str], str], exchanges: Exchanges, *,
                    invocation_id: str, review_episodes: Sequence[str], proposals: Sequence[Mapping], proposed_by: str | None, as_of: str,
                    truncation: list[dict]) -> dict:
     """Pass 1 (no `proposals`): the claims to challenge. Pass 2: the same, plus, for each proposal of the pass-1 invocation
@@ -86,8 +76,9 @@ def challenge_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]],
         searches.append({"proposal_id": proposal["proposal_id"], "claim_ref": ref["claim_ref"], "lane": proposal["lane"],
                          "query": proposal["query"],
                          "observations": [{**{k: row.get(k) for k in OBSERVATION_KEYS}, "gateway_call_ref": row.get("gateway_call_ref"),
-                                           **_retained(exchanges, row.get("gateway_call_ref"))}
-                                          for row in records["search_observations"] if row["request"].get("proposal_ref") == wanted]})
+                                           "artifact_ref": ref, "content": content}
+                                          for row in records["search_observations"] if row["request"].get("proposal_ref") == wanted
+                                          for ref, content in [_retained(exchanges, row.get("gateway_call_ref"))]]})
     return {"as_of": as_of, "pass": 2 if proposals else 1, "review_episodes": sorted(review_episodes),
             "claims": [{"claim_ref": c["claim_id"], "revision": c["revision"], "tier": c["required_access_tier"], "status": c["status"], "text": text_of(c["text_ref"])}
                        for c in claims],
@@ -127,8 +118,7 @@ def _by_ref(items: Sequence[Mapping], key: str, wanted: str, what: str) -> Mappi
 
 
 def make_builder(stage: Stage) -> Callable[[Mapping, Mapping], dict]:
-    """work-input/1 + judgment-challenge/1 -> outcome/1. Pure over the view: the evidence refs are the observations' own
-    `artifact_ref`s, whose bytes the driver set aside beside the input; `stage` sets the judgment aside."""
+    """work-input/1 + judgment-challenge/1 -> outcome/1. Pure: the retained responses are named by the view's `artifact_ref`s."""
 
     def evidence(observations: Iterable[Mapping]) -> list[Mapping]:
         refs = {o["artifact_ref"]["content_hash"]: dict(o["artifact_ref"]) for o in observations if o["artifact_ref"] is not None}
@@ -144,7 +134,7 @@ def make_builder(stage: Stage) -> Callable[[Mapping, Mapping], dict]:
         refs = evidence(used)
         every = [o for name in sorted(mine) for o in mine[name]]   # all of the claim's searches, whatever the judgment cites
         clean = bool(mine) and cited == set(mine) and all(mine[name] for name in mine) and all(
-            o["coverage_state"] in CLEAN and o["completeness"] == "complete" and o["error_class"] is None and o["artifact_ref"] is not None
+            o["coverage_state"] in CLEAN and o["completeness"] == "complete" and o["error_class"] is None and o["content"]["text"] is not None
             for o in every)
         if outcome == "none_found" and not clean:
             outcome = "incomplete"

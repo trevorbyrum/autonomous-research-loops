@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Callable, Mapping
 
 from gen2.core import canonical
-from gen2.exec import artifacts, views
+from gen2.exec import artifacts
 from gen2.exec.spans import locate
 from gen2.exec.common import Refused, derived_id, scaffold
 from gen2.exec.verify import TIERS
@@ -31,7 +31,6 @@ PROJECTION = {"succeeded": "checked_ok", "failed": "checked_problem", "not_appli
 PERFORMED = ("succeeded", "failed", "not_applicable")
 ALLOWED = {"supports": ("succeeded", "not_applicable"), "partially_supports": PERFORMED}
 LEAD = {"numeric_units": "Quantities and unit interpretation", "denominators": "Population or base", "negation": "Polarity and scope", "qualifications": "Limiting context"}
-FAMILIES = ("retrieval_events", "record_work_links", "search_observations")
 BLANK = "".join(chr(c) for c in (*range(9, 14), 32, 133, 160))
 
 
@@ -39,12 +38,12 @@ def _span(start: int, end: int, locator: str) -> dict:
     return {"start": start, "end": end, "locator": {"kind": "section", "value": locator[:500] or "abstract"}}
 
 
-def make_builder(reader: views.RecordsReader, exchanges: artifacts.Exchanges, stage: artifacts.Stage, *, normalization: str) -> Callable[[Mapping, Mapping], dict]:
-    """The job's Builder for verification/verify, closed over the trusted readers and the topic spool."""
+def make_builder(stage: artifacts.Stage, bytes_of: Callable[[str], bytes], *, normalization: str) -> Callable[[Mapping, Mapping], dict]:
+    """The job's Builder for verification/verify. Pure: it reads the view and `bytes_of(content_hash)`, the retained response the parent set
+    aside in the job's scratch (digest-checked)."""
 
     def build(work: Mapping, judgment: Mapping) -> dict:
         inv, view = work["invocation_id"], work["view"]
-        records = views.read_records(reader, work["topic_id"], FAMILIES)
         claims = {c["claim_ref"]: c for c in view["claims"]}
         receipts, checks, quotes, seen = [], [], [], set()
         for n, item in enumerate(judgment["items"]):
@@ -52,7 +51,7 @@ def make_builder(reader: views.RecordsReader, exchanges: artifacts.Exchanges, st
             if claim is None or item["claim_ref"] in seen:
                 raise Refused(f"{item['claim_ref']}: not a claim of this view, or judged twice")
             seen.add(item["claim_ref"])
-            receipt = _receipt(inv, n, work, claim, item, records, exchanges, stage, normalization)
+            receipt = _receipt(inv, n, work, claim, item, bytes_of, stage, normalization)
             receipts.append(receipt["doc"])
             checks += receipt["checks"]
             quotes += receipt["quotes"]
@@ -60,7 +59,7 @@ def make_builder(reader: views.RecordsReader, exchanges: artifacts.Exchanges, st
     return build
 
 
-def _receipt(inv, n, work, claim, item, records, exchanges, stage, normalization) -> dict:
+def _receipt(inv, n, work, claim, item, bytes_of, stage, normalization) -> dict:
     required = TIERS.index(claim["tier"])
     ranked = sorted(claim["sources"], key=lambda s: -TIERS.index(s["content_tier"]))
     if not ranked:
@@ -80,18 +79,17 @@ def _receipt(inv, n, work, claim, item, records, exchanges, stage, normalization
     source = next((s for s in pool if all(q["quote"] in (s["content"] or "") for q in quotes_in)), None)
     if source is None:
         raise Refused(f"{claim['claim_ref']}: no single retained source contains every cited quote")
-    found = artifacts.retained(source["work_id"], records, exchanges)
-    if found.ref["content_hash"] != source["content_hash"] or found.gateway_call_ref != source["acquisition"]["gateway_call_ref"]:
-        raise Refused(f"{source['work_id']}: the retained response is not the one the view showed")
-    ref = dict(found.ref)
+    ref, data = dict(source["artifact_ref"]), bytes_of(source["artifact_ref"]["content_hash"])
+    if canonical.bytes_digest(data) != ref["content_hash"]:
+        raise Refused(f"{source['work_id']}: the set-aside response does not hash to the view's reference")
     base = {"claim_id": claim["claim_ref"], "claim_revision": claim["revision"], "work_id": source["work_id"], "source_version": source["source_version"]}
     quote_rows, spans = [], []
     for k, cited in enumerate(quotes_in):
-        start, end = locate(found.data, source["identity"], source["content"], cited["quote"])
+        start, end = locate(data, source["identity"], source["content"], cited["quote"])
         spans.append(_span(start, end, cited["locator"]))
         quote_rows.append({"check_id": derived_id("qck", inv, f"quote{n}", k), **base, "artifact_ref": ref, "quoted_text": cited["quote"], "span_start": start, "span_end": end})
     if not spans:   # nothing quoted: the span names the bytes that were examined
-        spans = [_span(0, len(found.data), "examined retained response")]
+        spans = [_span(0, len(data), "examined retained response")]
     records_out, entries = [], {}
     for kind in KINDS:
         outcome, note = outcomes[kind], item["checks"][kind]["note"]
@@ -112,7 +110,7 @@ def _receipt(inv, n, work, claim, item, records, exchanges, stage, normalization
            "cited_spans": spans, "obtained_content_hash": ref["content_hash"], "access_tier": source["content_tier"],
            "requested_for": {"use": "load_bearing", "required_access_tier": claim["tier"]},
            "acquisition": {**source["acquisition"], "cache_reuse": True},
-           "extraction": {"method": "canonical_bytes", "extractor": "canonical/1", "produced_by_invocation_id": found.invocation_id, "validation_ref": None},
+           "extraction": {"method": "canonical_bytes", "extractor": "canonical/1", "produced_by_invocation_id": source["acquired_by"], "validation_ref": None},
            "producer_invocation_id": claim["producer"], "verifier_invocation_id": inv,
            "quote_check_id": quote_rows[0]["check_id"] if matched else None,
            "checks": {"exact_quote": {"status": "matched" if matched else "not_applicable", "normalization_version": normalization if matched else "none/1",

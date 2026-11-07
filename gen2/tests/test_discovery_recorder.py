@@ -191,7 +191,8 @@ class ResearchViewWitness(Fixture, unittest.TestCase):
             record_work_links=[{"event_id": events[0]["event_id"], "work_id": "wrk_aaaaaaaa"}], search_observations=[{**observation, "invocation_id": INV}],
             works=[{"work_id": "wrk_aaaaaaaa", "identity_scheme": "doi", "identity_value": "10.1/a"}])
         view = views.research_view(research_fixtures.ADMISSION, records, ExchangeIndex(self), lambda ref: None, "2026-11-05T12:00:00Z", 1, [])
-        self.assertEqual(view["works"], [{"work_id": "wrk_aaaaaaaa", "identity": "doi:10.1/a", "abstract": ABSTRACT}])
+        ref = ExchangeIndex(self).response(observation["gateway_call_ref"])[0]
+        self.assertEqual(view["works"], [{"work_id": "wrk_aaaaaaaa", "identity": "doi:10.1/a", "abstract": ABSTRACT, "artifact_ref": ref, "lane": "crossref", "provider_record_id": "doi:10.1/a"}])
 
 
 def ExchangeIndex(case):

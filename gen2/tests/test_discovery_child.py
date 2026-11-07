@@ -85,14 +85,6 @@ class RequestsTest(unittest.TestCase):
             with self.subTest(name), self.assertRaises(common.Refused):
                 requests.intake(data, rcpt, TOPIC, cap, validate)
 
-    def test_select_runs_all_or_only_named_proposals_and_refuses_a_name_the_payload_lacks(self):
-        data, receipt = self.payload([proposal(1), proposal(2)])
-        got = requests.intake(data, receipt, TOPIC, 10_000, validate)
-        self.assertEqual([p["proposal_id"] for p in requests.select(got, None)], ["p1", "p2"])
-        self.assertEqual([p["proposal_id"] for p in requests.select(got, ["p2"])], ["p2"])
-        with self.assertRaises(common.Refused):
-            requests.select(got, ["p2", "p9"])
-
     def test_requests_by_type_are_deterministic(self):
         table = [(proposal(request_type="find", filters={"kind": "article", "limit": 5}), {"request_type": "find", "query": "query 1", "lanes": ["crossref"], "kind": "article", "limit": 5}, 1),
                  (proposal(request_type="find", page_cap=3), {"request_type": "find", "query": "query 1", "lanes": ["crossref"]}, 3),
@@ -132,7 +124,9 @@ class Fixture:
         (self.root / "inputs").mkdir()
         data = canonical.canonical_bytes(document)
         (self.root / "inputs" / "input.json").write_bytes(data)
-        return {"GEN2_INPUT_DIGEST": canonical.bytes_digest(data), child.URL: BASE, child.TOKEN: "engine-token"}
+        token = self.root / "gateway-token"
+        token.write_text("engine-token\n")
+        return {"GEN2_INPUT_DIGEST": canonical.bytes_digest(data), child.URL: BASE, child.TOKEN_FILE: str(token)}
 
     def factory(self, url, token):
         self.built.append((url, token))
@@ -212,6 +206,13 @@ class ChildTest(Fixture, unittest.TestCase):
                 return {"observations": [], "capability_facts": [], "telemetry_losses": [], "pages": []}
         child.run(self.root, environ=self.stage([proposal(1), proposal(2)]), validate=validate, factory=lambda url, token: Client())
         self.assertEqual(events, ["resolve", "search", "resolve", "search"])
+
+    def test_a_gateway_token_that_cannot_be_read_stops_the_job_before_any_request(self):
+        env = self.stage([proposal(1)])
+        for name, value in (("missing file", str(self.root / "absent")), ("no file named", None)):
+            with self.subTest(name), self.assertRaises(common.Refused):
+                self.run_child({k: v for k, v in {**env, child.TOKEN_FILE: value}.items() if v is not None})
+        self.assertEqual((self.built, self.gateway.calls), ([], []))
 
     def test_an_oversized_result_is_refused(self):
         env = self.stage([proposal(1)])

@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Callable, Mapping, Protocol, Sequence
 
 from gen2.exec import artifacts, views
-from gen2.exec.common import Refused
+from gen2.exec.common import Exchanges, Refused, latest_revision
 
 FAMILIES = ("claims", "claim_source_links", "verification_receipts", "source_artifacts", "works", "retrieval_events", "record_work_links",
             "search_observations", "detailed_check_records", "source_acquisitions", "quote_checks")   # the last three are the support predicate's operands
@@ -34,16 +34,13 @@ def select(records: Mapping[str, Sequence[Mapping]], support: Support) -> list[M
     """The latest revision of each provisional load-bearing claim that has a retained source link and that the router's support
     predicate does not already accept. A query, not a judgment: it holds no definition of support of its own."""
     qualified = support.qualified(records)
-    latest: dict[str, Mapping] = {}
-    for claim in records["claims"]:
-        if claim["claim_id"] not in latest or claim["revision"] > latest[claim["claim_id"]]["revision"]:
-            latest[claim["claim_id"]] = claim
+    latest = latest_revision(records["claims"])
     linked = {(link["claim_id"], link["claim_revision"]) for link in records["claim_source_links"]}
     return [claim for _, claim in sorted(latest.items())
             if claim["load_bearing"] and claim["status"] == "provisional" and (claim["claim_id"], claim["revision"]) in linked and not qualified(claim)]
 
 
-def verify_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], support: Support, exchanges: artifacts.Exchanges, text_of: Callable[[str], str | None],
+def verify_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], support: Support, exchanges: Exchanges, text_of: Callable[[str], str | None],
                 as_of: str, truncation: list[dict]) -> dict:
     """The verifier's view: each selected claim, and for each source it rests on the retained text and the acquisition triple."""
     if admission.get("context") != "contract/1":
@@ -64,7 +61,7 @@ def verify_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], su
                 raise Refused(f"{link['work_id']}: the retained response is not the version the claim's link names")
             text = views.abstract_of(found)
             usable = text is not None and support.nonblank(text)
-            sources.append({"work_id": link["work_id"], "source_version": link["source_version"], "content_hash": found.ref["content_hash"], "identity": found.provider_record_id,
+            sources.append({"work_id": link["work_id"], "source_version": link["source_version"], "artifact_ref": dict(found.ref), "acquired_by": found.invocation_id, "identity": found.provider_record_id,
                             "content_tier": "abstract" if usable else "bibliographic", "content": text if usable else None,
                             "acquisition": {"gateway_call_ref": found.gateway_call_ref, "retrieved_at": found.captured_at, "route": f"gateway:{found.lane}"}})
         if not sources:
