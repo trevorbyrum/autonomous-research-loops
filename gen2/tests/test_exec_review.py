@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from gen2.core import canonical
+from gen2.core import review_presentation
 from gen2.exec import common, dossier, review
 from gen2.router.schemas import SchemaSet
 from gen2.tests import children
@@ -110,11 +111,11 @@ class ViewTest(unittest.TestCase):
         self.assertEqual(self.view(records(completion_records=[completion_row("different summary")]))["completion_records"][0]["summary"], "different summary")
 
     def test_long_evidence_is_cut_and_the_cut_is_marked_and_missing_bytes_are_shown_as_missing(self):
-        big = b"x" * (review.EXCERPT + 5)
+        big = b"x" * (review_presentation.EXCERPT + 5)
         got = self.view(records(completion_records=[completion_row(evidence=[ref_of(big)]), completion_row(evidence=[ref_of(b"gone")])]),
                         reader({ref_of(big)["content_hash"]: big}))
         first, second = (r["evidence"][0] for r in got["completion_records"])
-        self.assertEqual((len(first["text"]), first["cut"], second["text"]), (review.EXCERPT, True, None))
+        self.assertEqual((len(first["text"]), first["cut"], second["text"]), (review_presentation.EXCERPT, True, None))
 
     def test_refusals(self):
         for case, call in (("other admission", lambda: review.review_view({"context": "pre-contract/1"}, records(), str, reader(), invocation_id=ME, dossier_revision=3)),
@@ -131,13 +132,13 @@ class PresentTest(unittest.TestCase):
         review_row = completion_row("no search for claim 2", [ref_of(evidence)], kind="sufficiency_review", subject_ref="fleet:topic",
                                     subject_revision=3, subject_hash=HASH, assessment={"outcome": "insufficient", "summary": "no search for claim 2"})
         other = completion_row("a review of another revision", kind="sufficiency_review", subject_ref="fleet:topic", subject_revision=2, subject_hash="sha256:" + "e" * 64)
-        shown = review.present(records(completion_records=[review_row, other]), reader({ref_of(evidence)["content_hash"]: evidence}), dossier_revision=3)
+        shown = review_presentation.present(records(completion_records=[review_row, other]), reader({ref_of(evidence)["content_hash"]: evidence}), dossier_revision=3)
         (seen,) = shown["reviews"]
         self.assertEqual((seen["outcome"], seen["summary"], seen["evidence"][0]["text"]), ("insufficient", "no search for claim 2", evidence.decode()))
         self.assertEqual((shown["approvable"], shown["dossier"]["revision"], len(shown["dossier"]["gates"])), (True, 3, 3))
 
     def test_with_no_review_bound_to_this_revision_nothing_is_approvable(self):
-        shown = review.present(records(), reader(), dossier_revision=3)
+        shown = review_presentation.present(records(), reader(), dossier_revision=3)
         self.assertEqual((shown["reviews"], shown["approvable"]), ([], False))
 
 
@@ -218,10 +219,10 @@ class WholeFlowTest(rf.ContractWorld):
 
     def test_the_operator_reads_the_actual_review_and_its_evidence_before_approving(self):
         row = self.dossier_job()
-        before = review.present(self.records(row), self.read, dossier_revision=row["dossier_revision"])
+        before = review_presentation.present(self.records(row), self.read, dossier_revision=row["dossier_revision"])
         self.assertEqual((before["reviews"], before["approvable"]), ([], False))
         self.review(row, "insufficient", "Claim 2 has no recorded counterevidence search.")
-        shown = review.present(self.records(row), self.read, dossier_revision=row["dossier_revision"])
+        shown = review_presentation.present(self.records(row), self.read, dossier_revision=row["dossier_revision"])
         (seen,) = shown["reviews"]
         self.assertEqual((seen["outcome"], seen["summary"], shown["approvable"]), ("insufficient", "Claim 2 has no recorded counterevidence search.", True))
         self.assertIn("Claim 2 has no recorded counterevidence search.", seen["evidence"][0]["text"])   # the staged judgment itself, read back from the spool
@@ -229,7 +230,7 @@ class WholeFlowTest(rf.ContractWorld):
     def test_dossier_then_fresh_review_then_approval_of_the_exact_revision(self):
         row = self.dossier_job()
         self.review(row, "sufficient", "ok")
-        shown = review.present(self.records(row), self.read, dossier_revision=row["dossier_revision"])
+        shown = review_presentation.present(self.records(row), self.read, dossier_revision=row["dossier_revision"])
         self.assertTrue(shown["approvable"] and shown["reviews"][0]["summary"] == "ok")
         applied = self.f.approve_candidate({"dossier_revision": row["dossier_revision"], "content_hash": row["content_hash"]})
         self.assertEqual(applied["status"], "applied", applied)
