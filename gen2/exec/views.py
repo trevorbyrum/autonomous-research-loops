@@ -64,7 +64,7 @@ RESEARCH_FAMILIES = ("contract_revisions", "works", "record_work_links", "retrie
                      "search_observations", "claims")
 
 
-def _abstract(retained: artifacts.Retained) -> str | None:
+def abstract_of(retained: artifacts.Retained) -> str | None:
     """The retained response's own canonical `abstract` for this record (T12-G), or None."""
     try:
         body = canonical.parse_json_strict(retained.data)
@@ -97,7 +97,7 @@ def research_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], 
             found = artifacts.retained(work["work_id"], records, exchanges)
         except Refused:
             continue
-        abstract = _abstract(found)
+        abstract = abstract_of(found)
         entry = {"work_id": work["work_id"], "identity": f"{work['identity_scheme']}:{work['identity_value']}"}
         if abstract is not None:
             entry["abstract"], cut = abstract[:ABSTRACT_CAP], cut + (len(abstract) > ABSTRACT_CAP)
