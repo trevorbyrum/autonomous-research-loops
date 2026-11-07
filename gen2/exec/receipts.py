@@ -5,8 +5,8 @@ match: the builder supplies only the quote and its byte span), V-8 (attributed d
 invocation, under its own capability); Astra T11 decision 5. Oracle: verification-receipt, detailed-check-record and quote-check
 schemas, and the router's own commit (tests/test_exec_receipts_commit.py). Limits:
 - A span is a half-open BYTE range into the staged response bytes (a canonical reconstruction of the client's parsed exchange, not
-  transport octets). The quote is located inside the retained abstract text, so a quote or abstract containing a character JSON
-  escapes (a quote mark, a backslash, a control character) cannot be located and is refused, never approximated.
+  transport octets), found structurally inside the selected record's `abstract` string (gen2/exec/spans.py). An escape elsewhere in
+  the abstract does not matter; a quote that itself contains an escaped character is refused, never approximated.
 - The system, not the model, decides a tier shortfall: a claim whose required tier no source's retained text reaches gets a
   `cannot_assess_at_required_tier` receipt over the examined bytes, whatever the judgment said; the router writes the hold.
 - `verifier_capability_id` is bearer authority (with the invocation id it can commit as the invocation), so the child never sees
@@ -22,6 +22,7 @@ from typing import Callable, Mapping
 
 from gen2.core import canonical
 from gen2.exec import artifacts, views
+from gen2.exec.spans import locate
 from gen2.exec.common import Refused, derived_id, scaffold
 from gen2.exec.verify import TIERS
 
@@ -32,15 +33,6 @@ ALLOWED = {"supports": ("succeeded", "not_applicable"), "partially_supports": PE
 LEAD = {"numeric_units": "Quantities and unit interpretation", "denominators": "Population or base", "negation": "Polarity and scope", "qualifications": "Limiting context"}
 FAMILIES = ("retrieval_events", "record_work_links", "search_observations")
 BLANK = "".join(chr(c) for c in (*range(9, 14), 32, 133, 160))
-
-
-def _locate(data: bytes, content: str, quote: str) -> tuple[int, int]:
-    """The half-open byte range of `quote` inside the retained abstract's place in `data`."""
-    raw, wanted = content.encode("utf-8"), quote.encode("utf-8")
-    base, at = data.find(raw), raw.find(wanted)
-    if not wanted or base < 0 or at < 0:
-        raise Refused("a cited quote is not in the retained text (or the text holds a character JSON escapes)")
-    return base + at, base + at + len(wanted)
 
 
 def _span(start: int, end: int, locator: str) -> dict:
@@ -95,7 +87,7 @@ def _receipt(inv, n, work, claim, item, records, exchanges, stage, normalization
     base = {"claim_id": claim["claim_ref"], "claim_revision": claim["revision"], "work_id": source["work_id"], "source_version": source["source_version"]}
     quote_rows, spans = [], []
     for k, cited in enumerate(quotes_in):
-        start, end = _locate(found.data, source["content"], cited["quote"])
+        start, end = locate(found.data, source["identity"], source["content"], cited["quote"])
         spans.append(_span(start, end, cited["locator"]))
         quote_rows.append({"check_id": derived_id("qck", inv, f"quote{n}", k), **base, "artifact_ref": ref, "quoted_text": cited["quote"], "span_start": start, "span_end": end})
     if not spans:   # nothing quoted: the span names the bytes that were examined

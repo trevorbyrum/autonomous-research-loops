@@ -119,12 +119,16 @@ class BuilderTest(unittest.TestCase):
             with self.subTest(name), self.assertRaises(common.Refused):
                 build(j)
 
-    def test_a_text_json_would_escape_cannot_be_located_and_is_refused(self):
-        data = canonical.canonical_bytes({"gateway_response": {"records": [{"identity": "doi:10.1/a", "abstract": 'A "quoted" abstract.'}]}})
+    def test_an_abstract_with_escapes_still_verifies_a_plain_quote_and_refuses_one_that_crosses_an_escape(self):
+        text = 'A "quoted" abstract.\nSecond line with an effect.'
+        data = canonical.canonical_bytes({"gateway_response": {"records": [{"identity": "doi:10.1/a", "abstract": text}]}})
         digest = canonical.bytes_digest(data)
         recs = records(claim_source_links=[link(source_version=digest)], source_artifacts=[{"work_id": "wrk_aaaaaaaa", "source_version": digest}])
+        outcome = build(judgment(spans=({"quote": "an effect", "locator": "abstract"},)), recs=recs, ex=exchanges(data))
+        (quote,) = outcome["quote_checks"]
+        self.assertEqual(data[quote["span_start"]:quote["span_end"]], b"an effect")
         with self.assertRaises(common.Refused):
-            build(judgment(spans=({"quote": '"quoted"', "locator": "abstract"},)), recs=recs, ex=exchanges(data))
+            build(judgment(spans=({"quote": '"quoted" abstract', "locator": "abstract"},)), recs=recs, ex=exchanges(data))
 
 
 class Control:
