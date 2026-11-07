@@ -589,7 +589,7 @@ class Supervisor:
             findings.append("killed")
         elif exit_record["code"] != 0:
             findings.append("exit_nonzero")
-        found = self.spool.collect(order["topic_id"], job.scratch, OUTPUT, "application/json")  # a full spool fails the write (advance): the output stays in scratch
+        found = self._stage_output(order, job, journal)  # a full spool fails the write (advance): the output stays in scratch
         declared = self._agent_text(job, DECLARED_DIGEST)
         output = {"status": found["status"], "content_hash": None, "size_bytes": None,
                   "declared_digest": declared if declared and DIGEST.match(declared) else None, "detail": found["detail"]}
@@ -598,7 +598,7 @@ class Supervisor:
             findings.append("empty_output")
         elif found["status"] == "refused":
             findings.append("output_refused")
-        elif declared is not None and declared != found["ref"]["content_hash"]:
+        elif declared is not None and declared != found.get("original", found["ref"]["content_hash"]):
             output.update(status="digest_mismatch", detail=f"the executor declared {declared[:80]}; the bytes hash to {found['ref']['content_hash']}")
             findings.append("output_digest_mismatch")
         else:
@@ -610,6 +610,32 @@ class Supervisor:
                                 "evidence": self._evidence(order, job) if result is not None else []}
         self._save(job, journal)
         self._retain(job, order, journal)
+
+    def _stage_output(self, order: dict, job: jobs.Job, journal: dict) -> dict:
+        """Stage the job's outcome.json. A verification job's receipts name the verifier's own capability, which is minted at the claim,
+        after the order was fixed, and must never reach the job: the supervisor, which holds the grant, fills that one field on
+        `verification_receipts` before staging and hashing. A receipt that already names another capability refuses the output; every
+        other kind, and an outcome with nothing to fill, is staged byte for byte as the job wrote it. `original` is the job's own digest,
+        which is what a declared digest is checked against."""
+        if order["kind"] != "verification":
+            return self.spool.collect(order["topic_id"], job.scratch, OUTPUT, "application/json")
+        raw = read_scratch(job.scratch, OUTPUT, self.spool.max_artifact_bytes)
+        if raw["status"] != "present":
+            return {"status": raw["status"], "ref": None, "detail": raw["detail"]}
+        data, capability = raw["data"], (journal.get("grant") or {}).get("capability_id")
+        try:
+            document = canonical.parse_json_strict(data)
+        except ValueError:
+            document = None
+        receipts = [r for r in (document or {}).get("verification_receipts", []) if isinstance(r, dict)] if isinstance(document, dict) else []
+        if any(r.get("verifier_capability_id") not in (None, capability) for r in receipts) or (receipts and capability is None):
+            return {"status": "refused", "ref": None, "detail": "a verification receipt names a capability that is not the verifier's own"}
+        if any("verifier_capability_id" not in r or r["verifier_capability_id"] is None for r in receipts):
+            for r in receipts:
+                r["verifier_capability_id"] = capability
+            data = canonical.canonical_bytes(document)
+        return {"status": "present", "ref": self.spool.stage(order["topic_id"], data, "application/json"), "detail": None,
+                "original": canonical.bytes_digest(raw["data"])}
 
     def _evidence(self, order: dict, job: jobs.Job) -> list[dict]:
         """Stage the files a successful job set aside as `evidence-<sha256>.json`: at most MAX_EVIDENCE, each kept only if its bytes
