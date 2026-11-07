@@ -189,6 +189,14 @@ may_import = ["core"]
 stdlib_capabilities = []
 third_party = []
 
+[modules.discovery]
+path = "gen2/discovery"
+purpose = "The discovery code job (2e2-min T13): the only module that constructs a GatewayClient or calls its resolve(), and only inside a supervised job child, so the job deadline bounds the name lookup (DEBT-001, DEBT-002; INVARIANTS H-6). It runs the primary's typed search proposals serially and hands the answers to the station's recorder; it writes no store. Maps to no BOUNDARIES.md component (the gateway client is the Gateway door; the router still validates every record)."
+boundaries = []
+may_import = ["core", "gateway_client", "exec"]
+stdlib_capabilities = []
+third_party = []
+
 [modules.tests]
 path = "gen2/tests"
 purpose = "Gen-2 test suite. May import any gen2 module and any stdlib surface; forbidden_imports still apply (tests must not lean on gen-1 code)."
