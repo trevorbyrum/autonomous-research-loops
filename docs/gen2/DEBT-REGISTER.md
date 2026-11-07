@@ -65,6 +65,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - owner: task 2e2
 - what: Before real workflow acceptance, 2e2 must give the sampled state-integrity audit an independently checkable evidence requirement for retrieval: what the trusted capture retains of each retrieval so that a sample can be re-derived without trusting the claim, a missing required item being itself an audit failure. Today `gateway_call_ref` acknowledges a durable call row of the gateway (the request, its correlation and telemetry), not a response artifact, and D-1's raw-response retention is for decision receipts, not retrieval. No new router writer and no duplicated provider parser in the router. The relabel case disclosed in 2b-repair-13d awaits it.
   T13 (2e2-min) retains, per captured call, a canonical reconstruction of the client's parsed exchange (`gen2/discovery/exchanges.py`), not the raw transport octets: `GatewayClient` parses the body and keeps no octets. Retaining the original octets is this obligation's, to land right after the first supervised run; that run's report states the limit.
+  The 2026-11-07 Gate S #7 note: exchanges remain a canonical reconstruction and the raw octets are still owed here. Roadmap item D (DEBT-058) addresses which bytes are the evidence for quote checks.
 - source: Gate D #2 finding F6 (private/reviews/gen2-gate-d-2-astra-review.md), recorded by task 2b-repair-14 (BUILD-STATE.md 2e2 entry)
 - removal: 2e2's sampled-state audit has that evidence requirement, implemented and tested, before real workflow acceptance, and the 2e2 review (Gates A and C) confirms it.
 
@@ -575,6 +576,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - owner: phase 2
 - what: after a genuine provider rejection, 2e1-minimum blocks productive dispatch for that deployment and provider route. A local usable probe, a generic hold clearance, a policy reactivation and an old qualification each leave the block in place. Productive use after the genuine negative-auth experiment (DEBT-004) needs a separately reviewed operator remediation procedure.
 - source: 2e1 design v2 B2 (Astra rounds 1–2, private/reviews/gen2-2e1-design-review-astra-20261031.md)
+  T4a implements the route-wide retained-rejection predicate, including known-zero cost; reviewed remediation remains T4b and the pre-2f operator procedure.
 - removal: a reviewed remediation procedure exists and passes before 2f's productive dispatch.
 
 ### DEBT-054 - the gateway client output cut and P9 transport, deferred past the 2f start (Phase 2)
@@ -615,5 +617,15 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - status: open
 - owner: phase 3
 - what: Home of every item in Gate S #6 section 8, in order. R1 /2 bundle and JSONL connector: DEBT-040, DEBT-041. R2 retrieval-audit evidence: DEBT-003 (lands right after the first run). R3 first store upgrade: DEBT-056. R4 gateway output cut and P9 transport: DEBT-054. R5 feed facts, freshness envelope, currency: DEBT-042, DEBT-043. R6 Phase 2 close (DEBT-029, DEBT-031, Gate D, the 46k test-floor report, the operator gate): those entries and `phase-status.json`. R7 unattended hardening and the unknown-spend ruling: DEBT-055, DEBT-052. R8 automatic cadence and detectors: DEBT-045. R9 LLM discovery and delegate kinds: DEBT-057. R10 live S1-S3 intake: DEBT-049. R11 method-fit review and facet audit: DEBT-044, DEBT-046. R13 exploration budget, bridge and reframing probes, remaining detectors, measures, tier-0, reservations: DEBT-047, DEBT-045, DEBT-048, DEBT-037, DEBT-050. R15 cadence usage estimator: DEBT-015. R16 gateway revision lifetime, adapter compatibility, partial results, restart: DEBT-011, DEBT-012, DEBT-013. R18 migration, cutover and canary: DEBT-005 to DEBT-010, DEBT-014. Three items have no other entry and are carried here: R12, the decision layer in shadow and advisory with the question and qualification registries (INVARIANTS section 13, D-1 to D-12; the engine runs with it disabled, D-7); R14, the SQL and webhook connectors (EXPORT-API section 6; after R1); R17, more than one topic or slot (the slot predicate, per-kind limits from the policy bundle, the Option D note on topic-scoped capture; after R7; not sized). Importing gen-1 history into a store that already holds live gen-2 topics is not designed and must be settled by Phase 4 (R18). Each item enters the same flow as the must-haves: a ticket with a trace, owned paths and a bottom-up size, one design round only if genuinely new, Astra, the merged-tree run, auto-merge with the per-merge summary.
+  Gate S #7 (2026-11-07, private/reviews/gen2-gate-s7-fable-20261107.md §4 "Later") adds, after Nov 18:
+  - **A:** the Router derives `verifier_capability_id` from the commit envelope; the supervisor stages the child's bytes untouched and `_stage_output` goes (−30 production, −90 test). Amends the 11-07 capability ruling; Trevor's, after one Astra design round.
+  - **B:** `exec` imports `gen2.router.support` and `code: boundary.Refusal`; delete `app/support_gate.py` and the `Support` Protocol (−70).
+  - **C:** one purpose registry (the bundle `executors` entry gains `agent` and `recorder`) (−40 net).
+  - **D:** quote verification against per-record content artifacts; delete `code: spans.py` (118 + 73 test), remove the `gateway_response` wrapper special case (−190). Removes the T15 limit that a quote cannot cross a JSON escape (the #140 P2 limit). Belongs with DEBT-003.
+  - **E:** delete supervisor `_named` and list every digest-verified evidence file as a result ref (−17 production, −60 test).
+  - **F:** host-lane lean test form (−49) and folding `tools/gen2_prompt_pins.py` into `code: workflow.executor_entries` (−40) (−90 total).
+  - **G:** one digest check on the retained-bytes read path (−10).
+  - **T21 freshness envelope:** T21 was cut 2026-11-07; the envelope shape stays with R5 and DEBT-043.
+  - **T17 PR3b:** discovery routes to `gen2.discovery.child`.
 - source: operator ruling Gate S #6 (all rows) and section 8, 2026-11-05 (private/reviews/gen2-gate-s6-two-week-plan-fable-20261105.md)
 - removal: each of R12, R14 and R17 is delivered with its qualification evidence or explicitly removed by the operator, and the Phase 3 review confirms it; the other items close with their own entries.

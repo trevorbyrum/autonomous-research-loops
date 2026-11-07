@@ -27,7 +27,7 @@ LAUNCHER = (sys.executable, str(Path(__file__).with_name("jobshim.py")))
 TERMINAL = ("committed", "failed", "cancelled")
 # Refusals of a lifecycle write that no retry can change: another fact is already recorded under the write-once key,
 # or the router does not know this capability for this invocation. They stop at once rather than spend the budget.
-# "kind/purpose" keys (purpose is the order's GEN2_PURPOSE) whose result may not reach the router before the station's
+# "kind/purpose" keys (the order's GEN2_PURPOSE itself) whose result may not reach the router before the station's
 # recorder has written its evidence (2e2 design, T12-B). A key here without an installed recorder refuses at prepare.
 RECORDED = frozenset({"discovery/search", "verification/verify", "checkpoint/dossier"})
 FINAL_REFUSALS = frozenset({"transition_conflict", "reconciliation_conflict", "cancel_conflict",
@@ -941,9 +941,10 @@ class Supervisor:
 
     def _recorder_key(self, order: Mapping) -> str | None:
         """The recorder an order's evidence needs (a required purpose, or any with one installed); None if it has none."""
-        purpose = (order.get("env") or {}).get("GEN2_PURPOSE")
-        key = f"{order['kind']}/{purpose}"
-        return key if purpose and (key in RECORDED or key in self.recorders) else None
+        key = (order.get("env") or {}).get("GEN2_PURPOSE")   # the one purpose identity, "kind/purpose", as orders.build_order writes it
+        if key is not None and not key.startswith(order["kind"] + "/"):
+            raise RecorderMissing(f"the order is a {order['kind']} but names the purpose {key[:80]!r}; nothing was written")
+        return key if key and (key in RECORDED or key in self.recorders) else None
 
     def _recording(self, job, order, journal, grant, collected) -> str | None:
         """Run the order's recorder before its result goes to the router: replayable, not exactly once (Astra T12 F2). Every durable

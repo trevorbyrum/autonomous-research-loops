@@ -4056,3 +4056,51 @@ By records batch R1 (Gate S plan §4 R1; operator ruling 5) the following sectio
   - the Fable second opinion (`gen2-test-compaction-fable-20261102.md`): the C classification is right; compaction with the same catches is worth about 1,250–1,900 lines (3–4%), and docstrings 1,200–2,200; the real duplication is production design (doubled SQL/Router guards, the checkers).
   - **Trevor:** a floor of about 46k by the Phase 2→3 gate; the docstring trim; the 25-edit cap relaxed for mechanical folds; the doubled guards and the checker consolidation routed to Gate S.
 - **Records:** DEBT-055 (unattended storage and lifecycle hardening, Phase 3); the charter test-growth cap and the forward test rules.
+
+## 2026-11-05/07: sprint reviews (T2–T18) and Gate S #7
+One entry per reviewed PR since 2026-11-03. Reviewer is Astra (Gate A+B+C) unless noted; "accepted" is pending the verifier. P1s are production or design defects.
+- **#108** charter and Gate S #5/#6 rulings: PASS, no P1. Merged.
+- **#109** T5 rejection classifier: PASS, no P1 (P2 edge-shape defects). Merged.
+- **#110** T2 serialized admission: PASS, no P1. Merged.
+- **#111** T6 bake wrapper and offline fixtures: PASS, no P1. Merged.
+- **#112** T3 late results and credential failures: PASS, no P1. Merged.
+- **#113** T12-D executor shapes: PASS, no P1. **#120** its enum follow-up: PASS. Merged.
+- **#114** T12-B recorder seam: PASS, no P1 (P2: shadowed `self.fail`). Merged.
+- **#115** T14 PR1 assembly core: PASS, no P1. Merged.
+- **#116** T12-G Semantic Scholar abstracts: PASS, no P1. Merged.
+- **#117** T14 PR2 scoping: BLOCK, 1 P1 (no proposal-only pass for the scoping loop), fixed in round 2. Merged.
+- **#118** T12-A Router interfaces: PASS in 2 rounds (the second after conflict resolution). Merged.
+- **#119** T14 PR3 research: BLOCK, 1 P1 (view dropped the scientific question and approved assessment criteria), fixed. Merged.
+- **#122** T7 launch ending: PASS, no P1 (P2 boundary drift N1). Merged.
+- **#123** T8 offline host package: BLOCK, 3 P1 (Q driver names a file absent from the runner image; absent observers satisfy the paired-counter check; the "allowed relay" control was a denied request), fixed. Merged.
+- **#124** T13 PR A discovery request side: PASS, no P1; H-6 deadline stays an integration obligation. Merged.
+- **#127** T13 PR B discovery recorder: BLOCK, 1 P1 (`proposed_by` accepted without binding it to the committed payload), fixed in round 2. Merged.
+- **#130** T12-G2 retained gateway records: PASS, no P1. Merged.
+- **#137** T15 PR A verification input: BLOCK, 1 P1 (receipt labels taken for qualifying support, so selection could suppress a claim), fixed through `RouterSupport.qualified` → `support.require_support`. Merged.
+- **#139** Buildx fix: BLOCK, 1 P1 (endpoint gate still rejected the approved context: URI/path mismatch masked by a positive test using `SOCKET`), fixed with retained-artifact fixtures. Merged.
+- **#128** T4a retained rejection blocker: PASS, no P1. Open, accepted.
+- **#132** T4b remediation audits: PASS, no P1. Open, accepted.
+- **#125** T16 PR1 challenge: BLOCK, 3 P1 (a degraded search omitted from `searched` permits `none_found`; lane+query is not proposal identity; label-only challenge), fixed. Open, accepted.
+- **#126** T16 PR2 dossier and review: BLOCK, 2 P1 (the review view reduced to labels; no operator hand-off witness), fixed. Open, accepted.
+- **#129** T18 fixtures: PASS, no P1 (P2: fixture DOIs the real adapter rejects). Open, accepted.
+- **#131** supervisor envelope lists staged evidence: BLOCK round 1 (a `content_hash` walk crashed on malformed child JSON), PASS round 2. Open, accepted.
+- **#133** T17 PR1 driver core: PASS, no P1. Open, accepted.
+- **#134** T17 PR2 driver: BLOCK, 1 P1 (order identity aliased different phases and review episodes), 4 rounds, accepted. Open.
+- **#135** operator status review block: PASS (`gen2-sprint-review-status-astra-20261107.md`), no P1. Open, accepted.
+- **#136** topic-scoped receipts and quote checks: PASS in 2 rounds, no P1. Open, accepted.
+- **#138** T17 PR3a walker: PASS in 2 rounds, no P1. Open, accepted.
+- **#140** T15 PR B verify builder: BLOCK, 1 P1 (an escape anywhere in an abstract rejected ordinary quoted evidence), fixed. **#142** B2 verification recorder: PASS in round 2 together with #140 (`gen2-sprint-T15-PRB-astra-20261107.md`), no remaining P1. Open, accepted.
+- **#141** capability fill: BLOCK round 1 (`verification_receipts: null` crashed the supervisor repeatedly), PASS round 2. Open, accepted.
+- **#143** T18 world fixtures: PASS, no P1 (`gen2-sprint-T18-world-astra-20261107.md`). Open, accepted.
+- **PR3b** composition design: Astra BLOCKED design v1 (`gen2-sprint-T17-PR3b-design-20261107.md`; 2 P1: copied families leak bearer-authority ids; retained refs not admitted). Fable's v2 was written after that block and proposes repairs; Gate S #7 assessed v2. Astra has not accepted v2. **#144** (PR3b-D, the Gate S #7 shape): PASS, no P1 (`gen2-sprint-PR3b-D-astra-20261107.md`); open, accepted. **#145** (PR3b-B, driver set-aside, child table, compose) and **#146** (the run-until-wait command, stacked on #145) are open and in review.
+- Across 11-05 to 11-07: 25 Astra reviews of 19 PRs, 14 with two or more rounds; the verifier ran 11 times, all green.
+
+### Gate S #7 (Fable, fresh session, `bd3490d`, 2026-11-07; `gen2-gate-s7-fable-20261107.md`)
+Growth since S6 (`ff69469`) is +6,228 net (production and tooling 3,266, tests 2,854, docs 108). The catch record, tabulated from the review files:
+- **Astra Gate A+B+C:** 25 reviews, 17 P1 production or design defects (copied from Gate S #7; #131's finding was originally labelled "P2, blocking" and the round-2 task called it P1) (#117, #119, #123 ×3, #125 ×3, #126 ×2, #127, #131, #134, #137, #139, #140, #141); 3 findings of tests manufacturing the fact under test (#134 r3, #139 r1, T8 fake CLI); 3 size-ratio exceptions (#137, #142, T7) and 1 boundary drift (T7 N1). The only check earning production catches.
+- **Gate C hand mutation:** about 22 spot checks, 0 survivors.
+- **Independent verifier (`gen2-accept`):** 11 runs, all exit 0, 839–878 s each; 0 catches. One Gate S period without a catch, so no demotion; its cost is merge serialization.
+- **Weekly mutation:** 0 runs so far (first campaign Sun 11-09, report-only).
+- **`gen2-size`, complexity, locators:** 11 runs, 0 catches.
+- **Finding families:** A malformed child output walked with an assumed shape (#131, #141); B a second, weaker definition of an authority (#137, #134, #125, #139); C fixtures manufacturing the fact under test; D research-integrity P1s from views that drop the operands (seven).
+- **Rulings (Trevor):** 2e2 cap 8,800; T21 cut; capability fill stays with the supervisor until the post-Nov-18 Router-fill amendment (DOSSIER). Roadmap items A–G are in DEBT-058.

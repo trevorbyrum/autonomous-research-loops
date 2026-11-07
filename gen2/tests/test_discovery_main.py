@@ -64,3 +64,28 @@ class MainTest(Fixture, unittest.TestCase):
                 self.assertEqual(self.files(), [])
         done = children.python(["-m", "gen2.discovery.child"], cwd=self.root, env=env, capture_output=True, text=True)
         self.assertEqual((done.returncode, "usage" in done.stderr), (2, True))
+
+    def test_a_diagnostic_never_carries_text_from_the_input(self):
+        """Caller-controlled names (a filter key, an unknown property, a path) with a marker and a newline in them never reach stdout or stderr: exit 2 prints one fixed line."""
+        marker = "CALLER_SENTINEL_148\nFORGED: gen2.discovery.child: ok"
+        cases = {"a schema-valid proposal with an unsupported filter name": proposal(1, filters={marker: "x"}, obligation_ids=[]),
+                 "a proposal the schema refuses, by an unknown property named with the marker": {**proposal(1, obligation_ids=[]), marker: 1},
+                 "a proposal with a wrong-type filter value under a marked name": proposal(1, filters={"limit": marker}, obligation_ids=[])}
+        for name, bad in cases.items():
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                env = self.stage([proposal(2, obligation_ids=[]), bad])
+                done = self.run_module("gen2.tests.discovery_entry", env)
+                self.assertEqual(done.returncode, 2)
+                self.assertEqual(done.stdout, "")
+                self.assertNotIn("CALLER_SENTINEL", done.stdout + done.stderr)
+                self.assertNotIn("FORGED", done.stdout + done.stderr)
+                self.assertEqual(done.stderr.count("\n"), 1, "one line")
+                self.assertTrue(done.stderr.startswith("gen2.discovery.child: stopped: "), done.stderr)
+                self.assertEqual(self.files(), [])
+        # the paths the input names are not echoed either
+        self.tearDown()
+        self.setUp()
+        done = self.run_module("gen2.tests.discovery_entry", {**self.stage([proposal(1, obligation_ids=[])]), "GEN2_SECRET_GATEWAY_TOKEN_FILE": str(self.root / "PATH_SENTINEL_148")})
+        self.assertEqual((done.returncode, "PATH_SENTINEL_148" in done.stderr + done.stdout), (2, False))

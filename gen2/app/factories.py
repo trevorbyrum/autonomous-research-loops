@@ -14,7 +14,7 @@ NORMALIZATION = "/".join(quote_matching.NORMALIZATION)
 TABLE = {
     "research_pass/scope": lambda stage, bytes_of: scope.build_scope,
     "research_pass/research": lambda stage, bytes_of: research.research_builder(stage),
-    "verification/verify": lambda stage, bytes_of: receipts.make_builder(bytes_of, stage, normalization=NORMALIZATION),
+    "verification/verify": lambda stage, bytes_of: receipts.make_builder(stage=stage, bytes_of=bytes_of, normalization=NORMALIZATION),
     "checkpoint/challenge": lambda stage, bytes_of: challenge.make_builder(stage),
     "checkpoint/review": lambda stage, bytes_of: review.make_builder(stage),
     "checkpoint/dossier": lambda stage, bytes_of: dossier.build_dossier,

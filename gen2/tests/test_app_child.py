@@ -76,12 +76,46 @@ class ChildTest(unittest.TestCase):
         with self.assertRaises(common.Refused):
             read(ref["content_hash"])                                 # the name is a claim the bytes must meet
 
-    def test_the_default_table_builds_a_pure_builder_for_every_purpose_in_a_fresh_process(self):
+    def verify_case(self, stage):
+        """A claim whose cited quote is in a retained response the parent set aside: the builder must USE `stage` and `bytes_of` correctly."""
+        response = canonical.canonical_bytes({"lanes": [{"source": "semanticscholar"}], "records": [{"identity": "doi:10.1/x", "abstract": "an abstract"}]})
+        ref = stage(response, "application/json")
+        source = {"work_id": "wrk_00000001", "source_version": ref["content_hash"], "content_hash": ref["content_hash"], "identity": "doi:10.1/x", "content_tier": "abstract",
+                  "content": "an abstract", "artifact_ref": ref, "acquired_by": "inv_capture1",
+                  "acquisition": {"gateway_call_ref": "call-1", "retrieved_at": "2026-11-08T09:00:00Z", "route": "gateway:semanticscholar"}}
+        claim = {"claim_ref": "clm_00000001", "revision": 1, "tier": "abstract", "producer": "inv_producer1", "text": "t", "sources": [source]}
+        checks = {kind: {"outcome": "not_applicable", "note": "nothing to check"} for kind in ("numeric_units", "denominators", "negation", "qualifications")}
+        return ({"as_of": "2026-11-08T09:00:00Z", "claims": [claim]},
+                {"items": [{"claim_ref": "clm_00000001", "verdict": "supports", "cited_spans": [{"quote": "an abstract", "locator": "abstract"}], "checks": checks}]})
+
+    def test_the_default_table_builds_and_runs_every_purposes_pure_builder_on_a_minimal_input(self):
+        """Production path: the child's own table, `stage` and `bytes_of`, each builder INVOKED (a swapped argument fails here, not in review)."""
         from gen2.app import factories
         self.assertEqual(set(factories.TABLE), set(child.JUDGMENT) | set(child.CODE_ONLY))
         stage, read = child.evidence_stage(self.dir), child.bytes_of(self.dir)
-        for key, factory in factories.TABLE.items():   # the real pure builders: lane D's research_builder(stage), make_builder(bytes_of, stage, normalization=)
-            self.assertTrue(callable(factory(stage, read)), key)
+        pin = {"revision": 1, "content_hash": "sha256:" + "a" * 64}
+        contract = {**pin, "framing_version": 1, "eligibility_protocol": {"protocol_version": 1}}
+        dossier = {"revision": 1, "content_hash": "sha256:" + "d" * 64, "contract_revision": 1}
+        cases = {
+            "research_pass/scope": ({}, {"search_proposals": [{"proposal_id": "p1"}]}),
+            "research_pass/research": ({"contract": contract, "works": []}, {"claims": [], "screening": [], "obligations": [], "triggers": [],
+                                                                            "search_proposals": [], "next_queue_state": None}),
+            "verification/verify": self.verify_case(stage),
+            "checkpoint/challenge": ({"pass": 1, "claims": [], "adverse_receipts": [], "contradictions": [], "searches": [], "review_episodes": []},
+                                     {"counterevidence": [], "explanations": [], "adjudications": [], "promotions": [], "search_proposals": []}),
+            "checkpoint/review": ({"dossier": dossier}, {"outcome": "sufficient", "summary": "ok"}),
+            "checkpoint/dossier": ({}, {}),
+        }
+        for key, (view, judgment) in cases.items():
+            with self.subTest(key):
+                work = {"invocation_id": "inv_aaaaaaaa", "topic_id": TOPIC, "admission": {"context": "contract/1", "contract": pin}, "view": view}
+                outcome = factories.TABLE[key](stage, read)(work, judgment)
+                self.assertEqual((outcome["invocation_id"], outcome["topic_id"]), ("inv_aaaaaaaa", TOPIC))
+                if key == "verification/verify":   # the supervisor fills the verifier's own capability id before staging (#141); model that here
+                    outcome = {**outcome, "verification_receipts": [{**r, "verifier_capability_id": "cap_" + "0" * 32} for r in outcome["verification_receipts"]]}
+                    self.assertEqual(len(outcome["verification_receipts"]), 1)
+                if key != "research_pass/scope":   # the scope case carries a bare proposal, which the schema rightly refuses
+                    self.assertEqual(SchemaSet().errors(outcome, "outcome-document.schema.json"), [], key)
 
     def test_a_model_purpose_runs_the_agent_validates_and_writes_outcome_and_evidence_in_one_directory(self):
         env = inputs(self.dir, "checkpoint", "review")

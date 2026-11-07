@@ -22,6 +22,9 @@ from gen2.exec.common import Refused, outcome_bytes, scaffold
 from gen2.gateway_client.client import GatewayClient, GrantRefused
 
 RESULT, OUTCOME = "discovery-result.json", "outcome.json"
+CLOSED = "the live gateway entrance is closed: this child runs only over an injected transport (pre-T19)"
+STOPS = {GrantRefused: "the gateway refused the grant", Refused: "the input or a proposal was refused", KeyError: "a required value is missing",
+         TypeError: "an input value has the wrong shape", OSError: "a file could not be read", ValueError: "the input is not valid"}   # most specific first
 URL, TOKEN_FILE = "GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN_FILE"   # the token is a file the supervisor mounts, never a value in order.json
 
 
@@ -78,18 +81,21 @@ def run(directory: Path, *, environ: Mapping[str, str], validate: Callable[[str,
 def main(argv: Sequence[str], *, env: Mapping[str, str] | None = None, validate: Callable[[str, object], None] | None = None,
          transport: Callable | None = None) -> int:
     """`python -m gen2.discovery.child <scratch>`: read the pinned input, run the proposals, write `discovery-result.json` and `outcome.json`; 0, or 2
-    with a named reason and nothing written. THE PRE-T19 FENCE: the client is built only over a `transport` the caller injects; the ordinary
+    with one fixed line and, for every refusal before the result is written, nothing written. THE PRE-T19 FENCE: the client is built only over a `transport` the caller injects; the ordinary
     route (no transport) never builds a client from environment credentials, so it reaches no gateway: live use is refused until T19 opens it
-    deliberately. Offline, the caller (T18's entry) injects the canned gateway and the schema check."""
+    deliberately. Exit 2 prints one fixed line, never text from the input. Offline, the caller (T18's entry) injects the canned gateway and the schema check."""
     env = os.environ if env is None else env
+    if len(argv) != 1:
+        print("gen2.discovery.child: usage: gen2.discovery.child <scratch>", file=sys.stderr)
+        return 2
+    if transport is None or validate is None:
+        print(f"gen2.discovery.child: {CLOSED}", file=sys.stderr)
+        return 2
     try:
-        if len(argv) != 1:
-            raise Refused("usage: gen2.discovery.child <scratch>")
-        if transport is None or validate is None:
-            raise Refused("the live gateway entrance is closed: this child runs only over an injected transport (pre-T19)")
         run(Path(argv[0]), environ=env, validate=validate, factory=lambda url, token: GatewayClient(url, token, transport=transport))
     except (Refused, KeyError, TypeError, OSError, ValueError, GrantRefused) as error:
-        print(f"gen2.discovery.child: {type(error).__name__}: {error}", file=sys.stderr)
+        # a fixed code per kind of failure, never the exception's text: it can carry proposal keys, filter names, paths or schema detail
+        print(f"gen2.discovery.child: stopped: {next(text for kind, text in STOPS.items() if isinstance(error, kind))}", file=sys.stderr)
         return 2
     return 0
 
