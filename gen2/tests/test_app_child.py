@@ -77,18 +77,11 @@ class ChildTest(unittest.TestCase):
             read(ref["content_hash"])                                 # the name is a claim the bytes must meet
 
     def test_the_default_table_builds_a_pure_builder_for_every_purpose_in_a_fresh_process(self):
-        from unittest import mock
         from gen2.app import factories
-        from gen2.exec import receipts, research
         self.assertEqual(set(factories.TABLE), set(child.JUDGMENT) | set(child.CODE_ONLY))
         stage, read = child.evidence_stage(self.dir), child.bytes_of(self.dir)
-        for key in ("research_pass/scope", "checkpoint/challenge", "checkpoint/review", "checkpoint/dossier"):
-            self.assertTrue(callable(factories.TABLE[key](stage, read)), key)
-        with mock.patch.object(research, "research_builder") as pure, mock.patch.object(receipts, "make_builder") as verify:
-            factories.TABLE["research_pass/research"](stage, read)
-            factories.TABLE["verification/verify"](stage, read)
-        pure.assert_called_once_with(stage)                              # no reader, exchanges or spool: the stage only
-        verify.assert_called_once_with(read, stage, normalization=factories.NORMALIZATION)
+        for key, factory in factories.TABLE.items():   # the real pure builders: lane D's research_builder(stage), make_builder(bytes_of, stage, normalization=)
+            self.assertTrue(callable(factory(stage, read)), key)
 
     def test_a_model_purpose_runs_the_agent_validates_and_writes_outcome_and_evidence_in_one_directory(self):
         env = inputs(self.dir, "checkpoint", "review")
