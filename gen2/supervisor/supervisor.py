@@ -32,6 +32,8 @@ RECORDED = frozenset({"discovery/search", "verification/verify", "checkpoint/dos
 FINAL_REFUSALS = frozenset({"transition_conflict", "reconciliation_conflict", "cancel_conflict",
                             "unknown_invocation", "capability_invalid", "capability_invocation_mismatch"})
 DIGEST = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
+EVIDENCE = re.compile(r"\Aevidence-([0-9a-f]{64})\.json\Z")  # a file a job sets aside in its scratch, named by its own digest
+MAX_EVIDENCE = 16
 INVOCATION_ID = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")  # common.schema.json#/$defs/invocation_id: also the job's directory name
 
 
@@ -604,9 +606,38 @@ class Supervisor:
             result = found["ref"] if not findings else None
         observation = {"process": self._process(view["identity"]), "exit": exit_record, "termination": seen["termination"], "descendants": seen["descendants"],
                        "output": output, "self_report": self._agent_text(job, SELF_REPORT), "findings": findings}
-        journal["observing"] = {**seen, "observation": observation, "result": result, "method": "exit_observed"}
+        journal["observing"] = {**seen, "observation": observation, "result": result, "method": "exit_observed",
+                                "evidence": self._evidence(order, job) if result is not None else []}
         self._save(job, journal)
         self._retain(job, order, journal)
+
+    def _evidence(self, order: dict, job: jobs.Job) -> list[dict]:
+        """Stage the files a successful job set aside as `evidence-<sha256>.json`: at most MAX_EVIDENCE, each kept only if its bytes
+        hash to the digest in its name. The job names no path and no media type; these are the only refs its outcome may add."""
+        try:
+            names = sorted(entry.name for entry in Path(job.scratch).iterdir() if EVIDENCE.match(entry.name))[:MAX_EVIDENCE]
+        except OSError:
+            return []
+        found = [(name, self.spool.collect(order["topic_id"], job.scratch, name, "application/json")) for name in names]
+        return [f["ref"] for name, f in found if f["status"] == "present" and f["ref"]["content_hash"] == "sha256:" + EVIDENCE.match(name).group(1)]
+
+    def _named(self, order: dict, collected: dict) -> list[dict]:
+        """The job's staged evidence its outcome names (a dict equal to a staged ref, anywhere in the document); nothing else is added."""
+        staged = {ref["content_hash"]: ref for ref in collected.get("evidence", [])}
+        data = self.spool.read(collected["result"]["content_hash"], topic_id=order["topic_id"]) if staged else None
+        if data is None:
+            return []
+        try:
+            document = canonical.parse_json_strict(data)
+        except ValueError:
+            return []
+        found, pending = {}, [document]
+        while pending:
+            node = pending.pop()
+            if isinstance(node, dict) and node.get("content_hash") in staged and node == staged[node["content_hash"]]:
+                found[node["content_hash"]] = node
+            pending.extend(node.values() if isinstance(node, dict) else node if isinstance(node, list) else ())
+        return [found[h] for h in sorted(found)]
 
     def _terminate(self, job: jobs.Job, order: dict, journal: dict, view: dict, reason: str) -> None:
         """End the execution group (timeout or cancellation) and record it;
@@ -625,7 +656,7 @@ class Supervisor:
         collected: retained until it is delivered (C-10)."""
         seen = journal["observing"]
         record = self._record(order, seen["method"], seen["observation"])
-        journal["collected"] = {"observation": seen["observation"], "result": seen["result"], "record": record,
+        journal["collected"] = {"observation": seen["observation"], "result": seen["result"], "record": record, "evidence": seen.get("evidence", []),
                                 **({"terminated": seen["terminated"]} if seen.get("terminated") else {})}
         del journal["observing"]
         self._wrote(journal)
@@ -931,7 +962,8 @@ class Supervisor:
                 "operation_kind": "final_outcome", "invocation_id": grant["invocation_id"], "capability_id": grant["capability_id"],
                 "topic_id": grant["topic_id"], "admission": grant["admission"], "config_bundle_hash": grant["config_bundle_hash"],
                 "lease": {"lease_id": grant["lease"]["lease_id"], "generation": grant["lease"]["generation"]}, "expected_state_revision": state_revision,
-                "payload_digest": result["content_hash"], "payload_size_bytes": result["size_bytes"], "result_refs": [record], "submitted_at": self._now()}
+                "payload_digest": result["content_hash"], "payload_size_bytes": result["size_bytes"],
+                "result_refs": [record, *self._named(order, collected)], "submitted_at": self._now()}
 
     # -- outcome_unknown -----------------------------------------------------------
     def _enter_unknown(self, job, order, journal, grant, status, cause: str) -> str:
