@@ -64,6 +64,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - status: open
 - owner: task 2e2
 - what: Before real workflow acceptance, 2e2 must give the sampled state-integrity audit an independently checkable evidence requirement for retrieval: what the trusted capture retains of each retrieval so that a sample can be re-derived without trusting the claim, a missing required item being itself an audit failure. Today `gateway_call_ref` acknowledges a durable call row of the gateway (the request, its correlation and telemetry), not a response artifact, and D-1's raw-response retention is for decision receipts, not retrieval. No new router writer and no duplicated provider parser in the router. The relabel case disclosed in 2b-repair-13d awaits it.
+  T13 (2e2-min) retains, per captured call, a canonical reconstruction of the client's parsed exchange (`gen2/discovery/exchanges.py`), not the raw transport octets: `GatewayClient` parses the body and keeps no octets. Retaining the original octets is this obligation's, to land right after the first supervised run; that run's report states the limit.
 - source: Gate D #2 finding F6 (private/reviews/gen2-gate-d-2-astra-review.md), recorded by task 2b-repair-14 (BUILD-STATE.md 2e2 entry)
 - removal: 2e2's sampled-state audit has that evidence requirement, implemented and tested, before real workflow acceptance, and the 2e2 review (Gates A and C) confirms it.
 
