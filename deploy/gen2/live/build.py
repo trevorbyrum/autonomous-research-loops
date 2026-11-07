@@ -43,7 +43,9 @@ def builder_gate(builder, view, contexts):
     endpoint = nodes[0].get("Endpoint")
     if not isinstance(endpoint, str):
         raise ValueError("missing Buildx node endpoint")
-    if endpoint != SOCKET and contexts.get(endpoint) != SOCKET:
+    if endpoint == builder:
+        endpoint = contexts.get(builder)
+    if endpoint not in (SOCKET, "unix://" + SOCKET):
         raise ValueError("builder endpoint is not the dedicated daemon")
 
 
