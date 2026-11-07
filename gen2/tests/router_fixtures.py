@@ -787,10 +787,10 @@ class ContractWorld(RouterTestCase):
         self.assertEqual(self.router.commit_outcome(self.envelope(grant, "op_adopt000001", adopt, refs=[text]))["status"], "committed")
         self.assertEqual(self.rows("SELECT revision, status FROM claims ORDER BY revision"), [(1, "provisional"), (2, "accepted_support")])
 
-    def refused_command(self, method, request: dict, reason: str, detail: str | None = None) -> None:
+    def refused_command(self, method, request: dict, reason: str, detail: str | None = None, *, status="refused") -> None:
         before = self.state()
         out = getattr(self.router, method)(request)
-        self.assertEqual((out["status"], out.get("reason")), ("refused", reason), out)
+        self.assertEqual((out["status"], out.get("reason")), (status, reason), out)
         if detail is not None:
             self.assertIn(detail, out.get("detail", ""))
         self.assertEqual(self.state(), before)

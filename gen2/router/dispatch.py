@@ -24,6 +24,13 @@ DISPATCH_COMMANDS = {name: {"type": "object", "additionalProperties": False,
     "required": list(fields), "properties": fields} for name, fields in (
         ("dispatch_authorize", FIELDS),
         ("dispatch_result", {**FIELDS, "admission_ref": TEXT, "evidence_ref": HASH}))}
+DISPATCH_COMMANDS["remediation_payload"] = {"type": "object", "additionalProperties": False,
+    "required": ["evidence_ref"], "properties": {"evidence_ref": HASH}}
+_REMEDIATION = {"remediation_version": {"const": "provider-auth-remediation/1"},
+    "rejection_ref": TEXT, "rejection_hash": HASH, "deployment_id": TEXT, "provider_route": TEXT,
+    "credential_ref": TEXT, **{key: HASH for key in ("manifest_ref", "qualification_ref", "procedure_ref", "review_ref")}}
+DISPATCH_COMMANDS["remediation_evidence"] = {"type": "object", "additionalProperties": False,
+    "required": list(_REMEDIATION), "properties": _REMEDIATION}
 PINS = ("invocation_id", "topic_id", "config_bundle_hash", "job_handle")
 RUNTIME_PINS = ("epoch", "manifest_ref", "credential_ref", "route", "backend", "evidence_generation")
 
@@ -81,6 +88,63 @@ class Dispatch:
                 if row["detail"]["evidence"].get("rejection") is not None
                 and self._route(row["detail"]["evidence"]["origin"]) == route]
 
+    def remediation_decision(self, decision_id: str) -> dict | None:
+        return next((row for row in self._facts("provider_auth_remediation")
+                     if row["detail"]["request"]["decision_id"] == decision_id), None)
+
+    def _unremediated(self, origin: dict) -> list[dict]:
+        approved = {row["detail"]["evidence"]["rejection_ref"] for row in self._facts("provider_auth_remediation")
+                    if all(row["detail"]["evidence"][key] == origin.get(key)
+                           for key in ("manifest_ref", "credential_ref", "qualification_ref"))}
+        return [row for row in self._rejections(origin) if row["audit_event_id"] not in approved]
+
+    def _retained(self, content_hash: str, topic_id: str) -> bytes:
+        artifact = self._core._one("artifacts", {"content_hash": content_hash})
+        require(artifact is not None and self._core._one("artifact_topics", {"content_hash": content_hash, "topic_id": topic_id}) is not None,
+                "remediation_evidence_invalid")
+        return boundary.staged(self._core._spool, content_hash, artifact["size_bytes"], topic_id=topic_id, media_type=artifact["media_type"])
+
+    def remediate(self, req: dict) -> dict:
+        """Operator-role apply_operator_decision dispatch; evidence is read before the writer fence.
+
+        Only the named rejection is remediated, for exactly the approved replacement
+        pins. The audit retains the approval/evidence; operator_decisions is untouched.
+        """
+        subject = req["subject"]
+        require(req["disposition"] == "approved" and subject["kind"] == "provider_rejection" and subject["revision"] is None,
+                "remediation_subject_invalid")
+        boundary.require_schema(self._core._schemas, req["payload"], "router-commands#/$defs/remediation_payload", "remediation_evidence_invalid")
+        def replay():
+            prior = self.remediation_decision(req["decision_id"])
+            if prior is not None:
+                require(prior["detail"]["request"] == req, "decision_id_conflict")
+                return {"status": "replayed", "decision_id": req["decision_id"], "effects": None}
+            require(self._core._one("operator_decisions", {"decision_id": req["decision_id"]}) is None, "decision_id_conflict")
+        prior = replay()
+        if prior is not None:
+            return prior
+        rejection = self._core._one("audit_events", {"audit_event_id": subject["ref"]})
+        require(rejection is not None and rejection["kind"] == "dispatch_result" and rejection["topic_id"] == req["topic_id"]
+                and rejection["detail"]["evidence"].get("rejection") is not None
+                and self._route(rejection["detail"]["evidence"]["origin"]) is not None
+                and canonical.logical_hash(rejection) == subject["hash"], "remediation_subject_invalid")
+        evidence = boundary.normalize(self._retained(req["payload"]["evidence_ref"], req["topic_id"]), "remediation_evidence_invalid")
+        boundary.require_schema(self._core._schemas, evidence, "router-commands#/$defs/remediation_evidence", "remediation_evidence_invalid")
+        require((evidence["rejection_ref"], evidence["rejection_hash"]) == (subject["ref"], subject["hash"])
+                and (evidence["deployment_id"], evidence["provider_route"]) == self._route(rejection["detail"]["evidence"]["origin"]),
+                "remediation_evidence_invalid")
+        for key in ("manifest_ref", "qualification_ref", "procedure_ref", "review_ref"):
+            self._retained(evidence[key], req["topic_id"])
+        def write(now):
+            prior = replay()
+            if prior is not None:
+                return prior
+            require(instant(rejection["at"]) <= instant(req["decided_at"]) <= instant(now), "remediation_evidence_invalid")
+            self._core._audit("provider_auth_remediation", now, {"request": req, "evidence": evidence},
+                              topic_id=req["topic_id"], invocation_id=rejection["invocation_id"])
+            return {"status": "applied", "decision_id": req["decision_id"], "effects": {"rejection_remediated": subject["ref"]}}
+        return self._core._guarded("decision_refused", write)
+
     def _read(self, request: Mapping, result: bool = False) -> tuple[dict, dict, dict]:
         req = boundary.normalize(request, "request_invalid")
         target = "dispatch_result" if result else "dispatch_authorize"
@@ -114,7 +178,7 @@ class Dispatch:
             self._core._authorize_artifact(ref["content_hash"], inv, now)
 
     def _predicate(self, doc: dict, now: str, own: str | None = None) -> None:
-        require(not self._rejections(doc["origin"]), "provider_rejection_stopped")
+        require(not self._unremediated(doc["origin"]), "provider_rejection_stopped")
         require(not self._facts("dispatch_stopped"), "dispatch_trial_stopped")
         policy = doc["policy"]
         require(instant(now) < instant(policy["deadline_at"]), "dispatch_policy_expired")

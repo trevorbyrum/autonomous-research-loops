@@ -80,6 +80,8 @@ class DispatchAuthority(Protocol):
     and provider_route: stable owning identities authenticated from deployment
     provenance, independent of topic/run/policy/manifest/credential revisions.
     Artifact labels cannot establish these identities or real-route provenance.
+    After reviewed remediation, real origins include qualification_ref as well:
+    only the approved manifest/credential/qualification pins release that rejection.
     Result reads authenticate original provenance even after current expiry.
     confirmed_end covers all senders/writers/descendants and closed ingress;
     actual_minor_units is independently authoritative or None, never estimated.
@@ -243,7 +245,10 @@ class ControlBackend(Protocol):
 
     def apply_operator_decision(self, request: Mapping) -> dict:
         """Record one operator decision and apply the transition it authorizes
-        in the same transaction (G-13). Key: decision_id."""
+        in the same transaction (G-13). Key: decision_id. provider_auth_remediation
+        names a provider_rejection audit id/hash and payload.evidence_ref: a retained
+        provider-auth-remediation/1 document binding procedure/review evidence and
+        exact replacement pins. It appends a dispatch audit, never settles unknown U."""
 
     def ack_delivery(self, receipt: Mapping) -> dict:
         """Record one export-delivery-receipt/2, whole, for a committed

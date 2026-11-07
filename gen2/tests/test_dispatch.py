@@ -213,9 +213,10 @@ class DispatchTests(rf.RouterTestCase):
 
     def rejection(self, ref, **overrides):
         req = self.result(ref, actual=0)
-        execution = self.evidence({"invocation_id": self.req["invocation_id"], "topic_id": rf.TOPIC},
+        topic = self.authority.admissions[self.req["invocation_id"]]["origin"]["topic_id"]
+        execution = self.evidence({"invocation_id": self.req["invocation_id"], "topic_id": topic},
                                   **{"observed_at": "2026-10-31T12:00:00Z", **overrides})
-        raw = self.spool.read(execution, topic_id=rf.TOPIC)
+        raw = self.spool.read(execution, topic_id=topic)
         self.authority.evidence.update(evidence_ref=execution, artifacts=[self.artifact(raw, "application/json")],
             rejection={"started_at": "2026-10-31T11:59:59Z", "observed_at": "2026-10-31T12:00:00Z",
                        "runner": {"name": "codex", "version": "0.153.2"}, "affected_lanes": ["station:station-1"]})
