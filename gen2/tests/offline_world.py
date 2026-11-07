@@ -15,8 +15,17 @@ SCHEME = {"scheme_id": "offline-confidence", "version": 1,
           "labels": {"low": "One source, or sources that disagree.", "high": "Two or more independent sources agree."}}
 
 
-def contract(revision: int = 1, parent: int | None = None, rated: bool = True) -> dict:
-    return contract_doc(revision, parent, rated=rated, edit=lambda doc: doc.update(confidence_scheme=SCHEME))
+def contract(revision: int = 1, parent: int | None = None, rated: bool = True, sentinel: Mapping | None = None) -> dict:
+    """With `sentinel` (the artifact_ref of a staged JSON array of work ids), the completing profile is one automatic known-item rule over it, which
+    the production evaluator can satisfy; the example's reviewed-judgment and window rules have no automatic evaluator, so a dossier under them
+    can only read unknown (the router's own completion fixtures make the same substitution)."""
+    def edit(doc: dict) -> None:
+        doc["confidence_scheme"] = SCHEME
+        if sentinel is not None:
+            profile = doc["stopping_profiles"][0]
+            profile.update(rules=[{"rule_id": "R", "family": "known_item", "evaluation": "automatic",
+                                   "params": {"sentinel_set": dict(sentinel), "tests": "retrieval", "seeded_into_prompts": False}}], completion_condition={"rule": "R"})
+    return contract_doc(revision, parent, rated=rated, edit=edit)
 
 
 def bundle(executors: Sequence[Mapping], version: int = 2) -> dict:

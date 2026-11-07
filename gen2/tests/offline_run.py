@@ -12,6 +12,7 @@ import os
 import stat
 import sys
 import tempfile
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -21,6 +22,7 @@ from gen2.app.station import open_station
 from gen2.core import canonical
 from gen2.core.instants import utc_now
 from gen2.exec.common import Refused
+from gen2.router.boundary import work_id
 from gen2.router.schemas import SchemaSet
 from gen2.tests import children, offline_world
 from gen2.tests.router_fixtures import TOPIC, RouterTestCase, contract, ratings
@@ -47,7 +49,7 @@ def prompt_pins():
 class Offline:
     """One fresh station, composition and driver over a temporary root; `operator` is the human, each method one production command."""
 
-    def __init__(self, counter: str = "empty") -> None:
+    def __init__(self, counter: str = "empty", without_recorder: str | None = None) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         token = root / "gateway-token"
@@ -64,7 +66,8 @@ class Offline:
         bundle = offline_world.bundle(workflow.executor_entries(prompt_pins()))
         self.composition = compose.Composition(TOPIC)
         self.station = open_station(root / "station", station_id="stn-offline", host_id="host-offline", clock=utc_now, config_bundle=bundle, create=True,
-                                    router_options={"gateway_captures": self.composition.captures}, supervisor_options={"recorders": self.composition.recorders()})
+                                    router_options={"gateway_captures": self.composition.captures},
+                                    supervisor_options={"recorders": {k: v for k, v in self.composition.recorders().items() if k != without_recorder}})
         self.composition.bind(self.station)
         self.router = self.station.router
         self.bundle_hash = self.router.status({})["config_bundles"]["active"]["bundle_hash"]
@@ -74,7 +77,7 @@ class Offline:
         self.driver = Driver(self.station, topic_id=TOPIC, bundle_hash=self.bundle_hash, kits=kits, prompt_dir=PROMPTS,
                              child_module="gen2.tests.offline_child", discovery_module="gen2.tests.offline_discovery",
                              discovery_env={"GEN2_GATEWAY_URL": GATEWAY_URL, "GEN2_SECRET_GATEWAY_TOKEN_FILE": str(token), "GEN2_OFFLINE_COUNTER": counter},
-                             say=self.said.append, sleep=lambda seconds: __import__("time").sleep(0.05))
+                             say=self.said.append, sleep=lambda seconds: time.sleep(0.05))
         self.brief = RouterTestCase.brief_document(TOPIC)
 
     def close(self) -> None:
@@ -106,7 +109,8 @@ class Offline:
 
     def approve_contract(self) -> None:
         """The first topic's contract is hand-drafted (plan row 18): draft 1 unrated, the operator's ratings, draft 2 carrying them, its approval."""
-        first, rated = offline_world.contract(1, None, rated=False), offline_world.contract(2, 1)
+        sentinel = self.station.spool.stage(TOPIC, canonical.canonical_bytes([work_id("doi", "10.1/offline-a")]), "application/json")   # the operator's known item
+        first, rated = offline_world.contract(1, None, rated=False, sentinel=sentinel), offline_world.contract(2, 1, sentinel=sentinel)
         for doc in (first,):
             assert self.router.draft_contract({"document": doc})["status"] == "recorded"
         self.decide("opd_rate0001", "rating_approval", {"kind": "contract_revision", "revision": 1, "hash": first["content_hash"]}, payload=ratings(rated))
