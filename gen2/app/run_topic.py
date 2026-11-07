@@ -20,6 +20,10 @@ from gen2.exec.common import Refused
 from gen2.router.schemas import SchemaSet
 
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
+# What a stopped walk says: a fixed code per kind of failure, never the exception's text, which can carry proposal keys or other
+# caller-controlled strings (commit 80303fd's rule for operator replies). The detail is in the retained job journals and the audit.
+STOPS = {Refused: "an input was refused", OSError: "a file operation failed", ValueError: "a record was malformed", KeyError: "a record lacked a field"}
+DETAIL = "details are in this topic's retained job journals and the router's audit"
 DISCOVERY = ("GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN_FILE")
 
 
@@ -40,13 +44,13 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str] = os.environ, opener
     try:
         station = opener(Path(root), station_id=environ.get("GEN2_STATION_ID", "station-1"), host_id=environ.get("GEN2_HOST_ID", "host-1"), clock=utc_now,
                          router_options={"gateway_captures": composition.captures}, supervisor_options={"recorders": composition.recorders()})
-    except StationRefused as error:
-        say(f"the station did not start: {error}")
+    except StationRefused:
+        say(f"the station did not start; {DETAIL}")
         return 2
     try:
         return _walk(station, composition, topic, environ, say)
-    except (Refused, OSError, ValueError, KeyError) as error:   # a refusal or a failed read stops the walk with its reason, not a traceback
-        say(f"stopped: {type(error).__name__}: {error}")
+    except (Refused, OSError, ValueError, KeyError) as error:   # a refusal or a failed read stops the walk with a fixed code, not a traceback
+        say(f"stopped: {next(text for kind, text in STOPS.items() if isinstance(error, kind))}; {DETAIL}")
         return 3
     finally:
         station.close()
