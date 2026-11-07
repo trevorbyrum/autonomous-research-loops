@@ -102,7 +102,7 @@ class Fixture:
         document = orders.work_input(kind="discovery", purpose="search", invocation_id=INV, topic_id=TOPIC,
                                      admission={"context": "contract/1", "contract": {"revision": 1, "content_hash": "sha256:" + "a" * 64}},
                                      entry={"max_input_bytes": 100_000, "max_output_bytes": 100_000},
-                                     view={"proposals": proposals, "attempt": 1, "gateway": {"policy_version": "gw/1", "commercial": False, "accept_per_item": True}, **view},
+                                     view={"proposals": proposals, "proposed_by": "inv_proposer01", "attempt": 1, "gateway": {"policy_version": "gw/1", "commercial": False, "accept_per_item": True}, **view},
                                      truncation=[])
         (self.root / "inputs").mkdir()
         data = canonical.canonical_bytes(document)

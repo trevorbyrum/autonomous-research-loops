@@ -5,21 +5,23 @@ child, so the job deadline bounds the name lookup) and DEBT-002 (this child's cl
 the wrapper names (`inputs/input.json` read, `outcome.json` written in scratch). Oracle: the gateway client's own
 observations; the child adds none. Limits: it records nothing in the router (the station's recorder does, from
 `discovery-result.json`), picks no search, and a search that raises is not retried: the job fails and an operator
-requeues (L-6), because a zero-result stand-in would be a false negative. The result is parsed JSON the client
+requeues (L-6), because a zero-result stand-in would be a false negative. Every observation is stamped with its proposal's identity (stamp.py). The result is parsed JSON the client
 returned, not transport octets.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Callable, Mapping
 
 from gen2.core import canonical
-from gen2.discovery import requests
+from gen2.discovery import requests, stamp
 from gen2.exec import orders
 from gen2.exec.common import Refused, outcome_bytes, scaffold
 from gen2.gateway_client.client import GatewayClient
 
 RESULT, OUTCOME = "discovery-result.json", "outcome.json"
+INVOCATION = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")   # common.schema.json#/$defs/invocation_id
 URL, TOKEN = "GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN"
 
 
@@ -59,6 +61,8 @@ def run(directory: Path, *, environ: Mapping[str, str], validate: Callable[[str,
     if (work["kind"], work["purpose"]) != ("discovery", "search"):
         raise Refused("input.json is not a discovery/search input")
     view, invocation_id = work["view"], work["invocation_id"]
+    if not INVOCATION.fullmatch(view["proposed_by"]):
+        raise Refused("proposed_by is not the proposing invocation's id")
     proposals = view["proposals"]
     if len(proposals) > requests.MAX_PROPOSALS:
         raise Refused("too many proposals")
@@ -75,6 +79,7 @@ def run(directory: Path, *, environ: Mapping[str, str], validate: Callable[[str,
             client.resolve()
         out = client.search(request, invocation_id=invocation_id, attempt=view["attempt"], policy_version=gateway["policy_version"],
                             obligation_ids=proposal["obligation_ids"], pages=requests.pages(proposal), token=grant["token"])
+        stamp.stamp(out, stamp.ref_of(view["proposed_by"], proposal["proposal_id"]), invocation_id=invocation_id, attempt=view["attempt"])
         for page in out["pages"]:   # the full parsed records of each captured call, beside its metadata-only observations
             page["records"] = list(getattr(client, "full_records", {}).get(page["call_ref"], [])) if page["call_ref"] is not None else []
         searches.append({"proposal_id": proposal["proposal_id"], "out": out})
