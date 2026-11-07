@@ -103,4 +103,38 @@ class UncaughtTest(unittest.TestCase):
             station, said = world.station(), []
             with mock.patch.object(run_topic.Driver, "run", side_effect=Refused("a view is malformed")):
                 code = run_topic.main([directory, TOPIC], environ={}, opener=lambda root, **o: station, say=said.append)
-            self.assertEqual((code, said, station.closed), (3, ["stopped: Refused: a view is malformed"], True))
+            self.assertEqual((code, said, station.closed), (3, [f"stopped: an input was refused; {run_topic.DETAIL}"], True))
+
+    def test_each_kind_of_failure_has_one_fixed_line_and_the_exception_text_is_never_printed(self):
+        for error, expected in ((Refused("MARK refused"), "an input was refused"), (OSError("MARK io"), "a file operation failed"),
+                                (ValueError("MARK value"), "a record was malformed"), (KeyError("MARK key"), "a record lacked a field")):
+            with self.subTest(type(error).__name__), tempfile.TemporaryDirectory() as directory:
+                said = []
+                with mock.patch.object(run_topic.Driver, "run", side_effect=error):
+                    code = run_topic.main([directory, TOPIC], environ={}, opener=lambda root, **o: World(directory).station(), say=said.append)
+                self.assertEqual((code, said), (3, [f"stopped: {expected}; {run_topic.DETAIL}"]))
+
+    def test_a_malformed_proposal_key_with_a_newline_never_reaches_any_output(self):
+        """End to end: a valid proposal plus a key carrying a marker and a newline is refused at assembly; the stop line is fixed."""
+        import contextlib
+        import io
+        evil = "CALLER_SENTINEL\nFORGED_LOG_LINE"
+        payload = canonical.canonical_bytes({"invocation_id": "inv_p", "topic_id": TOPIC, "search_proposals": [proposal(1, **{evil: 1})]})
+        receipt = {"invocation_id": "inv_p", "topic_id": TOPIC, "operation_kind": "final_outcome", "payload_digest": canonical.bytes_digest(payload)}
+        with tempfile.TemporaryDirectory() as directory:
+            world = World(directory)
+            world.blobs[receipt["payload_digest"]] = payload
+            world.records["operation_receipts"] = [receipt]
+            station, said, out, err = world.station(), [], io.StringIO(), io.StringIO()
+            context = Context(Step("discovery", "search", 1, "c1"), "inv_d", TOPIC, {"context": "contract/1"}, [], None, lambda step: None,
+                              "2026-11-08T09:00:00Z", Step("research_pass", "research", 1, "c1"), 0, lambda step: "inv_p")
+
+            def assemble(driver, *args, **kwargs):
+                return driver.kits[("discovery", "search")].view(context, {}, [])
+            with mock.patch.object(run_topic.Driver, "run", autospec=True, side_effect=assemble), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = run_topic.main([directory, TOPIC], environ={}, opener=lambda root, **o: station, say=said.append)
+        self.assertEqual((code, said, station.closed, station.supervisor.submitted), (3, [f"stopped: an input was refused; {run_topic.DETAIL}"], True, []))
+        for text in (*said, out.getvalue(), err.getvalue()):
+            self.assertNotIn("CALLER_SENTINEL", text)
+            self.assertNotIn("FORGED_LOG_LINE", text)
+            self.assertNotIn("\n", text)
