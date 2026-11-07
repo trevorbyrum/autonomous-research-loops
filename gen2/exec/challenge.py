@@ -67,6 +67,7 @@ def challenge_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]],
     `proposed_by`, the observations stamped with its ref and the content their retained responses returned."""
     if bool(proposals) != (proposed_by is not None):
         raise Refused("pass 2 names the invocation that proposed the searches, and pass 1 names none")
+    _distinct(proposals)
     if admission.get("context") != "contract/1":
         raise Refused("a challenge view needs a contract/1 admission")
     claims = _latest_claims(records["claims"], invocation_id)
@@ -98,9 +99,17 @@ def challenge_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]],
             "searches": searches}
 
 
+def _distinct(proposals: Sequence[Mapping]) -> None:
+    """A proposal id names one search within its invocation; a repeat would let one executed search stand for two (RG-4)."""
+    ids = [p["proposal_id"] for p in proposals]
+    if len(ids) != len(set(ids)):
+        raise Refused("proposal ids must be distinct within one invocation's search proposals")
+
+
 def _proposals(work: Mapping, judgment: Mapping) -> list[dict]:
     claims = {c["claim_ref"] for c in work["view"]["claims"]}
     out = []
+    _distinct(judgment["search_proposals"])
     for proposal in judgment["search_proposals"]:
         ref = proposal.get("subject_ref")
         if ref is None or ref["claim_ref"] not in claims:

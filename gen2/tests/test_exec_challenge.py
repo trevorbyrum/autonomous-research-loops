@@ -127,6 +127,14 @@ class ViewTest(unittest.TestCase):
         big = view(recs, [proposal(1)], Exchanges(content={"call-1": b"y" * (challenge.EXCERPT + 1)}))["searches"][0]["observations"][0]["content"]
         self.assertEqual((len(big["text"]), big["cut"]), (challenge.EXCERPT, True))
 
+    def test_one_executed_proposal_cannot_clear_two_claims(self):
+        """Two proposals sharing an id would both receive the one observation stamped with it: the view refuses them instead."""
+        recs = records(claims=[claim(1), claim(2)], search_observations=[observation(1, proposal="p1")])
+        with self.assertRaises(common.Refused):
+            view(recs, [proposal(1), proposal(1, claim_n=2, query="another query")])
+        got = view(recs, [proposal(1), proposal(2, claim_n=2)])   # distinct ids: the observation attaches to exactly one search
+        self.assertEqual([len(s["observations"]) for s in got["searches"]], [1, 0])
+
     def test_a_round_is_named_exactly_when_it_has_proposals(self):
         for case, call in (("proposals without their round", lambda: view(proposals=[proposal(1)], proposed_by=None)),
                            ("a round without proposals", lambda: view(proposed_by=P1))):
@@ -157,6 +165,12 @@ class PassOneTest(unittest.TestCase):
         for bad in (proposal(1, claim_n=9), {k: v for k, v in proposal(1).items() if k != "subject_ref"}):
             with self.assertRaises(common.Refused):
                 build(view(), judgment(search_proposals=[bad]))
+
+    def test_duplicate_proposal_ids_are_refused_even_for_different_claims_and_queries(self):
+        two = [proposal(1), proposal(1, claim_n=2, query="another query")]
+        v = view(records(claims=[claim(1), claim(2)]))
+        with self.assertRaises(common.Refused):
+            build(v, judgment(search_proposals=two))
 
     def test_the_builder_is_deterministic(self):
         j = judgment(search_proposals=[proposal(1)])
