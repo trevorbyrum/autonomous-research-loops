@@ -38,6 +38,10 @@ class Retained:
     data: bytes
     lane: str
     provider_record_id: str
+    event_id: str
+    observation_id: str
+    gateway_call_ref: str
+    captured_at: str
 
 
 def retained(work_id: str, records: Mapping[str, Sequence[Mapping]], exchanges: Exchanges) -> Retained:
@@ -59,7 +63,7 @@ def retained(work_id: str, records: Mapping[str, Sequence[Mapping]], exchanges: 
             ref, data = staged
             if canonical.bytes_digest(data) != ref["content_hash"]:
                 raise Refused(f"{work_id}: the staged response does not hash to its reference")
-            return Retained(ref, data, observation["lane"], event["provider_record_id"])
+            return Retained(ref, data, observation["lane"], event["provider_record_id"], event["event_id"], observation["observation_id"], call, event["captured_at"])
     raise Refused(f"{work_id}: no retained response is staged for it")
 
 

@@ -44,6 +44,9 @@ class Gateway:
     def __init__(self, grant_status=201, fail=False):
         self.calls, self.grant_status, self.fail = [], grant_status, fail
 
+    def records(self, lane):
+        return [{"identity": "doi:10.1/a", "title": "t", "source_id": lane, "abstract": ABSTRACT}]
+
     def __call__(self, method, url, headers, body, timeout):
         sent = canonical.parse_json_strict(body)
         self.calls.append((url.removeprefix(BASE), headers, sent))
@@ -53,8 +56,8 @@ class Gateway:
             return None, {}, b"", "timeout"
         lane = sent["lanes"][0]
         answer = {"observation": {"invocation_id": INV, "attempt": 1, "captured": True, "call_ref": 100 + len(self.calls)},
-                  "lanes": [{"source": lane, "coverage": "searched_ok", "completeness": "complete", "count": 1, "retrieved": ["doi:10.1/a"], "exhausted": True}],
-                  "records": [{"identity": "doi:10.1/a", "title": "t", "source_id": lane, "abstract": ABSTRACT}]}
+                  "lanes": [{"source": lane, "coverage": "searched_ok", "completeness": "complete", "count": 1, "retrieved": [r["identity"] for r in self.records(lane)], "exhausted": True}],
+                  "records": self.records(lane)}
         return 200, HEADERS, json.dumps(answer).encode(), None
 
 
