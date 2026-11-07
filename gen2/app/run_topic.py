@@ -24,7 +24,8 @@ DISCOVERY = ("GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN_FILE")
 
 
 def validate(name: str, document: object) -> None:
-    errors = SchemaSet().errors(document, name)
+    """The discovery intake's validator: it names a schema by its bare name (`search-proposal`); the schema set knows filenames."""
+    errors = SchemaSet().errors(document, f"{name}.schema.json")
     if errors:
         raise Refused(f"{name}: {errors[0]}")
 
@@ -43,14 +44,21 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str] = os.environ, opener
         say(f"the station did not start: {error}")
         return 2
     try:
-        composition.bind(station)
-        kits = composition.kits(lanes=["semanticscholar"], validate=validate, gateway={"commercial": False, "accept_per_item": False, "policy_version": 1})
-        bundle = station.router.status({})["config_bundles"]["active"]["bundle_hash"]
-        text = Driver(station, topic_id=topic, bundle_hash=bundle, kits=kits, prompt_dir=PROMPTS,
-                      discovery_env={k: environ[k] for k in DISCOVERY if k in environ}, say=say).run()
-        return 0 if text == "done" or text.startswith("waiting for") else 3
+        return _walk(station, composition, topic, environ, say)
+    except (Refused, OSError, ValueError, KeyError) as error:   # a refusal or a failed read stops the walk with its reason, not a traceback
+        say(f"stopped: {type(error).__name__}: {error}")
+        return 3
     finally:
         station.close()
+
+
+def _walk(station, composition, topic, environ, say) -> int:
+    composition.bind(station)
+    kits = composition.kits(lanes=["semanticscholar"], validate=validate, gateway={"commercial": False, "accept_per_item": False, "policy_version": 1})
+    bundle = station.router.status({})["config_bundles"]["active"]["bundle_hash"]
+    text = Driver(station, topic_id=topic, bundle_hash=bundle, kits=kits, prompt_dir=PROMPTS,
+                  discovery_env={k: environ[k] for k in DISCOVERY if k in environ}, say=say).run()
+    return 0 if text == "done" or text.startswith("waiting for") else 3
 
 
 if __name__ == "__main__":
