@@ -4,10 +4,13 @@ Oracle: raw store reads (`ended`) and a recorder whose effects are keyed by a st
 Limits: the effects here are a set, not router writes (T13/T15/T16 own those); the reconciled path is fail-closed by choice.
 """
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
+from gen2.exec import orders
 from gen2.supervisor.supervisor import RecorderMissing
 from gen2.tests import children
+from gen2.tests import router_fixtures as rf
 from gen2.tests.supervisor_fixtures import MAIN, SupervisedTestCase
 
 KEY = "discovery/search"
@@ -29,8 +32,13 @@ class Recording(SupervisedTestCase):
     def station(self, **options):
         return self.make_supervisor(recorders={KEY: self.recorder}, **options)
 
-    def order_for(self, purpose="search", inv=MAIN):
-        return replace(self.order("discovery", inv=inv), env={"GEN2_PURPOSE": purpose})
+    def order_for(self, purpose="search", inv=MAIN, kind="discovery"):
+        """The order's purpose identity is the one the production order builder writes, never a hand-built key."""
+        entry = {"kind": kind, "purpose": purpose, "prompt": {"version": 1, "content_hash": "sha256:" + "0" * 64},
+                 "deadline_s": 60, "lease_s": 60, "max_input_bytes": 1, "max_output_bytes": 1}
+        spec = orders.build_order(bundle={"policy": {"executors": [entry]}}, bundle_hash=rf.CONFIG, kind=kind, purpose=purpose, topic_id=rf.TOPIC,
+                                  ordinal=1, now=datetime(2026, 11, 8, tzinfo=timezone.utc), directory="d", input_digest="sha256:" + "0" * 64)
+        return replace(self.order(kind, inv=inv), env=dict(spec.env))
 
     def test_a_required_purpose_without_a_recorder_refuses_before_anything_is_written(self) -> None:
         for number, (purpose, supervisor, refused) in enumerate((("search", self.supervisor, True), ("search", self.station(), False),
@@ -43,6 +51,12 @@ class Recording(SupervisedTestCase):
                 else:
                     supervisor.prepare(self.order_for(purpose, inv))
                 self.assertEqual((self.root / "jobs" / ("job-" + inv) / "order.json").exists(), not refused)
+
+    def test_the_production_orders_purpose_finds_the_recorder_and_a_mismatched_kind_is_refused(self) -> None:
+        self.assertEqual(self.order_for().env["GEN2_PURPOSE"], KEY)                                 # the single format: "kind/purpose"
+        self.assertEqual(self.supervisor._recorder_key({"kind": "discovery", "env": self.order_for().env}), KEY)
+        with self.assertRaises(RecorderMissing):                                                    # an order of another kind may not borrow the purpose
+            self.station().prepare(replace(self.order_for(), kind="research_pass"))
 
     def test_the_recorder_runs_while_running_and_before_the_result_is_committed(self) -> None:
         supervisor = self.station()
