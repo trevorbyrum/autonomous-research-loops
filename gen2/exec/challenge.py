@@ -52,12 +52,13 @@ def proposal_ref(invocation_id: str, proposal_id: str) -> str:
     return f"{invocation_id}:{proposal_id}"
 
 
-def _content(exchanges: "Exchanges", call: str | None) -> dict:
-    """The returned content the assessor reads: a bounded excerpt of the retained response, or None when it is not retained."""
+def _retained(exchanges: "Exchanges", call: str | None) -> dict:
+    """What the observation's retained response gives the view: the artifact ref the builder cites (None when nothing verified is
+    retained) and the bounded excerpt the assessor reads. The driver sets the same bytes aside for the commit."""
     staged = exchanges.response(call) if call else None
     if staged is None or canonical.bytes_digest(staged[1]) != staged[0]["content_hash"]:
-        return {"text": None, "cut": False}
-    return {"text": staged[1][:EXCERPT].decode("utf-8", "replace"), "cut": len(staged[1]) > EXCERPT}
+        return {"artifact_ref": None, "content": {"text": None, "cut": False}}
+    return {"artifact_ref": dict(staged[0]), "content": {"text": staged[1][:EXCERPT].decode("utf-8", "replace"), "cut": len(staged[1]) > EXCERPT}}
 
 
 def challenge_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], text_of: Callable[[str], str], exchanges: "Exchanges", *,
@@ -85,7 +86,7 @@ def challenge_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]],
         searches.append({"proposal_id": proposal["proposal_id"], "claim_ref": ref["claim_ref"], "lane": proposal["lane"],
                          "query": proposal["query"],
                          "observations": [{**{k: row.get(k) for k in OBSERVATION_KEYS}, "gateway_call_ref": row.get("gateway_call_ref"),
-                                           "content": _content(exchanges, row.get("gateway_call_ref"))}
+                                           **_retained(exchanges, row.get("gateway_call_ref"))}
                                           for row in records["search_observations"] if row["request"].get("proposal_ref") == wanted]})
     return {"as_of": as_of, "pass": 2 if proposals else 1, "review_episodes": sorted(review_episodes),
             "claims": [{"claim_ref": c["claim_id"], "revision": c["revision"], "tier": c["required_access_tier"], "status": c["status"], "text": text_of(c["text_ref"])}
@@ -125,18 +126,12 @@ def _by_ref(items: Sequence[Mapping], key: str, wanted: str, what: str) -> Mappi
     raise Refused(f"{what} {wanted} is not in the view")
 
 
-def make_builder(exchanges: Exchanges, stage: Stage) -> Callable[[Mapping, Mapping], dict]:
-    """work-input/1 + judgment-challenge/1 -> outcome/1. `exchanges` and `stage` are the topic spool's."""
+def make_builder(stage: Stage) -> Callable[[Mapping, Mapping], dict]:
+    """work-input/1 + judgment-challenge/1 -> outcome/1. Pure over the view: the evidence refs are the observations' own
+    `artifact_ref`s, whose bytes the driver set aside beside the input; `stage` sets the judgment aside."""
 
-    def evidence(call_refs: Iterable[str]) -> list[Mapping]:
-        refs = {}
-        for call in call_refs:
-            staged = exchanges.response(call) if call else None
-            if staged is not None:
-                ref, data = staged
-                if canonical.bytes_digest(data) != ref["content_hash"]:
-                    raise Refused("a staged response does not hash to its reference")
-                refs[ref["content_hash"]] = dict(ref)
+    def evidence(observations: Iterable[Mapping]) -> list[Mapping]:
+        refs = {o["artifact_ref"]["content_hash"]: dict(o["artifact_ref"]) for o in observations if o["artifact_ref"] is not None}
         return [refs[h] for h in sorted(refs)]
 
     def counterevidence(item: Mapping, view: Mapping, claim: Mapping) -> tuple[str, list[Mapping]] | None:
@@ -146,12 +141,12 @@ def make_builder(exchanges: Exchanges, stage: Stage) -> Callable[[Mapping, Mappi
             raise Refused(f"{claim['claim_ref']}: the judgment cites a search that is not one of this claim's")
         outcome = COUNTER[item["outcome"]]
         used = [o for name in (sorted(cited) or sorted(mine)) for o in mine[name]]
-        refs = evidence(o["gateway_call_ref"] for o in used)
+        refs = evidence(used)
         every = [o for name in sorted(mine) for o in mine[name]]   # all of the claim's searches, whatever the judgment cites
         clean = bool(mine) and cited == set(mine) and all(mine[name] for name in mine) and all(
-            o["coverage_state"] in CLEAN and o["completeness"] == "complete" and o["error_class"] is None and o["content"]["text"] is not None
+            o["coverage_state"] in CLEAN and o["completeness"] == "complete" and o["error_class"] is None and o["artifact_ref"] is not None
             for o in every)
-        if outcome == "none_found" and not (clean and len(evidence(o["gateway_call_ref"] for o in every)) == len({o["gateway_call_ref"] for o in every})):
+        if outcome == "none_found" and not clean:
             outcome = "incomplete"
         return (outcome, refs) if refs else None
 

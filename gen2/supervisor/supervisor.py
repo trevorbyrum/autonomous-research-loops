@@ -15,9 +15,10 @@ from typing import Callable, Mapping
 
 from gen2.core import canonical, instants
 from gen2.core.control import ControlUnavailable
+from gen2.core.evidence_media import EVIDENCE, EVIDENCE_MEDIA
 from gen2.supervisor import jobs
 from gen2.supervisor.isolation import ABSENT_PROFILE, refuse_live_profile
-from gen2.supervisor.spool import Spool, SpoolFull, read_scratch
+from gen2.supervisor.spool import Spool, SpoolConflict, SpoolFull, read_scratch
 
 OUTPUT = "outcome.json"          # the executor's one result file; its name is the supervisor's (C-9)
 SELF_REPORT = "status.json"      # an agent's own claim about itself: recorded, never used (L-5)
@@ -32,8 +33,8 @@ RECORDED = frozenset({"discovery/search", "verification/verify", "checkpoint/dos
 FINAL_REFUSALS = frozenset({"transition_conflict", "reconciliation_conflict", "cancel_conflict",
                             "unknown_invocation", "capability_invalid", "capability_invocation_mismatch"})
 DIGEST = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
-EVIDENCE = re.compile(r"\Aevidence-([0-9a-f]{64})\.json\Z")  # a file a job sets aside in its scratch, named by its own digest
-MAX_EVIDENCE = 16
+MAX_EVIDENCE = 64          # files a job may set aside in its scratch (core.evidence_media names the form), and the bytes they may total
+MAX_EVIDENCE_BYTES = 32 << 20
 INVOCATION_ID = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")  # common.schema.json#/$defs/invocation_id: also the job's directory name
 
 
@@ -639,15 +640,27 @@ class Supervisor:
                 "original": canonical.bytes_digest(raw["data"])}
 
     def _evidence(self, order: dict, job: jobs.Job) -> list[dict]:
-        """Stage the files a successful job set aside as `evidence-<sha256>.json`: at most MAX_EVIDENCE, each kept only if its bytes
-        hash to the digest in its name. The job names no path and no media type; these are the only refs its outcome may add. A mismatched file is staged
-        (collect stages before the comparison) but never listed."""
+        """Stage the files a successful job set aside as `evidence-<sha256><ext>` (core.evidence_media): at most MAX_EVIDENCE and
+        MAX_EVIDENCE_BYTES, each listed only if its bytes hash to the digest in its name. The job names no path and the extension fixes the
+        media type; these are the only refs its outcome may add. A mismatched file is staged (collect stages before the comparison) but
+        never listed, and so is one whose bytes the topic's spool already holds under another media type (a conflict, not an error)."""
         try:
             names = sorted(entry.name for entry in Path(job.scratch).iterdir() if EVIDENCE.match(entry.name))[:MAX_EVIDENCE]
         except OSError:
             return []
-        found = [(name, self.spool.collect(order["topic_id"], job.scratch, name, "application/json")) for name in names]
-        return [f["ref"] for name, f in found if f["status"] == "present" and f["ref"]["content_hash"] == "sha256:" + EVIDENCE.match(name).group(1)]
+        refs, total = [], 0
+        for name in names:
+            digest, extension = EVIDENCE.match(name).groups()
+            try:
+                found = self.spool.collect(order["topic_id"], job.scratch, name, EVIDENCE_MEDIA[extension])
+            except SpoolConflict:
+                continue
+            if found["status"] == "present" and found["ref"]["content_hash"] == "sha256:" + digest:
+                total += found["ref"]["size_bytes"]
+                if total > MAX_EVIDENCE_BYTES:
+                    break
+                refs.append(found["ref"])
+        return refs
 
     def _named(self, order: dict, collected: dict) -> list[dict]:
         """The job's staged evidence its outcome names (a dict equal to a staged ref, anywhere in the document); nothing else is added."""
