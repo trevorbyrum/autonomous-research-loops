@@ -316,3 +316,9 @@ supply F3's operands and exact dossier bodies without changing dossier captures.
 Validated-only search proposals stay in committed payloads (P6); executor pins
 and bounds live in the bundle. Offline tests establish Router structure only;
 T13–T18 supply the production consumers for the supervised 2f workflow.
+
+## Operator review status (2026-11-07)
+
+Topic status includes the exact current candidate's gates and bound sufficiency
+reviews, including insufficient outcomes and retained evidence excerpts, through
+core's single presentation builder. Reading it grants no completion authority.

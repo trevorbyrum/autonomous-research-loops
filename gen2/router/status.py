@@ -31,10 +31,11 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Mapping, Protocol
 
+from gen2.core.review_presentation import present
 from gen2.router import boundary
 from gen2.router.amendments import COMPATIBLE
 from gen2.router.boundary import Refusal, instant
-from gen2.router.protocols import Rows, Schemas
+from gen2.router.protocols import Rows, Schemas, Spool
 
 if TYPE_CHECKING:
     from gen2.router.amendments import Amendments
@@ -56,6 +57,7 @@ class StatusCore(Protocol):
     """Members used through Router; sibling attributes name composed collaborators."""
     _store: Rows[object]
     _schemas: Schemas
+    _spool: Spool
     def _snapshot(self) -> AbstractContextManager: ...  # one read transaction that writes nothing
     def _now(self) -> str: ...
     def _one(self, table: str, where: Mapping[str, object]) -> dict | None: ...
@@ -124,7 +126,7 @@ class Status:
         return {
             **_pick(topic, ("topic_id", "status", "state_revision", "paused_at", "active_contract_revision")),
             # DEBT-040..043 own export delivery and ongoing currency reporting.
-            "completion": completion, "export_delivery": "not_attempted", "currency": "unknown",
+            "completion": completion, "review": self._review(topic, completion), "export_delivery": "not_attempted", "currency": "unknown",
             "briefs": [{**_pick(b, ("brief_id", "version", "status", "review_deadline", "overdue_since")), "owner": b["owner_operator_id"],
                         "deadline_passed": instant(now) >= instant(b["review_deadline"])}
                        for b in sorted(self._core._store.select("intake_briefs", where), key=lambda b: (b["brief_id"], b["version"]))
@@ -138,6 +140,26 @@ class Status:
             "signals": [{**_pick(t, ("trigger_identity", "reason_code", "signal_source", "observed_at"))}
                         for t in self._core._store.select("review_triggers", where) if t["episode_id"] is None and t["handled_at"] is None],
             "reviews": [_pick(e, ("episode_id", "kind", "opened_at")) for e in self._core._store.select("review_episodes", where) if e["closed_at"] is None]}
+
+    def _review(self, topic: dict, completion: dict | None) -> dict | None:
+        """Show the approved completion revision, or the latest current-contract candidate.
+
+        Missing or changed retained evidence is shown as missing by the shared
+        presenter; status never substitutes bytes or changes completion authority.
+        """
+        rows = self._core._store.select("dossiers", {"topic_id": topic["topic_id"],
+            **({"dossier_revision": completion["dossier_revision"]} if completion is not None
+               else {"contract_revision": topic["active_contract_revision"]})})
+        if not rows:
+            return None
+        candidate = max(rows, key=lambda row: row["dossier_revision"])
+        def read(ref):
+            try:
+                return boundary.staged(self._core._spool, ref["content_hash"], ref["size_bytes"], topic_id=topic["topic_id"], media_type=ref["media_type"])
+            except Refusal:
+                return None
+        return present({"dossiers": [candidate], "completion_records": self._core._store.select("completion_records", {"topic_id": topic["topic_id"]})},
+                       read, dossier_revision=candidate["dossier_revision"])
 
     def _drafts(self, tid: str) -> list[dict]:
         """The contract drafts an approval could still approve (service.Router
