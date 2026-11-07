@@ -18,8 +18,8 @@ def ref_of(data: bytes) -> dict:
 
 class Evidence(SupervisedTestCase):
 
-    def run_job(self, cited: bytes, files: dict[str, bytes]) -> str:
-        outcome = {**rf.empty_outcome(MAIN), "registry_dispositions": [example_disposition(ref_of(cited), 0)]}
+    def run_job(self, cited: bytes, files: dict[str, bytes], **extra) -> str:
+        outcome = {**rf.empty_outcome(MAIN), "registry_dispositions": [example_disposition(ref_of(cited), 0)], **extra}
         steps = [{"op": "write", "name": name, "hex": data.hex()} for name, data in files.items()]
         steps.append({"op": "write", "name": "outcome.json", "text": canonical.canonical_bytes(outcome).decode()})
         self.supervisor.prepare(self.order("checkpoint", steps))
@@ -48,5 +48,14 @@ class Evidence(SupervisedTestCase):
     def test_a_ref_that_only_another_file_stages_is_still_refused(self) -> None:
         self.refused({self.name(): EVIDENCE})
 
-    def test_a_file_whose_bytes_do_not_match_its_name_stages_nothing(self) -> None:
+    def test_a_file_whose_bytes_do_not_match_its_name_is_never_listed(self) -> None:
         self.refused({self.name(self.OTHER): EVIDENCE})
+
+    def test_a_malformed_hash_in_the_outcome_ends_the_job_through_the_routers_refusal_not_a_crash(self) -> None:
+        """A list or object where a content_hash belongs once raised TypeError in the traversal and left the job in result_ready."""
+        for case, malformed in (("list", []), ("object", {"a": 1}), ("number", 7)):
+            with self.subTest(case):
+                self.setUp()
+                self.assertEqual(self.run_job(EVIDENCE, {self.name(): EVIDENCE}, content_hash=malformed), "failed")
+                self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "failed")
+                self.assertEqual(self.dispositions(), 0)

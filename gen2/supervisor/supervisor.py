@@ -613,7 +613,8 @@ class Supervisor:
 
     def _evidence(self, order: dict, job: jobs.Job) -> list[dict]:
         """Stage the files a successful job set aside as `evidence-<sha256>.json`: at most MAX_EVIDENCE, each kept only if its bytes
-        hash to the digest in its name. The job names no path and no media type; these are the only refs its outcome may add."""
+        hash to the digest in its name. The job names no path and no media type; these are the only refs its outcome may add. A mismatched file is staged
+        (collect stages before the comparison) but never listed."""
         try:
             names = sorted(entry.name for entry in Path(job.scratch).iterdir() if EVIDENCE.match(entry.name))[:MAX_EVIDENCE]
         except OSError:
@@ -634,7 +635,7 @@ class Supervisor:
         found, pending = {}, [document]
         while pending:
             node = pending.pop()
-            if isinstance(node, dict) and node.get("content_hash") in staged and node == staged[node["content_hash"]]:
+            if isinstance(node, dict) and isinstance(node.get("content_hash"), str) and node["content_hash"] in staged and node == staged[node["content_hash"]]:
                 found[node["content_hash"]] = node
             pending.extend(node.values() if isinstance(node, dict) else node if isinstance(node, list) else ())
         return [found[h] for h in sorted(found)]
