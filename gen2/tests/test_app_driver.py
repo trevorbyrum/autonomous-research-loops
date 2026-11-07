@@ -20,9 +20,21 @@ NOW = datetime(2026, 11, 8, 9, 0, 0, tzinfo=timezone.utc)
 HASH = "sha256:" + "a" * 64
 
 
+def scope(n=1):
+    return Step("research_pass", "scope", n, "p2")           # brief version 2
+
+
+def contract(kind, purpose, n=1, context="c1"):
+    return Step(kind, purpose, n, context)                  # contract revision 1
+
+
+def checkpoint(purpose, n=1, epoch=1):
+    return Step("checkpoint", purpose, n, f"c1.e{epoch}")    # epoch = reviews held + 1
+
+
 class FakeJob:
-    def __init__(self, files):
-        self.files = files
+    def __init__(self, files, scratch):
+        self.files, self.scratch = files, scratch
 
     def read(self, name):
         return self.files.get(name)
@@ -50,7 +62,7 @@ class Supervisor:
         self.world, self.submitted, self.recovered, self.script = world, [], 0, {}
 
     def job(self, invocation_id):
-        return FakeJob(self.world.jobs.get(invocation_id, {}))
+        return FakeJob(self.world.jobs.get(invocation_id, {}), self.world.root / "jobs" / ("job-" + invocation_id) / "scratch")
 
     def submit(self, order):
         if self.world.fail_submit:
@@ -109,7 +121,7 @@ class World:
             def view(self, context, records, truncation):
                 return {"step": [context.step.purpose, context.step.ordinal], "admission": context.admission["context"]}
         kits = {key: Kit() for key in workflow.LIMITS}
-        return driver.Driver(station or self.station(), topic_id=TOPIC, bundle_hash=BUNDLE, kits=kits, prompt_dir=self.root / "prompts", work_dir=self.root / "work",
+        return driver.Driver(station or self.station(), topic_id=TOPIC, bundle_hash=BUNDLE, kits=kits, prompt_dir=self.root / "prompts",
                              present=lambda records, read, dossier_revision: {"dossier": {"revision": dossier_revision, "content_hash": HASH, "state": "satisfied", "gates": []},
                                                                               "reviews": [{"outcome": "insufficient", "summary": "claim 2 unsearched", "evidence": []}], "approvable": True},
                              clock=lambda: NOW, sleep=lambda s: None, say=self.said.append, **options)
@@ -124,9 +136,10 @@ class DriverTest(unittest.TestCase):
     def test_the_first_tick_issues_the_scope_pass_with_its_input_pinned_in_the_order(self):
         station = self.world.station()
         d = self.world.driver(station)
-        self.assertEqual(d.tick(), workflow.Issue(Step("research_pass", "scope", 1)))
+        self.assertEqual(d.tick(), workflow.Issue(scope(1)))
         (order,) = station.supervisor.submitted
         directory = Path(order.command[-1])
+        self.assertEqual(directory, station.supervisor.job(order.invocation_id).scratch)   # the one location: the executor's cwd and the collection point
         raw = (directory / "inputs" / "input.json").read_bytes()
         self.assertEqual(order.env["GEN2_INPUT_DIGEST"], canonical.bytes_digest(raw))
         document = json.loads(raw)
@@ -140,7 +153,7 @@ class DriverTest(unittest.TestCase):
         self.world.driver(first).tick()
         again = self.world.station()
         d = self.world.driver(again)
-        self.assertEqual(d.tick(), workflow.Advance(Step("research_pass", "scope", 1)))
+        self.assertEqual(d.tick(), workflow.Advance(scope(1)))
         self.assertEqual((len(first.supervisor.submitted), len(again.supervisor.submitted)), (1, 0))
 
     def test_a_crash_before_the_order_is_durable_leaves_no_job_and_the_same_order_is_built_again(self):
@@ -152,27 +165,27 @@ class DriverTest(unittest.TestCase):
         station = self.world.station()
         self.world.driver(station).tick()
         (order,) = station.supervisor.submitted
-        self.assertEqual(order.invocation_id, self.world.driver().invocation_id(Step("research_pass", "scope", 1)))
+        self.assertEqual(order.invocation_id, self.world.driver().invocation_id(scope(1)))
 
     def test_a_committed_scope_pass_that_proposed_searches_is_followed_by_one_discovery_run(self):
         station = self.world.station()
         d = self.world.driver(station)
         d.tick()
-        iid = d.invocation_id(Step("research_pass", "scope", 1))
+        iid = d.invocation_id(scope(1))
         station.supervisor.script[iid] = "committed"
         self.world.blobs[f"sha256:{iid}"] = canonical.canonical_bytes({"search_proposals": [{"proposal_id": "p1"}]})
-        self.assertEqual(d.tick(), workflow.Advance(Step("research_pass", "scope", 1)))   # settles the job
-        self.assertEqual(d.tick(), workflow.Issue(Step("discovery", "search", 1)))
+        self.assertEqual(d.tick(), workflow.Advance(scope(1)))   # settles the job
+        self.assertEqual(d.tick(), workflow.Issue(Step("discovery", "search", 1, "p2")))
         self.assertEqual([o.env["GEN2_PURPOSE"] for o in station.supervisor.submitted], ["research_pass/scope", "discovery/search"])
 
     def test_a_failed_or_incident_holding_job_stops_the_walk_instead_of_being_retried(self):
         d = self.world.driver()
-        iid = d.invocation_id(Step("research_pass", "scope", 1))
+        iid = d.invocation_id(scope(1))
         for journal, state in (({"settled": "failed"}, "failed"), ({"exhausted": {"kind": "retry_exhausted"}}, "held"), ({"incident": {"kind": "x"}}, "held"),
                                ({"settled": "cancelled"}, "failed"), ({}, "live")):
             with self.subTest(journal):
                 self.world.jobs[iid] = {"order.json": {}, "journal.json": journal}
-                self.assertEqual(d.get(Step("research_pass", "scope", 1)).state, state)
+                self.assertEqual(d.get(scope(1)).state, state)
         self.world.jobs[iid]["journal.json"] = {"exhausted": {"kind": "retry_exhausted"}}
         self.assertEqual(d.tick(), workflow.Stop("research_pass/scope #1 is held"))
 
@@ -187,7 +200,7 @@ class DriverTest(unittest.TestCase):
         station = self.world.station()
         d = self.world.driver(station)
         d.tick()
-        iid = d.invocation_id(Step("research_pass", "scope", 1))
+        iid = d.invocation_id(scope(1))
         for result in driver.HALTS:
             with self.subTest(result):
                 station.supervisor.script[iid] = result
@@ -202,17 +215,66 @@ class DriverTest(unittest.TestCase):
         line = "waiting for: the scoping report awaits approval; run: apply_operator_decision kind=scope_approval"
         self.assertEqual((station.supervisor.recovered, text, self.world.said), (1, line, [line]))
 
-    def test_the_completion_wait_prints_the_review_and_its_evidence_for_the_latest_dossier(self):
-        self.world.topic.update(status="resting", active_contract_revision=1)
-        self.world.dossiers = {1: {}, 2: {}}
-        steps = [Step("research_pass", "research", 1), Step("verification", "verify", 1), Step("checkpoint", "challenge", 1),
-                 Step("checkpoint", "dossier", 1), Step("checkpoint", "review", 1)]
-        d = self.world.driver()
+    REVIEW = {"kind": "sufficiency_review", "subject_ref": TOPIC, "subject_revision": 2, "subject_hash": HASH}
+
+    def commit(self, d, *steps, proposals=None):
         for step in steps:
-            self.world.jobs[d.invocation_id(step)] = {"order.json": {}, "journal.json": {"settled": "committed"}}
+            iid = d.invocation_id(step)
+            self.world.jobs[iid] = {"order.json": {}, "journal.json": {"settled": "committed", "collected": {"result": {"content_hash": f"sha256:{iid}"}}}}
+            if proposals and step in proposals:
+                self.world.blobs[f"sha256:{iid}"] = canonical.canonical_bytes({"search_proposals": [{"proposal_id": "p1"}]})
+
+    def test_the_completion_wait_prints_the_review_and_its_evidence_for_the_dossier_the_review_is_bound_to(self):
+        self.world.topic.update(status="resting", active_contract_revision=1)
+        self.world.dossiers = {1: {}, 2: {}, 3: {}}      # a later dossier exists; the review, and so the approval, is of revision 2
+        self.world.records["completion_records"] = [self.REVIEW]
+        d = self.world.driver()
+        self.commit(d, contract("research_pass", "research"), contract("verification", "verify"), checkpoint("challenge"), checkpoint("dossier"), checkpoint("review"))
         text = d.run()
         for fragment in ("run: apply_operator_decision kind=completion_approval", "dossier revision 2", "review insufficient: claim 2 unsearched"):
             self.assertIn(fragment, text)
+
+    def test_a_completion_wait_that_cannot_show_the_review_is_refused_not_printed_bare(self):
+        self.world.topic.update(status="resting", active_contract_revision=1)
+        d = self.world.driver()
+        self.commit(d, contract("research_pass", "research"), contract("verification", "verify"), checkpoint("challenge"), checkpoint("dossier"), checkpoint("review"))
+        self.assertIn("stopped: cannot show the review for approval: no sufficiency review is recorded", d.run())   # no review row
+        self.world.records["completion_records"] = [self.REVIEW]
+        self.world.dossiers = {}                                                                                      # review bound to a dossier the router lacks
+        self.assertIn("stopped: cannot show the review for approval", d.run())
+
+    def test_the_latest_dossier_is_found_past_fifty_and_only_unknown_dossier_ends_the_history(self):
+        self.world.dossiers = dict.fromkeys(range(1, 61), {})
+        self.assertEqual(self.world.driver().dossier_revision(), 60)
+        self.world.dossiers = {}
+        self.assertIsNone(self.world.driver().dossier_revision())
+        d = self.world.driver()
+        d.station.router.topic_records = lambda request: {"status": "refused", "reason": "store_busy"}
+        with self.assertRaises(Refused):
+            d.dossier_revision()
+
+    def test_the_scoping_and_research_phases_do_not_share_a_discovery_identity(self):
+        """Scoping discovery #1 is committed; the contract's research proposed searches, so ITS discovery #1 is next, not verification."""
+        d = self.world.driver()
+        self.commit(d, scope(1), Step("discovery", "search", 1, "p2"), contract("research_pass", "research"), proposals=[scope(1), contract("research_pass", "research")])
+        self.world.topic.update(status="queued", active_contract_revision=1)
+        self.assertEqual(d.tick(), workflow.Issue(Step("discovery", "search", 1, "c1")))
+        self.assertNotEqual(d.invocation_id(Step("discovery", "search", 1, "p2")), d.invocation_id(Step("discovery", "search", 1, "c1")))
+
+    def test_a_new_review_episode_starts_a_new_checkpoint_and_the_old_one_is_not_resumed(self):
+        self.world.topic.update(status="resting", active_contract_revision=1, reviews=[{"episode_id": "rev_new"}])
+        self.world.records["completion_records"] = [self.REVIEW]       # the first epoch ended in a review
+        d = self.world.driver()
+        self.commit(d, contract("research_pass", "research"), contract("verification", "verify"), checkpoint("challenge"), checkpoint("dossier"), checkpoint("review"))
+        episodes, self.world.topic["reviews"] = self.world.topic["reviews"], []   # no new episode: the earlier review awaits approval
+        self.assertEqual(d.tick(), workflow.Wait(*workflow.COMPLETION_WAIT))
+        self.world.topic["reviews"] = episodes
+        self.assertEqual(d.tick(), workflow.Issue(checkpoint("challenge", epoch=2)))
+
+    def test_the_same_context_gives_the_same_identity_after_a_restart(self):
+        step = checkpoint("challenge", epoch=2)
+        self.assertEqual(self.world.driver().invocation_id(step), self.world.driver(self.world.station()).invocation_id(step))
+        self.assertNotEqual(self.world.driver().invocation_id(step), self.world.driver().invocation_id(checkpoint("challenge", epoch=1)))
 
     def test_a_missing_kit_or_active_contract_is_refused_not_guessed(self):
         d = self.world.driver()

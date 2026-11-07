@@ -37,9 +37,13 @@ def executor_entries(pins: Sequence[Mapping], limits: Mapping = LIMITS) -> list[
 
 @dataclass(frozen=True)
 class Step:
+    """One unit of the program. `context` names the authoritative phase it belongs to (the confirmed brief version for scoping, the
+    approved contract revision for research, that plus the checkpoint epoch for the checkpoint), so work of another phase or
+    review episode never shares its identity; the empty context is the one a caller with no phases uses."""
     kind: str
     purpose: str
     ordinal: int
+    context: str = ""
 
 
 @dataclass(frozen=True)
@@ -80,11 +84,19 @@ Action = Issue | Advance | Wait | Stop | Done
 OPERATOR = {"awaiting_brief_confirmation": ("the intake brief is not confirmed", "apply_operator_decision kind=brief_confirmation"),
             "awaiting_scope_approval": ("the scoping report awaits approval", "apply_operator_decision kind=scope_approval"),
             "awaiting_contract_approval": ("the contract awaits approval", "apply_operator_decision kind=contract_approval")}
+COMPLETION_WAIT = ("the dossier and its review await the operator's approval", "apply_operator_decision kind=completion_approval")
 BLOCKED = ("held", "capability_blocked", "stopped_for_resources", "awaiting_judgment", "retired")
 
 
-def plan(status: str, jobs: Mapping[Step, Job], *, reviews: Sequence[str], max_passes: int = 1, max_rounds: int = 3) -> Action:
-    """The next action for a topic with this queue status, open review episodes and step jobs."""
+def _context(prefix: str, *values: object) -> str:
+    return "" if all(v is None for v in values) else prefix + ".".join(str(v) for v in values)
+
+
+def plan(status: str, jobs: Mapping[Step, Job], *, reviews: Sequence[str], max_passes: int = 1, max_rounds: int = 3,
+         brief: int | None = None, contract: int | None = None, reviewed: int | None = None) -> Action:
+    """The next action for a topic with this queue status, open review episodes and step jobs. `brief` is the confirmed brief's
+    version, `contract` the approved contract revision and `reviewed` how many sufficiency reviews the router holds: they give each
+    phase and each checkpoint epoch its own step identities (an epoch is one review episode's challenge, dossier and review)."""
     if status == "completed_with_qualified_conclusions":
         return Done()
     if status in OPERATOR:
@@ -106,31 +118,34 @@ def plan(status: str, jobs: Mapping[Step, Job], *, reviews: Sequence[str], max_p
         done = run(step)
         if done is not None or not jobs[step].proposals:
             return done
-        return run(Step("discovery", "search", next(searches)))
+        return run(Step("discovery", "search", next(searches), step.context))
     if status == "scoping":
+        pre = _context("p", brief)
         for round_ in range(1, max_rounds + 1):
-            action = then_search(Step("research_pass", "scope", round_))
+            action = then_search(Step("research_pass", "scope", round_, pre))
             if action is not None:
                 return action
         return Stop(f"scoping spent its {max_rounds} rounds")
     if status not in ("queued", "active", "resting"):
         return Stop(f"no step is defined for the topic status {status}")
+    here = _context("c", contract)
     for number in range(1, max_passes + 1):
-        action = then_search(Step("research_pass", "research", number))
+        action = then_search(Step("research_pass", "research", number, here))
         if action is not None:
             return action
-    action = run(Step("verification", "verify", 1))
+    action = run(Step("verification", "verify", 1, here))
     if action is not None:
         return action
-    first = Step("checkpoint", "challenge", 1)
+    epoch = _context("c", contract, None if reviewed is None else f"e{reviewed + 1}")
+    first = Step("checkpoint", "challenge", 1, epoch)
     if first not in jobs and not reviews:
-        return Wait("no review is open for the checkpoint", "open_review")
+        return Wait(*COMPLETION_WAIT) if reviewed else Wait("no review is open for the checkpoint", "open_review")
     action = then_search(first)
     if action is None and jobs[first].proposals:
-        action = run(Step("checkpoint", "challenge", 2))
-    for step in (Step("checkpoint", "dossier", 1), Step("checkpoint", "review", 1)):
+        action = run(Step("checkpoint", "challenge", 2, epoch))
+    for step in (Step("checkpoint", "dossier", 1, epoch), Step("checkpoint", "review", 1, epoch)):
         action = action or run(step)
-    return action or Wait("the dossier and its review await the operator's approval", "apply_operator_decision kind=completion_approval")
+    return action or Wait(*COMPLETION_WAIT)
 
 
 def waiting_line(action: Wait, shown: Mapping | None = None) -> str:

@@ -24,7 +24,6 @@ from gen2.supervisor.supervisor import WorkOrder
 
 HALTS = ("unknown_unresolved", "stalled", "not_admitted", "backend_end_unconfirmed", "router_unavailable")  # advance results that need a person
 COMPLETION = "apply_operator_decision kind=completion_approval"
-DOSSIER_PROBE = 50
 
 
 @dataclass(frozen=True)
@@ -51,11 +50,11 @@ def _now() -> datetime:
 
 
 class Driver:
-    def __init__(self, station, *, topic_id: str, bundle_hash: str, kits: Mapping[tuple[str, str], Kit], prompt_dir: Path, work_dir: Path,
+    def __init__(self, station, *, topic_id: str, bundle_hash: str, kits: Mapping[tuple[str, str], Kit], prompt_dir: Path,
                  present: Callable[..., dict], max_passes: int = 1, max_rounds: int = 3, clock: Callable[[], datetime] = _now, sleep: Callable[[float], None] = time.sleep,
                  say: Callable[[str], None] = print) -> None:
         self.station, self.topic_id, self.bundle_hash, self.kits = station, topic_id, bundle_hash, dict(kits)
-        self.prompt_dir, self.work_dir, self.max_passes, self.max_rounds = Path(prompt_dir), Path(work_dir), max_passes, max_rounds
+        self.prompt_dir, self.max_passes, self.max_rounds = Path(prompt_dir), max_passes, max_rounds
         self.clock, self.sleep, self.say, self.present = clock, sleep, say, present   # present: core.review_presentation.present
 
     # -- facts ------------------------------------------------------------------
@@ -72,8 +71,11 @@ class Driver:
         return bundle
 
     def _order(self, step: Step, digest: str, directory: str = ""):
+        """The one identity of a step: its kind, purpose and ordinal within its phase context (build_order hashes the ordinal as text, so
+        the context rides in it). Job lookup, outcome lookup, input assembly and submission all come through here."""
+        ordinal = f"{step.context}#{step.ordinal}" if step.context else step.ordinal
         return orders.build_order(bundle=self._bundle(), bundle_hash=self.bundle_hash, kind=step.kind, purpose=step.purpose, topic_id=self.topic_id,
-                                  ordinal=step.ordinal, now=self.clock(), directory=directory, input_digest=digest)
+                                  ordinal=ordinal, now=self.clock(), directory=directory, input_digest=digest)
 
     def invocation_id(self, step: Step) -> str:
         return self._order(step, "").invocation_id
@@ -106,14 +108,25 @@ class Driver:
         return self.get(step) is not None
 
     def dossier_revision(self) -> int | None:
-        """The latest recorded dossier revision, found by asking the router for 1, 2, ... until it has no such revision."""
-        found = None
-        for revision in range(1, DOSSIER_PROBE):
+        """The latest recorded dossier revision: ask the router for 1, 2, ... until it answers `unknown_dossier` (the end of the
+        history). Any other refusal is an error, never taken as the end."""
+        found, revision = None, 1
+        while True:
             answer = self.station.router.topic_records({"topic_id": self.topic_id, "families": ["dossiers"], "dossier_revision": revision})
-            if answer.get("status") != "ok":
-                break
-            found = revision
-        return found
+            if answer.get("status") == "ok":
+                found, revision = revision, revision + 1
+            elif answer.get("reason") == "unknown_dossier":
+                return found
+            else:
+                raise Refused(f"topic_records refused dossier {revision}: {answer.get('reason')}")
+
+    def facts(self, topic: Mapping) -> dict:
+        """The authoritative context of the program: the confirmed brief's version (scoping), the approved contract revision, and how
+        many sufficiency reviews the router holds. Read from the router; the driver keeps none of it."""
+        records = self.station.router.topic_records({"topic_id": self.topic_id, "families": ["intake_briefs", "completion_records"]})["records"]
+        confirmed = [b["version"] for b in records["intake_briefs"] if b["status"] == "confirmed"]
+        return {"brief": max(confirmed, default=None), "contract": topic["active_contract_revision"],
+                "reviewed": sum(1 for r in records["completion_records"] if r["kind"] == "sufficiency_review")}
 
     def admission(self, topic: Mapping) -> dict:
         records = self.station.router.topic_records({"topic_id": self.topic_id, "families": ["intake_briefs", "contract_revisions"]})["records"]
@@ -144,9 +157,9 @@ class Driver:
                           self.outcome, self.clock().strftime("%Y-%m-%dT%H:%M:%SZ"))
         document = orders.work_input(kind=step.kind, purpose=step.purpose, invocation_id=invocation, topic_id=self.topic_id, admission=admission,
                                      entry=entry, view=kit.view(context, records, truncation), truncation=truncation)
-        directory = self.work_dir / invocation
+        directory = self.station.supervisor.job(invocation).scratch   # the executor's cwd and where the supervisor collects outcome.json: one location
         digest = orders.write_inputs(directory, entry=entry, prompt=prompt, document=document)
-        spec = self._order(step, digest, str(directory))
+        spec = self._order(step, digest, str(directory))   # prepare() accepts a job directory that already holds the inputs
         self.station.supervisor.submit(WorkOrder(invocation_id=spec.invocation_id, kind=spec.kind, topic_id=spec.topic_id,
                                                  config_bundle_hash=spec.config_bundle_hash, deadline_at=spec.deadline_at,
                                                  lease_expires_at=spec.lease_expires_at, command=spec.command, env=spec.env))
@@ -158,7 +171,7 @@ class Driver:
             hold = topic["holds"][0]
             return Stop(f"open hold {hold['hold_id']}: {hold.get('clears_when')}")
         action = workflow.plan(topic["status"], self, reviews=[r["episode_id"] for r in topic["reviews"]],
-                               max_passes=self.max_passes, max_rounds=self.max_rounds)
+                               max_passes=self.max_passes, max_rounds=self.max_rounds, **self.facts(topic))
         if isinstance(action, Issue):
             self.issue(action.step, topic)
         elif isinstance(action, Advance):
@@ -177,13 +190,23 @@ class Driver:
             self.sleep(0.2)
         return self._say(Stop(f"still working after {max_ticks} ticks; run the driver again"))
 
+    def _shown(self) -> dict:
+        """present() for the dossier revision the newest sufficiency review is bound to: the exact one the operator would approve."""
+        reviews = self.station.router.topic_records({"topic_id": self.topic_id, "families": ["completion_records"]})["records"]["completion_records"]
+        bound = [r["subject_revision"] for r in reviews if r["kind"] == "sufficiency_review"]
+        if not bound:
+            raise Refused("no sufficiency review is recorded")
+        answer = self.station.router.topic_records({"topic_id": self.topic_id, "dossier_revision": bound[-1], "families": ["dossiers", "completion_records"]})
+        if answer.get("status") != "ok":
+            raise Refused(f"dossier {bound[-1]}: {answer.get('reason')}")
+        return self.present(answer["records"], lambda ref: self.station.spool.read(ref["content_hash"], topic_id=self.topic_id), dossier_revision=bound[-1])
+
     def _say(self, action: workflow.Action) -> str:
         if isinstance(action, Wait):
-            shown = None
-            if action.command == COMPLETION and (revision := self.dossier_revision()) is not None:
-                records = self.station.router.topic_records({"topic_id": self.topic_id, "dossier_revision": revision,
-                                                             "families": ["dossiers", "completion_records"]})["records"]
-                shown = self.present(records, lambda ref: self.station.spool.read(ref["content_hash"], topic_id=self.topic_id), dossier_revision=revision)
+            try:
+                shown = self._shown() if action.command == COMPLETION else None
+            except (Refused, ValueError, KeyError) as error:   # never a bare approval wait: the operator must see the review first
+                return self._say(Stop(f"cannot show the review for approval: {error}"))
             text = workflow.waiting_line(action, shown)
         else:
             text = "done" if isinstance(action, Done) else f"stopped: {action.reason}"
