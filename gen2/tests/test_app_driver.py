@@ -1,0 +1,224 @@
+"""The driver's walk (T17 PR2). Oracle: the fake supervisor's durable job records (what was submitted, in which order, under which
+id) and the printed lines; the real order builder and input writer run unmodified. Limits: the station is a fake with the
+router/supervisor/spool calls the driver makes; the real supervisor lifecycle and router commits are T12-B's and T18's witnesses,
+and the kits (views, agent step, builders) are stubs.
+"""
+import json
+import tempfile
+import unittest
+from datetime import datetime, timezone
+from pathlib import Path
+
+from gen2.app import driver, workflow
+from gen2.app.workflow import Step
+from gen2.core import canonical
+from gen2.exec.common import Refused
+
+TOPIC = "fleet:topic"
+BUNDLE = "sha256:" + "b" * 64
+NOW = datetime(2026, 11, 8, 9, 0, 0, tzinfo=timezone.utc)
+HASH = "sha256:" + "a" * 64
+
+
+class FakeJob:
+    def __init__(self, files):
+        self.files = files
+
+    def read(self, name):
+        return self.files.get(name)
+
+
+class Router:
+    def __init__(self, world):
+        self.world = world
+
+    def status(self, request):
+        return {"status": "ok", "topics": [self.world.topic]}
+
+    def config_bundle(self, bundle_hash):
+        return self.world.bundle
+
+    def topic_records(self, request):
+        if "dossiers" in request["families"] and "dossier_revision" in request:
+            if request["dossier_revision"] not in self.world.dossiers:
+                return {"status": "refused", "reason": "unknown_dossier"}
+        return {"status": "ok", "topic_id": TOPIC, "records": {f: self.world.records.get(f, []) for f in request["families"]}}
+
+
+class Supervisor:
+    def __init__(self, world):
+        self.world, self.submitted, self.recovered, self.script = world, [], 0, {}
+
+    def job(self, invocation_id):
+        return FakeJob(self.world.jobs.get(invocation_id, {}))
+
+    def submit(self, order):
+        if self.world.fail_submit:
+            raise OSError("disk full")
+        self.world.jobs[order.invocation_id] = {"order.json": {"invocation_id": order.invocation_id}, "journal.json": {}}
+        self.submitted.append(order)
+        return "running"
+
+    def advance(self, invocation_id):
+        result = self.script.get(invocation_id, "running")
+        if result == "committed":
+            journal = self.world.jobs[invocation_id]["journal.json"]
+            journal.update(settled="committed", collected={"result": {"content_hash": f"sha256:{invocation_id}"}})
+        return result
+
+    def recover(self):
+        self.recovered += 1
+
+
+class Spool:
+    def __init__(self, world):
+        self.world = world
+
+    def read(self, content_hash, *, topic_id):
+        return self.world.blobs.get(content_hash)
+
+
+class World:
+    """One topic, its records, and the stations a driver is built over (a restart is a new station over the same world)."""
+
+    def __init__(self, directory):
+        self.root = Path(directory)
+        (self.root / "prompts").mkdir()
+        pins = []
+        for kind, purpose in workflow.LIMITS:
+            data = f"prompt for {kind}.{purpose}".encode()
+            (self.root / "prompts" / f"{kind}.{purpose}.md").write_bytes(data)
+            pins.append({"kind": kind, "purpose": purpose, "prompt": {"version": 1, "content_hash": canonical.bytes_digest(data)}})
+        self.bundle = {"policy": {"executors": workflow.executor_entries(pins)}}
+        self.topic = {"status": "scoping", "holds": [], "reviews": [], "active_contract_revision": None}
+        self.records = {"intake_briefs": [{"brief_id": "brief1", "version": 2, "content_hash": HASH, "status": "confirmed", "confirmed_by_decision_id": "opd_aaaaaaaa"}],
+                        "contract_revisions": [{"revision": 1, "content_hash": HASH}]}
+        self.jobs, self.blobs, self.dossiers, self.fail_submit, self.said = {}, {}, {}, False, []
+
+    def station(self):
+        class Station:
+            pass
+        station = Station()
+        station.router, station.supervisor, station.spool = Router(self), Supervisor(self), Spool(self)
+        return station
+
+    def driver(self, station=None, **options):
+        class Kit:
+            families = ("intake_briefs",)
+
+            def view(self, context, records, truncation):
+                return {"step": [context.step.purpose, context.step.ordinal], "admission": context.admission["context"]}
+        kits = {key: Kit() for key in workflow.LIMITS}
+        return driver.Driver(station or self.station(), topic_id=TOPIC, bundle_hash=BUNDLE, kits=kits, prompt_dir=self.root / "prompts", work_dir=self.root / "work",
+                             present=lambda records, read, dossier_revision: {"dossier": {"revision": dossier_revision, "content_hash": HASH, "state": "satisfied", "gates": []},
+                                                                              "reviews": [{"outcome": "insufficient", "summary": "claim 2 unsearched", "evidence": []}], "approvable": True},
+                             clock=lambda: NOW, sleep=lambda s: None, say=self.said.append, **options)
+
+
+class DriverTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.world = World(self.tmp.name)
+
+    def test_the_first_tick_issues_the_scope_pass_with_its_input_pinned_in_the_order(self):
+        station = self.world.station()
+        d = self.world.driver(station)
+        self.assertEqual(d.tick(), workflow.Issue(Step("research_pass", "scope", 1)))
+        (order,) = station.supervisor.submitted
+        directory = Path(order.command[-1])
+        raw = (directory / "inputs" / "input.json").read_bytes()
+        self.assertEqual(order.env["GEN2_INPUT_DIGEST"], canonical.bytes_digest(raw))
+        document = json.loads(raw)
+        self.assertEqual((document["view"], document["admission"]["context"], document["admission"]["brief"]["version"]),
+                         ({"step": ["scope", 1], "admission": "pre-contract/1"}, "pre-contract/1", 2))
+        self.assertEqual(order.env["GEN2_PURPOSE"], "research_pass/scope")
+        self.assertEqual((directory / "inputs" / "prompt.md").read_bytes(), b"prompt for research_pass.scope")
+
+    def test_a_restart_advances_the_existing_job_and_never_issues_a_second_order(self):
+        first = self.world.station()
+        self.world.driver(first).tick()
+        again = self.world.station()
+        d = self.world.driver(again)
+        self.assertEqual(d.tick(), workflow.Advance(Step("research_pass", "scope", 1)))
+        self.assertEqual((len(first.supervisor.submitted), len(again.supervisor.submitted)), (1, 0))
+
+    def test_a_crash_before_the_order_is_durable_leaves_no_job_and_the_same_order_is_built_again(self):
+        self.world.fail_submit = True
+        with self.assertRaises(OSError):
+            self.world.driver().tick()
+        self.assertEqual(self.world.jobs, {})
+        self.world.fail_submit = False
+        station = self.world.station()
+        self.world.driver(station).tick()
+        (order,) = station.supervisor.submitted
+        self.assertEqual(order.invocation_id, self.world.driver().invocation_id(Step("research_pass", "scope", 1)))
+
+    def test_a_committed_scope_pass_that_proposed_searches_is_followed_by_one_discovery_run(self):
+        station = self.world.station()
+        d = self.world.driver(station)
+        d.tick()
+        iid = d.invocation_id(Step("research_pass", "scope", 1))
+        station.supervisor.script[iid] = "committed"
+        self.world.blobs[f"sha256:{iid}"] = canonical.canonical_bytes({"search_proposals": [{"proposal_id": "p1"}]})
+        self.assertEqual(d.tick(), workflow.Advance(Step("research_pass", "scope", 1)))   # settles the job
+        self.assertEqual(d.tick(), workflow.Issue(Step("discovery", "search", 1)))
+        self.assertEqual([o.env["GEN2_PURPOSE"] for o in station.supervisor.submitted], ["research_pass/scope", "discovery/search"])
+
+    def test_a_failed_or_incident_holding_job_stops_the_walk_instead_of_being_retried(self):
+        d = self.world.driver()
+        iid = d.invocation_id(Step("research_pass", "scope", 1))
+        for journal, state in (({"settled": "failed"}, "failed"), ({"exhausted": {"kind": "retry_exhausted"}}, "held"), ({"incident": {"kind": "x"}}, "held"),
+                               ({"settled": "cancelled"}, "failed"), ({}, "live")):
+            with self.subTest(journal):
+                self.world.jobs[iid] = {"order.json": {}, "journal.json": journal}
+                self.assertEqual(d.get(Step("research_pass", "scope", 1)).state, state)
+        self.world.jobs[iid]["journal.json"] = {"exhausted": {"kind": "retry_exhausted"}}
+        self.assertEqual(d.tick(), workflow.Stop("research_pass/scope #1 is held"))
+
+    def test_an_open_hold_stops_the_walk_before_anything_is_issued(self):
+        self.world.topic["holds"] = [{"hold_id": "hold_unknownspend", "clears_when": "an operator resolves the unknown spend"}]
+        station = self.world.station()
+        action = self.world.driver(station).tick()
+        self.assertEqual(action, workflow.Stop("open hold hold_unknownspend: an operator resolves the unknown spend"))
+        self.assertEqual(station.supervisor.submitted, [])
+
+    def test_a_step_that_needs_a_person_stops_the_walk_and_a_running_one_keeps_it_going(self):
+        station = self.world.station()
+        d = self.world.driver(station)
+        d.tick()
+        iid = d.invocation_id(Step("research_pass", "scope", 1))
+        for result in driver.HALTS:
+            with self.subTest(result):
+                station.supervisor.script[iid] = result
+                self.assertIsInstance(d.tick(), workflow.Stop)
+        station.supervisor.script[iid] = "running"
+        self.assertIn("still working after 3 ticks", d.run(max_ticks=3))
+
+    def test_run_recovers_first_and_prints_the_wait_for_the_operator(self):
+        self.world.topic["status"] = "awaiting_scope_approval"
+        station = self.world.station()
+        text = self.world.driver(station).run()
+        line = "waiting for: the scoping report awaits approval; run: apply_operator_decision kind=scope_approval"
+        self.assertEqual((station.supervisor.recovered, text, self.world.said), (1, line, [line]))
+
+    def test_the_completion_wait_prints_the_review_and_its_evidence_for_the_latest_dossier(self):
+        self.world.topic.update(status="resting", active_contract_revision=1)
+        self.world.dossiers = {1: {}, 2: {}}
+        steps = [Step("research_pass", "research", 1), Step("verification", "verify", 1), Step("checkpoint", "challenge", 1),
+                 Step("checkpoint", "dossier", 1), Step("checkpoint", "review", 1)]
+        d = self.world.driver()
+        for step in steps:
+            self.world.jobs[d.invocation_id(step)] = {"order.json": {}, "journal.json": {"settled": "committed"}}
+        text = d.run()
+        for fragment in ("run: apply_operator_decision kind=completion_approval", "dossier revision 2", "review insufficient: claim 2 unsearched"):
+            self.assertIn(fragment, text)
+
+    def test_a_missing_kit_or_active_contract_is_refused_not_guessed(self):
+        d = self.world.driver()
+        d.kits.pop(("research_pass", "scope"))
+        with self.assertRaises(Refused):
+            d.tick()
+        self.world.topic.update(status="queued", active_contract_revision=None)
+        with self.assertRaises(Refused):
+            self.world.driver().tick()
