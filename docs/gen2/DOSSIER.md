@@ -322,6 +322,40 @@ Validated-only search proposals stay in committed payloads (P6); executor pins
 and bounds live in the bundle. Offline tests establish Router structure only;
 T13–T18 supply the production consumers for the supervised 2f workflow.
 
+## T4a / 2e1 3b-ii blocker (2026-11-07)
+
+Authenticated real-route rejection blocks admission and final start across the
+owning deployment/provider route, including known-zero results. Capability
+recovery and generic hold clearance do not clear it. Fixture provenance never
+becomes genuine from artifact labels. T4b owns reviewed remediation; DEBT-053
+stays open until the separate pre-2f procedure and evidence are accepted.
+
+## T4b / reviewed rejection remediation (2026-11-07)
+
+The existing operator-role decision route can approve one retained rejection,
+with topic/hash binding and retained procedure/review, manifest and qualification
+evidence. An append-only audit enables only the approved replacement pins;
+new rejections and unknown spending still block. No DDL or operator_decisions
+change. DEBT-053's real reviewed procedure remains a pre-2f operator gate.
+
+## Sprint rulings, 2026-11-07 (Gate S #7 and after)
+
+Source: `private/reviews/gen2-gate-s7-fable-20261107.md` and `gen2-sprint-records-pending-20261107.md`. 
+
+- **T13 (discovery):** discovery is a code job over retained exchanges; the model never chooses its evidence route.
+- **T16 (challenge and review):** challenge → discovery → independent assessment, with approval bound to the exact revision.
+- **T17 (driver):** mechanical driver progression with durable order identity (contract revision plus the router `episode_id`) and no scientific stopping.
+
+- **Host lane cap:** 900 → 1,170 (Trevor, 2026-11-07 about 04:49 UTC) → 1,250 (2026-11-07). Any further host code needs Trevor.
+- **Production cap 950** (2e1 production stop, raised 850 → 950 on 2026-11-03; recorded above).
+- **2e2 cap:** 6,600 (approved with the 2e2 ticket plan, 2026-11-05 about 19:36 UTC) → **8,800** (Trevor, 2026-11-07, with the Gate S #7 cuts). Any further overrun goes back to Trevor. Merged plus accepted was already about 7,600 at `bd3490d`.
+- **L08 and L09 approved** (Trevor, 2026-11-07).
+- **The capability id is bearer authority,** so the supervisor fills `verifier_capability_id` (option 2, 2026-11-07, #141). Roadmap: after Nov 18, one Astra design round, then the Router derives it from the commit envelope (Gate S #7 §4 item A), amending this ruling; until then the supervisor fill stands.
+- **T21 (the result read) is cut** (Trevor, 2026-11-07). Operator status is the result-read route; the freshness-envelope shape moves to the §8 roadmap (R5, DEBT-043).
+- **T18 drops the three "required failures through production routes"** (orchestrator decision, 2026-11-07, Gate S #7 §4 #2). They are proven at their own layers (`RecorderMissing`, #142's missing-tier hold, #125's `incomplete`); T18 keeps the happy path on a fresh store and "removing any recorder fails" (DEBT-051).
+- **S5 re-baseline:** S5-2 (2026-11-03, recorded above): 2e1 stops total 2,900, production 1,150, tests 1,250; the 1.3× tripwire anchored to the §4 P50 baseline.
+- **Gate S candidate (lane B "one parse at collection") not taken:** replaced by roadmap item A (Gate S #7 §2 family A).
+
 ## Operator review status (2026-11-07)
 
 Topic status includes the exact current candidate's gates and bound sufficiency
