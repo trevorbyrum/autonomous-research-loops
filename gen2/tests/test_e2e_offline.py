@@ -9,8 +9,7 @@ supervisor and its subprocess executors, the production child, builders, views, 
 `offline_agent`: the judgment schemas and examples under gen2/schema/examples/judgment-*). Limits: it proves wiring and the record
 families, not research quality; the three failures that are proven at their own layers are not repeated here.
 
-The coverage witness reaches the completion-approval wait with a satisfied dossier.
-The separate reviewed state-machine hand-off extends this same walk through approval.
+The Router's reviewed hand-off enters waiting; only the operator completes the topic.
 """
 import unittest
 
@@ -18,17 +17,17 @@ from gen2.supervisor.supervisor import RecorderMissing
 from gen2.tests.offline_run import Offline
 
 class WholeWorkflowTest(unittest.TestCase):
-    def test_one_topic_from_brief_to_a_satisfied_review_through_production_routes_only(self):
+    def test_one_topic_from_brief_to_an_approved_completion_through_production_routes_only(self):
         run = Offline()
         self.addCleanup(run.close)
-        self.assertIn("waiting for: the dossier and its review await", run.walk(until="completion_approval"))
+        self.assertEqual(run.walk(), "done")
         topic = run.topic()
-        self.assertEqual(topic["status"], "resting")
+        self.assertEqual(topic["status"], "completed_with_qualified_conclusions")
         review = topic["review"]
         self.assertEqual([(g["gate"], g["state"]) for g in review["dossier"]["gates"]],
                          [("load_bearing_verification_tiers", "satisfied"), ("challenge_pass_completed", "satisfied"), ("coverage_integrity", "satisfied")])
         self.assertEqual((review["dossier"]["state"], review["reviews"][0]["outcome"], review["approvable"]), ("satisfied", "sufficient", True))
-        self.assertIsNone(topic["completion"])
+        self.assertEqual(topic["completion"]["dossier_revision"], review["dossier"]["revision"])
         # the approved dossier's record families, each written by its own production route
         families = {name: run.records(name) for name in ("scoping_reports", "search_observations", "works", "claims", "claim_source_links", "source_artifacts",
                                                          "source_acquisitions", "verification_receipts", "detailed_check_records", "quote_checks", "completion_records")}
