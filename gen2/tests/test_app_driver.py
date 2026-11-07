@@ -215,20 +215,25 @@ class DriverTest(unittest.TestCase):
 
     REVIEW = {"kind": "sufficiency_review", "subject_ref": TOPIC, "subject_revision": 2, "subject_hash": HASH}
 
-    def put(self, iid, journal, step=None):
-        """A job as the supervisor would hold it: a durable order (with the context it was issued under) and a journal."""
+    def put(self, iid, journal):
+        """A job's journal as the supervisor would leave it. The order is whatever the driver submitted, or a bare one for a job it
+        never issued; this helper adds no field to an order."""
         job = supervisor_jobs.Job(self.world.root / "jobs", "job-" + iid)
-        env = {"GEN2_CONTEXT": step.context, "GEN2_STEP": f"{step.kind}/{step.purpose}#{step.ordinal}"} if step else {}
-        order = {"invocation_id": iid, "topic_id": TOPIC, "env": env}
-        job.prepare(order) if job.read("order.json") is None else job.write("order.json", order)   # a test may restate a job the driver issued
+        if job.read("order.json") is None:
+            job.prepare({"invocation_id": iid, "topic_id": TOPIC, "env": {}})
         job.write("journal.json", journal)
 
-    def commit(self, d, *steps, proposals=None):
+    def settle(self, d, step, proposals=False):
+        iid = d.invocation_id(step)
+        self.put(iid, {"settled": "committed", "collected": {"result": {"content_hash": f"sha256:{iid}"}}})
+        if proposals:
+            self.world.blobs[f"sha256:{iid}"] = canonical.canonical_bytes({"search_proposals": [{"proposal_id": "p1"}]})
+
+    def commit(self, d, *steps, proposals=()):
+        """Each step is ISSUED through the driver's own submission path, then only the journal says it settled."""
         for step in steps:
-            iid = d.invocation_id(step)
-            self.put(iid, {"settled": "committed", "collected": {"result": {"content_hash": f"sha256:{iid}"}}}, step)
-            if proposals and step in proposals:
-                self.world.blobs[f"sha256:{iid}"] = canonical.canonical_bytes({"search_proposals": [{"proposal_id": "p1"}]})
+            d.issue(step, self.world.topic)
+            self.settle(d, step, step in proposals)
 
     def test_the_completion_wait_prints_the_review_and_its_evidence_for_the_dossier_the_review_is_bound_to(self):
         self.world.topic.update(status="resting", active_contract_revision=1, reviews=[])
@@ -281,6 +286,30 @@ class DriverTest(unittest.TestCase):
         self.world.records["completion_records"] = []                                   # the count differs, the answer does not
         self.assertEqual(self.world.driver().tick(), workflow.Advance(checkpoint("challenge", episode="rev_new")))
 
+    def test_one_challenge_issued_by_tick_is_followed_through_closure_dossier_and_review_settlement(self):
+        """Everything is issued by tick(); between ticks only router/journal facts change: the episode closes, a review row appears."""
+        self.world.topic.update(status="queued", active_contract_revision=1, reviews=[episode("rev_one")])
+        self.world.records["completion_records"] = []
+        d = self.world.driver()
+        issued, action = [], None
+        for _ in range(12):
+            action = d.tick()
+            if not isinstance(action, workflow.Issue):
+                break
+            issued.append(action.step)
+            self.settle(d, action.step)
+            if action.step == checkpoint("challenge"):
+                self.world.topic["reviews"] = []                      # the challenge commit closed its episode
+            if action.step == checkpoint("review"):
+                self.world.records["completion_records"] = [self.REVIEW]
+        self.assertEqual(issued, [contract("research_pass", "research"), contract("verification", "verify"), checkpoint("challenge"),
+                                  checkpoint("dossier"), checkpoint("review")])
+        self.assertEqual(action, workflow.Wait(*workflow.COMPLETION_WAIT))
+        stored = self.world.driver(self.world.station()).station.supervisor.job(d.invocation_id(checkpoint("challenge"))).read("order.json")
+        self.assertEqual({k: stored["env"][k] for k in ("GEN2_CONTEXT", "GEN2_STEP", "GEN2_PURPOSE")},
+                         {"GEN2_CONTEXT": "c1.rev_one", "GEN2_STEP": "checkpoint/challenge#1", "GEN2_PURPOSE": "checkpoint/challenge"})
+        self.assertIn("GEN2_INPUT_DIGEST", stored["env"])      # the entries build_order set are kept beside the binding
+
     def test_with_no_new_episode_the_finished_checkpoint_waits_for_approval_not_for_a_review(self):
         self.world.topic.update(status="resting", active_contract_revision=1, reviews=[])
         d = self.world.driver()
@@ -291,7 +320,7 @@ class DriverTest(unittest.TestCase):
         self.world.topic.update(status="resting", active_contract_revision=1, reviews=[episode("rev_one")])
         d = self.world.driver()
         self.commit(d, contract("research_pass", "research"), contract("verification", "verify"), checkpoint("challenge"), checkpoint("dossier"))
-        self.put(d.invocation_id(checkpoint("review")), {}, checkpoint("review"))             # the review job is issued and unsettled
+        d.issue(checkpoint("review"), self.world.topic)                                       # the review job is issued and unsettled
         for records in ([], [self.REVIEW], [self.REVIEW, self.REVIEW]):                       # any number of sufficiency rows
             with self.subTest(rows=len(records)):
                 self.world.records["completion_records"] = records
@@ -306,7 +335,7 @@ class DriverTest(unittest.TestCase):
         restarted = self.world.driver(self.world.station())
         self.commit(restarted, checkpoint("dossier"))
         self.assertEqual(restarted.tick(), workflow.Issue(checkpoint("review")))              # read from the order issued, not the open list
-        self.put(restarted.invocation_id(checkpoint("review")), {}, checkpoint("review"))
+        restarted.issue(checkpoint("review"), self.world.topic)   # (tick above only decided; this is the production submission)
         self.assertEqual(self.world.driver(self.world.station()).tick(), workflow.Advance(checkpoint("review")))
         self.commit(self.world.driver(), checkpoint("review"))                                # settled
         self.assertEqual(self.world.driver(self.world.station()).tick(), workflow.Wait(*workflow.COMPLETION_WAIT))
@@ -321,11 +350,13 @@ class DriverTest(unittest.TestCase):
         self.world.topic.update(status="resting", active_contract_revision=2, reviews=[episode("rev_one")])
         self.world.records["contract_revisions"].append({"revision": 2, "content_hash": HASH})
         d = self.world.driver()
-        self.put(d.invocation_id(checkpoint("challenge")), {}, checkpoint("challenge"))       # issued under c1, never settled
+        self.world.topic["active_contract_revision"] = 1
+        self.assertEqual(d.tick(), workflow.Issue(contract("research_pass", "research")))     # production issuance under c1
+        self.world.topic["active_contract_revision"] = 2                                      # the contract is amended; c1 work never settled
         action = d.tick()
         self.assertIsInstance(action, workflow.Stop)
         self.assertIn("issued under c1 and has not settled", action.reason)
-        self.put(d.invocation_id(checkpoint("challenge")), {"settled": "failed"}, checkpoint("challenge"))
+        self.put(d.invocation_id(contract("research_pass", "research")), {"settled": "failed"})
         self.assertNotIsInstance(d.tick(), workflow.Stop)
 
     def test_the_same_context_gives_the_same_identity_after_a_restart(self):
