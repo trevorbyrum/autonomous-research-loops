@@ -599,7 +599,7 @@ class Supervisor:
         elif found["status"] == "refused":
             findings.append("output_refused")
         elif declared is not None and declared != found.get("original", found["ref"]["content_hash"]):
-            output.update(status="digest_mismatch", detail=f"the executor declared {declared[:80]}; the bytes hash to {found['ref']['content_hash']}")
+            output.update(status="digest_mismatch", detail=f"the executor declared {declared[:80]}; the bytes hash to {found.get('original', found['ref']['content_hash'])}")
             findings.append("output_digest_mismatch")
         else:
             output.update(content_hash=found["ref"]["content_hash"], size_bytes=found["ref"]["size_bytes"])
@@ -627,7 +627,8 @@ class Supervisor:
             document = canonical.parse_json_strict(data)
         except ValueError:
             document = None
-        receipts = [r for r in (document or {}).get("verification_receipts", []) if isinstance(r, dict)] if isinstance(document, dict) else []
+        collection = document.get("verification_receipts") if isinstance(document, dict) else None
+        receipts = [r for r in collection if isinstance(r, dict)] if isinstance(collection, list) else []   # any other shape goes to the router as written
         if any(r.get("verifier_capability_id") not in (None, capability) for r in receipts) or (receipts and capability is None):
             return {"status": "refused", "ref": None, "detail": "a verification receipt names a capability that is not the verifier's own"}
         if any("verifier_capability_id" not in r or r["verifier_capability_id"] is None for r in receipts):

@@ -13,7 +13,7 @@ from gen2.tests.supervisor_fixtures import MAIN, SupervisedTestCase
 class Capability(SupervisedTestCase):
 
     def stage(self, kind, receipts, declare=False):
-        outcome = {**rf.empty_outcome(MAIN), "verification_receipts": receipts}
+        outcome = {**rf.empty_outcome(MAIN), "verification_receipts": receipts}   # whatever the test says, however malformed
         data = canonical.canonical_bytes(outcome)
         steps = [{"op": "write", "name": "outcome.json", "hex": data.hex()}]
         if declare:
@@ -60,3 +60,27 @@ class Capability(SupervisedTestCase):
         _, staged, _, collected = self.stage("verification", [{"verification_receipt_id": "ver_00000001"}], declare=True)
         self.assertIsNotNone(staged)
         self.assertEqual(collected["observation"]["findings"], [])
+
+    def test_a_malformed_receipts_value_is_left_as_written_and_the_job_ends_failed_through_the_router_and_stays_safe_to_retry(self) -> None:
+        """null, a number, a boolean, a string, an object and non-object list members once raised TypeError out of collection and left the
+        invocation running; the router now sees them as written and refuses them."""
+        for malformed in (None, 7, True, "x", {"a": 1}, [None, 3, "x"]):
+            with self.subTest(malformed=malformed):
+                self.tearDown()
+                self.setUp()
+                data, staged, journal, collected = self.stage("verification", malformed)
+                self.assertEqual(staged, data)                                                     # byte for byte
+                self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "failed")
+                self.assertEqual(self.supervisor.advance(MAIN), "failed")                          # a retry (and a restart) is safe and settles the same
+                self.assertEqual(self.station_again().advance(MAIN), "failed")
+
+    def test_a_digest_mismatch_reports_the_digest_of_the_jobs_own_bytes(self) -> None:
+        outcome = canonical.canonical_bytes({**rf.empty_outcome(MAIN), "verification_receipts": [{"verification_receipt_id": "ver_00000001"}]})
+        steps = [{"op": "write", "name": "outcome.json", "hex": outcome.hex()}, {"op": "declare_digest", "digest": "sha256:" + "0" * 64}]
+        self.supervisor.prepare(self.order("verification", steps))
+        self.supervisor.run(MAIN)
+        detail = self.supervisor.job(MAIN).read("journal.json")["collected"]["observation"]["output"]["detail"]
+        self.assertIn("sha256:" + hashlib.sha256(outcome).hexdigest(), detail)
+
+    def station_again(self):
+        return self.make_supervisor()
