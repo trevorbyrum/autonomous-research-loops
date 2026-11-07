@@ -12,21 +12,16 @@ the Router's rows and the spool's hash check; it decides nothing about which pro
 """
 from __future__ import annotations
 
-from typing import Callable, Mapping, Protocol, Sequence
+from typing import Callable, Mapping, Protocol
 
 from gen2.core.control import StagedBytes
 from gen2.discovery import requests
-from gen2.exec.common import Refused
+from gen2.exec.common import RecordsReader, Refused
 
 
 class Receipts(Protocol):
     def receipt(self, invocation_id: str) -> Mapping:
         """The invocation's one committed final_outcome receipt row, or Refused."""
-
-
-class RecordsReader(Protocol):
-    def topic_records(self, request: Mapping) -> dict:
-        """The Router's trusted read: {topic_id, families} -> {status: ok, topic_id, records: {family: [row, ...]}}."""
 
 
 class TopicReceipts:
@@ -47,15 +42,13 @@ class TopicReceipts:
 
 
 def assemble(receipts: Receipts, spool: StagedBytes, topic_id: str, proposing_invocation_id: str, validate: Callable[[str, object], None],
-             max_bytes: int, only: Sequence[str] | None = None) -> dict:
-    """The `committed` (and `only`) part of a discovery input's view: the receipt, and the exact committed bytes it names."""
+             max_bytes: int) -> dict:
+    """The `committed` part of a discovery input's view: the receipt, and the exact committed bytes it names."""
     receipt = receipts.receipt(proposing_invocation_id)
     if (receipt["invocation_id"], receipt["topic_id"]) != (proposing_invocation_id, topic_id):
         raise Refused("the receipt is another invocation's or topic's")
     payload = spool.read(receipt["payload_digest"], topic_id=topic_id)
     if payload is None:
         raise Refused("the committed payload is not staged for this topic")
-    committed = requests.intake(payload, receipt, topic_id, max_bytes, validate)
-    requests.select(committed, only)   # a name the committed payload lacks is refused before any input exists
-    view = {"committed": {"payload": payload.decode("utf-8"), "receipt": {"invocation_id": receipt["invocation_id"], "payload_digest": receipt["payload_digest"]}}}
-    return {**view, "only": list(only)} if only is not None else view
+    requests.intake(payload, receipt, topic_id, max_bytes, validate)
+    return {"committed": {"payload": payload.decode("utf-8"), "receipt": {"invocation_id": receipt["invocation_id"], "payload_digest": receipt["payload_digest"]}}}

@@ -10,8 +10,46 @@ from deploy.gen2.live import build, fixture, qualify, runner
 
 
 class Fixtures(unittest.TestCase):
+    def test_pinned_buildx_help_and_unique_json_view(self):
+        """The runtime CLI contract refuses drift; canned help/views never invoke Docker."""
+        help_text = {"ls": "      --format string    Format the output\n",
+                     "bake": "      --builder string    Builder\n  -f, --file stringArray    Definition\n"}
+        build.buildx_preflight(build.BUILDX_VERSION + "\n", help_text)
+        for version in ("v0.37.0", build.BUILDX_VERSION.replace("0dbe87f", "1234567")):
+            with self.subTest(version=version), self.assertRaisesRegex(ValueError, "version/commit"):
+                build.buildx_preflight(version, help_text)
+        for command, flag in (("ls", "--format"), ("bake", "--builder"), ("bake", "--file")):
+            with self.subTest(flag=flag), self.assertRaisesRegex(ValueError, "help missing"):
+                build.buildx_preflight(build.BUILDX_VERSION, help_text | {command: help_text[command].replace(flag, "--other")})
+        with patch.object(build, "BUILDER_LIST", ("buildx", "inspect", "--format", "json")), self.assertRaisesRegex(ValueError, "help missing"):
+            build.buildx_preflight(build.BUILDX_VERSION, help_text | {"inspect": "      --bootstrap    Start builder\n"})
+        name = "gen2-2e1-build"
+        view = dict(Name=name, Driver="docker", Nodes=[dict(Endpoint=name, Status="running")])
+        line = json.dumps(view)
+        listing = json.dumps(view | {"Name": "default"}) + "\n" + line + "\n"
+        selected = build.builder_view(name, listing)
+        self.assertEqual(selected, view)
+        build.builder_gate(name, selected, {name: "unix:///run/user/1000/gen2-2e1/docker.sock"})
+        for listing in ("", "Name: " + name, "[]", "{}", line + "\n" + line, line + "\nnot JSON"):
+            with self.subTest(listing=listing), self.assertRaises(ValueError):
+                build.builder_view(name, listing)
+        for change in (dict(Nodes=None), dict(Nodes=[None]), dict(Nodes=[dict(Endpoint=name, Status="stopped")]), dict(Error="unreadable")):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                build.builder_gate(name, view | change, {name: build.SOCKET})
+
+    def test_dedicated_socket_path_and_context_uri(self):
+        """The retained T9 Host URI passes; other sockets and schemes grant no build authority."""
+        name, uri = "gen2-2e1-t9", "unix:///run/user/1000/gen2-2e1/docker.sock"
+        for endpoint, contexts in ((name, {name: uri}), (uri, {}), (build.SOCKET, {})):
+            with self.subTest(endpoint=endpoint):
+                build.builder_gate(name, dict(Driver="docker", Nodes=[dict(Endpoint=endpoint, Status="running")]), contexts)
+        for wrong in ("/var/run/docker.sock", "unix:///var/run/docker.sock", "tcp://127.0.0.1:2375", "ssh://remote", uri + "?extra"):
+            for endpoint, contexts in ((wrong, {}), (name, {name: wrong}), (wrong, {wrong: uri})):
+                with self.subTest(endpoint=endpoint, contexts=contexts), self.assertRaisesRegex(ValueError, "not the dedicated daemon"):
+                    build.builder_gate(name, dict(Driver="docker", Nodes=[dict(Endpoint=endpoint, Status="running")]), contexts)
+
     def test_dedicated_builder_and_original_counter(self):
-        view = {"Driver": "docker", "Nodes": [{"Endpoint": build.SOCKET}]}
+        view = {"Driver": "docker", "Nodes": [{"Endpoint": build.SOCKET, "Status": "running"}]}
         build.builder_gate("gen2-2e1-build", view, {})
         for driver in ("docker-container", "remote"):
             with self.subTest(driver=driver), self.assertRaises(ValueError):

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Callable, Mapping
 
-from gen2.exec import artifacts, views
+from gen2.exec import artifacts
 from gen2.exec.common import Refused, derived_id, scaffold
 
 PROPOSER = "research_pass.research"
@@ -28,11 +28,11 @@ def _confidence(contract: Mapping, label: str) -> dict:
     return {"basis": "unknown", "reason": f"the pinned contract's scheme does not name the label {label!r}"}
 
 
-def build_research(work: Mapping, judgment: Mapping, reader: views.RecordsReader, exchanges: artifacts.Exchanges,
-                   stage: artifacts.Stage) -> dict:
-    """work-input/1 + judgment-research/1 -> outcome/1, reading the retrieval lineage fresh."""
+def build_research(work: Mapping, judgment: Mapping, stage: artifacts.Stage) -> dict:
+    """work-input/1 + judgment-research/1 -> outcome/1. Pure: the retained lineage of each work is in the view (`artifact_ref`, `lane`,
+    `provider_record_id`), read and digest-checked by the parent; a work the view does not list cannot be cited."""
     inv, contract = work["invocation_id"], work["view"]["contract"]
-    records = views.read_records(reader, work["topic_id"], ("retrieval_events", "record_work_links", "search_observations"))
+    listed = {w["work_id"]: w for w in work["view"]["works"]}
     claims, drafts = [], []
     for n, claim in enumerate(judgment["claims"]):
         if claim["load_bearing"] and claim["required_access_tier"] is None:
@@ -43,19 +43,20 @@ def build_research(work: Mapping, judgment: Mapping, reader: views.RecordsReader
         for source in claim["sources"]:
             if source["contribution"] not in CONTRIBUTIONS:
                 raise Refused(f"claim {claim['local_id']}: contribution {source['contribution']!r} is not one of {CONTRIBUTIONS}")
+            if source["work_id"] not in listed:
+                raise Refused(f"claim {claim['local_id']}: {source['work_id']} is not a work with a retained response in the view")
             drafts.append((claim_id, source))
     work_ids = sorted({source["work_id"] for _, source in drafts})
     if len(drafts) > CAPS["claim_source_links"] or len(work_ids) > CAPS["source_artifacts"]:
         raise Refused("this pass cites more links or sources than one commit carries")
-    found = {work_id: artifacts.retained(work_id, records, exchanges) for work_id in work_ids}
-    links = [{"claim_id": claim_id, "claim_revision": 1, "work_id": source["work_id"], "source_version": found[source["work_id"]].ref["content_hash"],
+    links = [{"claim_id": claim_id, "claim_revision": 1, "work_id": source["work_id"], "source_version": listed[source["work_id"]]["artifact_ref"]["content_hash"],
               "obligation_id": source["obligation_id"], "spans": source.get("spans", []), "contribution": source["contribution"],
-              "evidence_origin_lineage": f"{found[source['work_id']].lane}:{found[source['work_id']].provider_record_id}"[:500],
+              "evidence_origin_lineage": f"{listed[source['work_id']]['lane']}:{listed[source['work_id']]['provider_record_id']}"[:500],
               "analytical_method": None} for claim_id, source in drafts]
     pin = contract["revision"], contract["content_hash"], contract["framing_version"], contract["eligibility_protocol"]["protocol_version"]
     assessments = []
     for n, item in enumerate(judgment["obligations"]):
-        evidence = [dict(found[s["work_id"]].ref) for _, s in drafts if s["obligation_id"] == item["obligation_id"]]
+        evidence = [dict(listed[s["work_id"]]["artifact_ref"]) for _, s in drafts if s["obligation_id"] == item["obligation_id"]]
         unique = list({ref["content_hash"]: ref for ref in evidence}.values()) or [artifacts.text_ref(stage, item["summary"])]
         assessments.append({"record_id": derived_id("oa", inv, "obligation", n), "obligation_id": item["obligation_id"],
                             "subject": f"{item['obligation_id']}: {item['outcome']}", "contract_revision": pin[0], "contract_content_hash": pin[1],
@@ -69,10 +70,10 @@ def build_research(work: Mapping, judgment: Mapping, reader: views.RecordsReader
                 for code in judgment["triggers"]]
     proposals = [{**p, "proposer": PROPOSER} for p in judgment["search_proposals"]]
     return scaffold(inv, work["topic_id"], next_queue_state=judgment["next_queue_state"], claims=claims, claim_source_links=links,
-                    screening_assessments=screening, review_triggers=triggers, source_artifacts=artifacts.source_artifacts(work_ids, records, exchanges),
+                    screening_assessments=screening, review_triggers=triggers, source_artifacts=[{"work_id": w, "source_version": listed[w]["artifact_ref"]["content_hash"], "artifact_ref": dict(listed[w]["artifact_ref"])} for w in work_ids],
                     obligation_assessments=assessments, search_proposals=proposals)
 
 
-def research_builder(reader: views.RecordsReader, exchanges: artifacts.Exchanges, stage: artifacts.Stage) -> Callable[[Mapping, Mapping], dict]:
-    """The job's Builder for the research purpose, closed over the trusted readers and the topic spool."""
-    return lambda work, judgment: build_research(work, judgment, reader, exchanges, stage)
+def research_builder(stage: artifacts.Stage) -> Callable[[Mapping, Mapping], dict]:
+    """The job's Builder for the research purpose, closed over the child's stage."""
+    return lambda work, judgment: build_research(work, judgment, stage)

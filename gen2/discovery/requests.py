@@ -7,7 +7,7 @@ lane and no query; the model's proposal does, and the gateway's grant decides wh
 """
 from __future__ import annotations
 
-from typing import Callable, Mapping, NamedTuple, Sequence
+from typing import Callable, Mapping, NamedTuple
 
 from gen2.core import canonical
 from gen2.exec.common import Refused
@@ -44,16 +44,6 @@ def intake(payload: bytes, receipt: Mapping, topic_id: str, max_bytes: int, vali
     if len({p["proposal_id"] for p in proposals}) != len(proposals):
         raise Refused("a proposal id is repeated")
     return Committed(receipt["invocation_id"], proposals)
-
-
-def select(committed: Committed, only: Sequence[str] | None) -> list[dict]:
-    """The proposals to run: all of them, or the named ones; a name the committed payload does not contain is refused."""
-    if only is None:
-        return committed.proposals
-    known = {p["proposal_id"] for p in committed.proposals}
-    if set(only) - known:
-        raise Refused(f"proposal ids not in the committed payload: {sorted(set(only) - known)}")
-    return [p for p in committed.proposals if p["proposal_id"] in set(only)]
 
 
 def gateway_request(proposal: Mapping) -> dict:
