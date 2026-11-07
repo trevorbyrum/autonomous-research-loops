@@ -19,14 +19,21 @@ RECORD = "quote-record"
 ABSTRACT = "effect observed"
 
 
-def retained_bytes():
-    """The discovery job's staged response for the fixture's one captured call, built by the production code."""
+def search_out():
+    """The discovery client's result for the fixture's one captured call."""
     request = find_request("obs_quote00001")
     observation = {"gateway_call_ref": "gw-call:1", "request": request, "lane": "crossref", "coverage_state": "searched_ok", "completeness": "complete"}
-    out = {"pages": [{"page": 1, "sent": request["request"], "call_ref": 1, "effective_request": None}],
-           "observations": [{"observation": observation, "retrieval_events": [{"provider_record_id": RECORD}], "records": []}],
-           "records_by_call": {"gw-call:1": [{"identity": RECORD, "kind": "article", "abstract": ABSTRACT}]}}
-    return staged_exchanges.build({"invocation_id": "inv_capture001", "attempt": 1, "searches": [{"proposal_id": "p1", "out": out}]})["gw-call:1"][1]
+    return {"pages": [{"page": 1, "sent": request["request"], "call_ref": 1, "effective_request": None}],
+            "observations": [{"observation": observation, "retrieval_events": [{"provider_record_id": RECORD}], "records": []}],
+            "records_by_call": {"gw-call:1": [{"identity": RECORD, "kind": "article", "abstract": ABSTRACT}]}}
+
+
+SEARCH_OUT = search_out()
+
+
+def retained_bytes():
+    """The discovery job's staged response for the fixture's one captured call, built by the production code."""
+    return staged_exchanges.build({"invocation_id": "inv_capture001", "attempt": 1, "searches": [{"proposal_id": "p1", "out": SEARCH_OUT}]})["gw-call:1"][1]
 
 
 class Retained:
@@ -68,16 +75,26 @@ class CommitCase(QuotesCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
 
-    def outcome(self):
+    def reader(self):
+        """The retained-exchange reader the builder and recorder use (the fixture's, unless a subclass uses the production one)."""
+        return Retained(self)
+
+    def add_claim(self, revision, tier):
+        ref = self.artifact(f"claim revision {revision}".encode())
+        out = self.send([], grant=self.capture_grant, refs=[ref], claims=[{"claim_id": "clm_quote00001", "revision": revision, "text_ref": ref,
+                                                                           "load_bearing": True, "required_access_tier": tier}])
+        self.assertEqual(out["status"], "committed", out)
+
+    def outcome(self, revision=2, tier="abstract"):
         """What the job writes: the builder over the real router's rows, then the supervisor's fill of the capability id."""
         events = self.router.topic_records({"topic_id": TOPIC, "families": ["retrieval_events"]})["records"]["retrieval_events"]
-        view = {"as_of": "2026-09-27T10:00:00Z", "claims": [{"claim_ref": "clm_quote00001", "revision": 2, "tier": "abstract", "producer": "inv_capture001", "text": ABSTRACT,
+        view = {"as_of": "2026-09-27T10:00:00Z", "claims": [{"claim_ref": "clm_quote00001", "revision": revision, "tier": tier, "producer": "inv_capture001", "text": ABSTRACT,
                 "sources": [{"work_id": self.work, "source_version": "v1", "content_hash": self.source["content_hash"], "identity": RECORD, "content_tier": "abstract",
                              "content": ABSTRACT, "acquisition": {"gateway_call_ref": "gw-call:1", "retrieved_at": events[0]["captured_at"], "route": "gateway:crossref"}}]}]}
         check = {"outcome": "succeeded", "note": "Checked against the abstract."}
         judgment = {"judgment_version": "judgment-verify/1", "items": [{"claim_ref": "clm_quote00001", "verdict": "supports",
                     "cited_spans": [{"quote": "observed", "locator": "abstract"}], "checks": {k: check for k in receipts.KINDS}}]}
-        build = receipts.make_builder(self.router, Retained(self), lambda data, media: self.artifact(data, media), normalization="/".join(quote_matching.NORMALIZATION))
+        build = receipts.make_builder(self.router, self.reader(), lambda data, media: self.artifact(data, media), normalization="/".join(quote_matching.NORMALIZATION))
         outcome = build({"invocation_id": "inv_verify0001", "topic_id": TOPIC, "view": view}, judgment)
         for doc in outcome["verification_receipts"]:
             doc["verifier_capability_id"] = self.grant["capability_id"]
@@ -90,10 +107,10 @@ class CommitCase(QuotesCase):
 
     def record(self, outcome):
         (self.root / "outcome.json").write_bytes(canonical.canonical_bytes(outcome))
-        verify_record.recorder(lambda topic: Retained(self))(self.router, {"invocation_id": "inv_verify0001", "topic_id": TOPIC}, self.grant, self.root)
+        verify_record.recorder(lambda topic: self.reader())(self.router, {"invocation_id": "inv_verify0001", "topic_id": TOPIC}, self.grant, self.root)
 
 
-class VerifyCommitTest(CommitCase):
+class Scenarios:
     def test_with_the_recorder_the_receipt_commits_and_the_claim_promotes(self):
         outcome = self.outcome()
         self.record(outcome)
@@ -115,3 +132,40 @@ class VerifyCommitTest(CommitCase):
         self.assertIn("must consume its admitted acquisition", out["detail"])
         self.assert_audited_state(before, 1)
         self.assertEqual(self.value("SELECT count(*) FROM verification_receipts"), 0)
+
+    def test_a_required_tier_the_content_cannot_reach_commits_a_cannot_assess_receipt_and_the_router_writes_the_hold(self):
+        self.add_claim(3, "full_text")
+        outcome = self.outcome(3, "full_text")
+        (doc,) = outcome["verification_receipts"]
+        self.assertEqual((doc["verdict"], doc["access_tier"]), ("cannot_assess_at_required_tier", "abstract"))
+        self.record(outcome)
+        out = self.commit(outcome)
+        self.assertEqual(out["status"], "committed", out)
+        self.assertEqual(self.rows("SELECT hold_class, cause, recoverability, required_authority FROM holds"),
+                         [("judgment", "verification missing content: cannot_assess_at_required_tier", "needs_remediation", "primary")])
+        self.assertEqual(self.value("SELECT status FROM claims WHERE claim_id = 'clm_quote00001' AND revision = 3"), "provisional")
+
+
+class VerifyCommitTest(Scenarios, CommitCase):
+    """The fixture's reader stands in for the capture reader."""
+
+
+class ProductionReaderTest(Scenarios, CommitCase):
+    """The same scenarios with the discovery job's staging and `ExchangeIndex` as the router's capture reader AND the builder's and recorder's."""
+
+    def setUp(self):
+        super().setUp()
+        built = staged_exchanges.build({"invocation_id": "inv_capture001", "attempt": 1, "searches": [{"proposal_id": "p1", "out": SEARCH_OUT}]})
+        entries = staged_exchanges.stage_all(lambda topic, data, media: self.artifact(data, media), TOPIC, built)
+        staged_exchanges.write_index(self.root, "inv_capture001", 1, entries)
+        self.index = staged_exchanges.ExchangeIndex(self.spool, TOPIC, lambda: [self.root])
+
+    def read(self, **key):
+        return self.index.read(**key)
+
+    def reader(self):
+        return self.index
+
+    def test_the_index_is_what_served_the_bytes(self):
+        self.assertEqual(self.index.response("gw-call:1")[1], self.SOURCE_BYTES)
+        self.assertEqual(self.index.read(topic_id=TOPIC, invocation_id="inv_capture001", attempt=1, gateway_call_ref="gw-call:1").response_bytes, self.SOURCE_BYTES)
