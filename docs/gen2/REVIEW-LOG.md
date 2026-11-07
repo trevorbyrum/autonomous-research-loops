@@ -4086,13 +4086,13 @@ One entry per reviewed PR since 2026-11-03. Reviewer is Astra (Gate A+B+C) unles
 - **#131** supervisor envelope lists staged evidence: BLOCK round 1 (a `content_hash` walk crashed on malformed child JSON), PASS round 2. Open, accepted.
 - **#133** T17 PR1 driver core: PASS, no P1. Open, accepted.
 - **#134** T17 PR2 driver: BLOCK, 1 P1 (order identity aliased different phases and review episodes), 4 rounds, accepted. Open.
-- **#135** operator status review block: accepted. Open.
+- **#135** operator status review block: PASS (`gen2-sprint-review-status-astra-20261107.md`), no P1. Open, accepted.
 - **#136** topic-scoped receipts and quote checks: PASS in 2 rounds, no P1. Open, accepted.
 - **#138** T17 PR3a walker: PASS in 2 rounds, no P1. Open, accepted.
-- **#140** T15 PR B verify builder: BLOCK, 1 P1 (an escape anywhere in an abstract rejected ordinary quoted evidence), fixed. **#142** B2 verification recorder: accepted. Open.
+- **#140** T15 PR B verify builder: BLOCK, 1 P1 (an escape anywhere in an abstract rejected ordinary quoted evidence), fixed. **#142** B2 verification recorder: PASS in round 2 together with #140 (`gen2-sprint-T15-PRB-astra-20261107.md`), no remaining P1. Open, accepted.
 - **#141** capability fill: BLOCK round 1 (`verification_receipts: null` crashed the supervisor repeatedly), PASS round 2. Open, accepted.
-- **#143** T18 world fixtures: PASS, no P1. Open, accepted.
-- **PR3b** composition design: Astra BLOCKED v2 (2 P1: copied families leak bearer-authority ids; retained refs not admitted). **#144** (PR3b-D, the Gate S #7 shape) is open and unreviewed.
+- **#143** T18 world fixtures: PASS, no P1 (`gen2-sprint-T18-world-astra-20261107.md`). Open, accepted.
+- **PR3b** composition design: Astra BLOCKED v2 (2 P1: copied families leak bearer-authority ids; retained refs not admitted). **#144** (PR3b-D, the Gate S #7 shape): PASS, no P1 (`gen2-sprint-PR3b-D-astra-20261107.md`); open, accepted. **#145** (PR3b-B, driver set-aside, child table, compose) and **#146** (the run-until-wait command, stacked on #145) are open and in review.
 - Across 11-05 to 11-07: 25 Astra reviews of 19 PRs, 14 with two or more rounds; the verifier ran 11 times, all green.
 
 ### Gate S #7 (Fable, fresh session, `bd3490d`, 2026-11-07; `gen2-gate-s7-fable-20261107.md`)

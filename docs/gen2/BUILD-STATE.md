@@ -5,7 +5,7 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 ## Current
 *(This section is current state only; history is in REVIEW-LOG.md. Contract and rulings: DOSSIER.md.)*
 - **Phase:** Phase 2 OPEN (since 2026-09-29): one complete single-topic research workflow. Phases 0 and 1 accepted. The decision layer is disabled and unqualified throughout.
-- **Sprint status (2026-11-07):** the 2e2-minimum sprint toward the supervised 2f run (target Nov 18). Merged since 11-03: T2, T3, T5–T8, T12-A/B/D/G/G2, T13 PR A/B, T14 PR1–3, T15 PR A, the Buildx fix (#139). Open and Astra-accepted (pending the verifier): #125, #126, #128, #129, #131, #132, #133, #134, #135, #136, #138, #140, #141, #142, #143. Open, unreviewed: #144 (T17 PR3b-D). Next: PR3b (#144), T18, T9 host qualification, T19, then 2f. T21 is cut (DOSSIER 2026-11-07).
+- **Sprint status (2026-11-07):** the 2e2-minimum sprint toward the supervised 2f run (target Nov 18). Merged since 11-03: T2, T3, T5–T8, T12-A/B/D/G/G2, T13 PR A/B, T14 PR1–3, T15 PR A, the Buildx fix (#139). Open and Astra-accepted (pending the verifier): #125, #126, #128, #129, #131, #132, #133, #134, #135, #136, #138, #140, #141, #142, #143. Also accepted: #144 (T17 PR3b-D). Open and in review: #145, #146 (T17 PR3b-B and the run command). Next: PR3b (#144–#146), T18, T9 host qualification, T19, then 2f. T21 is cut (DOSSIER 2026-11-07).
 - **Open task:** 2e2-minimum (see Sprint status above). 2d slice 6 and the checks cut-back are complete.
   - **Complete:** the Gate S full-pass batches C, C-fu, D1, D2 (a1–a3, b), E, O-9 (a, b), B; R2 (INVARIANTS rules plus generated traceability); 6b1′ PR 0; O-10, Docs-1, Prune-1 (2026-10-29); move-aware mutation scope (#73); Str-A, Str-B, Str-C and CS-1 (2026-10-30; collected ids 2,868 → 2,848).
   - **Done 2026-10-30/31:** Str-D (#84), Batch F (#54), ERROR_KILL (#87), Batch A (#85), raw_exchange (#89), load-safe timeouts (#91), O-5 (#90), 6b1′ PR 1 (#93), D-F1 canonical round trip (#94), mutation declaration filter (#96), 6b2′ PR 1 (#97).
@@ -20,7 +20,7 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 - **Blockers:** none for the build.
   - Trevor's next decisions: approve the 2e1 host-change list once Astra has reviewed it; then, closer to 2f, the genuine rejected-credential experiment (DEBT-004). S3-6 is still open.
 - **Gate S:** the last run is **Gate S #7 at `bd3490d`** (2026-11-07; `gen2-gate-s7-fable-20261107.md`). Growth since S6 (`ff69469`) is +6,228 net (production/tooling 3,266, tests 2,854, docs 108). Before that, Gate S #6 at `ff69469` (2026-11-05) and #5 (2026-11-03). Caps: host lane 1,250; 2e2 8,800; `GROWTH_REVIEW` 17,500.
-- **What's next:** PR3b (#144), T18 (offline end-to-end through production routes), T9 host qualification (L08/L09 approved), T19 live entrance, then the supervised 2f run (target Nov 18, Trevor present). Task 2g follows 2f. 2e1 PR 4a stays deferred (DEBT-054). The Gate S #7 roadmap items A–G are in DEBT-058.
+- **What's next:** PR3b (#144–#146), T18 (offline end-to-end through production routes), T9 host qualification (L08/L09 approved), T19 live entrance, then the supervised 2f run (target Nov 18, Trevor present). Task 2g follows 2f. 2e1 PR 4a stays deferred (DEBT-054). The Gate S #7 roadmap items A–G are in DEBT-058.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 
