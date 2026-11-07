@@ -1,12 +1,16 @@
-"""gen2/exec verify builder. Oracles: byte offsets found with bytes.find in the test (not the builder's), and the receipt,
-detailed-check and quote-check schemas (SchemaSet). Limits: rows follow topic_records'
+"""gen2/exec verify builder and the `verification/verify` recorder. Oracles: byte offsets found with bytes.find in the test (not the
+builder's), the receipt, detailed-check and quote-check schemas (SchemaSet), and the router's `admitted`/`replayed` vocabulary for
+the recorder. The router's own acceptance of these documents is tests/test_exec_receipts_commit.py. Limits: rows follow topic_records'
 shape; the supervisor-filled `verifier_capability_id` is added by the tests where a schema needs it (the builder must not write it)."""
 import copy
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from gen2.app.support_gate import RouterSupport
 from gen2.core import canonical
-from gen2.exec import common, receipts, verify
+from gen2.exec import common, receipts, verify, verify_record
 from gen2.router.schemas import SchemaSet
 from gen2.tests.test_exec_research import ADMISSION, RAW, Reader, exchanges
 from gen2.tests.test_exec_scope import Exchanges, lineage
@@ -125,3 +129,59 @@ class BuilderTest(unittest.TestCase):
         self.assertEqual(data[quote["span_start"]:quote["span_end"]], b"an effect")
         with self.assertRaises(common.Refused):
             build(judgment(spans=({"quote": '"quoted" abstract', "locator": "abstract"},)), recs=recs, ex=exchanges(data))
+
+
+class Control:
+    """The router's topic_records and admit_reaccess, as doubles."""
+    def __init__(self, status="admitted", rows=None):
+        self.status, self.asked, self.rows = status, [], rows or lineage()
+
+    def topic_records(self, request):
+        return {"status": "ok", "topic_id": request["topic_id"], "records": {f: self.rows[f] for f in request["families"]}}
+
+    def admit_reaccess(self, request):
+        self.asked.append(request)
+        return {"status": self.status}
+
+
+class RecorderTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.order = {"invocation_id": "inv_verify0001", "topic_id": "fleet:topic"}
+        self.grant = {"capability_id": "cap_aaaaaaaa", "invocation_id": "inv_verify0001"}
+
+    def put(self, outcome):
+        (self.root / "outcome.json").write_bytes(canonical.canonical_bytes(outcome))
+
+    def run_recorder(self, control, ex=None):
+        verify_record.recorder(lambda topic: ex or exchanges())(control, self.order, self.grant, self.root)
+
+    def test_each_receipt_admits_its_retained_exchange_and_a_repeat_replays(self):
+        self.put(build())
+        control = Control()
+        self.run_recorder(control)
+        self.run_recorder(Control("replayed"))
+        self.assertEqual(control.asked, [{"capability_id": "cap_aaaaaaaa", "invocation_id": "inv_verify0001", "work_id": "wrk_aaaaaaaa", "source_version": DIGEST, "event_id": "e1"}])
+
+    def test_refusals(self):
+        good = build()
+        moved = copy.deepcopy(good)
+        moved["verification_receipts"][0]["acquisition"]["gateway_call_ref"] = "call-2"
+        other = {**good, "invocation_id": "inv_other00001"}
+        cases = {"the router does not accept the admission": (good, Control("refused"), None),
+                 "the receipt rests on another call": (moved, Control(), None),
+                 "the retained exchange is not staged": (good, Control(), Exchanges({})),
+                 "the outcome is another invocation's": (other, Control(), None)}
+        for name, (outcome, control, ex) in cases.items():
+            with self.subTest(name):
+                self.put(outcome)
+                with self.assertRaises(common.Refused):
+                    self.run_recorder(control, ex)
+
+    def test_an_outcome_without_receipts_admits_nothing(self):
+        self.put(common.scaffold("inv_verify0001", "fleet:topic"))
+        control = Control()
+        self.run_recorder(control)
+        self.assertEqual(control.asked, [])
