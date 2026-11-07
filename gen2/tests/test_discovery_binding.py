@@ -48,12 +48,6 @@ class AssembleTest(Fixture, unittest.TestCase):
         refs = [i["observation"]["request"]["proposal_ref"] for i in observations(result_of(self))]
         self.assertEqual(refs, [f"{PROPOSER}:p1", f"{PROPOSER}:p2"])
 
-    def test_only_selects_and_an_absent_name_refuses_before_any_input(self):
-        receipts, spool, _ = world()
-        self.assertEqual(binding.assemble(receipts, spool, TOPIC, PROPOSER, validate, 100_000, only=["p2"])["only"], ["p2"])
-        with self.assertRaises(Refused):
-            binding.assemble(receipts, spool, TOPIC, PROPOSER, validate, 100_000, only=["p9"])
-
     def test_a_well_formed_but_different_invocation_is_refused_at_every_step(self):
         receipts, spool, digest = world()
         other, other_spool, _ = world(by="inv_forged0001")

@@ -8,20 +8,15 @@ final byte cap is orders.write_inputs'.
 """
 from __future__ import annotations
 
-from typing import Callable, Mapping, Protocol, Sequence
+from typing import Callable, Mapping, Sequence
 
 from gen2.core import canonical
 from gen2.exec import artifacts
-from gen2.exec.common import Refused
+from gen2.exec.common import Exchanges, RecordsReader, Refused
 
 ROW_CAP = 200
 OBSERVATION_KEYS = ("observation_id", "lane", "coverage_state", "completeness", "result_count", "error_class", "request")
 SCOPE_FAMILIES = ("intake_briefs", "search_observations", "scoping_reports")
-
-
-class RecordsReader(Protocol):
-    def topic_records(self, request: Mapping) -> dict:
-        """{topic_id, families} -> {status: ok, topic_id, records: {family: [row, ...]}} or {status: refused, ...}."""
 
 
 def read_records(reader: RecordsReader, topic_id: str, families: Sequence[str]) -> dict[str, list[Mapping]]:
@@ -76,7 +71,7 @@ def abstract_of(retained: artifacts.Retained) -> str | None:
     return None
 
 
-def research_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], exchanges: artifacts.Exchanges,
+def research_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], exchanges: Exchanges,
                   claim_text: Callable[[str], str | None], as_of: str, state_revision: int, truncation: list[dict]) -> dict:
     """The research pass's view: the pinned contract's own wording (objective, key questions, facets, obligation text and
     slots, confidence rubrics; none truncated, so an over-cap input is refused by write_inputs), the works the topic retrieved and retained
@@ -98,7 +93,8 @@ def research_view(admission: Mapping, records: Mapping[str, Sequence[Mapping]], 
         except Refused:
             continue
         abstract = abstract_of(found)
-        entry = {"work_id": work["work_id"], "identity": f"{work['identity_scheme']}:{work['identity_value']}"}
+        entry = {"work_id": work["work_id"], "identity": f"{work['identity_scheme']}:{work['identity_value']}", "artifact_ref": dict(found.ref),
+                 "lane": found.lane, "provider_record_id": found.provider_record_id}
         if abstract is not None:
             entry["abstract"], cut = abstract[:ABSTRACT_CAP], cut + (len(abstract) > ABSTRACT_CAP)
         works.append(entry)
