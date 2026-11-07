@@ -354,3 +354,12 @@ history and newest-observation ordering. D1's late-rejection projection changes
 remain deferred to DEBT-055. Only the existing lifecycle records FAILED after
 persistence ACK; dispatch never reopens or reconciles an invocation. No live
 authority is wired; route-wide rejection blocking and remediation belong to T4.
+
+**T12-A:** `record_dossier` authenticates a running checkpoint and current
+lease/pins for a new native dossier; replay authenticates identity and returns
+its original row. `topic_records` is a trusted station read over fixed families,
+with topic-scoped retrieval/work links, versioned briefs and one named dossier
+revision including its stored body/gates. It changes no dossier capture/hash.
+`search_proposals` are validated primary proposals retained only in the payload;
+`policy.executors` carries hash-pinned prompts and explicit execution bounds.
+The fixed read families include `scoping_reports` for T14's scoping view; its `topic_id` key scopes full report bodies without adding them to dossier captures.

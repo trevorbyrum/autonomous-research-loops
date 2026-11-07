@@ -54,7 +54,7 @@ from gen2 import accounting
 from gen2.core import canonical, instants
 from gen2.core.control import DispatchAuthority
 from gen2.router.dispatch import DISPATCH_COMMANDS, Dispatch
-from gen2.router.accounting import Accounting, CoverageSnapshot, DossierInput
+from gen2.router.accounting import ACCOUNTING_COMMANDS, Accounting, CoverageSnapshot, DossierInput
 from gen2.router.assessments import Assessments
 from gen2.router.acquisitions import ACQUISITION_COMMANDS, AcquisitionAdmission
 from gen2.router import boundary
@@ -124,7 +124,7 @@ class Router:
         self._fault = fault or (lambda point: None)
         self._schemas = schemas or SchemaSet(extra={"router-commands": {"$defs": {
             **COMMANDS["$defs"], **LIFECYCLE_COMMANDS, **REGISTRY_COMMANDS, **AMENDMENT_COMMANDS, **SCHEDULING_COMMANDS,
-            **DISPATCH_COMMANDS, **STATUS_COMMANDS, **CAPABILITY_COMMANDS, **ACQUISITION_COMMANDS, **EXTRACTOR_COMMANDS}}})
+            **DISPATCH_COMMANDS, **STATUS_COMMANDS, **CAPABILITY_COMMANDS, **ACQUISITION_COMMANDS, **EXTRACTOR_COMMANDS, **ACCOUNTING_COMMANDS}}})
         self._dispatch_authority = dispatch_authority
         self._dispatch = Dispatch(self)
         self._status = Status(self)
@@ -178,23 +178,58 @@ class Router:
         """Capture admitted links and invocation-derived pins; compute views after returning."""
         return self._accounting.coverage_snapshot(topic_id, history=history)
 
-    def record_dossier(self, topic_id: str, *, invocation_id: str, history: accounting.History) -> dict:
-        return self._commit_dossier_inputs(topic_id, invocation_id=invocation_id, history=history,
-            prepare=lambda inputs: self._accounting.prepare_dossier(inputs, invocation_id, history,
-                lambda prepared: self._evaluate(prepared, self._spool, self._now())),  # as_of: read once per attempt
-            commit=self._accounting.write_dossier)
+    def record_dossier(self, request: Mapping) -> dict:
+        try:
+            req = boundary.normalize(request, "request_invalid")
+            boundary.require_schema(self._schemas, req, "router-commands#/$defs/record_dossier", "request_invalid")
+            inv = self._capability(req["capability_id"], req["invocation_id"])
+            if inv["topic_id"] != req["topic_id"]:
+                raise Refusal("cross_topic", "dossier capability belongs to another topic")
+            if inv["kind"] != "checkpoint":
+                raise Refusal("kind_not_permitted", "a dossier requires checkpoint work")
+            def replay():
+                row = self._one("dossiers", {"invocation_id": inv["invocation_id"]})
+                return None if row is None else {"status": "replayed", **{k: row[k] for k in ("dossier_revision", "content_hash")}}
+            prior = replay()
+            if prior is not None:
+                return prior
+            def live(current, now):
+                if current["state"] != "running":
+                    raise Refusal("invocation_state_invalid", "dossier recording requires running checkpoint work")
+                self._amendments._require_current_pins(current)
+            return self._commit_dossier_inputs(req["topic_id"], invocation_id=inv["invocation_id"], history="native",
+                prepare=lambda inputs: self._accounting.prepare_dossier(inputs, inv["invocation_id"], "native",
+                    lambda prepared: self._evaluate(prepared, self._spool, self._now())),
+                commit=self._accounting.write_dossier, authorize=live, replay=replay, audit_kind=None)
+        except Refusal as exc:
+            return {"status": "refused", "reason": exc.reason, "detail": _short(exc.detail)}
 
-    def _commit_dossier_inputs(self, topic_id: str, *, invocation_id: str, history: accounting.History, prepare: Callable, commit: Callable) -> object:
+    def topic_records(self, request: Mapping) -> dict:
+        try:
+            req = boundary.normalize(request, "request_invalid")
+            boundary.require_schema(self._schemas, req, "router-commands#/$defs/topic_records", "request_invalid")
+            with self._snapshot():
+                if self._one("queue_entries", {"topic_id": req["topic_id"]}) is None:
+                    raise Refusal("unknown_topic", req["topic_id"])
+                return self._accounting.topic_records(req)
+        except Refusal as exc:
+            return {"status": "refused", "reason": exc.reason, "detail": _short(exc.detail)}
+
+    def _commit_dossier_inputs(self, topic_id: str, *, invocation_id: str, history: accounting.History, prepare: Callable, commit: Callable,
+                               authorize: Callable | None = None, replay: Callable | None = None, audit_kind: str | None = "dossier_input_recaptures") -> object:
         inv = self._one("invocations", {"invocation_id": invocation_id})
         if inv is None or inv["topic_id"] != topic_id:
             raise Refusal("unknown_invocation", "dossier caller must be an admitted invocation of this topic")
         def require_live(now=None):
             inv = self._one("invocations", {"invocation_id": invocation_id})
-            refusal = self._launch_refusal(inv, self._now() if now is None else now)
+            now = self._now() if now is None else now
+            if authorize is not None:
+                authorize(inv, now)
+            refusal = self._launch_refusal(inv, now)
             if refusal is not None:
                 raise refusal
         return self._accounting.commit_dossier_inputs(topic_id=topic_id, history=history, prepare=prepare, commit=commit,
-                                                       require_live=require_live)
+                                                       require_live=require_live, replay=replay, audit_kind=audit_kind)
 
     def record_gateway_facts(self, request: Mapping) -> dict:
         return self._capabilities.record_gateway_facts(request)

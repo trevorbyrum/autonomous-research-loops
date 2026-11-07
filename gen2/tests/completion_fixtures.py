@@ -1,6 +1,7 @@
 """Derivable completion candidates; only fixture setup edits immutable seed data."""
 import json
 
+from gen2.tests.test_dossier_record import record_inputs
 from gen2.core import canonical
 from gen2.router import gates
 from gen2.router.boundary import Refusal
@@ -78,7 +79,7 @@ class CompletionFixture(rf.CaptureCase):
     def candidate(self, review=True, **sections):
         producer = self.started(self.ids("inv_"), "checkpoint")
         try:
-            out = self.router.record_dossier(rf.TOPIC, invocation_id=producer["invocation_id"], history="native")
+            out = record_inputs(self.router, rf.TOPIC, invocation_id=producer["invocation_id"], history="native")
         except (ValueError, Refusal) as exc:
             if str(exc) not in ("R: sentinel inventory required", "stale_inputs: dossier context differs from captured approved contract"):
                 raise

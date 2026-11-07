@@ -210,6 +210,23 @@ class ControlBackend(Protocol):
         are, by identity (task 2a; E-3), under the capability, while running
         and its lease current. Key: each record's link, recorded once."""
 
+    def record_dossier(self, request: Mapping) -> dict:
+        """Trusted station: {capability_id, invocation_id, topic_id} ->
+        {status: recorded|replayed, dossier_revision, content_hash} or refused.
+        A new native dossier requires a running checkpoint of that topic with
+        current lease/pins and no pause/cancellation. Invocation replay returns
+        its original revision/hash before liveness checks; it never reevaluates."""
+
+    def topic_records(self, request: Mapping) -> dict:
+        """Trusted station read: {topic_id, families, dossier_revision?} ->
+        {status: ok, topic_id, records: {family: [decoded rows]}} or refused.
+        Fixed family allow-list; one snapshot, no mutation or arbitrary filter.
+        Work/link rows follow only this topic's retrievals. dossiers requires
+        one named revision and includes its exact persisted document/gates.
+        intake_briefs includes versioned bodies for the invocation's brief pin.
+        Retained BLOB cells are {encoding: base64, data: ASCII base64 string}.
+        Governance/waiting state remains status; no dossier input hash changes."""
+
     def commit_outcome(self, envelope: Mapping) -> dict:
         """The commit protocol (design review §5 steps 1-5; C-2..C-5): replay
         or reject by operation_id, validate outside the transaction, fence and

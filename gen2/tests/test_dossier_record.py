@@ -22,6 +22,14 @@ def evaluate(inputs):
     return s.evaluate_profile(context, s.Profile('P', s.Expression('R'), ()), (rule,), ())
 
 
+def record_inputs(router, topic_id, *, invocation_id, history):
+    """Internal assembly oracle; public request authorization has separate witnesses."""
+    return router._commit_dossier_inputs(topic_id, invocation_id=invocation_id, history=history,
+        prepare=lambda inputs: router._accounting.prepare_dossier(inputs, invocation_id, history,
+            lambda prepared: router._evaluate(prepared, router._spool, router._now())),
+        commit=router._accounting.write_dossier)
+
+
 class FixtureEvaluator:
     """A world whose Router is constructed with a fixture evaluator: `callback(inputs)` stands in for the production one."""
     callback = staticmethod(evaluate)
@@ -44,12 +52,12 @@ class DossierCase(FixtureEvaluator, rf.ContractWorld):
         try:
             if refuses:
                 try:
-                    return self.router.record_dossier(rf.TOPIC, **kwargs)
+                    return record_inputs(self.router, rf.TOPIC, **kwargs)
                 except Refusal:
                     raise
                 except Exception as exc:
                     self.fail(f"refusal witness raised {type(exc).__name__}: {exc}")
-            return admitted(self, self.router.record_dossier, rf.TOPIC, **kwargs)
+            return admitted(self, record_inputs, self.router, rf.TOPIC, **kwargs)
         finally:
             self.callback = outer
 
@@ -96,7 +104,7 @@ class RecordTest(DossierCase):
         for topic, iid in ((rf.TOPIC, 'inv_missing000'), (rf.TOPIC, other), (rf.OTHER, self.grant['invocation_id'])):
             before = self.state(exclude=())
             with self.assertRaises(Refusal) as caught:
-                self.router.record_dossier(topic, invocation_id=iid, history='native')
+                record_inputs(self.router, topic, invocation_id=iid, history='native')
             self.assertEqual(caught.exception.reason, 'unknown_invocation')
             self.assertEqual(self.state(exclude=()), before)
 
@@ -175,7 +183,7 @@ class RecordTest(DossierCase):
                 self.assertEqual(caught.exception.reason, expected)
 
     def test_literal_route_and_collaborator_signatures(self):
-        self.assertEqual(str(inspect.signature(Router.record_dossier)), "(self, topic_id: 'str', *, invocation_id: 'str', history: 'accounting.History') -> 'dict'")
+        self.assertEqual(str(inspect.signature(Router.record_dossier)), "(self, request: 'Mapping') -> 'dict'")
         self.assertEqual(str(inspect.signature(Accounting.prepare_dossier)), "(self, inputs: 'DossierInput', invocation_id: str, history: Literal['native', 'legacy_unknown'], evaluate: Callable) -> dict")
         self.assertEqual(str(inspect.signature(Accounting.write_dossier)), '(self, prepared: dict, now: str) -> dict')
 
