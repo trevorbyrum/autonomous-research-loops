@@ -11,14 +11,13 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
   - **Done 2026-10-30/31:** Str-D (#84), Batch F (#54), ERROR_KILL (#87), Batch A (#85), raw_exchange (#89), load-safe timeouts (#91), O-5 (#90), 6b1′ PR 1 (#93), D-F1 canonical round trip (#94), mutation declaration filter (#96), 6b2′ PR 1 (#97).
   - **Critical path:**
     - **2e1** (v7): complete and merged through 4b-i/4b-ii; the sprint's 2e2-minimum work above is the live critical path (stops: host lane 1,250, 2e2 8,800).
-    - **Host prerequisite:** O1 packages are installed; O2 is in progress. O3 (daemon start) and O4 (pull, then build at the final tree) come later.
-  - **Second slot:** the test compaction program, a floor of about 46k by the Phase 2→3 gate.
+    - **Host qualification (not passed):** host work runs inside the charter §4.4 envelope. Remaining T9 work: the build, then Q1–Q3 with L08/L09 approved, still running.
   - **Weekly:** the mutation campaign, schedule `60659e2f`, report-only; survivors go to `docs/gen2/MUTATION-LEDGER.md`.
-  - **Paused:** the nightly test-portfolio review (S3-4), until after 2f.
+  - **Paused:** test compaction and the nightly test-portfolio review (S3-4) stay paused to day 14 (Gate S #6 §6 row 12); there is no compaction slot. The 46k floor report is kept for the Phase 2→3 gate.
   - **Plan:** `private/reviews/gen2-batch-plan-20261027.md`.
 - **Last verifier result:** #137 at `bd3490d`, gen2-accept exit 0. Eleven sprint verifier runs (11-05 to 11-07), all exit 0, 839–878 s each.
 - **Blockers:** none for the build.
-  - Trevor's next decisions: approve the 2e1 host-change list once Astra has reviewed it; then, closer to 2f, the genuine rejected-credential experiment (DEBT-004). S3-6 is still open.
+  - Outstanding approvals from Trevor: Nov 14, the genuine rejected-credential experiment (DEBT-004, disposable credential); Nov 16–18, the live-run scope, contract and completion approvals. S3-6 is closed: the primary executor does scoping under `pre-contract/1`.
 - **Gate S:** the last run is **Gate S #7 at `bd3490d`** (2026-11-07; `gen2-gate-s7-fable-20261107.md`). Growth since S6 (`ff69469`) is +6,228 net (production/tooling 3,266, tests 2,854, docs 108). Before that, Gate S #6 at `ff69469` (2026-11-05) and #5 (2026-11-03). Caps: host lane 1,250; 2e2 8,800; `GROWTH_REVIEW` 17,500.
 - **What's next:** PR3b (#144–#146), T18 (offline end-to-end through production routes), T9 host qualification (L08/L09 approved), T19 live entrance, then the supervised 2f run (target Nov 18, Trevor present). Task 2g follows 2f. 2e1 PR 4a stays deferred (DEBT-054). The Gate S #7 roadmap items A–G are in DEBT-058.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.

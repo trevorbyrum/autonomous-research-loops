@@ -319,7 +319,11 @@ T13–T18 supply the production consumers for the supervised 2f workflow.
 
 ## Sprint rulings, 2026-11-07 (Gate S #7 and after)
 
-Source: `private/reviews/gen2-gate-s7-fable-20261107.md` and `gen2-sprint-records-pending-20261107.md`. The T13, T16 and T17 decisions are recorded in those files and in the T13, T16 and T17 briefs.
+Source: `private/reviews/gen2-gate-s7-fable-20261107.md` and `gen2-sprint-records-pending-20261107.md`. 
+
+- **T13 (discovery):** discovery is a code job over retained exchanges; the model never chooses its evidence route.
+- **T16 (challenge and review):** challenge → discovery → independent assessment, with approval bound to the exact revision.
+- **T17 (driver):** mechanical driver progression with durable order identity (contract revision plus the router `episode_id`) and no scientific stopping.
 
 - **Host lane cap:** 900 → 1,170 (Trevor, 2026-11-07 about 04:49 UTC) → 1,250 (2026-11-07). Any further host code needs Trevor.
 - **Production cap 950** (2e1 production stop, raised 850 → 950 on 2026-11-03; recorded above).
