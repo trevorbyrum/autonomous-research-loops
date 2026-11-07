@@ -44,7 +44,7 @@ class Gateway:
         lane = sent["lanes"][0]
         answer = {"observation": {"invocation_id": INV, "attempt": 1, "captured": True, "call_ref": 100 + len(self.calls)},
                   "lanes": [{"source": lane, "coverage": "searched_ok", "completeness": "complete", "count": 1, "retrieved": ["doi:10.1/a"], "exhausted": True}],
-                  "records": [{"identity": "doi:10.1/a", "title": "t"}]}
+                  "records": [{"identity": "doi:10.1/a", "title": "t", "source_id": lane}]}
         return 200, HEADERS, json.dumps(answer).encode(), None
 
 
@@ -86,7 +86,8 @@ class RequestsTest(unittest.TestCase):
                 requests.gateway_request(p)
 
 
-class ChildTest(unittest.TestCase):
+class Fixture:
+    """A scratch directory, a canned gateway and the child's staging, shared with the recorder tests (not itself a test case)."""
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
@@ -114,6 +115,8 @@ class ChildTest(unittest.TestCase):
     def run_child(self, env):
         return child.run(self.root, environ=env, validate=validate, factory=self.factory)
 
+
+class ChildTest(Fixture, unittest.TestCase):
     def test_proposals_run_serially_under_a_minted_grant_and_the_result_keeps_every_observation(self):
         env = self.stage([proposal(1), proposal(2, lane="doaj")])
         outcome = self.run_child(env)
