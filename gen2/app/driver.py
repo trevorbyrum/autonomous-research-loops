@@ -241,6 +241,7 @@ class Driver:
         digest = orders.write_inputs(directory, entry=entry, prompt=prompt, document=document)
         spec = self._order(step, digest, str(directory))   # prepare() accepts a job directory that already holds the inputs
         self.station.supervisor.submit(WorkOrder(invocation_id=spec.invocation_id, kind=spec.kind, topic_id=spec.topic_id,
+                                                 requested_by_invocation_id=self.invocation_id(proposer) if proposer is not None else None,
                                                  config_bundle_hash=spec.config_bundle_hash, deadline_at=spec.deadline_at,
                                                  lease_expires_at=spec.lease_expires_at,
                                                  env={**spec.env, "GEN2_CONTEXT": step.context, "GEN2_STEP": f"{step.kind}/{step.purpose}#{step.ordinal}",

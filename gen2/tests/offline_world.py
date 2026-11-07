@@ -29,4 +29,4 @@ def contract(revision: int = 1, parent: int | None = None, rated: bool = True, s
 
 
 def bundle(executors: Sequence[Mapping], version: int = 2) -> dict:
-    return {**BUNDLE, "version": version, "policy": {"executors": list(executors)}}
+    return {**BUNDLE, "version": version, "policy": {"executors": list(executors), "search_capture": "proposal-discovery/1"}}
