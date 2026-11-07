@@ -13,7 +13,7 @@ from gen2.tests import test_router_registries as bundle_tests
 FAMILIES = """claim_source_links obligation_assessments source_acquisitions source_artifacts
 retrieval_events search_observations record_work_links works facets obligations contract_revisions
 claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers
-operation_receipts""".split()
+operation_receipts quote_checks""".split()
 PROPOSAL = {"proposal_version": "search-proposal/1", "proposal_id": "search-1", "proposer": "primary",
     "lane": "crossref", "request_type": "find", "query": "omissions", "page_cap": 1,
     "obligation_ids": ["O-1"], "rationale": "Test the open obligation"}

@@ -15,7 +15,7 @@ from gen2.router.protocols import Rows, Schemas
 TOPIC_FAMILIES = tuple("""claim_source_links obligation_assessments source_acquisitions source_artifacts
 retrieval_events search_observations record_work_links works facets obligations contract_revisions
 claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers
-operation_receipts""".split())
+operation_receipts quote_checks""".split())
 _ID = {"$ref": "common.schema.json#/$defs/topic_id"}
 ACCOUNTING_COMMANDS = {
     "record_dossier": {"type": "object", "additionalProperties": False,
@@ -48,9 +48,12 @@ class Accounting:
         shared = {"record_work_links", "works"}
         out = {name: self._core._store.select(name, {"topic_id": topic,
             **({"dossier_revision": req["dossier_revision"]} if name == "dossiers" else {})})
-            for name in families if name not in shared}
+            for name in families if name not in shared and name != "quote_checks"}
         if "dossiers" in out and not out["dossiers"]:
             raise Refusal("unknown_dossier", "no dossier at the named topic/revision")
+        if "quote_checks" in families:  # Historical checks bind through claims; their topic_id may be null.
+            out["quote_checks"] = [check for claim in self._core._store.select("claims", {"topic_id": topic})
+                                   for check in self._core._store.select("quote_checks", {"claim_id": claim["claim_id"], "claim_revision": claim["revision"]})]
         if shared.intersection(families):
             events = self._core._store.select("retrieval_events", {"topic_id": topic})
             links = [link for event in events for link in self._core._store.select("record_work_links", {"event_id": event["event_id"]})]
