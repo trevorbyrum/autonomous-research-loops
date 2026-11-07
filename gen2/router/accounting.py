@@ -14,7 +14,8 @@ from gen2.router.protocols import Rows, Schemas
 
 TOPIC_FAMILIES = tuple("""claim_source_links obligation_assessments source_acquisitions source_artifacts
 retrieval_events search_observations record_work_links works facets obligations contract_revisions
-claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers""".split())
+claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers
+operation_receipts""".split())
 _ID = {"$ref": "common.schema.json#/$defs/topic_id"}
 ACCOUNTING_COMMANDS = {
     "record_dossier": {"type": "object", "additionalProperties": False,
@@ -42,7 +43,7 @@ class Accounting:
         self._core = core
 
     def topic_records(self, req: dict) -> dict:
-        """Fixed decoded reads inside the core's snapshot; no dossier capture changes."""
+        """Topic-scoped decoded rows, including commit receipts; no dossier capture changes."""
         families, topic = req["families"], req["topic_id"]
         shared = {"record_work_links", "works"}
         out = {name: self._core._store.select(name, {"topic_id": topic,

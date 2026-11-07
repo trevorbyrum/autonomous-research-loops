@@ -313,6 +313,9 @@ experiment. T4 owns the route-wide blocker/remediation subject (DEBT-053).
 Trusted station calls can record a native dossier under a live checkpoint;
 invocation replay returns the original revision/hash. Fixed topic-record reads
 supply F3's operands and exact dossier bodies without changing dossier captures.
+
+Topic reads also expose topic-scoped operation receipts for discovery's final
+outcome binding. Dossier captures and input-hash preimages remain unchanged.
 Validated-only search proposals stay in committed payloads (P6); executor pins
 and bounds live in the bundle. Offline tests establish Router structure only;
 T13–T18 supply the production consumers for the supervised 2f workflow.

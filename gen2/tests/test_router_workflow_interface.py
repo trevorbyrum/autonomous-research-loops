@@ -12,7 +12,8 @@ from gen2.tests import test_router_registries as bundle_tests
 
 FAMILIES = """claim_source_links obligation_assessments source_acquisitions source_artifacts
 retrieval_events search_observations record_work_links works facets obligations contract_revisions
-claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers""".split()
+claims verification_receipts detailed_check_records completion_records registry_dispositions intake_briefs scoping_reports dossiers
+operation_receipts""".split()
 PROPOSAL = {"proposal_version": "search-proposal/1", "proposal_id": "search-1", "proposer": "primary",
     "lane": "crossref", "request_type": "find", "query": "omissions", "page_cap": 1,
     "obligation_ids": ["O-1"], "rationale": "Test the open obligation"}
@@ -114,7 +115,7 @@ class InterfaceTests(FixtureEvaluator, rf.ContractWorld):
             self.refused("topic_records", req, reason)
 
     def test_validated_only_proposals_commit_and_replay(self):
-        """P6: retained payload/receipt digests prove persistence without a new relation; no discovery sends."""
+        """P6/F3: literal final receipt and payload survive topic-scoped reads/replay; no discovery sends."""
         grant = self.started("inv_proposals01")
         payload = {**rf.empty_outcome(grant["invocation_id"]), "search_proposals": [PROPOSAL]}
         env = self.envelope(grant, "op_proposals01", payload)
@@ -122,6 +123,9 @@ class InterfaceTests(FixtureEvaluator, rf.ContractWorld):
         env["expected_state_revision"] = self.state_revision(rf.TOPIC)
         self.assertEqual(self.router.commit_outcome(env)["status"], "committed")
         self.assertEqual(self.value("SELECT payload_digest FROM operation_receipts WHERE operation_id=?", env["operation_id"]), env["payload_digest"])
+        self.assertEqual([(r["operation_kind"], r["invocation_id"]) for r in self.router.topic_records({"topic_id": rf.TOPIC, "families": ["operation_receipts"]})["records"]["operation_receipts"]],
+                         [("final_outcome", grant["invocation_id"])])
+        self.assertEqual(self.router.topic_records({"topic_id": rf.OTHER, "families": ["operation_receipts"]})["records"]["operation_receipts"], [])
         self.assertEqual(json.loads(self.spool.read(env["payload_digest"], topic_id=rf.TOPIC))["search_proposals"], [PROPOSAL])
         before = self.state()
         self.assertEqual(self.router.commit_outcome(env)["status"], "replayed")
