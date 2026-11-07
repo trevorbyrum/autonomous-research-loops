@@ -15,8 +15,8 @@ SCHEME = {"scheme_id": "offline-confidence", "version": 1,
           "labels": {"low": "One source, or sources that disagree.", "high": "Two or more independent sources agree."}}
 
 
-def contract(revision: int = 1, parent: int | None = None) -> dict:
-    return contract_doc(revision, parent, edit=lambda doc: doc.update(confidence_scheme=SCHEME))
+def contract(revision: int = 1, parent: int | None = None, rated: bool = True) -> dict:
+    return contract_doc(revision, parent, rated=rated, edit=lambda doc: doc.update(confidence_scheme=SCHEME))
 
 
 def bundle(executors: Sequence[Mapping], version: int = 2) -> dict:
