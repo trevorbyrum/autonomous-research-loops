@@ -31,7 +31,7 @@ def response(case, ordinal, request):
             outputs = [x for x in request.get("input", []) if x.get("type") == "function_call_output"]
             if len(outputs) != 1 or outputs[0].get("call_id") != "call_2e1" or "2e1-tool-ok" not in str(outputs[0].get("output")):
                 raise ValueError("tool continuation")
-        elif request.get("tools") != []:
+        elif request.get("tools", []) != []:
             raise ValueError("tool-less request required")
         item = dict(type="message", id="msg_2e1", role="assistant", status="completed",
                     content=[{"type": "output_text", "text": "2e1 complete", "annotations": []}])

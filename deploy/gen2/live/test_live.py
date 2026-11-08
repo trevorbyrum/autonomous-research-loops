@@ -25,6 +25,16 @@ class LivePolicy(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "stale public"):
             live.runner_config(original + b"\n")
 
+    def test_live_catalog_changes_only_the_patch_tool(self):
+        original = (ROOT / "fixtures/catalog/models.json").read_bytes()
+        data = live.model_catalog(original)
+        expected = json.loads(original)
+        next(row for row in expected["models"] if row["slug"] == "gpt-5.4")["apply_patch_tool_type"] = None
+        self.assertEqual(json.loads(data), expected)
+        self.assertIn(hashlib.sha256(data).hexdigest(), runner.PINS["models.json"])
+        with self.assertRaisesRegex(ValueError, "stale public"):
+            live.model_catalog(original + b"\n")
+
     def test_real_policy_keeps_route_closed_and_overwrites_auth(self):
         base = (ROOT / "nginx.conf").read_bytes()
         view = dict(fixture_relay=base, provider_ip="192.0.2.9", hostname="untrusted.invalid")
@@ -57,6 +67,7 @@ class LivePolicy(unittest.TestCase):
         self.assertEqual((status, media), (200, "text/event-stream"))
         self.assertEqual(events[0]["item"]["type"], "message")
         self.assertEqual(events[1]["response"]["status"], "completed")
-        for ordinal, change in ((2, {}), (1, {"tools": [{"name": "exec_command"}]}), (1, {"model": "other"})):
+        self.assertEqual(fixture.response("tool-less", 1, {k: v for k, v in request.items() if k != "tools"})[0], 200)
+        for ordinal, change in ((2, {}), (1, {"tools": None}), (1, {"tools": [{"name": "exec_command"}]}), (1, {"model": "other"})):
             with self.subTest(ordinal=ordinal, change=change), self.assertRaises(ValueError):
                 fixture.response("tool-less", ordinal, request | change)
