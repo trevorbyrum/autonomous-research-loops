@@ -117,10 +117,11 @@ class RemediationTests(unittest.TestCase):
         self.assertEqual(out["status"], "recorded", out)
         self.assertEqual(len(c.router._dispatch._unremediated(origin)), 1)
 
-    def test_unknown_spend_still_stops_after_auth_remediation(self):
-        """DEBT-052 is independent: approved auth remediation cannot settle U or resume unknown spending."""
+    def test_unknown_cost_keeps_u_after_auth_remediation(self):
+        """DEBT-052: SQL retains U after auth remediation; next admission fits the ceiling; fixture only."""
         req = self.request(unknown=True)
         c = self.c
         self.assertEqual(c.router.apply_operator_decision(req)["status"], "applied")
-        c.refused("authorize_dispatch", self.other, "dispatch_trial_stopped")
+        c.authority.admissions[self.other["invocation_id"]]["upper_minor_units"] = 4
+        c.authorize(self.other)
         self.assertEqual(json.loads(c.value("SELECT detail FROM audit_events WHERE kind='dispatch_result'"))["charge_minor_units"], 6)
