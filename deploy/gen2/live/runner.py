@@ -5,7 +5,8 @@ import stat
 import sys
 
 PINS = {
-    "config.toml": {"f14d75f89c958edde311e0cbb5d90e83b68517c0cc720920641bc3ec5fbe6f4e"},
+    "config.toml": {"f14d75f89c958edde311e0cbb5d90e83b68517c0cc720920641bc3ec5fbe6f4e",
+                    "091116a3ed2da058bf14c48bcb267ce2004971b1866db403f0830ae82e556752"},
     "models.json": {"62d809889367324c104b13a4881e115286085d5674ffa77ab790b48c63002d10"},
     "auth.json": {"65790c43345b599f4b6a86174bfce09490505e81f62aeb0f0ecd3d664d7ed1b5",
                   "440dfaf98b1ca5b7603cead505789bf8cd025b39658679c4a6d2a347018f33bc"},
