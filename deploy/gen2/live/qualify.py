@@ -6,12 +6,12 @@ import json
 import os
 import re
 import secrets
-import subprocess
 import sys
 import time
 from pathlib import Path
 
 from deploy.gen2.live import fixture
+from deploy.gen2.live.build import checked
 from deploy.gen2.live.q_net import ROLES, TARGETS, model_request
 from gen2.supervisor import jobs
 from gen2.supervisor.docker_cli import CLI, CLI_SHA, SOCKET, require
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     cli, env = [CLI, "--host", SOCKET], {"PATH": "/usr/local/bin:/usr/bin:/bin"}
     def run(argv):
         require(time.monotonic() < deadline, "Q_window")
-        data = subprocess.check_output(argv, env=env, timeout=min(10, deadline - time.monotonic()))
+        data = checked(argv, env=env, timeout=min(10, deadline - time.monotonic()))
         require(len(data) <= 4 << 20, "Q_output_bound")
         return data
     def inspect(cid):
@@ -129,12 +129,20 @@ if __name__ == "__main__":
     def probe(actor, target, protocol):
         address, port = TARGETS[target]
         return execute(actor, ["relay" if target == "relay" else "probe", address, p["nonce"][:16] + secrets.token_hex(8), str(port), protocol])
+    def fixture_file(name):
+        return run(cli + ["exec", p["services"]["fixture"], "/bin/cat", "/evidence/" + name])
+    def relay_namespace():
+        return run(cli + ["exec", p["relay"], "/bin/cat", "/proc/sys/net/ipv4/ip_forward", "/proc/sys/net/ipv6/conf/all/forwarding", "/proc/net/route", "/proc/net/ipv6_route"])
+    require(all(inspect(cid) == binding for cid, binding in p["bindings"].items()), "preflight_originals")
     snapshot()  # fail on absent/unstarted observers before any positive or negative probe
+    for actor in {p["runner"], *p["controls"].values()}:
+        execute(actor, ["inspect"])  # exec has no dry-run: exercise its read-only form
+    for name in ("raw.jsonl", "fixture.json"):
+        fixture_file(name)
+    relay_namespace()
     allowed = probe(p["runner"], "relay", "tcp")
     relay_response(allowed)
-    fixture_cid = p["services"]["fixture"]
-    fixture_raw = run(cli + ["exec", fixture_cid, "/bin/cat", "/evidence/raw.jsonl"])
-    fixture_record = run(cli + ["exec", fixture_cid, "/bin/cat", "/evidence/fixture.json"])
+    fixture_raw, fixture_record = fixture_file("raw.jsonl"), fixture_file("fixture.json")
     relay_record(allowed, fixture_raw, fixture_record)
     for target, protocol, controls in cases:
         for phase in ("before", "after"):
@@ -152,4 +160,4 @@ if __name__ == "__main__":
         receipts.append(dict(target=target, protocol=protocol, before=before, after=snapshot(), negative=negative))
     require(all(inspect(cid) == binding for cid, binding in p["bindings"].items()), "final_originals")
     print(json.dumps(dict(qualification=None, namespace_review_required=True, relay_probe=allowed, fixture_raw=fixture_raw.decode(), fixture_record=json.loads(fixture_record), probes=receipts, network=network, routes=execute(p["runner"], ["inspect"]),
-        relay_namespace=run(cli + ["exec", p["relay"], "/bin/cat", "/proc/sys/net/ipv4/ip_forward", "/proc/sys/net/ipv6/conf/all/forwarding", "/proc/net/route", "/proc/net/ipv6_route"]).decode())))
+        relay_namespace=relay_namespace().decode())))

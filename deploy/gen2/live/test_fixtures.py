@@ -1,6 +1,9 @@
 """V7 §§4–5: pure protocol and file refusals; no daemon, listeners or Q PASS."""
+import ast
 import json
 import os
+import re
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,28 +11,33 @@ from unittest.mock import patch
 
 from deploy.gen2.live import build, fixture, qualify, runner
 
+CAPTURE = Path(__file__).with_name("fixtures") / "cli"
+RECEIPTS = {r["step"]: r for r in map(json.loads, (CAPTURE / "receipts.jsonl").read_text().splitlines())}
+CONTEXT = json.loads((CAPTURE / "context.json").read_bytes())[0]
+LISTING = (CAPTURE / "builders.jsonl").read_text()
+VIEW = next(v for v in map(json.loads, LISTING.splitlines()) if v["Name"] == CONTEXT["Name"])
+
 
 class Fixtures(unittest.TestCase):
-    def test_pinned_buildx_help_and_unique_json_view(self):
-        """The runtime CLI contract refuses drift; canned help/views never invoke Docker."""
-        help_text = {"ls": "      --format string    Format the output\n",
-                     "bake": "      --builder string    Builder\n  -f, --file stringArray    Definition\n"}
-        build.buildx_preflight(build.BUILDX_VERSION + "\n", help_text)
-        for version in ("v0.37.0", build.BUILDX_VERSION.replace("0dbe87f", "1234567")):
-            with self.subTest(version=version), self.assertRaisesRegex(ValueError, "version/commit"):
-                build.buildx_preflight(version, help_text)
-        for command, flag in (("ls", "--format"), ("bake", "--builder"), ("bake", "--file")):
-            with self.subTest(flag=flag), self.assertRaisesRegex(ValueError, "help missing"):
-                build.buildx_preflight(build.BUILDX_VERSION, help_text | {command: help_text[command].replace(flag, "--other")})
-        with patch.object(build, "BUILDER_LIST", ("buildx", "inspect", "--format", "json")), self.assertRaisesRegex(ValueError, "help missing"):
-            build.buildx_preflight(build.BUILDX_VERSION, help_text | {"inspect": "      --bootstrap    Start builder\n"})
-        name = "gen2-2e1-build"
-        view = dict(Name=name, Driver="docker", Nodes=[dict(Endpoint=name, Status="running")])
-        line = json.dumps(view)
-        listing = json.dumps(view | {"Name": "default"}) + "\n" + line + "\n"
-        selected = build.builder_view(name, listing)
-        self.assertEqual(selected, view)
-        build.builder_gate(name, selected, {name: "unix:///run/user/1000/gen2-2e1/docker.sock"})
+    def test_pinned_buildx_preflight_and_unique_json_view(self):
+        """Replay T9 argv/exit, version/context/list captures; malformed cases mutate those bytes."""
+        rows = RECEIPTS["class-fix"]["summary"]["rows"]
+        name, version = CONTEXT["Name"], (CAPTURE / "version.txt").read_text()
+        bake = build.bake_command(name)
+        self.assertEqual(bake, rows[0]["argv"][:-1])
+        records = [rows[0], RECEIPTS["class-noop"]["summary"]]
+        with patch.object(subprocess, "run", side_effect=[subprocess.CompletedProcess(r["argv"], r["returncode"]) for r in records]) as call:
+            build.buildx_preflight(version, bake, {})
+            self.assertEqual([c.args[0] for c in call.call_args_list], [r["argv"] for r in records])
+            for wrong in ("v0.37.0", version.replace("0dbe87f", "1234567")):
+                with self.subTest(version=wrong), self.assertRaisesRegex(ValueError, "version/commit"):
+                    build.buildx_preflight(wrong, bake, {})
+            with self.assertRaisesRegex(ValueError, "canonical"):
+                build.buildx_preflight(version, rows[1]["argv"][:-1], {})
+        selected = build.builder_view(name, LISTING)
+        self.assertEqual(selected, VIEW)
+        build.builder_gate(name, selected, {name: CONTEXT["Endpoints"]["docker"]["Host"]})
+        line, view = json.dumps(VIEW), VIEW
         for listing in ("", "Name: " + name, "[]", "{}", line + "\n" + line, line + "\nnot JSON"):
             with self.subTest(listing=listing), self.assertRaises(ValueError):
                 build.builder_view(name, listing)
@@ -37,23 +45,35 @@ class Fixtures(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 build.builder_gate(name, view | change, {name: build.SOCKET})
 
+    def test_retained_cli_failures_refuse_before_parsing(self):
+        """Actual T9 nonzero process records and stderr must never become successful preflight."""
+        for record, name in ((RECEIPTS["dedicated-builder-inspect"], "inspect.stderr"), (RECEIPTS["I02"], "bake.stderr")):
+            error = (CAPTURE / name).read_bytes()
+            argv = record.get("argv") or ast.literal_eval(re.search(r"Command '(\[.*\])' returned", error.decode())[1])
+            status = record.get("exit_code", record.get("script_result", {}).get("exit_code"))
+            failure = subprocess.CalledProcessError(status, argv, stderr=error)
+            with patch.object(subprocess, "check_output", side_effect=failure) as call:
+                with self.assertRaisesRegex(ValueError, re.escape(error.decode().splitlines()[0])):
+                    build.checked(argv)
+                call.assert_called_once_with(argv, stderr=subprocess.PIPE)
+
     def test_dedicated_socket_path_and_context_uri(self):
         """The retained T9 Host URI passes; other sockets and schemes grant no build authority."""
-        name, uri = "gen2-2e1-t9", "unix:///run/user/1000/gen2-2e1/docker.sock"
+        name, uri = CONTEXT["Name"], CONTEXT["Endpoints"]["docker"]["Host"]
         for endpoint, contexts in ((name, {name: uri}), (uri, {}), (build.SOCKET, {})):
             with self.subTest(endpoint=endpoint):
-                build.builder_gate(name, dict(Driver="docker", Nodes=[dict(Endpoint=endpoint, Status="running")]), contexts)
+                build.builder_gate(name, VIEW | {"Nodes": [VIEW["Nodes"][0] | {"Endpoint": endpoint}]}, contexts)
         for wrong in ("/var/run/docker.sock", "unix:///var/run/docker.sock", "tcp://127.0.0.1:2375", "ssh://remote", uri + "?extra"):
             for endpoint, contexts in ((wrong, {}), (name, {name: wrong}), (wrong, {wrong: uri})):
                 with self.subTest(endpoint=endpoint, contexts=contexts), self.assertRaisesRegex(ValueError, "not the dedicated daemon"):
-                    build.builder_gate(name, dict(Driver="docker", Nodes=[dict(Endpoint=endpoint, Status="running")]), contexts)
+                    build.builder_gate(name, VIEW | {"Nodes": [VIEW["Nodes"][0] | {"Endpoint": endpoint}]}, contexts)
 
     def test_dedicated_builder_and_original_counter(self):
-        view = {"Driver": "docker", "Nodes": [{"Endpoint": build.SOCKET, "Status": "running"}]}
-        build.builder_gate("gen2-2e1-build", view, {})
+        view, contexts = VIEW, {CONTEXT["Name"]: CONTEXT["Endpoints"]["docker"]["Host"]}
+        build.builder_gate(CONTEXT["Name"], view, contexts)
         for driver in ("docker-container", "remote"):
             with self.subTest(driver=driver), self.assertRaises(ValueError):
-                build.builder_gate("gen2-2e1-build", view | {"Driver": driver}, {})
+                build.builder_gate(CONTEXT["Name"], view | {"Driver": driver}, contexts)
         rows = [dict(event=event, nonce="a" * 32, origin={}, count=i, forwarded=0) for i, event in enumerate(("ready", "delivery"))]
         self.assertEqual(qualify.counts("\n".join(map(json.dumps, rows)), "a" * 32, {}), 1)
         with self.assertRaisesRegex(ValueError, "observer_originals"):

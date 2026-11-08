@@ -1,0 +1,5 @@
+unknown flag: --format
+
+Usage:  docker buildx inspect [NAME]
+
+Run 'docker buildx inspect --help' for more information
