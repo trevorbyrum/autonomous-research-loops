@@ -190,9 +190,10 @@ class Supervisor:
             self._policies(order.config_bundle_hash)
         job = self.job(order.invocation_id)
         job.prepare({**asdict(order), "command": list(order.command), "env": dict(order.env),
-                     "reservation": None if order.reservation is None else dict(order.reservation)})
+                     "reservation": None if order.reservation is None else dict(order.reservation),
+                     **({"live": True, "plan": plan} if live else {})})   # one atomic write: live intent and its plan are inseparable from the order
         if live and job.read("docker-plan.json") is None:
-            job.write("docker-plan.json", plan)   # a live order is the one that has a plan; the plan is what the start gate looks for
+            job.write("docker-plan.json", plan)   # the backend's copy; the start gate re-materializes it from the order if a crash lost it
 
     def submit(self, order: WorkOrder, *, live: bool = False, isolation_profile: object = ABSENT_PROFILE) -> str:
         self.prepare(order, live=live, isolation_profile=isolation_profile)
@@ -830,14 +831,14 @@ class Supervisor:
     def _launching(self, job, order, journal, grant, status) -> str:
         view = job.lookup()
         if view["verdict"] == "not_started":  # launch intent is recorded and no start has happened: start it now
-            live = job.read("docker-plan.json") is not None
+            live = bool(order.get("live")) or job.read("docker-plan.json") is not None   # the order itself says it is live; the plan file alone also does
             if live and self.dispatch is None:
                 refuse_live_profile(ABSENT_PROFILE)   # no authority wired: closed, before anything else is read
             refused = status["launch_admission"]  # the router's current launch-admission check, read before every actual start (L-7)
             if status["cancel_requested"] or self._past(order["deadline_at"]) or (refused and refused["reason"] == "deadline_passed"):
                 return self._end_unlaunched(job, order, journal, grant, status)
             if live:   # the authority's gate, after a cancellation (which it may itself request) is honoured
-                gate = self._live_gate(job, journal, grant)
+                gate = self._live_gate(job, order, journal, grant)
                 if gate is not None:
                     return gate
             if refused is not None:  # recorded launch intent is not renewed authority: a recovery or a retried start is checked again
@@ -863,14 +864,19 @@ class Supervisor:
         # never recorded one): the outcome is unknown until the job is looked up or its group terminated (L-3, L-4)
         return self._enter_unknown(job, order, journal, grant, status, "spawn_uncertain")
 
-    def _live_gate(self, job, journal, grant) -> str | None:
+    def _live_gate(self, job, order, journal, grant) -> str | None:
         """A live child starts only with an authority wired, this call's permission, and the Router's authorization of THIS dispatch (the
         slot, the route-wide rejection block, the trial stop, the ceiling and the attempts: the Router's predicates, not a copy). A refusal
         ends the job cancelled, fail closed; a replayed authorization grants no second send. Returns the job's end, or None to go on."""
         if self.dispatch is None:
             refuse_live_profile(ABSENT_PROFILE)
         if not self._live_start:
-            raise Waiting("live_not_authorized")
+            raise Waiting("live_not_authorized")   # recovery and every call without the operator's flag stop here: nothing is written, nothing starts
+        if job.read("docker-plan.json") is None:   # a crash lost the backend's copy; the order carries the plan. An order with no plan is incomplete preparation
+            if not isinstance(order.get("plan"), dict):
+                journal["unlaunched"] = True
+                return self._cancel_self(job, journal, grant, "dispatch refused: incomplete_live_preparation")
+            job.write("docker-plan.json", order["plan"])
         if "admission_ref" not in journal.get("dispatch", {}):
             if not self.dispatch.qualified:   # a retired or unverified record: no new start, whatever was prepared earlier
                 journal["unlaunched"] = True      # nothing was started and nothing will be: its cancellation has no backend end to confirm
@@ -882,6 +888,7 @@ class Supervisor:
                 return self._cancel_self(job, journal, grant, f"dispatch refused: {reply.get('reason')}")
             journal["dispatch"] = {"admission_ref": reply["admission_ref"], "run_id": request["run_id"], "attempt": 1}
             self._save(job, journal)
+            self._fault("dispatch_authorized")   # the Router holds the intent; the start has not happened
         return None
 
     def _record_dispatch(self, job, journal, grant, collected) -> None:
@@ -921,6 +928,7 @@ class Supervisor:
     def _end_unlaunched(self, job, order, journal, grant, status) -> str:
         """Launch intent recorded, nothing ever started: cancelled if that was
         asked for, otherwise the deadline passed first."""
+        journal["unlaunched"] = True   # reached only after job.lookup() proved no start: a live order's cancellation or deadline has no backend end to wait for
         if status["cancel_requested"]:
             return self._end(job, order, journal, grant, "cancelled", self._unrun(None, "cancelled before the launcher started"), "job_handle_lookup")
         return self._end(job, order, journal, grant, "failed", self._unrun("never_started", "the deadline passed before the launcher started"), "job_handle_lookup")

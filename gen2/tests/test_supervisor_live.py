@@ -5,6 +5,7 @@ container: F1); the real-route classifier, rejection mapping and the child's liv
 """
 import json
 import unittest
+import unittest.mock
 
 from gen2.core import canonical
 from gen2.supervisor import authority as auth
@@ -34,6 +35,22 @@ def sealed(doc):
 
 
 class Verification(unittest.TestCase):
+    def test_malformed_or_missing_operands_mean_no_record_never_an_exception(self):
+        from pathlib import Path
+        good = record_doc(Path("/r"))
+        for case, change in (("empty receipt", {"witnesses": [{"name": n, "passed": True, "receipt": ""} for n in auth.WITNESSES]}),
+                             ("no backend", {"backend": ""}), ("no credential", {"credential_ref": None}), ("no policy", {"policy": None}),
+                             ("negative upper", {"upper_minor_units": -1}), ("boolean upper", {"upper_minor_units": True}),
+                             ("relative path", {"plan": {**good["plan"], "seed": "relative/seed"}}),
+                             ("dotted path", {"plan": {**good["plan"], "host_jobs": "/host/../jobs"}}),
+                             ("no slots", {"plan": {k: v for k, v in good["plan"].items() if k != "slots"}}),
+                             ("slot not a path", {"plan": {**good["plan"], "slots": {"out": "", "evidence": "/ev"}}})):
+            with self.subTest(case):
+                data, pin = sealed({**good, **change})
+                self.assertIsNone(auth.verify_record(data, pin, MANIFEST))
+        data, pin = sealed({k: v for k, v in good.items() if k != "policy"})
+        self.assertIsNone(auth.verify_record(data, pin, MANIFEST))
+        self.assertFalse(auth.QualifiedAuthority(Path("/j"), record=data, pin=pin, manifest=MANIFEST, stage=lambda *a: {}).qualified)
     def test_a_record_is_accepted_only_when_qualified_for_exactly_this_manifest_and_pin(self):
         from pathlib import Path
         for case, route, change, ok in (("fixture", "fixture", {}, True), ("real", "real", {}, True),
@@ -178,6 +195,76 @@ class LiveStart(LiveWorld):
                 break
         self.assertEqual(self.audit("dispatch_result"), [])
         self.assertEqual(len(self.audit("dispatch_authorized")), 1)
+
+
+class CrashBoundaries(LiveWorld):
+    """Every durable intermediate state of a live start has a defined safe recovery: no spawn, no second intent, no conversion into a non-live job."""
+
+    def spawned(self, job):
+        return (job.dir / "spawn.json").exists()
+
+    def test_a_crash_after_the_order_and_before_its_plan_copy_leaves_a_live_order_that_recovery_will_not_start(self):
+        from gen2.supervisor import jobs
+        real_write = jobs.Job.write
+
+        def broken(job, name, value):
+            if name == "docker-plan.json":
+                raise OSError("disk full")
+            return real_write(job, name, value)
+        with unittest.mock.patch.object(jobs.Job, "write", broken), self.assertRaises(OSError):
+            self.live_supervisor().prepare(self.order("research_pass", succeed()), live=True)
+        job = self.supervisor.job(MAIN)
+        self.assertTrue(job.read("order.json")["live"])                          # the intent is in the order itself
+        self.assertIsNone(job.read("docker-plan.json"))
+        restarted = self.live_supervisor()
+        self.assertEqual(restarted.advance(MAIN), "live_not_authorized")        # recovery's default call
+        self.assertEqual(restarted.recover().get(MAIN), "live_not_authorized")
+        self.assertEqual((self.spawned(job), self.audit("dispatch_authorized")), (False, []))
+        with self.assertRaises(ValueError):                                      # and it cannot be re-prepared as an ordinary order
+            self.live_supervisor().prepare(self.order("research_pass", succeed()))
+        self.assertEqual(restarted.advance(MAIN, live_start=True), "running")   # with this call's flag the copy is restored from the order and the start is authorized
+        self.assertEqual((self.spawned(job), len(self.audit("dispatch_authorized"))), (True, 1))
+        self.assertEqual(job.read("docker-plan.json"), job.read("order.json")["plan"])
+
+    def test_a_crash_after_the_routers_authorization_and_before_the_start_is_neither_a_second_intent_nor_an_unflagged_start(self):
+        def die(point):
+            if point == "dispatch_authorized":
+                raise KeyboardInterrupt(point)
+        first = self.live_supervisor(fault=die)
+        job = self.prepare(first)
+        with self.assertRaises(KeyboardInterrupt):
+            first.advance(MAIN, live_start=True)
+        self.assertEqual(len(self.audit("dispatch_authorized")), 1)
+        restarted = self.live_supervisor()
+        self.assertEqual(restarted.recover().get(MAIN), "live_not_authorized")
+        self.assertFalse(self.spawned(job))
+        self.assertEqual(restarted.advance(MAIN, live_start=True), "running")
+        self.assertEqual((self.spawned(job), len(self.audit("dispatch_authorized"))), (True, 1))   # the same authorization replayed, no second intent
+
+    def test_a_live_order_with_no_plan_anywhere_is_cancelled_not_started(self):
+        supervisor = self.live_supervisor()
+        job = self.prepare(supervisor)
+        stored = job.read("order.json")
+        job.write("order.json", {k: v for k, v in stored.items() if k != "plan"})   # partial preparation: the intent survives, the plan does not
+        (job.dir / "docker-plan.json").unlink()
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "cancelled")
+        self.assertEqual((self.spawned(job), self.audit("dispatch_authorized")), (False, []))
+
+    def test_a_plan_file_alone_still_marks_an_order_live(self):
+        supervisor = self.live_supervisor()
+        job = self.prepare(supervisor)
+        job.write("order.json", {k: v for k, v in job.read("order.json").items() if k not in ("live", "plan")})   # an order from before the marker existed
+        self.assertEqual(supervisor.advance(MAIN), "live_not_authorized")
+        self.assertFalse(self.spawned(job))
+
+    def test_cancelling_or_expiring_an_unstarted_live_order_does_not_wait_for_a_backend_end_that_cannot_come(self):
+        supervisor = self.live_supervisor()
+        job = self.prepare(supervisor)
+        self.assertEqual(supervisor.advance(MAIN), "live_not_authorized")
+        grant = job.read("journal.json")["grant"]
+        self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+        self.assertEqual(supervisor.advance(MAIN), "cancelled")
+        self.assertFalse(self.spawned(job))
 
 
 class ExpiredRecord(LiveWorld):

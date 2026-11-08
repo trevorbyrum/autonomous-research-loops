@@ -26,6 +26,7 @@ RECORD = "qualification-record/1"
 WITNESSES = ("Q1", "Q2", "Q3")
 REAL_WITNESSES = (*WITNESSES, "DEBT-004")
 Stage = Callable[[str, bytes, str], Mapping]
+PIN = re.compile(r"sha256:[0-9a-f]{64}")
 CID = re.compile(r"[0-9a-f]{64}")   # a Docker network ID: the persistent relay-only bridge is consumed by ID, never created or adopted by name
 
 
@@ -37,12 +38,19 @@ def verify_record(record: bytes, pin: str, manifest: bytes) -> Mapping | None:
         doc = canonical.parse_json_strict(record)
         real = doc["route"] == "real"
         named = {w["name"]: w for w in doc["witnesses"]}
+        text = lambda value: isinstance(value, str) and bool(value)
+        path = lambda value: text(value) and value.startswith("/") and ".." not in value.split("/")
+        plan, policy = doc["plan"], doc["policy"]
         ok = (doc["record_version"] == RECORD and doc["state"] == "qualified" and doc["route"] in ("fixture", "real")
               and doc["manifest_pin"] == canonical.bytes_digest(manifest)
-              and all(named.get(n, {}).get("passed") is True and isinstance(named[n].get("receipt"), str) for n in (REAL_WITNESSES if real else WITNESSES))
-              and (not real or all(isinstance(doc.get(k), str) and doc[k] for k in ("deployment_id", "provider_route"))))
+              and all(named.get(n, {}).get("passed") is True and PIN.fullmatch(str(named[n].get("receipt"))) for n in (REAL_WITNESSES if real else WITNESSES))
+              and (not real or all(text(doc.get(k)) for k in ("deployment_id", "provider_route")))
+              and text(doc["backend"]) and text(doc["credential_ref"]) and isinstance(policy, dict) and text(policy.get("run_id"))
+              and type(doc["upper_minor_units"]) is int and doc["upper_minor_units"] >= 0
+              and all(path(plan.get(k)) for k in ("engine_jobs", "host_jobs", "seed")) and isinstance(plan.get("slots"), dict)
+              and all(path(plan["slots"].get(k)) for k in ("out", "evidence")))
         return doc if ok else None
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, AttributeError):
         return None
 
 
