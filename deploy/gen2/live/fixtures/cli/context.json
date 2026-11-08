@@ -1,0 +1,17 @@
+[
+    {
+        "Name": "gen2-2e1-t9",
+        "Metadata": {},
+        "Endpoints": {
+            "docker": {
+                "Host": "unix:///run/user/1000/gen2-2e1/docker.sock",
+                "SkipTLSVerify": false
+            }
+        },
+        "TLSMaterial": {},
+        "Storage": {
+            "MetadataPath": "/home/trevor/.config/gen2-2e1/buildx/contexts/meta/44749618d6005e4eb22a5aa0e0af79a2846401f5adf99c36bb98e7f290e150fd",
+            "TLSPath": "/home/trevor/.config/gen2-2e1/buildx/contexts/tls/44749618d6005e4eb22a5aa0e0af79a2846401f5adf99c36bb98e7f290e150fd"
+        }
+    }
+]

@@ -7,20 +7,33 @@ import subprocess
 import sys
 from pathlib import Path
 
-from gen2.supervisor.docker_cli import CLI_SHA, SOCKET, free_space
+from gen2.supervisor.docker_cli import CLI, CLI_SHA, SOCKET, free_space
 
 BUILDX_VERSION = "github.com/docker/buildx v0.38.0 0dbe87f36ed472fe36b6796c3f70b4210a731fc5"
 BUILDER_LIST = ("buildx", "ls", "--format", "json")
 
 
-def buildx_preflight(version, help_text):
-    """Pinned CLI contract: real version/help precede builder inspection or build."""
+def checked(argv, **kwargs):
+    """Retain the real interface's failure, never parse a failed command as evidence."""
+    try:
+        return subprocess.check_output(argv, stderr=subprocess.PIPE, **kwargs)
+    except subprocess.CalledProcessError as error:
+        raise ValueError(error.stderr.decode("utf-8", "replace")) from error
+
+
+def bake_command(builder, targets=("runner", "engine", "gateway", "fixture")):
+    return [CLI, "--context", builder, "buildx", "bake", "--builder", builder, "--file",
+            "deploy/gen2/live/docker-bake.hcl", *targets]
+
+
+def buildx_preflight(version, bake, env):
+    """Print validates configuration, not execution: the context argv is separately fixed."""
     if version.strip() != BUILDX_VERSION:
         raise ValueError("Buildx version/commit pin")
-    for command, args in ((BUILDER_LIST[1], BUILDER_LIST[2:]), ("bake", ("--builder", "--file"))):
-        for flag in (arg for arg in args if arg.startswith("--")):
-            if not re.search(rf"(?m)^\s*(?:-\w,\s*)?{re.escape(flag)}(?:\s|$)", help_text.get(command, "")):
-                raise ValueError("Buildx help missing required flag: " + flag)
+    if bake != bake_command(bake[2]):
+        raise ValueError("canonical dedicated-context Bake argv required")
+    subprocess.run([*bake, "--print"], env=env, check=True, stdout=subprocess.DEVNULL, timeout=30)
+    subprocess.run(bake_command(bake[2], ("cli-contract",)), env=env, check=True, stdout=subprocess.DEVNULL, timeout=30)
 
 
 def builder_view(builder, listing):
@@ -59,14 +72,15 @@ if __name__ == "__main__":
     env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "DOCKER_CONFIG": "/home/trevor/.config/gen2-2e1/buildx"}
     cli = ["/usr/bin/docker", "--host", SOCKET]
     def text(*args):
-        return subprocess.check_output([*cli, *args], env=env, timeout=10).decode("utf-8")
+        return checked([*cli, *args], env=env, timeout=10).decode("utf-8")
     def read(*args):
         return json.loads(text(*args))
-    buildx_preflight(text("buildx", "version"), {cmd: text("buildx", cmd, "--help") for cmd in (BUILDER_LIST[1], "bake")})
+    version = text("buildx", "version")
     contexts = {c["Name"]: c["Endpoints"]["docker"]["Host"] for c in read("context", "inspect", sys.argv[1])}
     builder_gate(sys.argv[1], builder_view(sys.argv[1], text(*BUILDER_LIST)), contexts)
-    subprocess.run([*cli, "buildx", "bake", "--builder", sys.argv[1], "--file", "deploy/gen2/live/docker-bake.hcl",
-                    "runner", "engine", "gateway", "fixture"], env=env, check=True, timeout=1800)
+    bake = bake_command(sys.argv[1])
+    buildx_preflight(version, bake, env)
+    subprocess.run(bake, env=env, check=True, timeout=1800)
     images = {role: read("image", "inspect", "gen2-2e1-" + role + ":offline")[0]["Id"] for role in ("runner", "engine", "gateway", "fixture")}
     if any(not re.fullmatch("sha256:[0-9a-f]{64}", pin) for pin in images.values()):
         raise ValueError("missing immutable custom image IDs")

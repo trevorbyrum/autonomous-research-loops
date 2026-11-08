@@ -1,0 +1,9 @@
+ERROR: use `docker --context=gen2-2e1-t9 buildx` to switch to context "gen2-2e1-t9"
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/trevor/work/gen2-wt-2/deploy/gen2/live/build.py", line 68, in <module>
+    subprocess.run([*cli, "buildx", "bake", "--builder", sys.argv[1], "--file", "deploy/gen2/live/docker-bake.hcl",
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/bin/docker', '--host', '/run/user/1000/gen2-2e1/docker.sock', 'buildx', 'bake', '--builder', 'gen2-2e1-t9', '--file', 'deploy/gen2/live/docker-bake.hcl', 'runner', 'engine', 'gateway', 'fixture']' returned non-zero exit status 1.

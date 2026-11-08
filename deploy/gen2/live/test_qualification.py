@@ -21,6 +21,7 @@ class Driver:
         self.ids = {role: f"{i:064x}" for i, role in enumerate(roles, 1)}
         self.values = dict.fromkeys(roles, 0)
         self.probes, self.raw, self.record = [], b"", b""
+        self.exec_preflight = set()
         self.unstarted, self.denied = unstarted, denied
         self.views = {cid: dict(Id=cid, Image="sha256:" + "f" * 64, State=dict(Running=True, StartedAt="original", Pid=i),
                                NetworkSettings=dict(Networks={}), HostConfig={}) for i, cid in enumerate(self.ids.values(), 1)}
@@ -67,8 +68,10 @@ class Driver:
                     f"Tcp: RtoAlgorithm PassiveOpens\nTcp: 1 {self.values[role]}\n").encode()
         actor, command = args[2], args[5:]
         if command == ["inspect"]:
+            self.exec_preflight.add(actor)
             return b"{}"
         mode, address, nonce, port, protocol = command
+        assert self.exec_preflight == {self.ids["runner"], self.ids["control"]}, "active probe before read-only exec preflight"
         self.probes.append((actor, address, int(port), protocol))
         target = (address, int(port))
         if target == q_net.TARGETS["relay"]:
