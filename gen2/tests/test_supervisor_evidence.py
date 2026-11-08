@@ -65,7 +65,7 @@ class Evidence(SupervisedTestCase):
         name = "evidence-" + canonical.bytes_digest(text)[len("sha256:"):] + ".txt"
         outcome = {**rf.empty_outcome(MAIN), "registry_dispositions": [example_disposition({**ref_of(text), "media_type": "text/plain"}, 0)]}
         self.supervisor.prepare(self.order("checkpoint", [{"op": "write", "name": name, "hex": text.hex()},
-                                                           {"op": "write", "name": name.replace(".txt", ".bin"), "hex": text.hex()},
+                                                           {"op": "write", "name": name.replace(".txt", ".png"), "hex": text.hex()},
                                                            {"op": "write", "name": "outcome.json", "text": canonical.canonical_bytes(outcome).decode()}]))
         self.assertEqual(self.supervisor.run(MAIN), "committed")
         collected = self.supervisor.job(MAIN).read("journal.json")["collected"]

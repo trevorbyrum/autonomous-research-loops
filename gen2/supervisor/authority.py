@@ -27,6 +27,7 @@ WITNESSES = ("Q1", "Q2", "Q3")
 REAL_WITNESSES = (*WITNESSES, "DEBT-004")
 Stage = Callable[[str, bytes, str], Mapping]
 PIN = re.compile(r"sha256:[0-9a-f]{64}")
+UPSTREAM = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}:443")   # the relay's one fixed IP:443 (name verification is the relay's)
 CID = re.compile(r"[0-9a-f]{64}")   # a Docker network ID: the persistent relay-only bridge is consumed by ID, never created or adopted by name
 
 
@@ -44,7 +45,8 @@ def verify_record(record: bytes, pin: str, manifest: bytes) -> Mapping | None:
         ok = (doc["record_version"] == RECORD and doc["state"] == "qualified" and doc["route"] in ("fixture", "real")
               and doc["manifest_pin"] == canonical.bytes_digest(manifest)
               and all(named.get(n, {}).get("passed") is True and PIN.fullmatch(str(named[n].get("receipt"))) for n in (REAL_WITNESSES if real else WITNESSES))
-              and (not real or all(text(doc.get(k)) for k in ("deployment_id", "provider_route")))
+              and (not real or (all(text(doc.get(k)) for k in ("deployment_id", "provider_route", "runner_version")) and UPSTREAM.fullmatch(str(plan.get("upstream")))
+                                and isinstance(doc.get("affected_lanes"), list) and len(doc["affected_lanes"]) <= 20 and all(text(x) for x in doc["affected_lanes"])))
               and text(doc["backend"]) and text(doc["credential_ref"]) and isinstance(policy, dict) and text(policy.get("run_id"))
               and type(doc["upper_minor_units"]) is int and doc["upper_minor_units"] >= 0
               and all(path(plan.get(k)) for k in ("engine_jobs", "host_jobs", "seed")) and isinstance(plan.get("slots"), dict)
@@ -55,9 +57,10 @@ def verify_record(record: bytes, pin: str, manifest: bytes) -> Mapping | None:
 
 
 class QualifiedAuthority:
-    def __init__(self, jobs_root: str | Path, *, record: bytes, pin: str, manifest: bytes, stage: Stage, epoch: str | None = None) -> None:
+    def __init__(self, jobs_root: str | Path, *, record: bytes, pin: str, manifest: bytes, stage: Stage, read: Callable[[str, str], bytes | None] | None = None,
+                 epoch: str | None = None) -> None:
         self.epoch = epoch or uuid.uuid4().hex   # fixed for this process, so a restart is a new epoch (no admission survives it unchecked)
-        self._jobs, self._stage = Path(jobs_root), stage
+        self._jobs, self._stage, self._read = Path(jobs_root), stage, read
         self._record_bytes, self._manifest = record, manifest
         self._doc = verify_record(record, pin, manifest)
         self.run_id = self._doc["policy"]["run_id"] if self._doc else ""   # fixed at load, so a retired record still names the run it refused
@@ -91,11 +94,12 @@ class QualifiedAuthority:
         slots, egress = template["slots"], template.get("egress_network_id")
         if (doc["route"] == "real") != (egress is not None) or (egress is not None and not CID.fullmatch(str(egress))):
             raise LiveProfileRefused("profile_egress_network")   # a real route names its protected, pre-existing bridge by ID; a fixture route has none
-        return {"origin": origin, "generation": generation, "route": doc["route"], "slots": slots, "paths": template.get("paths", []),
+        return {"origin": origin, "generation": generation, "route": doc["route"], "output": "judgment", "slots": slots, "paths": template.get("paths", []),
                 "binds": {"inputs": str(Path(template["host_jobs"]) / inputs.relative_to(prefix)), "out": str(Path(slots["out"]) / generation),
                           "seed": template["seed"]},
                 "expected": template.get("expected", {}), "relay_config": template.get("relay_config"),
-                **({"fixture": template["fixture"]} if "fixture" in template else {}), **({"egress": {"network_id": egress}} if egress else {})}
+                **({"fixture": template["fixture"]} if "fixture" in template else {}),
+                **({"egress": {"network_id": egress}, "upstream": doc["plan"]["upstream"]} if egress else {})}
 
     def _origin(self, job: jobs.Job) -> dict | None:
         plan, grant = job.read("docker-plan.json"), (job.read("journal.json") or {}).get("grant")
@@ -130,6 +134,26 @@ class QualifiedAuthority:
             if origin is None or plan is None:
                 return None
             ended = complete.get("origin") == plan["origin"] and collected["observation"]["descendants"]["handling"] != "unconfirmed"
-            return {"origin": origin, "admission_ref": admission_ref, "evidence_ref": evidence_ref, "confirmed_end": bool(ended),
-                    "actual_minor_units": None, "artifacts": [*complete.get("refs", []), record]}
+            doc = {"origin": origin, "admission_ref": admission_ref, "evidence_ref": evidence_ref, "confirmed_end": bool(ended),
+                   "actual_minor_units": None, "artifacts": [*complete.get("refs", []), record]}
+            if ended and (complete.get("disposition") or {}).get("disposition") == "credentials_rejected":
+                rejection = self._rejection(job, plan, record, order_topic=plan["origin"]["topic_id"])
+                if rejection is None:
+                    return None   # the evidence for a rejection cannot be assembled: no result at all, so the Router keeps the intent (fixed U, stop)
+                doc["rejection"] = rejection
+            return doc
         return None
+
+    def _rejection(self, job: jobs.Job, plan: Mapping, record: Mapping, *, order_topic: str) -> dict | None:
+        """The Router's rejection operands for a real route's credentials_rejected end, from the backend's own start record and the supervisor's
+        execution record (never from the runner's words); None where any is missing or the route is not real."""
+        started = (job.read("runner-start.json") or {}).get("State", {}).get("StartedAt")
+        data = self._read(order_topic, record["content_hash"]) if self._read else None
+        try:
+            observed_at = canonical.parse_json_strict(data)["observed_at"]
+        except (ValueError, KeyError, TypeError):
+            return None
+        if plan["route"] != "real" or not isinstance(started, str) or len(started) < 19 or self._doc is None:
+            return None
+        return {"started_at": started[:19] + "Z", "observed_at": observed_at, "runner": {"name": "codex", "version": self._doc["runner_version"]},
+                "affected_lanes": list(self._doc["affected_lanes"])}

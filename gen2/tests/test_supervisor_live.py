@@ -24,8 +24,9 @@ def record_doc(root, route="fixture", **over):
            "policy": {"run_id": "trial-1", "accounting_owner": "operator", "deadline_at": rf.DEADLINE, "max_attempts": 3, "ceiling_minor_units": 10000,
                       "currency": "USD", "ceiling_scope": SCOPE, "policy_version": "v1"},
            "upper_minor_units": 400,
-           "plan": {"engine_jobs": str(root / "jobs"), "host_jobs": "/host/jobs", "slots": {"out": "/host/out", "evidence": "/host/ev"}, "seed": "/host/seed"},
-           **({"deployment_id": "dep-1", "provider_route": "openai/codex"} if route == "real" else {})}
+           "plan": {"engine_jobs": str(root / "jobs"), "host_jobs": "/host/jobs", "slots": {"out": "/host/out", "evidence": "/host/ev"}, "seed": "/host/seed",
+                    **({"upstream": "203.0.113.7:443"} if route == "real" else {})},
+           **({"deployment_id": "dep-1", "provider_route": "openai/codex", "runner_version": "1.2.3", "affected_lanes": ["codex"]} if route == "real" else {})}
     return {**doc, **over}
 
 
@@ -265,6 +266,66 @@ class CrashBoundaries(LiveWorld):
         self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
         self.assertEqual(supervisor.advance(MAIN), "cancelled")
         self.assertFalse(self.spawned(job))
+
+
+class RealRoute(LiveWorld):
+    CHANGE = {"route": "real", "plan": {"engine_jobs": "", "host_jobs": "/host/jobs", "slots": {"out": "/host/out", "evidence": "/host/ev"}, "seed": "/host/seed",
+                                        "upstream": "203.0.113.7:443", "egress_network_id": "c" * 64}}
+
+    def make_router(self, **overrides):
+        self.CHANGE = {**self.CHANGE, "plan": {**self.CHANGE["plan"], "engine_jobs": str(self.root / "jobs")}}
+        data, pin = sealed(record_doc(self.root, "real", **{k: v for k, v in self.CHANGE.items() if k != "route"}))
+        self.authority = auth.QualifiedAuthority(self.root / "jobs", record=data, pin=pin, manifest=MANIFEST, stage=self.spool.stage,
+                                                 read=lambda topic, digest: self.spool.read(digest, topic_id=topic))
+        return super(LiveWorld, self).make_router(dispatch_authority=self.authority, **overrides)
+
+    def test_the_real_plan_carries_the_upstream_the_judgment_output_and_the_bridge_id(self):
+        plan = self.prepare(self.live_supervisor()).read("docker-plan.json")
+        self.assertEqual((plan["route"], plan["output"], plan["upstream"], plan["egress"], plan["origin"]["deployment_id"]),
+                         ("real", "judgment", "203.0.113.7:443", {"network_id": "c" * 64}, "dep-1"))
+
+    def test_a_rejected_credential_end_carries_the_routers_rejection_operands_from_the_backends_own_records(self):
+        supervisor = self.live_supervisor()
+        job = self.prepare(supervisor)
+        job.write("runner-start.json", {"State": {"StartedAt": "2026-09-27T10:00:05.123456789Z"}})
+        job.write("docker-complete.json", {"origin": job.read("docker-plan.json")["origin"], "refs": [],
+                                           "disposition": {"disposition": "credentials_rejected", "reason": "relay_401"}})
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
+        for _ in range(200):
+            if job.read("journal.json").get("collected"):
+                break
+            supervisor.advance(MAIN, live_start=True)
+        record = job.read("journal.json")["collected"]["record"]
+        result = self.authority.result("adm", record["content_hash"])
+        self.assertEqual(result["rejection"]["started_at"], "2026-09-27T10:00:05Z")
+        self.assertEqual((result["rejection"]["runner"], result["rejection"]["affected_lanes"]), ({"name": "codex", "version": "1.2.3"}, ["codex"]))
+        self.assertEqual(result["rejection"]["observed_at"], json.loads(self.spool.read(record["content_hash"], topic_id=rf.TOPIC))["observed_at"])
+        job.write("docker-complete.json", {"origin": job.read("docker-plan.json")["origin"], "refs": [], "disposition": {"disposition": "unknown"}})
+        self.assertNotIn("rejection", self.authority.result("adm", record["content_hash"]))   # only a classified rejection is a rejection
+        job.write("runner-start.json", {"State": {}})
+        job.write("docker-complete.json", {"origin": job.read("docker-plan.json")["origin"], "refs": [], "disposition": {"disposition": "credentials_rejected"}})
+        self.assertIsNone(self.authority.result("adm", record["content_hash"]))               # an unassemblable rejection is no result: fixed U
+
+
+class Containment(LiveWorld):
+    def test_a_deadline_or_cancel_termination_of_a_live_job_kills_and_removes_its_containers_and_an_unendable_one_leaves_the_end_unconfirmed(self):
+        for failing in (False, True):
+            with self.subTest(failing=failing):
+                self.tearDown()
+                self.setUp()
+                supervisor = self.live_supervisor()
+                job = self.prepare(supervisor, steps=[{"op": "hang"}])
+                self.finish_backend(job)
+                self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
+                with unittest.mock.patch("gen2.supervisor.docker_cli.contain_job", side_effect=LiveProfileRefused("contain_failed") if failing else None) as contain:
+                    self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+                    for _ in range(200):
+                        supervisor.advance(MAIN, live_start=True)
+                        if job.read("journal.json").get("collected"):
+                            break
+                contain.assert_called()
+                handling = job.read("journal.json")["collected"]["observation"]["descendants"]["handling"]
+                self.assertEqual(handling == "unconfirmed", failing)
 
 
 class ExpiredRecord(LiveWorld):

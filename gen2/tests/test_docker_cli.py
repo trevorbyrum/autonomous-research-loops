@@ -55,7 +55,7 @@ class DockerBoundary(unittest.TestCase):
     def test_manifest_admitted_operands_and_refusals(self):
         self.assertEqual(d.manifest_gate(self.manifest, lambda pin: b"configuration", "reviewed-tree"), self.manifest)
         for key, value, reason in (("version", 2, "manifest_tree"), ("socket", "/var/run/docker.sock", "manifest_runtime"),
-                                   ("route", "real", "manifest_route"), ("platform", "linux/arm64", "manifest_route"),
+                                   ("route", "magic", "manifest_route"), ("route", "real", "manifest_roles"), ("platform", "linux/arm64", "manifest_route"),
                                    ("daemon_version", "unbuilt", "manifest_daemon_version"),
                                    ("supervision", "unattended", "manifest_not_supervised"), ("qualification_state", "stale", "manifest_not_qualified"),
                                    ("qualification_ref", "dummy", "manifest_not_qualified"), ("images", {}, "manifest_roles")):
@@ -63,6 +63,12 @@ class DockerBoundary(unittest.TestCase):
                 bad = {**self.manifest, key: value}
                 self.refused(lambda: d.manifest_gate(bad, lambda pin: b"configuration", "reviewed-tree"), reason)
         self.refused(lambda: d.manifest_gate(self.manifest, lambda pin: b"changed", "reviewed-tree"), "manifest_retained")
+
+    def test_a_real_route_manifest_has_the_roles_without_the_fixture(self):
+        real = {**self.manifest, "route": "real", "images": {r: v for r, v in self.manifest["images"].items() if r != "fixture"},
+                "configurations": {r: v for r, v in self.manifest["configurations"].items() if r != "fixture"}}
+        self.assertEqual(d.manifest_gate(real, lambda pin: b"configuration", "reviewed-tree"), real)
+        self.refused(lambda: d.manifest_gate({**real, "images": self.manifest["images"]}, lambda pin: b"configuration", "reviewed-tree"), "manifest_roles")
 
     def test_exact_argv_environment_and_deadline(self):
         with mock.patch.object(d.Path, "read_bytes", return_value=b"wrong-cli"):
@@ -349,6 +355,103 @@ class DockerBoundary(unittest.TestCase):
                 for name in ("docker-attempt.json", "docker-generations.json", "docker-complete.json"):
                     (self.job.dir / name).unlink(missing_ok=True)
                 self.job.write("relay.json", record)
+
+    def real_world(self):
+        """A real-route cli: manifest without the fixture role, the plan's route, egress bridge ID and upstream, output = judgment."""
+        manifest = {**self.manifest, "route": "real", "images": {r: v for r, v in self.manifest["images"].items() if r != "fixture"},
+                    "configurations": {r: v for r, v in self.manifest["configurations"].items() if r != "fixture"}}
+        cli = d.DockerCLI(self.job, manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10)
+        slots = {n: str(self.root / n) for n in ("out", "evidence")}
+        for path in slots.values():
+            (Path(path) / GENERATION).mkdir(parents=True, exist_ok=True)
+        egress = "9" * 64
+        cli.plan.update(generation=GENERATION, slots=slots, binds={"out": str(Path(slots["out"]) / GENERATION)}, route="real", output="judgment",
+                        egress={"network_id": egress}, upstream="203.0.113.7:443")
+        self.job.write("identity.json", {"pid": os.getpid()})
+        relay = "e" * 64
+        record = {"Id": relay, "Image": "sha256:" + CID, "Config": {}, "HostConfig": {}, "NetworkSettings": {"Networks": {}}}
+        self.job.write("relay.json", record)
+        return cli, egress, relay, record
+
+    def real_run(self, cli, egress, relay, record, *, collect=None, end_error=None):
+        connected = {**record, "NetworkSettings": {"Networks": {NET: {"NetworkID": NET, "IPAMConfig": {"IPv4Address": "172.31.254.2"}},
+                                                               egress: {"NetworkID": egress, "IPAMConfig": None}}}}
+        batch, close, drain = mock.Mock(), mock.Mock(), mock.Mock(return_value=True)
+        batch.held = {"access": b"", "events": b"", "judgment": b'{"judgment_version": "x"}'}
+        batch.collect.side_effect = collect or (lambda *a, **k: {"content_hash": "sha256:" + CID})
+        batch.stage.return_value = {"content_hash": "sha256:" + CID}
+        ends = [{"State": {"ExitCode": 0}}, {"State": {"ExitCode": 0}}, {"State": {"ExitCode": 0}}]
+        egress_view = json.dumps([{"Id": egress, "Internal": False, "Containers": {}}]).encode()
+        ingress = json.dumps([{"Id": NET, "Containers": {relay: {}}}]).encode()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(d.jobs, "members", return_value=[os.getpid()]))
+            actions = {"create_auxiliary": [CID, relay], "start": None, "end": end_error or [ends[0], {"State": {"ExitCode": 1}}, ends[2]], "network": [NET], "endpoint": None,
+                       "create_runner": CID, "inspect": [connected, {"NetworkSettings": {"Networks": {}}}], "contain": None, "logs": (b"events", b"diagnostics"),
+                       "_command": [egress_view, ingress]}
+            watch = mock.Mock()
+            for name, result in actions.items():
+                patched = stack.enter_context(mock.patch.object(cli, name, **({"side_effect": result} if isinstance(result, list) or isinstance(result, BaseException) else {"return_value": result})))
+                watch.attach_mock(patched, name)
+            contained = stack.enter_context(mock.patch.object(d, "contain_job"))
+            try:
+                refs = cli.run(close, lambda _: True, lambda: self.fail("a real route has no fixture"), drain, batch)
+            except BaseException as error:
+                return error, batch, watch, contained
+            return refs, batch, watch, contained
+
+    def test_a_real_route_run_has_no_fixture_joins_the_egress_bridge_by_id_and_collects_the_judgment(self):
+        cli, egress, relay, record = self.real_world()
+        refs, batch, watch, contained = self.real_run(cli, egress, relay, record)
+        self.assertEqual(len(refs), 5)                                              # events, diagnostics, judgment, access, usage: no fixture file
+        self.assertEqual([c.kwargs["kind"] for c in batch.collect.call_args_list], ["judgment", "access"])
+        self.assertIn(mock.call.endpoint("connect", egress, relay, None), watch.mock_calls)   # joined by the plan's ID, no fixed address
+        self.assertNotIn("fixture", " ".join(str(c) for c in watch.mock_calls))
+        done = self.job.read("docker-complete.json")
+        self.assertEqual(done["disposition"]["disposition"], "unknown")             # this fake leaves no log row; classification used route=real
+        contained.assert_not_called()
+
+    def test_a_real_route_with_a_missing_judgment_is_still_classified_but_any_other_collection_refusal_is_not_swallowed(self):
+        cli, egress, relay, record = self.real_world()
+        def absent(slot_fd, generation, identity, *, writers_ended, kind):
+            if kind == "judgment":
+                raise LiveProfileRefused("collection_absent")
+            return {"content_hash": "sha256:" + CID}
+        refs, *_ = self.real_run(cli, egress, relay, record, collect=absent)
+        self.assertEqual(len(refs), 4)                                              # no judgment ref, and the run still completed
+        (self.job.dir / "docker-attempt.json").unlink()
+        (self.job.dir / "docker-complete.json").unlink()
+        def empty(slot_fd, generation, identity, *, writers_ended, kind):
+            raise LiveProfileRefused("collection_empty")
+        error, *_ = self.real_run(*self.real_world(), collect=empty)
+        self.assertIsInstance(error, LiveProfileRefused)
+
+    def test_a_real_route_needs_an_empty_egress_bridge_a_manifest_and_plan_that_agree_and_contains_a_partial_start(self):
+        cli, egress, relay, record = self.real_world()
+        cli.plan["route"] = "fixture"
+        error, *_ = self.real_run(cli, egress, relay, record)
+        self.assertRegex(str(error), "plan_route")
+        (self.job.dir / "docker-attempt.json").unlink(missing_ok=True)
+        cli, egress, relay, record = self.real_world()
+        error, batch, watch, contained = self.real_run(cli, egress, relay, record, end_error=[{"State": {"ExitCode": 0}}, LiveProfileRefused("end_unconfirmed")])
+        self.assertRegex(str(error), "end_unconfirmed")
+        contained.assert_called_once()                                              # whatever was started is ended before the failure leaves
+
+    def test_contain_job_kills_then_removes_every_journaled_container_and_tolerates_the_gone_and_refuses_the_stuck(self):
+        calls = []
+        def execute(job, argv, env, deadline, bounds):
+            calls.append(argv[3:])
+            return (0, b"", b"") if argv[3] != "rm" or argv[-1] != "b" * 64 else (1, b"", b"Error: No such container: " + argv[-1].encode())
+        for role, cid in (("runner", "a" * 64), ("relay", "b" * 64)):
+            (self.job.dir / (role + ".cid")).write_text(cid)
+        with mock.patch.object(d.Path, "read_bytes", self.real_read_bytes), mock.patch.object(d.hashlib, "sha256") as digest:
+            digest.return_value.hexdigest.return_value = d.CLI_SHA
+            self.assertEqual(d.contain_job(self.job, execute=execute, now=lambda: 0), ["a" * 64, "b" * 64])
+        self.assertEqual(calls, [("kill", "a" * 64), ("rm", "-f", "a" * 64), ("kill", "b" * 64), ("rm", "-f", "b" * 64)])
+        with mock.patch.object(d.hashlib, "sha256") as digest, mock.patch.object(d.Path, "read_bytes", self.real_read_bytes):
+            digest.return_value.hexdigest.return_value = d.CLI_SHA
+            with self.assertRaisesRegex(LiveProfileRefused, "contain_failed"):
+                d.contain_job(self.job, execute=lambda *a: (1, b"", b"permission denied"), now=lambda: 0)
+        self.assertEqual(d.contain_job(jobs.Job(self.root, "job-empty"), execute=execute, now=lambda: 0), [])   # nothing journaled, nothing run
 
     def test_supervisor_holds_uncertain_backend_rows(self):
         """L: no capacity release before backend end; direct control-call boundary only."""

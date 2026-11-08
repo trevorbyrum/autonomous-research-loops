@@ -72,7 +72,8 @@ class Composition:
         if not all(environ.get(name) for name in names):
             return None
         return QualifiedAuthority(jobs_root, record=Path(environ[names[0]]).read_bytes(), pin=environ[names[1]], manifest=Path(environ[names[2]]).read_bytes(),
-                                  stage=lambda topic, data, media: self.station.spool.stage(topic, data, media))
+                                  stage=lambda topic, data, media: self.station.spool.stage(topic, data, media),
+                                  read=lambda topic, digest: self.station.spool.read(digest, topic_id=topic))
 
     def recorders(self) -> dict:
         """`Supervisor(recorders=...)`: the three purposes the supervisor refuses to submit without one (RECORDED)."""

@@ -17,7 +17,8 @@ from gen2.core import canonical, instants
 from gen2.core.control import ControlUnavailable
 from gen2.core.evidence_media import EVIDENCE, EVIDENCE_MEDIA
 from gen2.supervisor import jobs
-from gen2.supervisor.isolation import ABSENT_PROFILE, refuse_live_profile
+from gen2.supervisor import docker_cli
+from gen2.supervisor.isolation import ABSENT_PROFILE, LiveProfileRefused, refuse_live_profile
 from gen2.supervisor.spool import Spool, SpoolConflict, SpoolFull, read_scratch
 
 OUTPUT = "outcome.json"          # the executor's one result file; its name is the supervisor's (C-9)
@@ -697,6 +698,11 @@ class Supervisor:
         """End the execution group (timeout or cancellation) and record it;
         the termination is kept before its record is staged (A4)."""
         ended = self._end_group(job, view["identity"])
+        if job.read("docker-plan.json") is not None:   # a Docker-managed container is not in the job's process group: kill and remove what the job created
+            try:
+                docker_cli.contain_job(job)
+            except LiveProfileRefused:
+                ended = {**ended, "confirmed": False}   # a container that could not be ended leaves the end unconfirmed, so capacity is not released (L-7)
         observation = {"process": self._process(view["identity"]), "exit": job.read("exit.json"), "termination": {"reason": reason},
                        "descendants": self._handled(ended),
                        "output": {"status": "not_collected", "content_hash": None, "size_bytes": None, "declared_digest": None, "detail": None},

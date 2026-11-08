@@ -20,6 +20,7 @@ from gen2.router.schemas import SchemaSet
 
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 DISCOVERY = ("GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN_FILE")   # the gateway's URL and its token FILE; the token itself is never read here
+LIVE = ("GEN2_MANIFEST", "GEN2_RETAINED_DIR", "GEN2_MAILBOX_REQUESTS", "GEN2_MAILBOX_RESPONSES")   # protected paths a live child reads (never secrets)
 GATEWAY = {"commercial": False, "accept_per_item": False, "policy_version": 1}
 LANES = ["semanticscholar"]
 
@@ -61,5 +62,5 @@ def driver_factory(station, composition: compose.Composition, environ: Mapping[s
         bundle = station.router.status({})["config_bundles"]["active"]["bundle_hash"]
         kits = composition.kits(topic_id, lanes=LANES, gateway=GATEWAY, validate=validate)
         return Driver(station, topic_id=topic_id, bundle_hash=bundle, kits=kits, prompt_dir=Path(environ.get("GEN2_PROMPTS", PROMPTS)),
-                      discovery_env={k: environ[k] for k in DISCOVERY if k in environ}, live=live, say=lambda line: None)
+                      discovery_env={k: environ[k] for k in DISCOVERY if k in environ}, live_env={k: environ[k] for k in LIVE if k in environ}, live=live, say=lambda line: None)
     return make

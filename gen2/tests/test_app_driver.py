@@ -56,7 +56,7 @@ class Router:
 
 class Supervisor:
     def __init__(self, world):
-        self.world, self.submitted, self.recovered, self.script = world, [], 0, {}
+        self.world, self.submitted, self.recovered, self.script, self.lives = world, [], 0, {}, []
 
     jobs_root = property(lambda self: self.world.root / "jobs")
 
@@ -64,6 +64,7 @@ class Supervisor:
         return supervisor_jobs.Job(self.jobs_root, "job-" + invocation_id)   # the real durable job files
 
     def submit(self, order, live=False):
+        self.lives.append(live)
         if self.world.fail_submit:
             raise OSError("disk full")
         self.job(order.invocation_id).prepare({"invocation_id": order.invocation_id, "topic_id": order.topic_id, "env": dict(order.env)})
@@ -403,7 +404,7 @@ class DriverTest(unittest.TestCase):
                                  ("extra key", contract("research_pass", "research"), {"works": [{"artifact_ref": {**good, "x": 1}}]}),
                                  ("bad digest", contract("research_pass", "research"), {"works": [{"artifact_ref": {**good, "content_hash": "sha256:zz"}}]}),
                                  ("nested list missing", contract("verification", "verify"), {"claims": [{"text": "t"}]}),
-                                 ("unsupported media", contract("research_pass", "research"), {"works": [{"artifact_ref": self.ref(b"bin", "application/octet-stream")}]})):
+                                 ("unsupported media", contract("research_pass", "research"), {"works": [{"artifact_ref": self.ref(b"bin", "image/png")}]})):
             with self.subTest(case), self.assertRaises(Refused):
                 self.aside(step, view, self.world.root / f"s-{case.replace(' ', '-')}")
 
@@ -463,6 +464,22 @@ class DriverTest(unittest.TestCase):
         for case, env in (("the token itself", {"GEN2_SECRET_GATEWAY_TOKEN": "s3cret"}), ("any token variable", {"GEN2_TOKEN": "x"})):
             with self.subTest(case), self.assertRaises(Refused):
                 self.world.driver(discovery_env=env)
+
+    def test_only_a_live_model_order_gets_the_live_children_protected_paths(self):
+        paths = {"GEN2_MANIFEST": "/etc/gen2/manifest.json", "GEN2_MAILBOX_REQUESTS": "/run/gen2/q"}
+        topic = {**self.world.topic, "status": "queued", "active_contract_revision": 1}
+        for live in (False, True):
+            station = self.world.station()
+            d = self.world.driver(station, live=live, live_env=paths)
+            d.issue(contract("research_pass", "research"), topic)
+            d.issue(Step("discovery", "search", 1, "c1"), topic, proposer=contract("research_pass", "research"))
+            research, discovery = station.supervisor.submitted
+            with self.subTest(live=live):
+                self.assertEqual("GEN2_MANIFEST" in research.env, live)
+                self.assertNotIn("GEN2_MANIFEST", discovery.env)                       # discovery is never a live order
+                self.assertEqual(station.supervisor.lives, [live, False])
+            self.tearDown()
+            self.setUp()
 
     def test_a_discovery_run_needs_its_proposer_and_the_context_carries_it(self):
         station = self.world.station()
