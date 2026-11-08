@@ -17,3 +17,12 @@ target "images" {
   output = ["type=docker"]
   pull = false
 }
+
+target "cli-contract" {
+  dockerfile-inline = "FROM scratch"
+  context = "."
+  network = "none"
+  pull = false
+  platforms = ["linux/amd64"]
+  output = ["type=cacheonly"]
+}
