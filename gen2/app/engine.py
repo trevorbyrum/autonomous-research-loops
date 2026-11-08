@@ -254,10 +254,11 @@ def main(argv: list[str] | None = None, environ=os.environ) -> int:
         credentials = Credentials.from_environ(environ)
         bundle = None if args.bundle is None else json.loads(Path(args.bundle).read_text(encoding="utf-8"))
         composition = compose.Composition()
+        authority = composition.authority(Path(args.root) / "jobs", environ)   # None unless a verified qualification record is named: live stays closed
         engine = Engine(lambda: composition.bind(open_station(args.root, station_id=args.station_id, host_id=args.host_id, clock=utc_now,
                                                               config_bundle=bundle, create=args.create, auth_root=args.auth_root,
-                                                              router_options={"gateway_captures": composition.captures},
-                                                              supervisor_options={"recorders": composition.recorders()})).station,
+                                                              router_options={"gateway_captures": composition.captures, "dispatch_authority": authority},
+                                                              supervisor_options={"recorders": composition.recorders(), "dispatch": authority})).station,
                         credentials, listen=(host, int(port)),
                         walker=lambda station: walk.Walker(walk.driver_factory(station, composition, environ)))
     except (CredentialsRefused, StationRefused, ValueError, OSError) as refused:  # never a token in any of these messages

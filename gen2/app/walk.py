@@ -28,15 +28,17 @@ FAILURES = ((Refused, "refused"), (OSError, "io"), (ValueError, "malformed"), (K
 
 
 class Walker:
-    def __init__(self, make_driver: Callable[[str], Driver]) -> None:
+    def __init__(self, make_driver: Callable[..., Driver]) -> None:
         self._make_driver = make_driver
 
     def walk(self, request: Mapping) -> dict:
-        """{topic_id} -> {status: ok, action: issue|advance|wait|stop|done, code?, command?}, or {status: refused, reason}. One tick."""
-        if not isinstance(request, Mapping) or set(request) != {"topic_id"} or not isinstance(request["topic_id"], str) or not TOPIC.match(request["topic_id"]):
+        """{topic_id, live?} -> {status: ok, action: issue|advance|wait|stop|done, code?, command?}, or {status: refused, reason}. One tick.
+        `live` is the operator's per-call permission to start live work: the exact boolean true, default off, never stored."""
+        if (not isinstance(request, Mapping) or not {"topic_id"} <= set(request) <= {"topic_id", "live"} or not isinstance(request["topic_id"], str)
+                or not TOPIC.match(request["topic_id"]) or type(request.get("live", False)) is not bool):
             return {"status": "refused", "reason": "request_invalid"}
         try:
-            action = self._make_driver(request["topic_id"]).tick()
+            action = self._make_driver(request["topic_id"], live=request.get("live", False)).tick()
         except tuple(kind for kind, _ in FAILURES) as error:
             return {"status": "stopped", "code": next(word for kind, word in FAILURES if isinstance(error, kind))}
         if isinstance(action, workflow.Wait):
@@ -53,11 +55,11 @@ def validate(name: str, document: object) -> None:
         raise Refused(f"{name}: {errors[0]}")
 
 
-def driver_factory(station, composition: compose.Composition, environ: Mapping[str, str]) -> Callable[[str], Driver]:
+def driver_factory(station, composition: compose.Composition, environ: Mapping[str, str]) -> Callable[..., Driver]:
     """The driver for one topic, built per call from the opened station (the active bundle and the kits are read fresh each time)."""
-    def make(topic_id: str) -> Driver:
+    def make(topic_id: str, live: bool = False) -> Driver:
         bundle = station.router.status({})["config_bundles"]["active"]["bundle_hash"]
         kits = composition.kits(topic_id, lanes=LANES, gateway=GATEWAY, validate=validate)
         return Driver(station, topic_id=topic_id, bundle_hash=bundle, kits=kits, prompt_dir=Path(environ.get("GEN2_PROMPTS", PROMPTS)),
-                      discovery_env={k: environ[k] for k in DISCOVERY if k in environ}, say=lambda line: None)
+                      discovery_env={k: environ[k] for k in DISCOVERY if k in environ}, live=live, say=lambda line: None)
     return make

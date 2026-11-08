@@ -19,6 +19,7 @@ from gen2.discovery.exchanges import ExchangeIndex
 from gen2.exec import challenge, dossier, review, verify, verify_record, views
 from gen2.exec.common import Refused
 from gen2.supervisor import jobs as supervisor_jobs
+from gen2.supervisor.authority import QualifiedAuthority
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,15 @@ class Composition:
     def captures(self):
         """`Router(gateway_captures=...)`: the index, read lazily."""
         return type("Captures", (), {"read": lambda _, **key: self.exchanges(key["topic_id"]).read(**key)})()
+
+    def authority(self, jobs_root, environ: Mapping[str, str]):
+        """The qualified dispatch authority, only if the record, its pin and the manifest are all named in the environment (the record and
+        the manifest are protected mounts; the pin is the operator's, apart from both). Otherwise None: every live order then refuses."""
+        names = ("GEN2_QUALIFICATION_RECORD", "GEN2_QUALIFICATION_PIN", "GEN2_MANIFEST")
+        if not all(environ.get(name) for name in names):
+            return None
+        return QualifiedAuthority(jobs_root, record=Path(environ[names[0]]).read_bytes(), pin=environ[names[1]], manifest=Path(environ[names[2]]).read_bytes(),
+                                  stage=lambda topic, data, media: self.station.spool.stage(topic, data, media))
 
     def recorders(self) -> dict:
         """`Supervisor(recorders=...)`: the three purposes the supervisor refuses to submit without one (RECORDED)."""

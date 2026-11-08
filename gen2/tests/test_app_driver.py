@@ -63,14 +63,14 @@ class Supervisor:
     def job(self, invocation_id):
         return supervisor_jobs.Job(self.jobs_root, "job-" + invocation_id)   # the real durable job files
 
-    def submit(self, order):
+    def submit(self, order, live=False):
         if self.world.fail_submit:
             raise OSError("disk full")
         self.job(order.invocation_id).prepare({"invocation_id": order.invocation_id, "topic_id": order.topic_id, "env": dict(order.env)})
         self.submitted.append(order)
         return "running"
 
-    def advance(self, invocation_id):
+    def advance(self, invocation_id, live_start=False):
         result = self.script.get(invocation_id, "running")
         if result == "committed":
             self.job(invocation_id).write("journal.json", {"settled": "committed", "collected": {"result": {"content_hash": f"sha256:{invocation_id}"}}})

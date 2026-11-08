@@ -31,12 +31,19 @@ class Stub:
 
 class WalkerTest(unittest.TestCase):
     def walker(self, result, delay=0.0):
-        return walk.Walker(lambda topic: Stub(result, delay))
+        return walk.Walker(lambda topic, live=False: Stub(result, delay))
 
     def test_a_closed_body_is_required_and_anything_else_is_refused_without_reflecting_it(self):
-        for body in ({}, {"topic_id": TOPIC, "live": True}, {"topic_id": 7}, {"topic_id": "no colon"}, {"topic_id": TOPIC + "\n"}, {"topic": TOPIC}, ["x"], None):
+        for body in ({}, {"topic_id": TOPIC, "live": 1}, {"topic_id": TOPIC, "live": "yes"}, {"topic_id": TOPIC, "live": None}, {"topic_id": TOPIC, "extra": True}, {"topic_id": 7}, {"topic_id": "no colon"}, {"topic_id": TOPIC + "\n"}, {"topic": TOPIC}, ["x"], None):
             with self.subTest(body=body):
                 self.assertEqual(self.walker(workflow.Done()).walk(body), {"status": "refused", "reason": "request_invalid"})
+
+    def test_live_is_the_exact_boolean_off_by_default_and_reaches_the_driver_only_when_true_on_that_call(self):
+        seen = []
+        walker = walk.Walker(lambda topic, live=False: seen.append(live) or Stub(workflow.Done()))
+        for body in ({"topic_id": TOPIC}, {"topic_id": TOPIC, "live": False}, {"topic_id": TOPIC, "live": True}, {"topic_id": TOPIC}):
+            self.assertEqual(walker.walk(body)["status"], "ok")
+        self.assertEqual(seen, [False, False, True, False])    # nothing is remembered between calls
 
     def test_each_action_has_one_fixed_reply(self):
         step = workflow.Step("research_pass", "scope", 1, "p2")
@@ -66,7 +73,7 @@ class HostedWalk(of.OperatorTestCase):
         self.assertEqual(self.command("walk", {"topic_id": TOPIC}), (200, {"status": "refused", "reason": "walk_unavailable", "detail": "operation refused"}))
 
     def test_only_an_authenticated_operator_may_walk_and_the_body_names_no_authority(self):
-        self.engine_with(lambda topic: Stub(workflow.Done()))
+        self.engine_with(lambda topic, live=False: Stub(workflow.Done()))
         self.assertEqual(self.command("walk", {"topic_id": TOPIC}), (200, {"status": "ok", "action": "done"}))
         self.assertEqual(self.command("walk", {"topic_id": TOPIC}, token=of.EXPORTER_TOKEN)[0], 403)
         self.assertEqual(self.command("walk", {"topic_id": TOPIC}, token=None)[0], 401)
@@ -74,7 +81,7 @@ class HostedWalk(of.OperatorTestCase):
         self.assertEqual((code, reply["reason"]), (400, "authority_in_request"))
 
     def test_the_mcp_transport_applies_the_same_rule(self):
-        self.engine_with(lambda topic: Stub(workflow.Done()))
+        self.engine_with(lambda topic, live=False: Stub(workflow.Done()))
         message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "walk", "arguments": {"topic_id": TOPIC}}}
         code, reply, _ = self.http("POST", "/mcp", message)
         self.assertEqual(code, 200)
@@ -104,7 +111,7 @@ class HostedWalk(of.OperatorTestCase):
                 time.sleep(tick)
                 order.append(("end", time.monotonic()))
                 return workflow.Done()
-        self.engine_with(lambda topic: Slow(None))
+        self.engine_with(lambda topic, live=False: Slow(None))
         replies, health = [], []
         first = threading.Thread(target=lambda: replies.append(self.command("walk", {"topic_id": TOPIC})))
         second = threading.Thread(target=lambda: replies.append(self.command("walk", {"topic_id": TOPIC})))

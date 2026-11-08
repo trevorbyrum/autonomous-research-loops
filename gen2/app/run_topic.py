@@ -22,7 +22,7 @@ COMMANDS = {"apply_operator_decision kind=brief_confirmation", "apply_operator_d
             "apply_operator_decision kind=contract_approval", "apply_operator_decision kind=completion_approval", "open_review"}
 STOPS = {"hold_open": "an open hold stops the walk; clear it, then run this again", "needs_person": "a step needs a person (see status)",
          "contract_changed": "work from another contract revision has not settled", "budget": "the scoping rounds are spent",
-         "topic_blocked": "the topic is held, blocked or retired", "refused": "an input was refused", "io": "a file operation failed",
+         "topic_blocked": "the topic is held, blocked or retired", "live_not_authorized": "a live step needs --live on this run", "refused": "an input was refused", "io": "a file operation failed",
          "malformed": "a record was malformed", "step_failed": "a step failed", "step_unknown": "a step's outcome is unknown", "step_held": "a step is held"}
 NO_ANSWER = "no answer from the engine; the tick may or may not have run: check status before running this again"
 MAX_CALLS = 1000
@@ -30,10 +30,10 @@ MAX_CALLS = 1000
 
 def main(argv: Sequence[str], *, environ: Mapping[str, str] = os.environ, call: Callable = cli.request, say: Callable[[str], None] = print,
          sleep: Callable[[float], None] = time.sleep) -> int:
-    if len(argv) != 1:
-        say("usage: gen2.app.run_topic <topic>")
+    if len(argv) not in (1, 2) or (len(argv) == 2 and argv[1] != "--live"):
+        say("usage: gen2.app.run_topic <topic> [--live]")
         return 2
-    topic = argv[0]
+    topic, live = argv[0], len(argv) == 2   # --live is this run's permission to start live work; every call carries it, nothing stores it
     url, token = environ.get("GEN2_OPERATOR_URL", "http://127.0.0.1:8770"), environ.get("GEN2_OPERATOR_TOKEN")
 
     def ask(method: str, path: str, body: bytes | None = None):
@@ -47,7 +47,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str] = os.environ, call: 
             return None
         return reply
     for _ in range(MAX_CALLS):
-        reply = ask("POST", "/v1/commands/walk", json.dumps({"topic_id": topic}).encode())
+        reply = ask("POST", "/v1/commands/walk", json.dumps({"topic_id": topic, **({"live": True} if live else {})}).encode())
         if reply is None or reply["status"] == "refused":
             if reply is not None:
                 say("the engine refused the request")

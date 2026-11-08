@@ -61,12 +61,12 @@ def _now() -> datetime:
 class Driver:
     def __init__(self, station, *, topic_id: str, bundle_hash: str, kits: Mapping[tuple[str, str], Kit], prompt_dir: Path,
                  child_module: str = "gen2.app.child", discovery_module: str = "gen2.discovery.child", discovery_env: Mapping[str, str] | None = None,
-                 max_passes: int = 1, max_rounds: int = 3, clock: Callable[[], datetime] = _now, sleep: Callable[[float], None] = time.sleep,
+                 live: bool = False, max_passes: int = 1, max_rounds: int = 3, clock: Callable[[], datetime] = _now, sleep: Callable[[float], None] = time.sleep,
                  say: Callable[[str], None] = print) -> None:
         self.station, self.topic_id, self.bundle_hash, self.kits = station, topic_id, bundle_hash, dict(kits)
         self.prompt_dir, self.max_passes, self.max_rounds = Path(prompt_dir), max_passes, max_rounds
         self.clock, self.sleep, self.say = clock, sleep, say
-        self.child_module, self.discovery_module, self.last_topic = child_module, discovery_module, {}
+        self.child_module, self.discovery_module, self.last_topic, self.live = child_module, discovery_module, {}, live
         self.discovery_env = dict(discovery_env or {})
         if any("TOKEN" in key and not key.endswith("_FILE") for key in self.discovery_env):
             raise Refused("a token never rides in the order: give the path of a file (a *_FILE variable)")
@@ -240,12 +240,12 @@ class Driver:
                                      entry=entry, view=view, truncation=truncation)
         digest = orders.write_inputs(directory, entry=entry, prompt=prompt, document=document)
         spec = self._order(step, digest, str(directory))   # prepare() accepts a job directory that already holds the inputs
-        self.station.supervisor.submit(WorkOrder(invocation_id=spec.invocation_id, kind=spec.kind, topic_id=spec.topic_id,
-                                                 config_bundle_hash=spec.config_bundle_hash, deadline_at=spec.deadline_at,
-                                                 lease_expires_at=spec.lease_expires_at,
-                                                 env={**spec.env, "GEN2_CONTEXT": step.context, "GEN2_STEP": f"{step.kind}/{step.purpose}#{step.ordinal}",
-                                                      **(self.discovery_env if step.kind == "discovery" else {})},
-                                                 command=(spec.command[0], "-m", self.discovery_module if step.kind == "discovery" else self.child_module, str(directory))))
+        order = WorkOrder(invocation_id=spec.invocation_id, kind=spec.kind, topic_id=spec.topic_id, config_bundle_hash=spec.config_bundle_hash,
+                          deadline_at=spec.deadline_at, lease_expires_at=spec.lease_expires_at,
+                          env={**spec.env, "GEN2_CONTEXT": step.context, "GEN2_STEP": f"{step.kind}/{step.purpose}#{step.ordinal}",
+                               **(self.discovery_env if step.kind == "discovery" else {})},
+                          command=(spec.command[0], "-m", self.discovery_module if step.kind == "discovery" else self.child_module, str(directory)))
+        self.station.supervisor.submit(order, live=self.live and (step.kind, step.purpose) in workflow.MODEL)   # only a model purpose is a live order
 
     def tick(self) -> workflow.Action:
         """One decision, and its one act. The completion wait prints the router's own status `review` block (core.review_presentation.present). Any open hold of the topic stops the walk before anything is issued or advanced."""
@@ -260,7 +260,9 @@ class Driver:
         if isinstance(action, Issue):
             self.issue(action.step, topic, action.proposer)
         elif isinstance(action, Advance):
-            result = self.station.supervisor.advance(self.invocation_id(action.step))
+            result = self.station.supervisor.advance(self.invocation_id(action.step), live_start=self.live)
+            if result == "live_not_authorized":   # a stored live order is not permission: this call did not say live
+                return Stop(f"{action.step.kind}/{action.step.purpose} #{action.step.ordinal}: {result}", result)
             if result in HALTS:
                 return Stop(f"{action.step.kind}/{action.step.purpose} #{action.step.ordinal}: {result}", "needs_person")
         return action
