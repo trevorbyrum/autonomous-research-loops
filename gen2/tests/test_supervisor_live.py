@@ -147,7 +147,7 @@ class LiveStart(LiveWorld):
         self.assertTrue((job.dir / "spawn.json").exists())                                # authorization came first, then the start
         self.assertEqual(self.drive(supervisor), "committed")
         (result,) = self.audit("dispatch_result")
-        self.assertEqual((result["charge_minor_units"], result["trial_stopped"], result["response"]["charge_state"]), (400, True, "worst_case"))
+        self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]), (400, "worst_case"))   # an unknown cost charges U (whether the trial then stops is the Router's rule: DEBT-052 amendment)
         self.assertEqual(result["admission_ref"], job.read("journal.json")["dispatch"]["admission_ref"])
 
     def drive(self, supervisor):
