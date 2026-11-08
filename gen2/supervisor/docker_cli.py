@@ -330,10 +330,14 @@ class DockerCLI:
         held = batch.held
         disposition = rejection.classify(held["access"], held["events"], held.get("fixture"), ended["State"]["ExitCode"], model=MODEL,
                                          route="real" if real else "fixture", upstream=self.plan.get("upstream"))
-        refs.append(batch.stage(json.dumps(rejection.usage_record(
-            {"origin": self.plan["origin"]}, held["events"], elapsed=elapsed, gateway_refs=[], raw_refs=list(refs),
-            observed_model=None if real else _observed_model(held["fixture"]), configured_model=MODEL, observed=not real), sort_keys=True).encode(), "application/json"))
-        self.job.write("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition})
+        try:   # usage is optional normalization: the classified disposition and the raw references are retained whether or not it can be built
+            refs.append(batch.stage(json.dumps(rejection.usage_record(
+                {"origin": self.plan["origin"]}, held["events"], elapsed=elapsed, gateway_refs=[], raw_refs=list(refs),
+                observed_model=None if real else _observed_model(held["fixture"]), configured_model=MODEL, observed=not real), sort_keys=True).encode(), "application/json"))
+            usage = "recorded"
+        except LiveProfileRefused:
+            usage = "refused"
+        self.job.write("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition, "usage": usage})
         return refs
 
     def remove(self, cid, ack):
@@ -425,25 +429,50 @@ if __name__ == "__main__":
     initialize(sys.argv[1])
 
 
-def contain_job(job, *, execute=capture, now=time.monotonic) -> list[str]:
+class ContainFailed(LiveProfileRefused):
+    """At least one journaled container could not be shown ended; `outcomes` has every attempt, the failures included."""
+
+    def __init__(self, outcomes: list[dict]) -> None:
+        super().__init__("contain_failed")
+        self.outcomes = outcomes
+
+
+def contain_job(job, *, execute=capture, now=time.monotonic) -> list[dict]:
     """Kill and remove every container this job created, from its journaled cidfiles (initializer, relay, runner): the containment a failed or
-    cancelled live attempt owes, whatever the process group did (a Docker-managed container is not in the job's group). A container already gone
-    is fine; one that cannot be ended refuses, so the caller keeps the end unconfirmed. Returns the CIDs handled."""
-    handled = []
+    cancelled live attempt owes, whatever the process group did (a Docker-managed container is not in the job's group). EVERY journaled container
+    is attempted, kill and removal independently, whatever happened to the others (a runner that will not die must not leave the relay, its provider
+    path, running); each outcome is journaled in `containment.json`. A container already gone is fine. A global trust failure (the CLI pin) stops
+    everything; any other failure, or an unreadable journal entry, is raised AFTER all attempts as `ContainFailed`, so the caller leaves the end
+    unconfirmed. Returns the outcomes."""
+    outcomes, failed = [], False
     for role in ("runner", "relay", "initializer"):
         found = read_scratch(job.dir, role + ".cid", 4096)
-        if found["status"] != "present":
+        if found["status"] == "absent":
+            continue   # never created
+        entry = {"role": role, "cid": None, "kill": "not_attempted", "rm": "not_attempted"}
+        outcomes.append(entry)
+        cid = found["data"].strip().decode("ascii", "replace") if found["status"] == "present" else ""
+        if not CID.fullmatch(cid):
+            entry["kill"] = entry["rm"] = "journal_unreadable"
+            failed = True
             continue
-        cid = found["data"].strip().decode("ascii", "replace")
-        require(CID.fullmatch(cid), "contain_identity")
+        entry["cid"] = cid
         try:
-            require(hashlib.sha256(Path(CLI).read_bytes()).hexdigest() == CLI_SHA, "cli_pin")   # the pinned CLI only, checked when there is something to end
+            require(hashlib.sha256(Path(CLI).read_bytes()).hexdigest() == CLI_SHA, "cli_pin")   # the pinned CLI only; a failure here is not retried around
         except OSError:
             raise LiveProfileRefused("cli_pin") from None
-        for args in (("kill", cid), ("rm", "-f", cid)):
-            code, out, err = execute(job, (CLI, "--host", "unix://" + SOCKET, *args), {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
-                                     "DOCKER_CONFIG": str(job.dir / "docker-config")}, now() + 10, (65536, 4096))
+        for step, args in (("kill", ("kill", cid)), ("rm", ("rm", "-f", cid))):
+            try:
+                code, out, err = execute(job, (CLI, "--host", "unix://" + SOCKET, *args), {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
+                                         "DOCKER_CONFIG": str(job.dir / "docker-config")}, now() + 10, (65536, 4096))
+            except (OSError, LiveProfileRefused):
+                entry[step], failed = "error", True
+                continue
             gone = b"No such container" in err or b"is not running" in err
-            require(code == 0 or gone, "contain_failed")
-        handled.append(cid)
-    return handled
+            entry[step] = "ok" if code == 0 else "gone" if gone else "failed"
+            failed = failed or entry[step] == "failed"
+    if outcomes:
+        job.write("containment.json", {"outcomes": outcomes})
+    if failed:
+        raise ContainFailed(outcomes)
+    return outcomes

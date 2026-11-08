@@ -2,6 +2,7 @@
 rejection operands the authority derives from the backend's own records. Limits: DockerCLI is a stub here (its own sequence is test_docker_cli's);
 the host-side observers are lane C's, so the mailbox is tested only as the in-engine side of the exchange. No container and no provider run (F1).
 """
+import contextlib
 import json
 import tempfile
 import unittest
@@ -13,48 +14,6 @@ from gen2.core import canonical
 from gen2.exec.common import Refused
 from gen2.supervisor import docker_cli, jobs
 from gen2.supervisor.isolation import LiveProfileRefused
-
-NONCE, CID = "n" * 32, "c" * 64
-
-
-class Mail(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.requests, self.responses = Path(self.tmp.name, "requests"), Path(self.tmp.name, "responses")
-        self.requests.mkdir()
-        self.responses.mkdir()
-        self.box = live.Mailbox(self.requests, self.responses, NONCE, 1, sleep=lambda s: None)
-
-    def answer(self, op, cid=None, **fields):
-        name = f"{NONCE}-1-{cid or 'attempt'}-{op}.json"
-        (self.responses / name).write_bytes(canonical.canonical_bytes({"op": op, "nonce": NONCE, "attempt": 1, "cid": cid, **fields}))
-
-    def test_an_end_is_confirmed_only_by_a_matching_host_answer_never_by_default(self):
-        original = {"Id": CID}
-        self.assertFalse(self.box.descendants_ended(original))                      # no answer
-        self.answer("ended", CID, ended=False)
-        self.assertFalse(self.box.descendants_ended(original))                      # the host says not ended
-        self.answer("ended", "d" * 64, ended=True)
-        self.assertFalse(self.box.descendants_ended(original))                      # an answer about another container
-        self.answer("ended", CID, ended=True)
-        self.assertTrue(self.box.descendants_ended(original))
-        (self.responses / f"{NONCE}-1-{CID}-ended.json").write_bytes(canonical.canonical_bytes({"op": "ended", "nonce": "x" * 32, "attempt": 1, "cid": CID, "ended": True}))
-        self.assertFalse(self.box.descendants_ended(original))                      # another nonce in the right file name
-        (self.responses / f"{NONCE}-1-{CID}-ended.json").write_bytes(b"{not json")
-        self.assertFalse(self.box.descendants_ended(original))
-        self.assertTrue((self.requests / f"{NONCE}-1-{CID}-ended.json").exists())   # each question was written for the host to read
-
-    def test_drain_waits_for_the_hosts_answer_and_times_out_false(self):
-        self.assertFalse(self.box.drain(0.0))
-        self.answer("drain", drained=True)
-        self.assertTrue(self.box.drain(1.0))
-        self.answer("drain", drained=False)
-        self.assertFalse(self.box.drain(1.0))
-
-    def test_close_admission_writes_one_request_and_no_router_call(self):
-        self.box.close_admission()
-        self.assertEqual([p.name for p in self.requests.iterdir()], [f"{NONCE}-1-attempt-close_admission.json"])
 
 
 class Batch(unittest.TestCase):
@@ -73,7 +32,7 @@ class Batch(unittest.TestCase):
 
 
 class Agent(unittest.TestCase):
-    ENV = {"GEN2_MANIFEST": "m", "GEN2_RETAINED_DIR": "r", "GEN2_MAILBOX_REQUESTS": "q", "GEN2_MAILBOX_RESPONSES": "p"}
+    ENV = {"GEN2_MANIFEST": "m", "GEN2_RETAINED_DIR": "r"}
 
     def world(self, *, plan=True):
         tmp = tempfile.TemporaryDirectory()
@@ -85,7 +44,7 @@ class Agent(unittest.TestCase):
             job.write("docker-plan.json", {"origin": {"invocation_id": "inv_live00001"}, "generation": "g" * 32})
         (root / "manifest.json").write_text(json.dumps({"tree": "t"}))
         (root / "r").mkdir()
-        env = {**self.ENV, "GEN2_MANIFEST": str(root / "manifest.json"), "GEN2_RETAINED_DIR": str(root / "r"), "GEN2_MAILBOX_REQUESTS": str(root / "q"), "GEN2_MAILBOX_RESPONSES": str(root / "p")}
+        env = {**self.ENV, "GEN2_MANIFEST": str(root / "manifest.json"), "GEN2_RETAINED_DIR": str(root / "r")}
         return job, job.scratch, env
 
     def stub(self, *, disposition="credentials_unused", judgment=b'{"judgment_version": "judgment-review/1", "outcome": "sufficient", "summary": "ok"}', refuse=None):
@@ -100,13 +59,25 @@ class Agent(unittest.TestCase):
                 if judgment is not None:
                     batch.stage(judgment, "application/json", "judgment")
                 self.job.write("docker-complete.json", {"origin": {}, "refs": [], "disposition": {"disposition": disposition}})
-        return mock.patch.object(docker_cli, "DockerCLI", Stub)
+        observers = mock.Mock(close_admission=mock.Mock(), descendants_ended=mock.Mock(return_value=True), drain=mock.Mock(return_value=True))
+        stack = contextlib.ExitStack()
+        stack.enter_context(mock.patch.object(docker_cli, "DockerCLI", Stub))
+        stack.enter_context(mock.patch.object(live, "observers_from", lambda env: observers))   # the authenticated adapter is a separate change; a stand-in here
+        return stack
 
     def run_agent(self, job, scratch, env, **kw):
         out = scratch / "out"
         out.mkdir(exist_ok=True)
         with self.stub(**kw):
             return live.agent_for(scratch, env)(b"", b"", out), out
+
+    def test_with_every_path_present_but_no_authenticated_observer_adapter_the_agent_still_refuses_and_writes_nothing(self):
+        """By construction: until the authenticated exchange exists nothing can confirm an end, so no live run can."""
+        job, scratch, env = self.world()
+        before = sorted(p.name for p in scratch.iterdir())
+        with self.assertRaisesRegex(Refused, "observers_unavailable"):
+            live.agent_for(scratch, env)
+        self.assertEqual(sorted(p.name for p in scratch.iterdir()), before)
 
     def test_a_job_without_a_plan_keeps_the_closed_entrance_and_one_without_observers_refuses_by_name(self):
         job, scratch, env = self.world(plan=False)

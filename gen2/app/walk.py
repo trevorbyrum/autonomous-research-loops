@@ -20,7 +20,7 @@ from gen2.router.schemas import SchemaSet
 
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 DISCOVERY = ("GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN_FILE")   # the gateway's URL and its token FILE; the token itself is never read here
-LIVE = ("GEN2_MANIFEST", "GEN2_RETAINED_DIR", "GEN2_MAILBOX_REQUESTS", "GEN2_MAILBOX_RESPONSES")   # protected paths a live child reads (never secrets)
+LIVE = ("GEN2_MANIFEST", "GEN2_RETAINED_DIR")   # protected paths a live child reads (never secrets)
 GATEWAY = {"commercial": False, "accept_per_item": False, "policy_version": 1}
 LANES = ["semanticscholar"]
 

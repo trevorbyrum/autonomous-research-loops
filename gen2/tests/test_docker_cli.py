@@ -436,22 +436,62 @@ class DockerBoundary(unittest.TestCase):
         self.assertRegex(str(error), "end_unconfirmed")
         contained.assert_called_once()                                              # whatever was started is ended before the failure leaves
 
-    def test_contain_job_kills_then_removes_every_journaled_container_and_tolerates_the_gone_and_refuses_the_stuck(self):
+    def contain_world(self, execute, roles=(("runner", "a" * 64), ("relay", "b" * 64), ("initializer", "c" * 64))):
+        for role, cid in roles:
+            (self.job.dir / (role + ".cid")).write_text(cid)
+        pin = mock.patch.object(d.hashlib, "sha256")
+        digest = pin.start()
+        self.addCleanup(pin.stop)
+        digest.return_value.hexdigest.return_value = d.CLI_SHA
+        return mock.patch.object(d.Path, "read_bytes", self.real_read_bytes)
+
+    def test_contain_job_kills_then_removes_every_journaled_container_and_tolerates_the_gone(self):
         calls = []
         def execute(job, argv, env, deadline, bounds):
             calls.append(argv[3:])
             return (0, b"", b"") if argv[3] != "rm" or argv[-1] != "b" * 64 else (1, b"", b"Error: No such container: " + argv[-1].encode())
-        for role, cid in (("runner", "a" * 64), ("relay", "b" * 64)):
-            (self.job.dir / (role + ".cid")).write_text(cid)
-        with mock.patch.object(d.Path, "read_bytes", self.real_read_bytes), mock.patch.object(d.hashlib, "sha256") as digest:
-            digest.return_value.hexdigest.return_value = d.CLI_SHA
-            self.assertEqual(d.contain_job(self.job, execute=execute, now=lambda: 0), ["a" * 64, "b" * 64])
-        self.assertEqual(calls, [("kill", "a" * 64), ("rm", "-f", "a" * 64), ("kill", "b" * 64), ("rm", "-f", "b" * 64)])
-        with mock.patch.object(d.hashlib, "sha256") as digest, mock.patch.object(d.Path, "read_bytes", self.real_read_bytes):
-            digest.return_value.hexdigest.return_value = d.CLI_SHA
-            with self.assertRaisesRegex(LiveProfileRefused, "contain_failed"):
-                d.contain_job(self.job, execute=lambda *a: (1, b"", b"permission denied"), now=lambda: 0)
+        with self.contain_world(execute):
+            outcomes = d.contain_job(self.job, execute=execute, now=lambda: 0)
+        self.assertEqual(calls, [("kill", "a" * 64), ("rm", "-f", "a" * 64), ("kill", "b" * 64), ("rm", "-f", "b" * 64), ("kill", "c" * 64), ("rm", "-f", "c" * 64)])
+        self.assertEqual([(o["role"], o["kill"], o["rm"]) for o in outcomes], [("runner", "ok", "ok"), ("relay", "ok", "gone"), ("initializer", "ok", "ok")])
+        self.assertEqual(self.job.read("containment.json")["outcomes"], outcomes)                 # each outcome is journaled
         self.assertEqual(d.contain_job(jobs.Job(self.root, "job-empty"), execute=execute, now=lambda: 0), [])   # nothing journaled, nothing run
+
+    def test_a_failed_kill_of_the_runner_does_not_stop_the_relay_or_the_initializer_and_the_end_is_unconfirmed(self):
+        calls = []
+        def execute(job, argv, env, deadline, bounds):
+            calls.append(argv[3:])
+            return (1, b"", b"permission denied") if argv[3:] == ("kill", "a" * 64) else (0, b"", b"")
+        with self.contain_world(execute), self.assertRaises(d.ContainFailed) as caught:
+            d.contain_job(self.job, execute=execute, now=lambda: 0)
+        self.assertEqual(len(calls), 6)                                                          # every CID, kill and removal, attempted
+        self.assertEqual([(o["role"], o["kill"], o["rm"]) for o in caught.exception.outcomes],
+                         [("runner", "failed", "ok"), ("relay", "ok", "ok"), ("initializer", "ok", "ok")])
+        self.assertEqual(self.job.read("containment.json")["outcomes"], caught.exception.outcomes)
+
+    def test_an_error_in_one_command_or_an_unreadable_journal_entry_still_attempts_the_rest(self):
+        def execute(job, argv, env, deadline, bounds):
+            if argv[3] == "kill" and argv[-1] == "a" * 64:
+                raise OSError("socket gone")
+            return (0, b"", b"")
+        with self.contain_world(execute, roles=(("runner", "a" * 64), ("relay", "not-a-cid"), ("initializer", "c" * 64))), self.assertRaises(d.ContainFailed) as caught:
+            d.contain_job(self.job, execute=execute, now=lambda: 0)
+        self.assertEqual([(o["role"], o["kill"], o["rm"]) for o in caught.exception.outcomes],
+                         [("runner", "error", "ok"), ("relay", "journal_unreadable", "journal_unreadable"), ("initializer", "ok", "ok")])
+
+    def test_a_wrong_cli_pin_stops_containment_it_is_not_relaxed_around(self):
+        calls = []
+        (self.job.dir / "runner.cid").write_text("a" * 64)
+        with mock.patch.object(d.Path, "read_bytes", return_value=b"not the pinned cli"), self.assertRaisesRegex(LiveProfileRefused, "cli_pin"):
+            d.contain_job(self.job, execute=lambda *a: calls.append(a) or (0, b"", b""), now=lambda: 0)
+        self.assertEqual(calls, [])
+
+    def test_a_rejection_is_retained_even_when_the_optional_usage_record_cannot_be_built(self):
+        cli, egress, relay, record = self.real_world()
+        with mock.patch.object(d.rejection, "usage_record", side_effect=LiveProfileRefused("usage_model_mismatch")):
+            refs, *_ = self.real_run(cli, egress, relay, record)
+        done = self.job.read("docker-complete.json")
+        self.assertEqual((done["usage"], len(done["refs"]), len(refs)), ("refused", 4, 4))     # the classified disposition and every raw reference are still there
 
     def test_supervisor_holds_uncertain_backend_rows(self):
         """L: no capacity release before backend end; direct control-call boundary only."""
