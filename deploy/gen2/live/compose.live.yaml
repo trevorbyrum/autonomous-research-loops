@@ -1,0 +1,13 @@
+services:
+  engine:
+    environment:
+      GEN2_GATEWAY_URL: http://172.31.250.3:8765
+      GEN2_SECRET_GATEWAY_TOKEN_FILE: /etc/gen2/discovery-token
+      GEN2_QUALIFICATION_RECORD: /etc/gen2/qualification-record.json
+      GEN2_QUALIFICATION_PIN: ${GEN2_QUALIFICATION_PIN:?operator's independent record-byte pin}
+      GEN2_MANIFEST: /etc/gen2/manifest.json
+    volumes:
+      - /home/trevor/.config/gen2-2e1/prompts:/opt/gen2/gen2/prompts:ro
+      - /home/trevor/.config/gen2-2e1/secrets/discovery-token:/etc/gen2/discovery-token:ro
+      - /home/trevor/.config/gen2-2e1/qualification-record.json:/etc/gen2/qualification-record.json:ro
+      - /home/trevor/.config/gen2-2e1/deployment-manifest.json:/etc/gen2/manifest.json:ro
