@@ -13,6 +13,7 @@ target "images" {
   dockerfile = "deploy/gen2/live/Dockerfile"
   target = role
   platforms = ["linux/amd64"]
+  network = "none"
   tags = ["gen2-2e1-${role}:offline"]
   output = ["type=docker"]
   pull = false
