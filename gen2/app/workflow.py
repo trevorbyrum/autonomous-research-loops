@@ -87,7 +87,7 @@ OPERATOR = {"awaiting_brief_confirmation": ("the intake brief is not confirmed",
             "awaiting_scope_approval": ("the scoping report awaits approval", "apply_operator_decision kind=scope_approval"),
             "awaiting_contract_approval": ("the contract awaits approval", "apply_operator_decision kind=contract_approval")}
 COMPLETION_WAIT = ("the dossier and its review await the operator's approval", "apply_operator_decision kind=completion_approval")
-BLOCKED = ("held", "capability_blocked", "stopped_for_resources", "awaiting_judgment", "retired")
+BLOCKED = ("held", "capability_blocked", "stopped_for_resources", "retired")
 
 
 def _context(prefix: str, *values: object) -> str:
@@ -102,6 +102,8 @@ def plan(status: str, jobs: Mapping[Step, Job], *, max_passes: int = 1, max_roun
     dossier and review); None means no episode is open or unfinished, and `finished` says an earlier epoch reached its review."""
     if status == "completed_with_qualified_conclusions":
         return Done()
+    if status == "awaiting_judgment":
+        return Wait(*COMPLETION_WAIT)
     if status in OPERATOR:
         return Wait(*OPERATOR[status])
     if status in BLOCKED:

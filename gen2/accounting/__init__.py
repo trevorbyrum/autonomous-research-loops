@@ -52,6 +52,9 @@ class Observation:
     page_outcome: str
     result_count: int | None
     page: SearchPage | None = None
+    proposed_by: str | None = None
+    chain: tuple = ()
+    unbound: bool = False
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,9 @@ class Pass:
     kind: str
     state: str
     parent_invocation_id: str | None = None
+    capture_mode: bool = False
+    search_plan: tuple[str, ...] | None = None
+    discovery_of: str | None = None
 
 
 @dataclass(frozen=True)
@@ -319,14 +325,26 @@ def _captured(observation: Observation, inventory: Inventory) -> bool:
 def _capture_reason(inventory: Inventory) -> str | None:
     if inventory.history == "legacy_unknown":
         return "legacy historical capture unknown"
-    observed = {o.invocation_id for o in inventory.observations}
-    if any(p.kind in ("research_pass", "discovery", "delegate") and p.invocation_id not in observed for p in inventory.passes):
+    if any(o.unbound for o in inventory.observations):
+        return "discovery attribution missing"
+    if any((p.kind in ("research_pass", "discovery", "delegate") or p.search_plan is not None) and not _accounted(p, inventory) for p in inventory.passes):
         return "invocation capture missing"
     if any(not _captured(o, inventory) for o in inventory.observations):
         return "capture partial or unknown"
     if any(r.observation_id not in {o.observation_id for o in inventory.observations} for r in inventory.retrievals):
         return "retrieval observation missing"
     return None
+
+
+def _accounted(p: Pass, inventory: Inventory) -> bool:
+    """A retained plan owes every proposal; an explicit empty plan owes no outsourced search."""
+    if p.capture_mode and (p.state != "committed" or p.kind == "research_pass" and p.search_plan is None
+                           or p.kind == "discovery" and p.discovery_of is None):
+        return False
+    if p.search_plan is not None:
+        observed = {o.chain[-1] for o in inventory.observations if o.proposed_by == p.invocation_id and o.chain and not o.unbound}
+        return set(p.search_plan) <= observed
+    return any(o.invocation_id == p.invocation_id and not o.unbound for o in inventory.observations)
 
 
 def _descendants(root: Pass, inventory: Inventory) -> list[Pass]:
@@ -336,7 +354,7 @@ def _descendants(root: Pass, inventory: Inventory) -> list[Pass]:
     while pending:
         parent = pending.pop()
         for child in inventory.passes:
-            if child.parent_invocation_id == parent and child.invocation_id not in members:
+            if (child.parent_invocation_id == parent or child.discovery_of == parent) and child.invocation_id not in members:
                 members.add(child.invocation_id)
                 pending.append(child.invocation_id)
                 descendants.append(child)
@@ -347,6 +365,10 @@ def _search_key(o: Observation) -> tuple[str, SearchIdentity]:
     """Each observation covers one lane: automatic/explicit lane selection and
     the other lanes' pagination do not change this lane's population."""
     return o.lane, replace(o.page.search, lanes=(o.lane,))
+
+
+def _chain_key(o: Observation):
+    return _search_key(o), o.chain
 
 
 def _complete_chain(observations: list[Observation]) -> bool:
@@ -366,10 +388,9 @@ def _window_searches(root: Pass, inventory: Inventory) -> set[tuple[str, SearchI
     descendants = _descendants(root, inventory)
     members = {root.invocation_id} | {p.invocation_id for p in descendants}
     observations = [o for o in inventory.observations if o.invocation_id in members]
-    observed = {o.invocation_id for o in observations}
-    if any(p.state != "committed" or p.invocation_id not in observed for p in descendants):
+    if root.capture_mode and not _accounted(root, inventory) or any(p.state != "committed" or not _accounted(p, inventory) for p in descendants):
         return set()
-    if any(not _captured(o, inventory) or o.page_outcome == "failed" for o in observations):
+    if any(o.unbound or not _captured(o, inventory) or o.page_outcome == "failed" for o in observations):
         return set()
     chains: dict[tuple[str, SearchIdentity], list[Observation]] = {}
     for o in observations:
@@ -377,10 +398,10 @@ def _window_searches(root: Pass, inventory: Inventory) -> set[tuple[str, SearchI
             continue  # Non-paging success adds no window; its failures were checked above.
         if o.page is None:
             return set()
-        chains.setdefault(_search_key(o), []).append(o)
+        chains.setdefault(_chain_key(o), []).append(o)
     if any(not _complete_chain(chain) for chain in chains.values()):
         return set()
-    return set(chains)
+    return {_search_key(o) for chain in chains.values() for o in chain}
 
 
 def saturation_passes(inventory: Inventory) -> tuple[str, ...]:
@@ -414,8 +435,8 @@ def window_search_knowledge(root: Pass, inventory: Inventory) -> frozenset[tuple
     children = _descendants(root, inventory)
     ids = {root.invocation_id} | {p.invocation_id for p in children}
     observations = tuple(o for o in inventory.observations if o.invocation_id in ids)
-    observed = {o.invocation_id for o in observations}
-    if not observations or any(p.invocation_id not in observed for p in children):
+    if (not observations and not (root.capture_mode and _accounted(root, inventory))
+            or root.capture_mode and not _accounted(root, inventory) or any(not _accounted(p, inventory) for p in children)):
         return None
     finds = tuple(o for o in observations if o.request_type in ("find",))
     if any(o.page is None for o in finds):
@@ -468,11 +489,11 @@ def _window_uncertainty(members: tuple[Pass, ...], observations: tuple[Observati
         return "indeterminate", "invocation unfinished"
     if inventory.history == "legacy_unknown":
         return "indeterminate", "legacy historical capture unknown"
-    observed = {o.invocation_id for o in observations}
-    missing = tuple(p.invocation_id for p in members[1:] if p.invocation_id not in observed)
-    if missing or not observations:
+    missing = tuple(p.invocation_id for p in members[1:] if not _accounted(p, inventory))
+    root = members[0]
+    if missing or root.capture_mode and not _accounted(root, inventory) or not observations and not (root.capture_mode and root.search_plan == ()):
         return "indeterminate", "invocation capture missing: " + ", ".join(missing or (members[0].invocation_id,))
-    if any(o.completeness == "unobserved" for o in observations):
+    if any(o.unbound or o.completeness == "unobserved" for o in observations):
         return "indeterminate", "request unobserved"
     if any(not _captured(o, inventory) for o in observations):
         return "indeterminate", "capture partial or unknown"
@@ -485,7 +506,7 @@ def _search_completion(finds: tuple[Observation, ...]) -> tuple[WindowState, str
         return "indeterminate", "search page metadata missing"
     chains: dict[tuple[str, SearchIdentity], list[Observation]] = {}
     for o in finds:
-        chains.setdefault(_search_key(o), []).append(o)
+        chains.setdefault(_chain_key(o), []).append(o)
     classes = tuple(_chain_knowledge(chain) for chain in chains.values())
     if "invalid" in classes:
         return "ineligible", "no complete distinct search"

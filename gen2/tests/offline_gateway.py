@@ -10,6 +10,7 @@ raw sockets. Named lanes are the two the real gateway has; arXiv is not a gatewa
 """
 from __future__ import annotations
 
+import hashlib
 import json
 
 from gen2.core import canonical
@@ -51,11 +52,13 @@ class OfflineGateway:
             return None, {}, b"", "timeout"
         self._calls += 1
         lane = sent["lanes"][0]
+        # the real gateway's call refs are unique across invocations: so are these (a per-invocation base), or the retained exchanges of two jobs would share a name
+        base = int(hashlib.sha256(headers["X-Research-Invocation"].encode()).hexdigest()[:6], 16) * 100
         identities = QUERY_WORKS[self.which(sent)]
         records = [record(i, lane, self.abstracts and lane == "semanticscholar") for i in identities]
         entry = {"source": lane, "coverage": "searched_ok" if records else "searched_empty", "completeness": "complete",
                  "count": len(records), "retrieved": list(identities), "exhausted": True}
         answer = {"observation": {"invocation_id": headers["X-Research-Invocation"], "attempt": int(headers["X-Research-Attempt"]),
-                                  "captured": True, "call_ref": 1000 + self._calls},
+                                  "captured": True, "call_ref": base + self._calls},
                   "lanes": [entry], "records": records}
         return 200, HEADERS, json.dumps(answer).encode(), None

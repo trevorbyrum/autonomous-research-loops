@@ -29,7 +29,7 @@ class PlanTest(unittest.TestCase):
         for status, expected in (("awaiting_brief_confirmation", w.Wait), ("awaiting_scope_approval", w.Wait), ("awaiting_contract_approval", w.Wait),
                                  ("scoping", w.Issue), ("queued", w.Issue), ("resting", w.Issue), ("active", w.Issue),
                                  ("completed_with_qualified_conclusions", w.Done), ("held", w.Stop), ("capability_blocked", w.Stop),
-                                 ("stopped_for_resources", w.Stop), ("awaiting_judgment", w.Stop), ("retired", w.Stop)):
+                                 ("stopped_for_resources", w.Stop), ("awaiting_judgment", w.Wait), ("retired", w.Stop)):
             with self.subTest(status):
                 self.assertIsInstance(at(status), expected)
 
