@@ -10,22 +10,29 @@ SOURCE = b'{"records":[{"id":"q1","title":"2e1 fixture"}],"total":1}\n'
 COMMAND = "python3 /inputs/tool_probe.py"
 
 
+def credential(case):
+    return "accepted" if case == "tool-less" else case
+
+
 def response(case, ordinal, request):
     if request.get("model") != "gpt-5.4" or request.get("stream") is not True:
         raise ValueError("model/stream")
     if case == "rejected" and ordinal == 1:
         return 401, "application/json", b'{"error":{"message":"fixture credential rejected","type":"invalid_api_key"}}\n'
-    if case != "accepted" or ordinal not in (1, 2):
+    if case not in {"accepted", "tool-less"} or ordinal not in ((1, 2) if case == "accepted" else (1,)):
         raise ValueError("extra send")
-    if ordinal == 1:
+    if ordinal == 1 and case == "accepted":
         if {t.get("name") for t in request.get("tools", [])} != {"exec_command", "write_stdin", "apply_patch"}:
             raise ValueError("advertised tools differ")
         item = dict(type="function_call", id="fc_2e1", call_id="call_2e1", name="exec_command",
                     arguments=json.dumps({"cmd": COMMAND, "max_output_tokens": 2000}))
     else:
-        outputs = [x for x in request.get("input", []) if x.get("type") == "function_call_output"]
-        if len(outputs) != 1 or outputs[0].get("call_id") != "call_2e1" or "2e1-tool-ok" not in str(outputs[0].get("output")):
-            raise ValueError("tool continuation")
+        if case == "accepted":
+            outputs = [x for x in request.get("input", []) if x.get("type") == "function_call_output"]
+            if len(outputs) != 1 or outputs[0].get("call_id") != "call_2e1" or "2e1-tool-ok" not in str(outputs[0].get("output")):
+                raise ValueError("tool continuation")
+        elif request.get("tools", []) != []:
+            raise ValueError("tool-less request required")
         item = dict(type="message", id="msg_2e1", role="assistant", status="completed",
                     content=[{"type": "output_text", "text": "2e1 complete", "annotations": []}])
     events = [{"type": "response.output_item.done", "output_index": 0, "item": item},
@@ -71,7 +78,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 if self.command != "POST" or self.path != "/v1/responses" or not re.fullmatch("[0-9a-f]{32}", rid):
                     raise ValueError("model route/id")
-                if self.headers.get("Authorization") != "Bearer 2e1-fixture-" + self.server.case:
+                if self.headers.get("Authorization") != "Bearer 2e1-fixture-" + credential(self.server.case):
                     raise ValueError("dummy credential")
                 request = json.loads(raw) if raw.lstrip().startswith(b"{") else {}
                 status, media, data = response(self.server.case, self.server.count, request)
@@ -85,7 +92,7 @@ class Handler(BaseHTTPRequestHandler):
             self.server.raw.write(line)
             self.server.raw.flush()
             self.server.requests.append(dict(id=rid, route=self.path[:128], model=request.get("model"),
-                                            credential=self.server.case if self.headers.get("Authorization") == "Bearer 2e1-fixture-" + self.server.case else "unknown"))
+                                            credential=credential(self.server.case) if self.headers.get("Authorization") == "Bearer 2e1-fixture-" + credential(self.server.case) else "unknown"))
             self.server.record.seek(0)
             json.dump({"v": 1, "requests": self.server.requests}, self.server.record)
             self.server.record.truncate()
@@ -102,7 +109,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     case = sys.argv[1]
     address = ("172.31.251.3", 18081) if case == "source" else ("172.31.252.3", 8081)
-    if case not in {"source", "accepted", "rejected"}:
+    if case not in {"source", "accepted", "rejected", "tool-less"}:
         raise ValueError("fixture case")
     with HTTPServer(address, Handler) as server, open("/evidence/fixture.json", "x+") as record, open("/evidence/raw.jsonl", "x") as raw:
         server.case, server.record, server.count = case, record, 0

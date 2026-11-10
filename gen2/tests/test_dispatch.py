@@ -132,22 +132,27 @@ class DispatchTests(rf.RouterTestCase):
     def test_first_charge_known_zero_unknown_and_overrun(self):
         """SQL U/A oracle; independent worlds prove zero/unknown/overrun and durable stop; no real cost."""
         for actual, ended, upper, expected, charge, stopped in (
-            (0, True, 6, "actual", 0, False), (None, True, 6, "worst_case", 6, True),
-            (0, False, 6, "worst_case", 6, True), (None, True, 0, "worst_case", 0, True),
+            (0, True, 6, "actual", 0, False), (None, True, 6, "worst_case", 6, False),
+            (0, False, 6, "worst_case", 6, True), (None, True, 0, "worst_case", 0, False),
             (9, True, 6, "actual", 9, True)):
             with self.subTest(actual=actual, ended=ended, upper=upper):
                 case = type(self)()
                 case.setUp()
                 self.addCleanup(case.tearDown)
                 case.authority.admissions[case.req["invocation_id"]]["upper_minor_units"] = upper
+                case.authority.admissions[case.req["invocation_id"]]["policy"]["ceiling_minor_units"] = 10000
                 req = case.result(case.authorize(), actual=actual, ended=ended)
                 out = case.router.record_dispatch_result(req)
                 self.assertEqual((out["charge_state"], out["trial_stopped"]), (expected, stopped))
                 self.assertEqual(case.detail()["charge_minor_units"], charge)
                 case.router = case.make_router(dispatch_authority=case.authority)
-                other = case.prepare("inv_dispatch02", rf.OTHER, ceiling=100)
+                other = case.prepare("inv_dispatch02", rf.OTHER, upper=10001 - charge, ceiling=10000)
                 if stopped:
                     case.refused("authorize_dispatch", other, "dispatch_trial_stopped")
+                else:
+                    case.refused("authorize_dispatch", other, "dispatch_ceiling_exceeded")
+                    case.authority.admissions[other["invocation_id"]]["upper_minor_units"] -= 1
+                    case.authorize(other)
 
     def test_paused_cancelled_request(self):
         """Current-lease pause/cancel still retains cost without lifecycle changes; SQL oracle, fixture only."""

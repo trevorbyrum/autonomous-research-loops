@@ -83,7 +83,8 @@ SCHEDULING_COMMANDS = {
     "review": {
         "type": "object", "additionalProperties": False, "required": ["episode_id", "topic_id", "kind"],
         "properties": {"episode_id": {"type": "string", "pattern": "^rev_[A-Za-z0-9_-]{8,64}$"}, "topic_id": {"$ref": "common.schema.json#/$defs/topic_id"},
-                       "kind": {"enum": ["fixed_cadence", "obligations_scope", "method_fit", "facet_audit", "calibration", "state_integrity_audit"]}}},
+                       "kind": {"enum": ["fixed_cadence", "obligations_scope", "method_fit", "facet_audit", "calibration", "state_integrity_audit"]},
+                       "rework": {"type": "boolean"}, "operator_id": _ID}},
     "topic": {  # task 2a
         "type": "object", "additionalProperties": False, "required": ["topic_id", "priority"],
         "properties": {"topic_id": {"$ref": "common.schema.json#/$defs/topic_id"}, "priority": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}}},
@@ -105,6 +106,7 @@ class SchedulingCore(Protocol):
     def _audit(self, kind: str, at: str, detail: dict, *, topic_id=None, invocation_id=None, operation_id=None) -> str: ...
     _registries: "Registries"
     _amendments: "Amendments"
+    def _set_topic(self, topic: dict, now: str, status: str | None = None, **columns) -> int: ...
 
 
 class Scheduling:
@@ -262,7 +264,9 @@ class Scheduling:
             if (stored["topic_id"], stored["kind"]) != (req["topic_id"], req["kind"]):
                 raise Refusal("review_conflict", f"{req['episode_id']} is another review")
             return {"status": "replayed", "episode_id": req["episode_id"]}
-        self._core._amendments._open_topic(req["topic_id"])
+        topic = self._core._amendments._open_topic(req["topic_id"])
+        if topic["status"] == "awaiting_judgment" and not (req.get("rework") is True and req.get("operator_id")):
+            raise Refusal("operator_rework_required", "opening another episode while waiting requires explicit operator rework")
         pending = [t for t in self._core._store.select("review_triggers", {"topic_id": req["topic_id"]}) if t["episode_id"] is None and t["handled_at"] is None]
         if req["kind"] != "fixed_cadence" and not any(t["reason_code"] in MANDATORY for t in pending):
             if not pending:
@@ -282,7 +286,10 @@ class Scheduling:
                                                "opened_after_generation": generation})
         for trigger in pending:
             self._core._store.update("review_triggers", {"trigger_identity": trigger["trigger_identity"]}, {"episode_id": req["episode_id"]})
-        self._core._audit("review_opened", now, {"episode_id": req["episode_id"], "kind": req["kind"], "triggers": len(pending)}, topic_id=req["topic_id"])
+        if topic["status"] == "awaiting_judgment":
+            self._core._set_topic(topic, now, "queued")
+        self._core._audit("review_opened", now, {"episode_id": req["episode_id"], "kind": req["kind"], "triggers": len(pending),
+                         "rework_operator": req.get("operator_id") if topic["status"] == "awaiting_judgment" else None}, topic_id=req["topic_id"])
         return {"status": "opened", "episode_id": req["episode_id"], "triggers": [t["trigger_identity"] for t in pending]}
 
     def _signal_in_transaction(self, req: dict, now: str) -> dict:

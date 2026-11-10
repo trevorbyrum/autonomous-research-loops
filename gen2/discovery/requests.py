@@ -10,11 +10,10 @@ from __future__ import annotations
 from typing import Callable, Mapping, NamedTuple
 
 from gen2.core import canonical
+from gen2.core.search_proposals import gateway_request as build_request
 from gen2.exec.common import Refused
 
 MAX_PROPOSALS = 32
-FILTERS = {"find": {"kind": str, "domain": str, "published_after": str, "year_from": int, "limit": int, "within": str},
-           "resolve": {}, "enrich": {"what": str}, "fetch": {"params": dict}, "data": {"params": dict}}
 
 
 class Committed(NamedTuple):
@@ -49,13 +48,10 @@ def intake(payload: bytes, receipt: Mapping, topic_id: str, max_bytes: int, vali
 def gateway_request(proposal: Mapping) -> dict:
     """The gateway payload for one proposal: the same proposal always gives the same request (and so the same
     request identity). A filter the request type does not take is refused, not dropped."""
-    kind, filters = proposal["request_type"], dict(proposal.get("filters") or {})
-    allowed = FILTERS[kind]
-    for key, value in filters.items():
-        if key not in allowed or not isinstance(value, allowed[key]) or isinstance(value, bool):
-            raise Refused(f"{proposal['proposal_id']}: filter {key!r} is not a {kind} filter of the right type")
-    target = {"find": "query", "resolve": "identity"}.get(kind, "target")
-    return {"request_type": kind, target: proposal["query"], "lanes": [proposal["lane"]], **filters}
+    try:
+        return build_request(proposal)
+    except ValueError as error:
+        raise Refused(str(error)) from None
 
 
 def pages(proposal: Mapping) -> int:

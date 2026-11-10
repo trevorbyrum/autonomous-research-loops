@@ -11,6 +11,7 @@ from gen2.supervisor.docker_cli import CLI, CLI_SHA, SOCKET, free_space
 
 BUILDX_VERSION = "github.com/docker/buildx v0.38.0 0dbe87f36ed472fe36b6796c3f70b4210a731fc5"
 BUILDER_LIST = ("buildx", "ls", "--format", "json")
+BUILD_INPUTS = Path("/home/trevor/.local/share/gen2-2e1/storage/build-inputs")
 
 
 def checked(argv, **kwargs):
@@ -22,7 +23,10 @@ def checked(argv, **kwargs):
 
 
 def bake_command(builder, targets=("runner", "engine", "gateway", "fixture")):
-    return [CLI, "--context", builder, "buildx", "bake", "--builder", builder, "--file",
+    """I02/D11: grant read access only to the pinned, unredirected staged-inputs path."""
+    if BUILD_INPUTS.resolve() != BUILD_INPUTS:
+        raise ValueError("staged inputs must match the pinned host layout")
+    return [CLI, "--context", builder, "buildx", "bake", "--allow=fs.read=" + str(BUILD_INPUTS), "--builder", builder, "--file",
             "deploy/gen2/live/docker-bake.hcl", *targets]
 
 
@@ -67,7 +71,7 @@ if __name__ == "__main__":
         raise ValueError("pass the dedicated builder explicitly; ambient selection refused")
     if hashlib.sha256(Path("/usr/bin/docker").read_bytes()).hexdigest() != CLI_SHA:
         raise ValueError("Docker CLI pin")
-    root = Path("/home/trevor/.local/share/gen2-2e1/storage")
+    root = BUILD_INPUTS.parent
     free_space([str(root / p) for p in ("outputs", "relay-evidence", "spool", "control", "docker")], 16 << 30)
     env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "DOCKER_CONFIG": "/home/trevor/.config/gen2-2e1/buildx"}
     cli = ["/usr/bin/docker", "--host", SOCKET]

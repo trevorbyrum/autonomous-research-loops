@@ -112,7 +112,7 @@ WHEN NEW.status IS NOT OLD.status AND NOT (
   OR (OLD.status = 'queued' AND NEW.status IN ('active', 'held', 'capability_blocked', 'retired'))
   OR (OLD.status = 'active' AND NEW.status IN ('resting', 'queued', 'held', 'awaiting_judgment', 'completed_with_qualified_conclusions',
                                                 'capability_blocked', 'stopped_for_resources', 'retired'))
-  OR (OLD.status = 'resting' AND NEW.status IN ('active', 'queued', 'held', 'retired'))
+  OR (OLD.status = 'resting' AND NEW.status IN ('active', 'queued', 'held', 'awaiting_judgment', 'retired'))
   OR (OLD.status = 'held' AND NEW.status IN ('scoping', 'awaiting_scope_approval', 'awaiting_contract_approval', 'queued', 'retired'))
   OR (OLD.status = 'capability_blocked' AND NEW.status IN ('scoping', 'queued', 'held', 'retired'))
   OR (OLD.status = 'stopped_for_resources' AND NEW.status IN ('queued', 'awaiting_judgment', 'retired'))

@@ -112,6 +112,10 @@ class ApprovalTest(rf.ContractWorld):
         self.changed(completion_records=[review, record])
         self.assertEqual(self.f.gate_states(), before)
         self.refused(candidate, "stale_inputs", "material operands changed")
+        self.refused(self.f.candidate(), "decision_refused", "blocked")
+        for hold in self.store.select("holds", {"topic_id": rf.TOPIC}):
+            if hold["cleared_at"] is None:
+                self.assertEqual(self.decide(self.ids("opd_"), "hold_clearance", {"kind": "hold", "ref": hold["hold_id"]})["status"], "applied")
         self.assertEqual(self.f.approve_candidate(self.f.candidate())["status"], "applied")
 
     def test_claim_contradiction_adverse_receipt_and_amendment_stale(self):
