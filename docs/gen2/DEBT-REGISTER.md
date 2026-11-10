@@ -564,11 +564,12 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: phase 2
-- what: in 2e1-minimum, an attempt whose spending is unknown is charged at its whole authorized upper bound and permanently stops the trial. There is no settlement, downward adjustment or resumption route. A later slice designs any reconciliation that would let such a topic resume.
-  T2 / 2e1 3a retains original U on uncertain intent/result, including U=0; append-only stops survive new Router/policy/run IDs. No reconciliation or resumption is implemented.
+- what: an unknown end or stale result retains the whole original authorized upper bound U and permanently stops the trial. There is no settlement, downward adjustment or resumption route for these stops. A later slice designs any reconciliation that would let such a trial resume.
+  T2 / 2e1 3a retains original U on uncertain intent or end, including U=0; append-only stops survive new Router/policy/run IDs. No reconciliation or resumption is implemented.
   T3 / 3b-i also retains original U after expired/released leases, terminal state, changed epoch or stale pins; no late evidence can lower it or resume the trial.
-- source: 2e1 design v2 B1 (Astra, private/reviews/gen2-2e1-design-review-astra-20261031.md); Gate S rule "cut automatic post-unknown resumption if it cannot be given a small explicit contract"
-- removal: a reviewed slice adds an append-only, narrowly authorized reconciliation, or the operator rules that unknown-spend topics never resume.
+  Trevor's 2026-11-07/08 F5 ruling: with a confirmed end and current lease, pins and origin, unknown cost alone charges full original U and continues. Admission and final start still require S + U_next ≤ the configured ceiling (10,000 cents for the supervised run). Unknown end and stale/uncertain result stops remain; no downward settlement is added.
+- source: 2e1 design v2 B1 (Astra, private/reviews/gen2-2e1-design-review-astra-20261031.md); Gate S rule "cut automatic post-unknown resumption if it cannot be given a small explicit contract"; Trevor ruling 2026-11-07/08, Gate S #7b §2/§7.1 (private/reviews/gen2-gate-s7b-live-path-fable-20261107.md)
+- removal: a reviewed slice adds an append-only, narrowly authorized reconciliation for stopped trials, or the operator rules that those trials never resume.
 
 ### DEBT-053 - operator remediation after a genuine provider credential rejection (Phase 2)
 - kind: obligation
