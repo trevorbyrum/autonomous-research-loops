@@ -24,7 +24,7 @@ from gen2.supervisor.isolation import LiveProfileRefused
 
 RECORD = "qualification-record/1"
 WITNESSES = ("Q1", "Q2", "Q3")
-REAL_WITNESSES = (*WITNESSES, "DEBT-004")
+REAL_WITNESSES = (*WITNESSES, "DEBT-004", "Q8")   # Q8: the daemon end proof qualified natively on the installed runtime (Gate S #7c)
 Stage = Callable[[str, bytes, str], Mapping]
 PIN = re.compile(r"sha256:[0-9a-f]{64}")
 UPSTREAM = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}:443")   # the relay's one fixed IP:443 (name verification is the relay's)

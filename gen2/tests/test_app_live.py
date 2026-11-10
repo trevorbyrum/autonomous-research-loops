@@ -52,17 +52,15 @@ class Agent(unittest.TestCase):
             def __init__(self, job_, manifest, retained, tree, **kw):
                 self.job = job_
 
-            def run(self, close, ended, fixture, drain, batch):
+            def run(self, fixture, batch):
                 if refuse:
                     raise LiveProfileRefused(refuse)
                 assert fixture() is None                                   # a real route has no fixture
                 if judgment is not None:
                     batch.stage(judgment, "application/json", "judgment")
                 self.job.write("docker-complete.json", {"origin": {}, "refs": [], "disposition": {"disposition": disposition}})
-        observers = mock.Mock(close_admission=mock.Mock(), descendants_ended=mock.Mock(return_value=True), drain=mock.Mock(return_value=True))
         stack = contextlib.ExitStack()
         stack.enter_context(mock.patch.object(docker_cli, "DockerCLI", Stub))
-        stack.enter_context(mock.patch.object(live, "observers_from", lambda env: observers))   # the authenticated adapter is a separate change; a stand-in here
         return stack
 
     def run_agent(self, job, scratch, env, **kw):
@@ -71,21 +69,13 @@ class Agent(unittest.TestCase):
         with self.stub(**kw):
             return live.agent_for(scratch, env)(b"", b"", out), out
 
-    def test_with_every_path_present_but_no_authenticated_observer_adapter_the_agent_still_refuses_and_writes_nothing(self):
-        """By construction: until the authenticated exchange exists nothing can confirm an end, so no live run can."""
-        job, scratch, env = self.world()
-        before = sorted(p.name for p in scratch.iterdir())
-        with self.assertRaisesRegex(Refused, "observers_unavailable"):
-            live.agent_for(scratch, env)
-        self.assertEqual(sorted(p.name for p in scratch.iterdir()), before)
-
     def test_a_job_without_a_plan_keeps_the_closed_entrance_and_one_without_observers_refuses_by_name(self):
         job, scratch, env = self.world(plan=False)
         with self.assertRaisesRegex(Refused, "live runner entrance is closed"):
             live.agent_for(scratch, env)
         job, scratch, env = self.world()
         for missing in self.ENV:
-            with self.subTest(missing=missing), self.assertRaisesRegex(Refused, "observers_unavailable"):
+            with self.subTest(missing=missing), self.assertRaisesRegex(Refused, "protected paths"):
                 live.agent_for(scratch, {k: v for k, v in env.items() if k != missing})
 
     def test_the_judgment_bytes_the_backend_collected_are_what_job_run_will_read(self):

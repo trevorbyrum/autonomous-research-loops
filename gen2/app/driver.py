@@ -67,7 +67,7 @@ class Driver:
         self.prompt_dir, self.max_passes, self.max_rounds = Path(prompt_dir), max_passes, max_rounds
         self.clock, self.sleep, self.say = clock, sleep, say
         self.child_module, self.discovery_module, self.last_topic, self.live = child_module, discovery_module, {}, live
-        self.discovery_env, self.live_env = dict(discovery_env or {}), dict(live_env or {})   # live_env: the protected paths a live child needs (manifest, retained configuration, observer mailbox)
+        self.discovery_env, self.live_env = dict(discovery_env or {}), dict(live_env or {})   # live_env: the protected paths a live child needs (manifest, retained configuration)
         if any("TOKEN" in key and not key.endswith("_FILE") for key in self.discovery_env):
             raise Refused("a token never rides in the order: give the path of a file (a *_FILE variable)")
 

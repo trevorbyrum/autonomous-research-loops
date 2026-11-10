@@ -60,6 +60,7 @@ class Verification(unittest.TestCase):
                                         ("witness failed", "fixture", {"witnesses": [{"name": n, "passed": n != "Q2", "receipt": "sha256:" + "a" * 64} for n in auth.WITNESSES]}, False),
                                         ("witness missing", "fixture", {"witnesses": [{"name": "Q1", "passed": True, "receipt": "sha256:" + "a" * 64}]}, False),
                                         ("real without the rejection witness", "real", {"witnesses": [{"name": n, "passed": True, "receipt": "sha256:" + "a" * 64} for n in auth.WITNESSES]}, False),
+                                        ("real without the end-proof witness", "real", {"witnesses": [{"name": n, "passed": True, "receipt": "sha256:" + "a" * 64} for n in auth.REAL_WITNESSES if n != "Q8"]}, False),
                                         ("real without a deployment", "real", {"deployment_id": ""}, False)):
             with self.subTest(case):
                 data, pin = sealed(record_doc(Path("/r"), **{"route": route, **change}))
