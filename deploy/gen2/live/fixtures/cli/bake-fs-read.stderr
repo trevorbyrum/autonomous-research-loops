@@ -1,0 +1,42 @@
+#1 [internal] load local bake definitions
+#1 reading deploy/gen2/live/docker-bake.hcl 640B / 640B done
+#1 DONE 0.0s
+#0 building with "gen2-2e1-t9" instance using docker driver
+
+#1 [internal] load local bake definitions
+#1 reading deploy/gen2/live/docker-bake.hcl 640B / 640B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 49B done
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+#0 building with "gen2-2e1-t9" instance using docker driver
+
+#1 [internal] load local bake definitions
+#1 reading deploy/gen2/live/docker-bake.hcl 640B / 640B done
+#1 DONE 0.0s
+Your build is requesting privileges for following possibly insecure capabilities:
+
+ - Read access to path /home/trevor/.local/share/gen2-2e1/storage/build-inputs
+
+Pass "--allow=fs.read=/home/trevor/.local/share/gen2-2e1/storage/build-inputs" to grant requested privileges.
+
+Your full command with requested privileges:
+
+/usr/bin/docker --context gen2-2e1-t9 buildx bake --allow=fs.read=/home/trevor/.local/share/gen2-2e1/storage/build-inputs --builder gen2-2e1-t9 --file deploy/gen2/live/docker-bake.hcl runner engine gateway fixture
+
+To disable filesystem entitlements checks, you can set BUILDX_BAKE_ENTITLEMENTS_FS=0 .
+
+ERROR: additional privileges requested
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/trevor/work/gen2-wt-2/deploy/gen2/live/build.py", line 83, in <module>
+    subprocess.run(bake, env=env, check=True, timeout=1800)
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/bin/docker', '--context', 'gen2-2e1-t9', 'buildx', 'bake', '--builder', 'gen2-2e1-t9', '--file', 'deploy/gen2/live/docker-bake.hcl', 'runner', 'engine', 'gateway', 'fixture']' returned non-zero exit status 1.
