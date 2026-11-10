@@ -11,10 +11,10 @@ import time
 from pathlib import Path
 
 from deploy.gen2.live import fixture
-from deploy.gen2.live.build import checked
+from deploy.gen2.live.build import checked, docker_command
 from deploy.gen2.live.q_net import ROLES, TARGETS, model_request
 from gen2.supervisor import jobs
-from gen2.supervisor.docker_cli import CLI, CLI_SHA, SOCKET, require
+from gen2.supervisor.docker_cli import CLI, CLI_SHA, require
 from gen2.supervisor.spool import read_scratch
 
 SERVICES = {role: TARGETS[role] for role in ("fixture", "service", "db")}
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     require(len(p["nonce"]) == 32 and set(p["nonce"]) <= set("0123456789abcdef"), "original_nonce")
     require(hashlib.sha256(Path(CLI).read_bytes()).hexdigest() == CLI_SHA, "cli_pin")
     deadline = p["started"] + 600
-    cli, env = [CLI, "--host", SOCKET], {"PATH": "/usr/local/bin:/usr/bin:/bin"}
+    cli, env = docker_command(), {"PATH": "/usr/local/bin:/usr/bin:/bin"}
     def run(argv):
         require(time.monotonic() < deadline, "Q_window")
         data = checked(argv, env=env, timeout=min(10, deadline - time.monotonic()))

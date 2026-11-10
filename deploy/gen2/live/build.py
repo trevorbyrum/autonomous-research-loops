@@ -14,6 +14,13 @@ BUILDER_LIST = ("buildx", "ls", "--format", "json")
 BUILD_INPUTS = Path("/home/trevor/.local/share/gen2-2e1/storage/build-inputs")
 
 
+def docker_command(*args, context=None):
+    """One dedicated-runtime selector; callers cannot append another host or context."""
+    if context not in (None, "gen2-2e1-t9") or any(a in ("--host", "--context", "-H") or a.startswith(("--host=", "--context=", "-H")) for a in args):
+        raise ValueError("canonical dedicated Docker selection required")
+    return [CLI, *(["--host", "unix://" + SOCKET] if context is None else ["--context", context]), *args]
+
+
 def checked(argv, **kwargs):
     """Retain the real interface's failure, never parse a failed command as evidence."""
     try:
@@ -26,8 +33,8 @@ def bake_command(builder, targets=("runner", "engine", "gateway", "fixture")):
     """I02/D11: grant read access only to the pinned, unredirected staged-inputs path."""
     if BUILD_INPUTS.resolve() != BUILD_INPUTS:
         raise ValueError("staged inputs must match the pinned host layout")
-    return [CLI, "--context", builder, "buildx", "bake", "--allow=fs.read=" + str(BUILD_INPUTS), "--builder", builder, "--file",
-            "deploy/gen2/live/docker-bake.hcl", *targets]
+    return docker_command("buildx", "bake", "--allow=fs.read=" + str(BUILD_INPUTS), "--builder", builder, "--file",
+                          "deploy/gen2/live/docker-bake.hcl", *targets, context=builder)
 
 
 def buildx_preflight(version, bake, env):
@@ -74,7 +81,7 @@ if __name__ == "__main__":
     root = BUILD_INPUTS.parent
     free_space([str(root / p) for p in ("outputs", "relay-evidence", "spool", "control", "docker")], 16 << 30)
     env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "DOCKER_CONFIG": "/home/trevor/.config/gen2-2e1/buildx"}
-    cli = ["/usr/bin/docker", "--host", SOCKET]
+    cli = docker_command()
     def text(*args):
         return checked([*cli, *args], env=env, timeout=10).decode("utf-8")
     def read(*args):
