@@ -14,10 +14,10 @@ class CaptureTest(RouterTestCase):
                                 ("coverage_snapshot", "convert_coverage_snapshot")):
             with self.subTest(name=name):
                 convert = getattr(accounting, converter)
-                def outside(*args):
+                def outside(*args, **kwargs):
                     self.assertFalse(self.db.in_transaction)
                     with patch.object(self.store, "select", side_effect=AssertionError("conversion read Store")):
-                        return convert(*args)
+                        return convert(*args, **kwargs)
                 with patch.object(accounting, converter, side_effect=outside) as pure, \
                      patch.object(self.store, "capture_topic", wraps=self.store.capture_topic) as read:
                     native = getattr(self.router, name)(TOPIC, history="native")

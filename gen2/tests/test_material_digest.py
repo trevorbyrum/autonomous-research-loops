@@ -44,12 +44,12 @@ class DigestTest(World):
         rows[row] = tuple(value if i == at else c for i, c in enumerate(rows[row]))
         return replacing(self.raw, name, rows=tuple(rows))
 
-    def test_the_exclusion_set_is_the_seven_bookkeeping_groups_and_all_exist(self):
-        self.assertEqual(material.EXCLUDED, SEVEN)
+    def test_full_exclusions_leave_the_two_provenance_groups_projected(self):
+        self.assertEqual(material.EXCLUDED, SEVEN - {"audit_events", "operation_receipts"})
         self.assertLessEqual(SEVEN, {t.name for t in self.raw.tables})
 
     def test_digest_is_the_versioned_hash_of_the_filtered_projection(self):
-        self.assertEqual(self.base, canonical.logical_hash({"material_version": "material-operands/1", "projection": input_hash(material.project(self.raw), "native")}))
+        self.assertEqual(self.base, canonical.logical_hash({"material_version": "material-operands/2", "projection": input_hash(material.project(self.raw), "native")}))
         self.assertNotEqual(self.digest(history="legacy_unknown"), self.base)
 
     def test_bookkeeping_is_inert(self):
@@ -71,11 +71,15 @@ class DigestTest(World):
         self.assertEqual(self.digest(self.cell("invocations", "lease_id", "changed", research)), self.base)  # an excluded column
         self.assertNotEqual(self.digest(self.cell("invocations", "state", "changed", research)), self.base)
 
-    def test_every_included_group_is_sensitive(self):
+    def test_scientific_groups_are_sensitive_and_empty_provenance_stays_inert(self):
         projected = material.project(self.raw)
         self.assertGreater(len(projected.tables), 30)
         for table in projected.tables:
-            self.assertNotEqual(self.digest(replacing(projected, table.name, rows=perturbed(table).rows)), self.base, table.name)
+            changed = self.digest(replacing(projected, table.name, rows=perturbed(table).rows))
+            if table.name in ("audit_events", "operation_receipts"):
+                self.assertEqual(changed, self.base, table.name)  # no attributable plan/receipt in this fixture
+            else:
+                self.assertNotEqual(changed, self.base, table.name)
 
     def test_the_scientific_pin_on_a_record_is_bound(self):
         records = table_of(self.raw, "completion_records")

@@ -8,3 +8,4 @@ Source: private/evidence/2e1/host-T9/receipts.jsonl. Receipt identity is event +
 - bake.stderr: script_exit/I02 at 2026-11-07T16:40:39.115023+00:00; SHA256 f25a58f3c09eb03f28a89ea17574155bce9efebe3c270fb88aed8fa3dc3ed912.
 - Bake argv/exit replay: readonly-print-survey at 2026-11-07T17:04:18.344719+00:00; print stdout is discarded by the runtime preflight and is not replayed.
 - Scratch-only argv/exit replay: noop-exercise/class-noop at 2026-11-07T17:21:16.686002+00:00; original logs remain in the cited evidence directory; no application image build or Q run.
+- bake-fs-read.stderr: full unmodified resume-20261110T003607Z/i02-build.stderr; script_exit/r4-I02 at 2026-11-10T00:49:58.415252+00:00; SHA256 37e4c342c93a19ed9a27ed0ae0ebb969b60181cbcc241bf4db09242ecc12c256. Replay adds its exact named grant to the older captured argv; it does not claim a new build succeeded.

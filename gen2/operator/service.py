@@ -103,7 +103,7 @@ COMMANDS: dict[str, tuple[str, dict[str, Callable[[Principal], str]]]] = {
     "create_topic": ("operator", {}),
     "open_brief": ("operator", {}),
     "draft_contract": ("operator", {}),
-    "open_review": ("operator", {}),
+    "open_review": ("operator", {"operator_id": _NAME}),
     "apply_operator_decision": ("operator", {"operator_id": _NAME}),
     "request_cancel": ("operator", {"requested_by": _OPERATOR}),
     "requeue": ("operator", {"requested_by": _OPERATOR}),

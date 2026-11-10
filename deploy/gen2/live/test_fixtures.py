@@ -16,6 +16,8 @@ RECEIPTS = {r["step"]: r for r in map(json.loads, (CAPTURE / "receipts.jsonl").r
 CONTEXT = json.loads((CAPTURE / "context.json").read_bytes())[0]
 LISTING = (CAPTURE / "builders.jsonl").read_text()
 VIEW = next(v for v in map(json.loads, LISTING.splitlines()) if v["Name"] == CONTEXT["Name"])
+ENTITLEMENT_ERROR = (CAPTURE / "bake-fs-read.stderr").read_bytes()
+ENTITLEMENT = re.search(rb'Pass "(--allow=fs.read=[^"]+)"', ENTITLEMENT_ERROR)[1].decode()
 
 
 class Fixtures(unittest.TestCase):
@@ -24,8 +26,9 @@ class Fixtures(unittest.TestCase):
         rows = RECEIPTS["class-fix"]["summary"]["rows"]
         name, version = CONTEXT["Name"], (CAPTURE / "version.txt").read_text()
         bake = build.bake_command(name)
-        self.assertEqual(bake, rows[0]["argv"][:-1])
-        records = [rows[0], RECEIPTS["class-noop"]["summary"]]
+        records = [r | {"argv": [*r["argv"][:5], ENTITLEMENT, *r["argv"][5:]]}
+                   for r in (rows[0], RECEIPTS["class-noop"]["summary"])]
+        self.assertEqual(bake, records[0]["argv"][:-1])
         with patch.object(subprocess, "run", side_effect=[subprocess.CompletedProcess(r["argv"], r["returncode"]) for r in records]) as call:
             build.buildx_preflight(version, bake, {})
             self.assertEqual([c.args[0] for c in call.call_args_list], [r["argv"] for r in records])
@@ -45,9 +48,19 @@ class Fixtures(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 build.builder_gate(name, view | change, {name: build.SOCKET})
 
+    def test_pinned_read_entitlement(self):
+        """I02/D11: native stderr names the sole grant; redirected layout fails before Bake."""
+        self.assertEqual(ENTITLEMENT, "--allow=fs.read=/home/trevor/.local/share/gen2-2e1/storage/build-inputs")
+        for targets in (("runner", "engine", "gateway", "fixture"), ("cli-contract",)):
+            with self.subTest(targets=targets):
+                self.assertEqual([a for a in build.bake_command(CONTEXT["Name"], targets) if a.startswith("--allow=")], [ENTITLEMENT])
+        with patch.object(Path, "resolve", return_value=Path("/tmp/other")), self.assertRaisesRegex(ValueError, "staged inputs"):
+            build.bake_command(CONTEXT["Name"])
+
     def test_retained_cli_failures_refuse_before_parsing(self):
         """Actual T9 nonzero process records and stderr must never become successful preflight."""
-        for record, name in ((RECEIPTS["dedicated-builder-inspect"], "inspect.stderr"), (RECEIPTS["I02"], "bake.stderr")):
+        for record, name in ((RECEIPTS["dedicated-builder-inspect"], "inspect.stderr"), (RECEIPTS["I02"], "bake.stderr"),
+                             (RECEIPTS["r4-I02"], "bake-fs-read.stderr")):
             error = (CAPTURE / name).read_bytes()
             argv = record.get("argv") or ast.literal_eval(re.search(r"Command '(\[.*\])' returned", error.decode())[1])
             status = record.get("exit_code", record.get("script_result", {}).get("exit_code"))
