@@ -21,6 +21,26 @@ ENTITLEMENT = re.search(rb'Pass "(--allow=fs.read=[^"]+)"', ENTITLEMENT_ERROR)[1
 
 
 class Fixtures(unittest.TestCase):
+    def test_docker_selection_uses_one_constructor(self):
+        """Retained context URI is the oracle; duplicate/bare selectors fail without a CLI."""
+        for context, flag, endpoint in ((None, "--host", CONTEXT["Endpoints"]["docker"]["Host"]), (CONTEXT["Name"], "--context", CONTEXT["Name"])):
+            self.assertEqual(build.docker_command("info", context=context), [build.CLI, flag, endpoint, "info"])
+        for args in (("--host", build.SOCKET), ("--host=" + build.SOCKET,), ("-H" + build.SOCKET,), ("--context", "default")):
+            with self.subTest(args=args), self.assertRaisesRegex(ValueError, "dedicated Docker"):
+                build.docker_command(*args)
+        with self.assertRaisesRegex(ValueError, "dedicated Docker"):
+            build.docker_command("info", context="default")
+        for path in Path(build.__file__).parent.glob("*.py"):
+            if path.name.startswith("test_"):
+                continue
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if path.name == "build.py" and isinstance(node, ast.FunctionDef) and node.name == "docker_command":
+                    node.body = []
+            selectors = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                         and (n.value in ("--host", "--context", "-H") or n.value.startswith(("--host=", "--context=")))]
+            self.assertEqual(selectors, [], str(path))
+
     def test_pinned_buildx_preflight_and_unique_json_view(self):
         """Replay T9 argv/exit, version/context/list captures; malformed cases mutate those bytes."""
         rows = RECEIPTS["class-fix"]["summary"]["rows"]
@@ -60,7 +80,7 @@ class Fixtures(unittest.TestCase):
     def test_retained_cli_failures_refuse_before_parsing(self):
         """Actual T9 nonzero process records and stderr must never become successful preflight."""
         for record, name in ((RECEIPTS["dedicated-builder-inspect"], "inspect.stderr"), (RECEIPTS["I02"], "bake.stderr"),
-                             (RECEIPTS["r4-I02"], "bake-fs-read.stderr")):
+                             (RECEIPTS["r4-I02"], "bake-fs-read.stderr"), (RECEIPTS["post-image-inspect"], "bare-host.stderr-line")):
             error = (CAPTURE / name).read_bytes()
             argv = record.get("argv") or ast.literal_eval(re.search(r"Command '(\[.*\])' returned", error.decode())[1])
             status = record.get("exit_code", record.get("script_result", {}).get("exit_code"))
