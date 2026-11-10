@@ -9,12 +9,15 @@ supervisor and its subprocess executors, the production child, builders, views, 
 `offline_agent`: the judgment schemas and examples under gen2/schema/examples/judgment-*). Limits: it proves wiring and the record
 families, not research quality; the three failures that are proven at their own layers are not repeated here.
 
+The offline contract replaces the example's stopping profile with one automatic known-item rule over a staged sentinel set (offline_world.contract),
+because the example's reviewed-judgment and window rules have no automatic evaluator; the router's own completion fixtures make the same substitution.
 The Router's reviewed hand-off enters waiting; only the operator completes the topic.
 """
 import unittest
 
 from gen2.supervisor.supervisor import RecorderMissing
 from gen2.tests.offline_run import Offline
+
 
 class WholeWorkflowTest(unittest.TestCase):
     def test_one_topic_from_brief_to_an_approved_completion_through_production_routes_only(self):
@@ -43,6 +46,9 @@ class WholeWorkflowTest(unittest.TestCase):
 
     def test_removing_any_of_the_three_recorders_fails_the_run(self):
         """The DEBT-051 condition: each recorded purpose refuses to be submitted on a station that lacks its recorder."""
+        control = Offline()
+        self.addCleanup(control.close)
+        self.assertIn("the contract awaits approval", control.walk(until="contract_approval"), "control: with every recorder installed, scoping and discovery run")
         for key in ("discovery/search", "verification/verify", "checkpoint/dossier"):
             with self.subTest(key):
                 run = Offline(without_recorder=key)
