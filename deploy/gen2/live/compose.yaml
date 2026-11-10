@@ -12,7 +12,7 @@ x-service: &service
   cpus: 0.5
   pids_limit: 64
   tmpfs: ["/tmp:rw,nodev,nosuid,size=64m,mode=1777"]
-  logging: {driver: local, options: {max-size: 4m, max-file: "1"}}
+  logging: {driver: local, options: {max-size: 4m, max-file: "1", compress: "false"}}
 x-network: &network
   driver: bridge
   internal: true
