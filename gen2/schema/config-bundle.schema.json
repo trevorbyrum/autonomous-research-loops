@@ -17,6 +17,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "search_capture": {"const": "proposal-discovery/1", "description": "Pinned execution contract: only supervised discovery uses the gateway; Router-derived plans account for owed searches."},
         "executors": {
           "description": "Hash-pinned mounted prompts and per-kind/purpose execution bounds. An absent entry grants no execution limits or prompt; the order builder refuses it.",
           "type": "array", "maxItems": 64,

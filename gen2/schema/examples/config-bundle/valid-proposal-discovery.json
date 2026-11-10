@@ -1,0 +1,4 @@
+{
+  "fixture": {"schema": "config-bundle.schema.json", "expect": "valid", "tests": "G-10: explicit retained proposal-discovery capture contract"},
+  "instance": {"bundle_version": "config-bundle/1", "version": 1, "policy": {"search_capture": "proposal-discovery/1"}, "questions": []}
+}

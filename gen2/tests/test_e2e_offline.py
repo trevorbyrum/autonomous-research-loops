@@ -9,22 +9,17 @@ supervisor and its subprocess executors, the production child, builders, views, 
 `offline_agent`: the judgment schemas and examples under gen2/schema/examples/judgment-*). Limits: it proves wiring and the record
 families, not research quality; the three failures that are proven at their own layers are not repeated here.
 
-The completion test is skipped until two lane A items land (each shown by a local experiment, then removed): (A) coverage attribution, since the
-dossier's coverage gate reads `unknown` while discovery is a separate invocation; (B) the completion hand-off, since nothing returns a resting topic to
-`active` or `awaiting_judgment`, the only states `completion_approval` accepts. The recorder-removal test does not need them and runs. The offline
-contract replaces the example's stopping profile with one automatic known-item rule over a staged sentinel set (offline_world.contract), because the
-example's reviewed-judgment and window rules have no automatic evaluator; the router's own completion fixtures make the same substitution.
+The offline contract replaces the example's stopping profile with one automatic known-item rule over a staged sentinel set (offline_world.contract),
+because the example's reviewed-judgment and window rules have no automatic evaluator; the router's own completion fixtures make the same substitution.
+The Router's reviewed hand-off enters waiting; only the operator completes the topic.
 """
 import unittest
 
 from gen2.supervisor.supervisor import RecorderMissing
 from gen2.tests.offline_run import Offline
 
-BLOCKED = "waiting for lane A: coverage attribution (A) and the completion hand-off (B); see the module docstring"
-
 
 class WholeWorkflowTest(unittest.TestCase):
-    @unittest.skipIf(BLOCKED, BLOCKED)
     def test_one_topic_from_brief_to_an_approved_completion_through_production_routes_only(self):
         run = Offline()
         self.addCleanup(run.close)
