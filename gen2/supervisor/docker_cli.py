@@ -46,6 +46,22 @@ def _binding(record):
         for name, network in record["NetworkSettings"]["Networks"].items()}
 
 
+START_CHANGES = {"OomScoreAdj": (0, 200), "OomKillDisable": (False, None)}   # the real daemon's only create->start HostConfig changes: {field: (created, started)} (T9 log probe)
+
+
+def _started(record, started):
+    """The created record as the daemon reports it after start: only the pinned fields, only from their exact created value (type included: 0 is not
+    False). The `none` network's ID is empty until start and then a 64-hex ID (the retained probe shows it); no other network and no other ID shape."""
+    host = dict(record["HostConfig"])
+    for key, (before, after) in START_CHANGES.items():
+        if key in host and host[key] == before and type(host[key]) is type(before):
+            host[key] = after
+    later = ((started.get("NetworkSettings") or {}).get("Networks") or {}).get("none") or {}
+    networks = {name: {**value, "NetworkID": later["NetworkID"]} if name == "none" and value.get("NetworkID") == "" and CID.fullmatch(str(later.get("NetworkID"))) else value
+                for name, value in record["NetworkSettings"]["Networks"].items()}
+    return {**record, "HostConfig": host, "NetworkSettings": {**record["NetworkSettings"], "Networks": networks}}
+
+
 def _when(text, reason):
     """A daemon timestamp (RFC 3339, up to nanoseconds, Z) as a datetime; a zero date, a malformed one or a non-string refuses."""
     found = re.fullmatch(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?Z", text) if isinstance(text, str) else None
@@ -182,7 +198,7 @@ class DockerCLI:
                 "--memory", "1g", "--memory-swap", "1g", "--cpus", "1", "--ulimit", "fsize=16777216:16777216",
                 "--ulimit", "nofile=256:256", "--ulimit", "core=0:0", "--dns", "127.0.0.1", "--ipc=private",
                 "--cgroupns=private", "--no-healthcheck", "--log-driver", "local", "--log-opt", "max-size=4m",
-                "--log-opt", "max-file=1", "--network", network, "--ip", "172.31.254.3"]
+                "--log-opt", "max-file=1", "--log-opt", "compress=false", "--network", network, "--ip", "172.31.254.3"]
         for name, size, mode in (("work", "128m", "0700"), ("auth/codex", "16m", "0700"), ("tmp", "64m", "1777"), ("run", "4m", "0700")):
             args.extend(("--tmpfs", f"/{name}:rw,nodev,nosuid,size={size},mode={mode},uid=10001,gid=10001"))
         for name, source in binds.items():
@@ -225,7 +241,7 @@ class DockerCLI:
             require(read_scratch(self.job.dir, SEAL, 4096)["status"] == "absent", "start_after_seal")
             self._command(("start", cid))
         started = self.inspect(cid)
-        require(_binding(started) == _binding(original), "start_changed")
+        require(_binding(started) == _binding(_started(original, started)), "start_changed")
         _when(started["State"].get("StartedAt"), "start_changed")
         self.job.write(role + "-start.json", started)
 
@@ -273,7 +289,7 @@ class DockerCLI:
         args = ["create", "--cidfile", str(self.job.dir / (role + ".cid")), "--pull=never", "--restart=no", "--read-only",
                 "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "32", "--memory", "128m",
                 "--memory-swap", "128m", "--cpus", ".25", "--no-healthcheck", "--ipc=private", "--cgroupns=private",
-                "--log-driver", "local", "--log-opt", "max-size=4m", "--log-opt", "max-file=1",
+                "--log-driver", "local", "--log-opt", "max-size=4m", "--log-opt", "max-file=1", "--log-opt", "compress=false",
                 "--tmpfs", "/tmp:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001", "--network", "none" if role == "initializer" else network]
         mounts = slots if role == "initializer" else {"evidence": str(Path(slots["evidence"]) / generation), "etc/nginx/nginx.conf": self.plan["relay_config"]}
         for name, source in mounts.items():

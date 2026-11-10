@@ -263,7 +263,7 @@ class DockerBoundary(unittest.TestCase):
             "--security-opt", "no-new-privileges", "--pids-limit", "64", "--memory", "1g", "--memory-swap", "1g",
             "--cpus", "1", "--ulimit", "fsize=16777216:16777216", "--ulimit", "nofile=256:256", "--ulimit", "core=0:0",
             "--dns", "127.0.0.1", "--ipc=private", "--cgroupns=private", "--no-healthcheck", "--log-driver", "local",
-            "--log-opt", "max-size=4m", "--log-opt", "max-file=1", "--network", NET, "--ip", "172.31.254.3",
+            "--log-opt", "max-size=4m", "--log-opt", "max-file=1", "--log-opt", "compress=false", "--network", NET, "--ip", "172.31.254.3",
             "--tmpfs", "/work:rw,nodev,nosuid,size=128m,mode=0700,uid=10001,gid=10001",
             "--tmpfs", "/auth/codex:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001",
             "--tmpfs", "/tmp:rw,nodev,nosuid,size=64m,mode=1777,uid=10001,gid=10001",
@@ -293,7 +293,7 @@ class DockerBoundary(unittest.TestCase):
             self.manifest["images"][role]["kind"] = "repo-digest"
         common = ("--pull=never", "--restart=no", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                   "--pids-limit", "32", "--memory", "128m", "--memory-swap", "128m", "--cpus", ".25", "--no-healthcheck",
-                  "--ipc=private", "--cgroupns=private", "--log-driver", "local", "--log-opt", "max-size=4m", "--log-opt", "max-file=1",
+                  "--ipc=private", "--cgroupns=private", "--log-driver", "local", "--log-opt", "max-size=4m", "--log-opt", "max-file=1", "--log-opt", "compress=false",
                   "--tmpfs", "/tmp:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001", "--network")
         for role, network, suffix in (
             ("initializer", None, ("none", "--mount", "type=bind,src=/slots/out,dst=/out", "--mount", "type=bind,src=/slots/evidence,dst=/evidence",
@@ -474,6 +474,35 @@ class DockerBoundary(unittest.TestCase):
         error, batch, watch, contained = self.real_run(cli, egress, relay, record, end_error=[{"State": {"ExitCode": 0}}, LiveProfileRefused("end_unconfirmed")])
         self.assertRegex(str(error), "end_unconfirmed")
         contained.assert_called_once()                                              # whatever was started is ended before the failure leaves
+
+    def test_the_real_daemons_two_start_transitions_are_accepted_and_nothing_else_is(self):
+        """Replays the retained created/started/ended inspect records of the T9 log probe (host-T9/reuse-20261110T090130Z, CID 53bcee86...)."""
+        real = json.loads((Path(__file__).parent / "fixtures" / "docker_inspect" / "log-probe-20261110.json").read_text())
+        created, started, ended = real["created"], real["started"], real["ended"]
+        self.assertEqual(d._binding(d._started(created, started)), d._binding(started))        # OomScoreAdj 0->200, OomKillDisable false->null and the none network's ID
+        self.assertNotEqual(d._binding(created), d._binding(started))                           # so strict equality alone would refuse (T9 start_changed)
+        self.assertEqual(d._binding(started), d._binding(ended))                               # stable after start: the end check stays strict
+        self.assertEqual(started["HostConfig"]["LogConfig"]["Config"], {"compress": "false", "max-file": "1", "max-size": "4m"})
+        cid = created["Id"]
+        self.job.write("runner.json", created)
+        self.cli.plan["expected"] = {"runner": {"Config": {"User": created["Config"]["User"]}, "HostConfig": {"PidMode": ""}}}
+        with mock.patch.object(d, "free_space"), mock.patch.object(self.cli, "_command"):
+            with mock.patch.object(self.cli, "inspect", side_effect=[created, started]):
+                self.cli.start(cid)
+            self.assertEqual(self.job.read("runner-start.json")["HostConfig"]["OomScoreAdj"], 200)
+            for label, change in (("score other", {"OomScoreAdj": 300}), ("score reverted", {"OomScoreAdj": 0}), ("score bool", {"OomScoreAdj": False}),
+                                  ("kill disable true", {"OomKillDisable": True}), ("kill disable false", {"OomKillDisable": False}),
+                                  ("kill disable zero", {"OomKillDisable": 0}), ("other field", {"Privileged": True}), ("memory", {"Memory": 1})):
+                with self.subTest(label), mock.patch.object(self.cli, "inspect", side_effect=[created, {**started, "HostConfig": {**started["HostConfig"], **change}}]):
+                    self.refused(lambda: self.cli.start(cid), "start_changed")
+            net = lambda value, name="none": {**started, "NetworkSettings": {"Networks": {name: {**started["NetworkSettings"]["Networks"]["none"], "NetworkID": value}}}}
+            for label, record in (("short id", net("abc")), ("other network", net(started["NetworkSettings"]["Networks"]["none"]["NetworkID"], "bridge"))):
+                with self.subTest(label), mock.patch.object(self.cli, "inspect", side_effect=[created, record]):
+                    self.refused(lambda: self.cli.start(cid), "start_changed")
+            odd = {**created, "HostConfig": {**created["HostConfig"], "OomScoreAdj": 5}}       # a created value off the table must stay equal, not become 200
+            self.job.write("runner.json", odd)
+            with mock.patch.object(self.cli, "inspect", side_effect=[odd, started]):
+                self.refused(lambda: self.cli.start(cid), "start_changed")
 
     def test_runtime_identity_and_the_bounded_drain(self):
         """Gate S #7c: the proof is bound to the installed runtime; a changed field, or a drain that overran or was cut short, refuses."""
