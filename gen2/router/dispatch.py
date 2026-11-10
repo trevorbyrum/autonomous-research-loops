@@ -1,4 +1,4 @@
-"""F5/L-6, v7 §2: serialized intent, first result, fixed-U stop (DEBT-052).
+"""F5/L-6, v7 §2: serialized intent, first result, fixed-U charge (DEBT-052).
 
 Audit facts are append-only authority; no lifecycle/scientific writes.
 Safety retention never resumes work. No productive reader is wired.
@@ -301,10 +301,11 @@ class Dispatch:
                 if prior is not None:
                     require(prior["detail"]["evidence"] == doc, "dispatch_result_conflict")
                     return {"status": "replayed", **prior["detail"]["response"]}
-                known = self._current_result(current, original, now) and doc["confirmed_end"] and actual is not None
-                charge = actual if known else original["upper_minor_units"]
-                stopped = not known or charge > original["upper_minor_units"]
-                response = {"charge_state": "actual" if known else "worst_case", "trial_stopped": stopped}
+                known_end = self._current_result(current, original, now) and doc["confirmed_end"]
+                known_cost = known_end and actual is not None
+                charge = actual if known_cost else original["upper_minor_units"]
+                stopped = not known_end or charge > original["upper_minor_units"]
+                response = {"charge_state": "actual" if known_cost else "worst_case", "trial_stopped": stopped}
                 self._register(current, refs, now)
                 if rejection is not None:
                     observation, evidence = rejection
