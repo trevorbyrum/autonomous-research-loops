@@ -519,7 +519,7 @@ class DraftVocabularyTransitionTest(StoreTestCase):
         "awaiting_contract_approval": {"queued", "scoping", "retired"},
         "queued": {"active", "held", "capability_blocked", "retired"},
         "active": {"resting", "queued", "held", "awaiting_judgment", "completed_with_qualified_conclusions", "capability_blocked", "stopped_for_resources", "retired"},
-        "resting": {"active", "queued", "held", "retired"},
+        "resting": {"active", "queued", "held", "awaiting_judgment", "retired"},
         "held": {"scoping", "awaiting_scope_approval", "awaiting_contract_approval", "queued", "retired"},
         "capability_blocked": {"scoping", "queued", "held", "retired"},
         "stopped_for_resources": {"queued", "awaiting_judgment", "retired"},
