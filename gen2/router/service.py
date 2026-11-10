@@ -63,7 +63,7 @@ from gen2.router.boundary import Refusal, instant
 from gen2.router.capabilities import CAPABILITY_COMMANDS, Capabilities
 from gen2.router.commands import COMMANDS, LIFECYCLE_FACTS
 from gen2.router.evidence_writer import EvidenceWriter
-from gen2.router import gates, material
+from gen2.router import gates, material, search_capture, completion
 from gen2.router.extractions import ExtractionRecords
 from gen2.router.detailed_checks import DetailedChecks
 from gen2.router.history import require_retained_support
@@ -482,6 +482,7 @@ class Router:
         self._store.insert("leases", {"lease_id": lease_id, "topic_id": topic["topic_id"], "scope": scope, "generation": generation,
                                       "station_id": req["station_id"], "granted_at": now, "expires_at": req["lease_expires_at"]})
         self._insert_invocation(req, topic["topic_id"], lease_id, pins, now)
+        search_capture.bind(self, self._one("invocations", {"invocation_id": req["invocation_id"]}), now)
         if retry is not None:
             self._store.update("retries", {"invocation_id": retry["invocation_id"]}, {"retry_invocation_id": req["invocation_id"]})
         if "reservation" in req:
@@ -745,7 +746,17 @@ class Router:
             self._fault("before_validation")
             checked = self._validate_commit(env)
             self._fault("after_validation")
-            status, receipt = self._guarded("payload_invalid", lambda now: self._commit_in_transaction(env, fingerprint, checked, now))
+            if (env["operation_kind"] == "final_outcome" and checked["invocation"]["kind"] == "checkpoint"
+                    and any(r["kind"] == "sufficiency_review" for r in checked["payload"].get("completion_records", []))):
+                def replay_review():
+                    prior = self._replay(op_id, fingerprint)
+                    return (prior["status"], prior["receipt"]) if prior is not None else None
+                status, receipt = self._commit_dossier_inputs(env["topic_id"], invocation_id=env["invocation_id"], history="native",
+                    prepare=lambda inputs: completion.candidate(self, inputs, checked["payload"]),
+                    commit=lambda ready, now: self._commit_in_transaction(env, fingerprint, {**checked, "review_ready": ready}, now),
+                    replay=replay_review, audit_kind=None)
+            else:
+                status, receipt = self._guarded("payload_invalid", lambda now: self._commit_in_transaction(env, fingerprint, checked, now))
             if status == "committed":
                 self._fault("after_commit")
             return {"status": status, "receipt": receipt}
@@ -853,6 +864,7 @@ class Router:
         self._evidence_writer.validate_holds(payload)
         validated = list(dict.fromkeys([env["payload_digest"], *(ref["content_hash"] for ref in env["result_refs"])]))
         return {"invocation": inv, "payload": payload, "artifacts": artifacts, "manifests": manifests, "protocol": protocol, "quote_checks": quote_checks,
+                "search_plan": search_capture.plan(self, inv, payload) if env["operation_kind"] == "final_outcome" else None,
                 "validation": {"validator_version": VALIDATOR_VERSION, "policy_version": f"config-bundle/{bundle['version']}", "validated_hashes": validated}}
 
     def _commit_in_transaction(self, env: dict, fingerprint: str, checked: dict, now: str) -> tuple[str, dict]:
@@ -871,7 +883,7 @@ class Router:
         self._fault("in_transaction:fenced")
 
         # effects, decided before the receipt so the receipt records them all
-        ordinal, queue_transition, lease_release = self._decide_effects(final, inv, topic, payload, lease)
+        ordinal, queue_transition, lease_release = self._decide_effects(final, inv, topic, payload, lease, ready=checked.get("review_ready", False))
         new_triggers, outbox, triggers = self._decide_triggers_and_outbox(inv, payload, checked)
         receipt_id, after, receipt, audit_id = self._build_receipt(topic, env, inv, fingerprint, admission, now, checked, ordinal, queue_transition, lease_release, payload, new_triggers, outbox)
 
@@ -880,6 +892,9 @@ class Router:
         self._write_operation_receipt(env, receipt_id, inv, fingerprint, lease_id, lease, topic, after, checked, receipt, now)
         self._fault("in_transaction:receipt")
         self._write_final_effects(ordinal, inv, env, lease_release, lease_id, now, final)
+        if checked["search_plan"] is not None:
+            self._audit(search_capture.FACTS[0], now, {**checked["search_plan"], "payload_digest": env["payload_digest"]},
+                        topic_id=inv["topic_id"], invocation_id=inv["invocation_id"], operation_id=env["operation_id"])
         extraction_records = self._extractions.write(payload, inv, env["operation_id"], now)
         detailed_records = self._detailed_checks.write(payload, inv, env["operation_id"], now)
         written = self._write_evidence(env, inv, checked, now, new_triggers, outbox)
@@ -937,7 +952,7 @@ class Router:
                     qualification_ref=authorization["qualification_ref"]):
                 raise Refusal("payload_invalid", f"{doc['decision_receipt_id']}: its qualification was revoked meanwhile (D-4, D-11)")
 
-    def _decide_effects(self, final: bool, inv: dict, topic: dict, payload: dict, lease: dict) -> tuple[int | None, dict | None, dict | None]:
+    def _decide_effects(self, final: bool, inv: dict, topic: dict, payload: dict, lease: dict, *, ready=False) -> tuple[int | None, dict | None, dict | None]:
         ordinal = None
         if final and inv["kind"] == "research_pass" and inv["admission_context"] == "contract/1":
             ordinal = self._store.next_in_sequence("research_ordinals", "ordinal", {"topic_id": inv["topic_id"]})
@@ -947,6 +962,9 @@ class Router:
             queue_transition, rest_state = {"from": "active", "to": target}, ("rest_until" if target == "resting" else "idle")
         elif topic["status"] == "held":
             rest_state = "held"
+        if ready and topic["status"] in ("active", "resting") and not completion.blocked(self, inv["topic_id"], ending=inv["invocation_id"],
+                closing={c["episode_id"] for c in payload["review_closures"]}):
+            queue_transition = {"from": topic["status"], "to": "awaiting_judgment"}
         if payload["scoping_reports"]:  # task 2a: the committed report hands a scoping topic to the operator (store README, queue status)
             if topic["status"] != "scoping":
                 raise Refusal("payload_invalid", f"a scoping report is committed while its topic is scoping, not {topic['status']}")
@@ -1023,7 +1041,7 @@ class Router:
                 stored = self._one("dossiers", {"topic_id": req["topic_id"], "dossier_revision": req["subject"]["revision"]})
                 if stored is not None:
                     doc = stored["document"]
-                    if self._schemas.errors(doc, "dossier-v2.schema.json") or "material_digest" not in doc:
+                    if self._schemas.errors(doc, "dossier-v2.schema.json") or "material_digest" not in doc or doc["evaluator_version"] != material.EVALUATOR:
                         raise Refusal("decision_refused", "dossier has no supported material binding; reassemble and review")
                     def prepare(inputs):
                         if material.digest(inputs.raw, doc["history"]) != doc["material_digest"]:
@@ -1131,6 +1149,8 @@ class Router:
         if not self._store.select("completion_records", {"kind": "sufficiency_review", "subject_ref": d["topic_id"],
                 "subject_revision": d["subject_revision"], "subject_hash": d["subject_hash"]}):
             raise Refusal("decision_refused", "completion requires a sufficiency review of this exact dossier revision and hash")
+        if completion.blocked(self, d["topic_id"]):
+            raise Refusal("decision_refused", "completion is blocked by pause, holds, signals, episodes or unfinished work")
 
     def _rework(self, d: dict, now: str) -> dict:
         """Task 2a: a rejected scope approval of the topic's current report
