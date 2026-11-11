@@ -201,6 +201,9 @@ class DockerCLI:
                 "--ulimit", "nofile=256:256", "--ulimit", "core=0:0", "--dns", "127.0.0.1", "--ipc=private",
                 "--cgroupns=private", "--no-healthcheck", "--log-driver", "local", "--log-opt", "max-size=4m",
                 "--log-opt", "max-file=1", "--log-opt", "compress=false", "--network", network, "--ip", "172.31.254.3"]
+        invocation = self.plan["origin"].get("invocation_id")
+        require(isinstance(invocation, str) and re.fullmatch(r"[\w.:-]{1,256}", invocation), "runner_invocation")
+        args.extend(("--env", "GEN2_INVOCATION_ID=" + invocation))   # the one variable the pinned runner image lacks and runner.launch reads; no credential, capability or token
         for name, size, mode in (("work", "128m", "0700"), ("auth/codex", "16m", "0700"), ("tmp", "64m", "1777"), ("run", "4m", "0700")):
             args.extend(("--tmpfs", f"/{name}:rw,nodev,nosuid,size={size},mode={mode},uid=10001,gid=10001"))
         for name, source in binds.items():
@@ -303,8 +306,9 @@ class DockerCLI:
         if role == "initializer":
             args.extend(("--user", "0:0", "--cap-add", "CHOWN", "--entrypoint", "/usr/local/bin/python",   # the engine image's own ENTRYPOINT is gen2.app.engine
                          self.manifest["images"]["engine"]["pin"], "-m", "gen2.supervisor.docker_cli", generation))
-        else:
-            args.extend(("--user", "10001:10001", "--sysctl", "net.ipv4.ip_forward=0", "--ip", "172.31.254.2", self.manifest["images"]["relay"]["pin"]))
+        else:   # an explicit command: the image's CMD (`nginx -g "daemon off;"`) would duplicate the directive the mounted conf already carries
+            args.extend(("--user", "10001:10001", "--sysctl", "net.ipv4.ip_forward=0", "--ip", "172.31.254.2", self.manifest["images"]["relay"]["pin"],
+                         "nginx", "-c", "/etc/nginx/nginx.conf"))
         return self._create(role, args)
 
     def run(self, fixture_ended, batch):
