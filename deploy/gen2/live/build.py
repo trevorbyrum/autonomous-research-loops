@@ -26,10 +26,10 @@ def docker_command(*args, context=None):
 
 
 def compose_command(*args):
-    """One approved plugin input, the same dedicated-daemon selector as every CLI call."""
+    """Execute the checked plugin itself with the canonical dedicated-runtime arguments."""
     if hashlib.sha256(COMPOSE.read_bytes()).hexdigest() != COMPOSE_SHA:
         raise ValueError("Compose plugin pin")
-    return docker_command("compose", *args)
+    return [str(COMPOSE), *docker_command(*args)[1:]]
 
 
 def checked(argv, **kwargs):

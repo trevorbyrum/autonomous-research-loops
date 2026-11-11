@@ -25,10 +25,29 @@ class Fixtures(unittest.TestCase):
     def test_compose_uses_the_pinned_plugin_and_dedicated_selector(self):
         with patch.object(Path, "read_bytes", return_value=b"retained plugin"), patch.object(build.hashlib, "sha256") as digest:
             digest.return_value.hexdigest.return_value = build.COMPOSE_SHA
-            self.assertEqual(build.compose_command("version"), build.docker_command("compose", "version"))
+            self.assertEqual(build.compose_command("version"), [str(build.COMPOSE), *build.docker_command("version")[1:]])
             digest.return_value.hexdigest.return_value = "changed"
             with self.assertRaisesRegex(ValueError, "Compose plugin pin"):
                 build.compose_command("version")
+
+    def test_compose_refuses_a_shadowing_user_or_extra_directory_plugin(self):
+        """Shadow candidates cannot replace the exact executable; mismatched bytes refuse."""
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory)
+            shadow = config / "cli-plugins" / "docker-compose"
+            shadow.parent.mkdir()
+            shadow.write_bytes(b"shadow plugin")
+            (config / "config.json").write_text(json.dumps({"cliPluginsExtraDirs": [str(shadow.parent)]}))
+            with (
+                patch.dict(os.environ, {"DOCKER_CONFIG": directory}),
+                patch.object(Path, "read_bytes", return_value=b"retained plugin"),
+                patch.object(build.hashlib, "sha256") as digest,
+            ):
+                digest.return_value.hexdigest.return_value = build.COMPOSE_SHA
+                self.assertEqual(build.compose_command("version")[0], "/usr/libexec/docker/cli-plugins/docker-compose")
+            with patch.dict(os.environ, {"DOCKER_CONFIG": directory}), patch.object(build, "COMPOSE", shadow):
+                with self.assertRaisesRegex(ValueError, "Compose plugin pin"):
+                    build.compose_command("version")
 
     def test_fresh_control_requires_exact_d03_layout(self):
         """A06 admits the two empty D03 directories and refuses partial or unsafe roots."""
