@@ -18,13 +18,13 @@ Maintained by the orchestrator loop. One entry per wake with material change; qu
 - **Last verifier result:** #137 at `bd3490d`, gen2-accept exit 0. Eleven sprint verifier runs (11-05 to 11-07), all exit 0, 839–878 s each.
 - **Blockers:** none for the build.
   - Outstanding approvals from Trevor: Nov 14, the genuine rejected-credential experiment (DEBT-004, disposable credential); Nov 16–18, the live-run scope, contract and completion approvals. S3-6 is closed: the primary executor does scoping under `pre-contract/1`.
-- **Gate S:** the last run is **Gate S #7 at `bd3490d`** (2026-11-07; `gen2-gate-s7-fable-20261107.md`). Growth since S6 (`ff69469`) is +6,228 net (production/tooling 3,266, tests 2,854, docs 108). Before that, Gate S #6 at `ff69469` (2026-11-05) and #5 (2026-11-03). Caps: host lane 1,250; 2e2 8,800; `GROWTH_REVIEW` 17,500.
+- **Gate S:** the last run is **Gate S #7 at `bd3490d`** (2026-11-07; `gen2-gate-s7-fable-20261107.md`). Growth since S6 (`ff69469`) is +6,228 net (production/tooling 3,266, tests 2,854, docs 108). Before that, Gate S #6 at `ff69469` (2026-11-05) and #5 (2026-11-03). Caps: host lane 1,250; 2e2 8,800; `GROWTH_REVIEW` 18,000.
 - **What's next:** PR3b (#144–#146), T18 (offline end-to-end through production routes), T9 host qualification (L08/L09 approved), T19 live entrance, then the supervised 2f run (target Nov 18, Trevor present). Task 2g follows 2f. 2e1 PR 4a stays deferred (DEBT-054). The Gate S #7 roadmap items A–G are in DEBT-058.
 - **Operator-side items outstanding:** the CI rollout (ci-cd #12→#15, tag v1.2.0, JCasC repoint) belongs to the operator and the ci-cd session.
 - **Debt:** `DEBT-REGISTER.md` is authoritative; status is in `phase-status.json`.
 
 ## Phase 2 plan (approved order, Gate S plan 2026-10-24; supersedes the 2026-09-29 plan, which is preserved in REVIEW-LOG)
-**Size rules (the user, 2026-09-29):** no hand-written file over 1,500 lines (enforced by `make gen2-check`); 17,500 total production lines is a growth-review trigger.
+**Size rules (the user, 2026-09-29):** no hand-written file over 1,500 lines (enforced by `make gen2-check`); 18,000 total production lines is a growth-review trigger.
 - **Done:** 2a (bootstrap chain), 2r (size rules), 2b (gateway input contract), 2q (architecture refactors), 2c (accounting views and confidence), and in 2d: slices 1–5 and 6a parts 1–3.
 - **Remaining, in order** (S = Gate S simplification batch, R = records batch):
   1. ~~R1 records collapse~~, ~~S1 tiered checks~~, ~~S2 automatic mutation~~, ~~S3 retire the metrics ratchet~~ (all done); ~~S2b mutation test selection~~ (done); ~~S2c coverage reuse through make~~ (done).

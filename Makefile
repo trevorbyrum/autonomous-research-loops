@@ -158,7 +158,7 @@ gen2-mutation-report: gen2-venv
 
 # Size rules (charter "Size rules"; task 2r): fails on a hand-written gen-2
 # file over 1,500 lines (generated files are exempt only by the reasoned list
-# in tools/gen2_linecount.py) and when production reaches the 17,500-line
+# in tools/gen2_linecount.py) and when production reaches the 18,000-line
 # growth-review trigger.
 gen2-size: gen2-venv
 	$(PYTHON) tools/gen2_linecount.py --check

@@ -61,7 +61,7 @@ Items 1–3 are cited by document identity (file name and dates). They belong to
 ## Architecture metrics (the user, 2026-09-30; amended by operator ruling 3, 2026-10-24, Gate S #1)
 Enforced by `make gen2-check`:
 - the **boundary graph** (`gen2-boundaries`);
-- the **1,500-line file rule** and the **17,500-line production growth trigger** (raised from 15,000 by Trevor, 2026-11-05, Gate S #6) (`gen2-size`);
+- the **1,500-line file rule** and the **18,000-line production growth trigger** (raised from 15,000 by Trevor, 2026-11-05, Gate S #6, then to 17,500 and on 2026-11-10/11 to 18,000) (`gen2-size`);
 - the **debt gate** (`gen2-debt`);
 - **`gen2-complexity`**: radon cyclomatic complexity, with a blocking per-function ceiling and a blocking mean ceiling. These are set in the Makefile at the current worst observed grade (2026-10-25: 48 and 10). Changing either is a reviewed Makefile edit, with no ledger or exemption file.
 
@@ -198,7 +198,7 @@ These are the reasons teams use separate repositories, adopted as process inside
 - Build follows the adjudicated phase order (flow doc + Astra review §10): Phase 0 invariants/migration contract → 1 mechanical vertical slice (fake executors; crash/replay/cancel proven before model authority) → 2 one complete research workflow → 3 qualified automation/projections → 4 migration+canary. Phase transitions are operator-gates.
 - Size rules (the user, 2026-09-29; replaces the earlier 10,000/12,000 total, which had been copied from the design review's *proposed* planning allocation without operator approval):
   - **Per-file limit: no hand-written file over 1,500 lines** (code, tests, tooling, SQL, config). It is enforced by `make gen2-check` over the gen-2 surface INVARIANTS B-3 lists (`gateway/` included since task 2b-repair; gen-1's `research_loops/` is not gen-2's and is outside it). Generated files (for example the mutation-control pairings and the generated catalog/env example) are exempt only by an explicit, reasoned allowlist entry.
-  - **Total production code: 17,500 lines is a growth-review trigger** (15,000 until Trevor's ruling of 2026-11-05, which took Gate S #6 as the 15,000-line review). When it is reached, the loop stops for a review with the user of what made it grow before building further. The total is reported at every task boundary. Tests, schemas, SQL, prompts and tooling are reported separately.
+  - **Total production code: 18,000 lines is a growth-review trigger** (15,000 until Trevor's ruling of 2026-11-05, which took Gate S #6 as the 15,000-line review; 17,500 until his ruling of 2026-11-10/11, because the reviewed live-path stack brings production to 17,551; the growth review is the Nov 15 Gate S). When it is reached, the loop stops for a review with the user of what made it grow before building further. The total is reported at every task boundary. Tests, schemas, SQL, prompts and tooling are reported separately.
 - A PR that changes `gen2/store/schema/` ships the `Store.maintain` operation from the previous schema and a test that upgrades a retained copy of a real store.
 - Machine-checkable module-boundary graph in CI from the first commit; a boundary-graph violation fails the build.
 - Jev is not a build dependency: everything must run and be testable with the decision layer disabled.
