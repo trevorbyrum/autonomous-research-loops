@@ -31,6 +31,8 @@ RUNTIME = {"ServerVersion": "29.9.0", "CgroupVersion": "2", "CgroupDriver": "sys
 RUNTIME_IDS = {"ContainerdCommit": "f2551031d7276a770f65f98c9b52e57e7dad07e8", "RuncCommit": "v1.5.2-0-g29dd3dc2"}
 DRAIN_SECONDS, DRAIN_LIMIT = 8, 10   # the bounded wait after ingress closes (reports waiting, not quiescence); the whole step must finish within the limit
 SEAL = "admission-closed.json"
+# The relay's real-route files, plan key -> destination (relay only, read-only): its key include and its CA bundle. Destinations are lane C's D16 contract.
+RELAY_PROVIDER = {"provider_auth": "etc/gen2/provider-auth.conf", "provider_ca": "etc/gen2/provider-ca.pem"}
 MODEL = "gpt-5.4"
 NETWORKS = {"job": "172.31.254.0/29", "fixture": "172.31.252.0/29"}
 
@@ -291,13 +293,16 @@ class DockerCLI:
                 "--memory-swap", "128m", "--cpus", ".25", "--no-healthcheck", "--ipc=private", "--cgroupns=private",
                 "--log-driver", "local", "--log-opt", "max-size=4m", "--log-opt", "max-file=1", "--log-opt", "compress=false",
                 "--tmpfs", "/tmp:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001", "--network", "none" if role == "initializer" else network]
-        mounts = slots if role == "initializer" else {"evidence": str(Path(slots["evidence"]) / generation), "etc/nginx/nginx.conf": self.plan["relay_config"]}
+        real = self.plan.get("route") == "real"
+        require(role == "initializer" or {k for k in RELAY_PROVIDER if k in self.plan} == (set(RELAY_PROVIDER) if real else set()), "relay_provider_files")
+        mounts = slots if role == "initializer" else {"evidence": str(Path(slots["evidence"]) / generation), "etc/nginx/nginx.conf": self.plan["relay_config"],
+                                                      **{dst: self.plan[key] for key, dst in RELAY_PROVIDER.items() if key in self.plan}}
         for name, source in mounts.items():
             require(Path(source).is_absolute() and "," not in source, "auxiliary_bind_path")
             args.extend(("--mount", f"type=bind,src={source},dst=/{name}" + (",readonly" if name.startswith("etc/") else "")))
         if role == "initializer":
-            args.extend(("--user", "0:0", "--cap-add", "CHOWN", self.manifest["images"]["engine"]["pin"],
-                         "/usr/local/bin/python", "-m", "gen2.supervisor.docker_cli", generation))
+            args.extend(("--user", "0:0", "--cap-add", "CHOWN", "--entrypoint", "/usr/local/bin/python",   # the engine image's own ENTRYPOINT is gen2.app.engine
+                         self.manifest["images"]["engine"]["pin"], "-m", "gen2.supervisor.docker_cli", generation))
         else:
             args.extend(("--user", "10001:10001", "--sysctl", "net.ipv4.ip_forward=0", "--ip", "172.31.254.2", self.manifest["images"]["relay"]["pin"]))
         return self._create(role, args)

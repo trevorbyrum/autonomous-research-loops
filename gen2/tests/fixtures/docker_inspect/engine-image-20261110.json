@@ -1,0 +1,13 @@
+{
+ "Config": {
+  "Cmd": null,
+  "Entrypoint": [
+   "python3",
+   "-m",
+   "gen2.app.engine"
+  ],
+  "User": "10001:10001",
+  "WorkingDir": null
+ },
+ "Id": "sha256:42810dcfa49f6c52266a0b9ceca566c6e85e39191db0afb4f9e45c86644c3da5"
+}

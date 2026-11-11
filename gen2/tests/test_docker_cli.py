@@ -297,7 +297,7 @@ class DockerBoundary(unittest.TestCase):
                   "--tmpfs", "/tmp:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001", "--network")
         for role, network, suffix in (
             ("initializer", None, ("none", "--mount", "type=bind,src=/slots/out,dst=/out", "--mount", "type=bind,src=/slots/evidence,dst=/evidence",
-                "--user", "0:0", "--cap-add", "CHOWN", "sha256:" + CID, "/usr/local/bin/python", "-m", "gen2.supervisor.docker_cli", GENERATION)),
+                "--user", "0:0", "--cap-add", "CHOWN", "--entrypoint", "/usr/local/bin/python", "sha256:" + CID, "-m", "gen2.supervisor.docker_cli", GENERATION)),
             ("relay", NET, (NET, "--mount", f"type=bind,src=/slots/evidence/{GENERATION},dst=/evidence", "--mount",
                 "type=bind,src=/reviewed/nginx.conf,dst=/etc/nginx/nginx.conf,readonly", "--user", "10001:10001", "--sysctl", "net.ipv4.ip_forward=0",
                 "--ip", "172.31.254.2", "sha256:" + CID))):
@@ -312,6 +312,43 @@ class DockerBoundary(unittest.TestCase):
             self.assertEqual(self.execute.call_args_list[0].args[1], (d.CLI, "--host", "unix://" + d.SOCKET, "create", "--cidfile", str(self.job.dir / (role + ".cid")), *common, *suffix))
         for role, network, reason in (("gateway", NET, "auxiliary_role"), ("relay", CID, "relay_network")):
             self.refused(lambda: self.cli.create_auxiliary(role, network), reason)
+
+    def test_the_initializer_overrides_the_engine_images_entrypoint_and_the_real_relay_alone_mounts_the_provider_files(self):
+        """Retained engine image record (host-T9/reuse-20261110T090130Z): ENTRYPOINT is the engine, no CMD, so args alone would run the engine."""
+        image = json.loads((Path(__file__).parent / "fixtures" / "docker_inspect" / "engine-image-20261110.json").read_text())["Config"]
+        self.assertEqual((image["Entrypoint"], image["Cmd"]), (["python3", "-m", "gen2.app.engine"], None))
+        self.cli.plan.update(generation=GENERATION, slots={"out": "/slots/out", "evidence": "/slots/evidence"}, relay_config="/reviewed/nginx.conf")
+        self.job.write("network-job.json", {"Id": NET})
+        record = {"Id": CID, "Image": "sha256:" + "d" * 64, "Config": {"Image": "sha256:" + CID}}
+        files = {"provider_auth": "/protected/provider-auth.conf", "provider_ca": "/protected/provider-ca.pem"}
+
+        def argv(role, plan):
+            self.cli.plan = {**self.cli.plan, **plan}
+            self.execute.reset_mock()
+            self.execute.side_effect = lambda *a: ((self.job.dir / (role + ".cid")).write_text(CID), (0, CID.encode() if a[1][3] == "create" else json.dumps([record]).encode(), b""))[1]
+            for name in (role + ".cid", "docker.json"):
+                (self.job.dir / name).unlink(missing_ok=True)
+            for r in ("engine", "relay"):
+                self.manifest["images"][r]["kind"] = "repo-digest"
+            with mock.patch.object(d.Path, "read_bytes", autospec=True, side_effect=lambda p: b"pinned" if str(p) == d.CLI else self.real_read_bytes(p)), mock.patch.object(d, "CLI_SHA", hashlib.sha256(b"pinned").hexdigest()):
+                self.cli.create_auxiliary(role, NET if role == "relay" else None)
+            return self.execute.call_args_list[0].args[1]
+        initializer = argv("initializer", {})
+        self.assertEqual(initializer[initializer.index("--entrypoint"):][:2], ("--entrypoint", "/usr/local/bin/python"))
+        self.assertLess(initializer.index("--entrypoint"), initializer.index("sha256:" + CID))   # a flag after the image would be an argument to it
+        self.assertEqual(initializer[-3:], ("-m", "gen2.supervisor.docker_cli", GENERATION))
+        fixture_relay = argv("relay", {"route": "fixture"})
+        self.assertNotIn("provider", " ".join(fixture_relay))
+        real_relay = argv("relay", {"route": "real", **files})
+        for destination, source in (("etc/gen2/provider-auth.conf", files["provider_auth"]), ("etc/gen2/provider-ca.pem", files["provider_ca"])):
+            self.assertIn(f"type=bind,src={source},dst=/{destination},readonly", real_relay)
+        self.assertNotIn("provider", " ".join(argv("initializer", {"route": "real", **files})))      # only the relay sees them
+        for label, plan in (("real without them", {"route": "real"}), ("real with one", {"route": "real", "provider_auth": files["provider_auth"]}),
+                            ("fixture with them", {"route": "fixture", **files})):
+            self.cli.plan = {k: v for k, v in self.cli.plan.items() if k not in files}
+            self.cli.plan.update(plan)
+            with self.subTest(label):
+                self.refused(lambda: self.cli.create_auxiliary("relay", NET), "relay_provider_files")
 
     def test_start_projection_private_pid_namespace_seal_and_capture_recovery_rows(self):
         """L/F1: expected settings, a pinned private PID namespace, the seal, and original start; mocked inspection, no daemon."""

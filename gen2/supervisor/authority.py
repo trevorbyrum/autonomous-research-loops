@@ -20,6 +20,7 @@ from typing import Callable, Mapping
 
 from gen2.core import canonical
 from gen2.supervisor import jobs
+from gen2.supervisor.docker_cli import RELAY_PROVIDER
 from gen2.supervisor.isolation import LiveProfileRefused
 
 RECORD = "qualification-record/1"
@@ -45,8 +46,9 @@ def verify_record(record: bytes, pin: str, manifest: bytes) -> Mapping | None:
         ok = (doc["record_version"] == RECORD and doc["state"] == "qualified" and doc["route"] in ("fixture", "real")
               and doc["manifest_pin"] == canonical.bytes_digest(manifest)
               and all(named.get(n, {}).get("passed") is True and PIN.fullmatch(str(named[n].get("receipt"))) for n in (REAL_WITNESSES if real else WITNESSES))
-              and (not real or (all(text(doc.get(k)) for k in ("deployment_id", "provider_route", "runner_version")) and UPSTREAM.fullmatch(str(plan.get("upstream")))
+              and (not real or (all(text(doc.get(k)) for k in ("deployment_id", "provider_route", "runner_version")) and UPSTREAM.fullmatch(str(plan.get("upstream"))) and all(path(plan.get(k)) for k in RELAY_PROVIDER)
                                 and isinstance(doc.get("affected_lanes"), list) and len(doc["affected_lanes"]) <= 20 and all(text(x) for x in doc["affected_lanes"])))
+              and (real or not any(k in plan for k in RELAY_PROVIDER))
               and text(doc["backend"]) and text(doc["credential_ref"]) and isinstance(policy, dict) and text(policy.get("run_id"))
               and type(doc["upper_minor_units"]) is int and doc["upper_minor_units"] >= 0
               and all(path(plan.get(k)) for k in ("engine_jobs", "host_jobs", "seed")) and isinstance(plan.get("slots"), dict)
@@ -99,7 +101,7 @@ class QualifiedAuthority:
                           "seed": template["seed"]},
                 "expected": template.get("expected", {}), "relay_config": template.get("relay_config"),
                 **({"fixture": template["fixture"]} if "fixture" in template else {}),
-                **({"egress": {"network_id": egress}, "upstream": doc["plan"]["upstream"]} if egress else {})}
+                **({"egress": {"network_id": egress}, "upstream": doc["plan"]["upstream"], **{k: template[k] for k in RELAY_PROVIDER}} if egress else {})}
 
     def _origin(self, job: jobs.Job) -> dict | None:
         plan, grant = job.read("docker-plan.json"), (job.read("journal.json") or {}).get("grant")

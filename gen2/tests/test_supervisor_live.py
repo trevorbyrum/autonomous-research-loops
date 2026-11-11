@@ -25,7 +25,7 @@ def record_doc(root, route="fixture", **over):
                       "currency": "USD", "ceiling_scope": SCOPE, "policy_version": "v1"},
            "upper_minor_units": 400,
            "plan": {"engine_jobs": str(root / "jobs"), "host_jobs": "/host/jobs", "slots": {"out": "/host/out", "evidence": "/host/ev"}, "seed": "/host/seed",
-                    **({"upstream": "203.0.113.7:443"} if route == "real" else {})},
+                    **({"upstream": "203.0.113.7:443", "provider_auth": "/host/relay/provider-auth.conf", "provider_ca": "/host/relay/provider-ca.pem"} if route == "real" else {})},
            **({"deployment_id": "dep-1", "provider_route": "openai/codex", "runner_version": "1.2.3", "affected_lanes": ["codex"]} if route == "real" else {})}
     return {**doc, **over}
 
@@ -139,6 +139,23 @@ class PlanAndGate(LiveWorld):
         with self.assertRaises(LiveProfileRefused):
             auth.QualifiedAuthority(self.root / "jobs", record=data, pin=pin, manifest=MANIFEST, stage=self.spool.stage).plan(
                 {"invocation_id": MAIN, "topic_id": rf.TOPIC, "config_bundle_hash": rf.CONFIG})
+
+    def test_the_relays_provider_files_come_only_from_the_protected_template_real_route_only(self):
+        base = record_doc(self.root, "real")
+        base["plan"]["egress_network_id"] = "c" * 64
+        order = {"invocation_id": MAIN, "topic_id": rf.TOPIC, "config_bundle_hash": rf.CONFIG}
+        plan = lambda doc: auth.QualifiedAuthority(self.root / "jobs", record=sealed(doc)[0], pin=sealed(doc)[1], manifest=MANIFEST, stage=self.spool.stage)
+        planned = plan(base).plan(order)
+        self.assertEqual({k: planned[k] for k in auth.RELAY_PROVIDER}, {"provider_auth": "/host/relay/provider-auth.conf", "provider_ca": "/host/relay/provider-ca.pem"})
+        self.assertFalse(any(k in planned["binds"] for k in auth.RELAY_PROVIDER))               # the runner's binds are the fixed three
+        for label, change in (("auth missing", {"provider_auth": None}), ("ca relative", {"provider_ca": "ca.pem"}), ("auth dotdot", {"provider_auth": "/a/../b"}), ("auth empty", {"provider_auth": ""})):
+            template = {k: v for k, v in {**base["plan"], **change}.items() if v is not None}
+            with self.subTest(label):
+                data, pin = sealed({**base, "plan": template})
+                self.assertIsNone(auth.verify_record(data, pin, MANIFEST))
+        fixture = record_doc(self.root)
+        data, pin = sealed({**fixture, "plan": {**fixture["plan"], "provider_ca": "/host/relay/provider-ca.pem"}})
+        self.assertIsNone(auth.verify_record(data, pin, MANIFEST))                                # a fixture route has no provider files
 
     def test_a_job_directory_outside_the_mapped_prefix_cannot_be_planned(self):
         data, pin = sealed(record_doc(self.root, plan={**record_doc(self.root)["plan"], "engine_jobs": "/somewhere/else"}))
@@ -271,7 +288,8 @@ class CrashBoundaries(LiveWorld):
 
 class RealRoute(LiveWorld):
     CHANGE = {"route": "real", "plan": {"engine_jobs": "", "host_jobs": "/host/jobs", "slots": {"out": "/host/out", "evidence": "/host/ev"}, "seed": "/host/seed",
-                                        "upstream": "203.0.113.7:443", "egress_network_id": "c" * 64}}
+                                        "upstream": "203.0.113.7:443", "egress_network_id": "c" * 64,
+                                        "provider_auth": "/host/relay/provider-auth.conf", "provider_ca": "/host/relay/provider-ca.pem"}}
 
     def make_router(self, **overrides):
         self.CHANGE = {**self.CHANGE, "plan": {**self.CHANGE["plan"], "engine_jobs": str(self.root / "jobs")}}
