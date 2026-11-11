@@ -6,10 +6,11 @@ import re
 import subprocess
 import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-from deploy.gen2.live import build, fixture, qualify, runner
+from deploy.gen2.live import build, fixture, initialize, qualify, runner
 
 CAPTURE = Path(__file__).with_name("fixtures") / "cli"
 RECEIPTS = {r["step"]: r for r in map(json.loads, (CAPTURE / "receipts.jsonl").read_text().splitlines())}
@@ -21,6 +22,30 @@ ENTITLEMENT = re.search(rb'Pass "(--allow=fs.read=[^"]+)"', ENTITLEMENT_ERROR)[1
 
 
 class Fixtures(unittest.TestCase):
+    def test_fresh_control_requires_exact_d03_layout(self):
+        """A06 admits the two empty D03 directories and refuses partial or unsafe roots."""
+        for case in ("valid", "extra", "missing", "content", "mode", "owner", "link", "file"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                journal, state = root / "journal", root / "state"
+                journal.mkdir(mode=0o700)
+                if case == "link":
+                    state.symlink_to(journal)
+                elif case == "file":
+                    state.touch()
+                elif case != "missing":
+                    state.mkdir(mode=0o700)
+                if case == "extra":
+                    (root / "store.sqlite3-wal").touch()
+                elif case == "content":
+                    (state / "partial").touch()
+                elif case == "mode":
+                    state.chmod(0o750)
+                owner = (os.getuid() + int(case == "owner"), os.getgid())
+                guard = nullcontext() if case == "valid" else self.assertRaises((ValueError, OSError))
+                with patch.object(initialize, "CONTROL_OWNER", owner), guard:
+                    initialize._require_fresh_control(root)
+
     def test_docker_selection_uses_one_constructor(self):
         """Retained context URI is the oracle; duplicate/bare selectors fail without a CLI."""
         for context, flag, endpoint in ((None, "--host", CONTEXT["Endpoints"]["docker"]["Host"]), (CONTEXT["Name"], "--context", CONTEXT["Name"])):
