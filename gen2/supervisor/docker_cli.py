@@ -352,11 +352,15 @@ class DockerCLI:
             require(CID.fullmatch(upstream), "egress_identity")
             view = json.loads(self._command(("network", "inspect", upstream)))[0]
             require(view["Id"] == upstream and not view["Internal"] and not view["Containers"], "egress_original")   # the persistent bridge, empty between jobs
-        else:
-            upstream = self.network(self.plan["generation"], "fixture")
+        else:   # the fixture's network is lane C's, per attempt: the fixture was created ON it at .3 (a `none`-mode container can join nothing), and only the relay joins
             fixture = self.plan["fixture"]
             require(_binding(self.inspect(fixture["Id"])) == _binding(fixture), "fixture_original")
-            self.endpoint("connect", upstream, fixture["Id"], "172.31.252.3")
+            members = list(fixture["NetworkSettings"]["Networks"].values())
+            require(len(members) == 1 and (members[0].get("IPAMConfig") or {}).get("IPv4Address") == "172.31.252.3" and CID.fullmatch(str(members[0].get("NetworkID"))), "fixture_network")
+            upstream = members[0]["NetworkID"]
+            view = json.loads(self._command(("network", "inspect", upstream)))[0]
+            require(view["Id"] == upstream and view["Internal"] and not view["EnableIPv6"] and view["Driver"] == "bridge"
+                    and view["IPAM"]["Config"] == [{"Subnet": NETWORKS["fixture"]}] and set(view["Containers"]) == {fixture["Id"]}, "fixture_network_members")
         relay = self.create_auxiliary("relay", network)
         self.endpoint("connect", upstream, relay, None if real else "172.31.252.2")
         observed = self.inspect(relay)

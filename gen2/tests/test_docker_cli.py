@@ -418,30 +418,44 @@ class DockerBoundary(unittest.TestCase):
         upstream, relay, fixture_id = "d" * 64, "e" * 64, "f" * 64
         record = {"Id": relay, "Image": "sha256:" + CID, "Config": {}, "HostConfig": {}, "NetworkSettings": {"Networks": {}}}
         connected = {**record, "NetworkSettings": {"Networks": {n: {"NetworkID": n, "IPAMConfig": {"IPv4Address": ip}} for n, ip in ((NET, "172.31.254.2"), (upstream, "172.31.252.2"))}}}
-        fixture = {**record, "Id": fixture_id}
+        member = {"NetworkID": upstream, "IPAMConfig": {"IPv4Address": "172.31.252.3"}, "Aliases": None}
+        fixture = {**record, "Id": fixture_id, "NetworkSettings": {"Networks": {"fixture-upstream": member}}}   # created ON lane C's per-attempt network (a `none`-mode container joins nothing)
+        # the fixture's network and its members as the daemon would show them, and the single-operand ways the hand-off can be wrong
+        view = {"Id": upstream, "Internal": True, "EnableIPv6": False, "Driver": "bridge", "IPAM": {"Config": [{"Subnet": d.NETWORKS["fixture"]}]}, "Containers": {fixture_id: {}}}
+        wrong = {"fixture_network_none": {"Networks": {"none": {"NetworkID": "9" * 64, "IPAMConfig": None, "Aliases": None}}},   # the retained T9 native shape: connect was refused by the daemon
+                 "fixture_network_ip": {"Networks": {"fixture-upstream": {**member, "IPAMConfig": {"IPv4Address": "172.31.252.9"}}}},
+                 "fixture_network_two": {"Networks": {"fixture-upstream": member, "other": {**member, "NetworkID": "8" * 64}}},
+                 "fixture_network_short": {"Networks": {"fixture-upstream": {**member, "NetworkID": "abc"}}}}
+        views = {"fixture_network_members": {**view, "Containers": {fixture_id: {}, "7" * 64: {}}}, "fixture_network_members_empty": {**view, "Containers": {}},
+                 "fixture_network_members_open": {**view, "Internal": False}, "fixture_network_members_v6": {**view, "EnableIPv6": True},
+                 "fixture_network_members_subnet": {**view, "IPAM": {"Config": [{"Subnet": "172.31.250.0/29"}]}}}
         slots = {n: str(self.root / n) for n in ("out", "evidence")}
         for path in slots.values():
             (Path(path) / GENERATION).mkdir(parents=True)
         self.cli.plan.update(generation=GENERATION, slots=slots, binds={"out": str(Path(slots["out"]) / GENERATION)}, fixture=fixture)
         self.job.write("identity.json", {"pid": os.getpid()})
         self.job.write("relay.json", record)
-        for reason in (None, "backend_unsupervised", "initializer_failed", "ingress_not_closed", "relay_drain", "relay_stop_failed", "fixture_writers_live"):
+        for reason in (None, "backend_unsupervised", "initializer_failed", "ingress_not_closed", "relay_drain", "relay_stop_failed", "fixture_writers_live", *wrong, *views):
             with self.subTest(reason=reason), contextlib.ExitStack() as stack:
+                shown = {**fixture, "NetworkSettings": wrong[reason]} if reason in wrong else fixture
+                self.cli.plan["fixture"] = shown
+                network_view = views.get(reason, view)
                 batch, ended, watch = mock.Mock(), mock.Mock(return_value=None if reason == "fixture_writers_live" else (0, GENERATION, (1, 2))), mock.Mock()
                 stack.enter_context(mock.patch.object(d.jobs, "members", return_value=[] if reason == "backend_unsupervised" else [os.getpid()]))
                 batch.held = {"access": b"", "events": b"", "fixture": b'{"v":1,"requests":[{"model":"gpt-5.4"}]}'}
                 batch.collect.return_value = batch.stage.return_value = {"content_hash": "sha256:" + CID}
-                actions = {"create_auxiliary": [CID, relay], "start": None, "end": [{"State": {"ExitCode": int(reason == "initializer_failed")}}, {"State": {"ExitCode": 1}}, {"State": {"ExitCode": int(reason == "relay_stop_failed")}}], "network": [NET, upstream], "endpoint": None, "create_runner": CID,
-                           "inspect": [fixture, connected, {"NetworkSettings": {"Networks": {}}}], "contain": None, "runtime": None, "close_admission": None,
-                           "drain": None if reason != "relay_drain" else LiveProfileRefused("relay_drain"), "logs": (b"events", b"diagnostics"), "_command": json.dumps([{"Id": NET, "Containers": {relay: {}, **({CID: {}} if reason == "ingress_not_closed" else {})}}]).encode()}
+                actions = {"create_auxiliary": [CID, relay], "start": None, "end": [{"State": {"ExitCode": int(reason == "initializer_failed")}}, {"State": {"ExitCode": 1}}, {"State": {"ExitCode": int(reason == "relay_stop_failed")}}], "network": [NET], "endpoint": None, "create_runner": CID,
+                           "inspect": [shown, connected, {"NetworkSettings": {"Networks": {}}}], "contain": None, "runtime": None, "close_admission": None,
+                           "drain": None if reason != "relay_drain" else LiveProfileRefused("relay_drain"), "logs": (b"events", b"diagnostics"), "_command": lambda args: json.dumps([network_view if args[2] == upstream else {"Id": NET, "Containers": {relay: {}, **({CID: {}} if reason == "ingress_not_closed" else {})}}]).encode()}
                 for name, result in actions.items():
-                    patched = stack.enter_context(mock.patch.object(self.cli, name, **({"side_effect": result} if isinstance(result, (list, BaseException)) else {"return_value": result})))
+                    patched = stack.enter_context(mock.patch.object(self.cli, name, **({"side_effect": result} if isinstance(result, (list, BaseException)) or callable(result) else {"return_value": result})))
                     watch.attach_mock(patched, name)
                 if reason == "backend_unsupervised":
                     self.refused(lambda: self.cli.run(ended, batch), reason)
                 elif reason:
-                    with self.assertRaisesRegex(LiveProfileRefused, reason):
+                    with self.assertRaisesRegex(LiveProfileRefused, "^" + ("fixture_network_members" if reason in views else "fixture_network" if reason in wrong else reason) + "$"):
                         self.cli.run(ended, batch)
+                    self.assertNotIn(mock.call.endpoint("connect", mock.ANY, mock.ANY, mock.ANY), watch.mock_calls) if reason in (*wrong, *views) else None   # refused before any connect
                     self.assertIsNotNone(self.job.read("docker-attempt.json"))
                     self.assertIsNone(self.job.read("docker-complete.json"))
                     batch.collect.assert_not_called()
