@@ -60,7 +60,7 @@ class ChildTest(unittest.TestCase):
         self.assertEqual((ref, (self.dir / name).read_bytes()), ({"content_hash": "sha256:" + hashlib.sha256(data).hexdigest(), "size_bytes": 8, "media_type": "application/json"}, data))
         self.assertEqual(stage(data, "application/json"), ref)   # staging the same bytes again is a no-op
         with self.assertRaises(common.Refused):
-            stage(data, "application/octet-stream")                  # only the forms core.evidence_media names
+            stage(data, "image/png")                  # only the forms core.evidence_media names
         text = stage("claim text".encode(), "text/plain")
         self.assertEqual((text["media_type"], (self.dir / f"evidence-{hashlib.sha256(b'claim text').hexdigest()}.txt").read_bytes()), ("text/plain", b"claim text"))
         self.assertEqual(sorted(p.name for p in self.dir.iterdir()), sorted([name, f"evidence-{hashlib.sha256(b'claim text').hexdigest()}.txt"]))   # nothing written for the refused one

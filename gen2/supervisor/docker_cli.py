@@ -2,7 +2,7 @@
 
 The productive supervisor entrance remains closed by isolation.py. The later
 finite qualification lane supplies protected manifest bytes and original end
-observers; none of these primitives grants Router dispatch authority.
+end proof (the daemon's own final inspect, Gate S #7c); none of these primitives grants Router dispatch authority.
 """
 import hashlib
 import json
@@ -11,6 +11,7 @@ import re
 import selectors
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 
 from gen2.supervisor import jobs, rejection
@@ -23,7 +24,13 @@ SOCKET = "/run/user/1000/gen2-2e1/docker.sock"
 CID = re.compile(r"[0-9a-f]{64}")
 ROLES = frozenset({"engine", "runner", "relay", "gateway", "db", "fixture"})
 BATCH = 32 << 20
-COMMANDS = frozenset({"create", "start", "wait", "inspect", "logs", "stop", "kill", "rm"})
+COMMANDS = frozenset({"create", "start", "wait", "inspect", "info", "logs", "stop", "kill", "rm"})
+# The installed runtime the end proof is bound to (T9 receipt, `docker info` of the dedicated daemon). A container's cgroup is destroyed
+# before the daemon reports it stopped, so "exited, PID 0, no error" in a private PID namespace is the end of every descendant (Gate S #7c).
+RUNTIME = {"ServerVersion": "29.9.0", "CgroupVersion": "2", "CgroupDriver": "systemd", "LiveRestoreEnabled": False}
+RUNTIME_IDS = {"ContainerdCommit": "f2551031d7276a770f65f98c9b52e57e7dad07e8", "RuncCommit": "v1.5.2-0-g29dd3dc2"}
+DRAIN_SECONDS, DRAIN_LIMIT = 8, 10   # the bounded wait after ingress closes (reports waiting, not quiescence); the whole step must finish within the limit
+SEAL = "admission-closed.json"
 MODEL = "gpt-5.4"
 NETWORKS = {"job": "172.31.254.0/29", "fixture": "172.31.252.0/29"}
 
@@ -39,12 +46,40 @@ def _binding(record):
         for name, network in record["NetworkSettings"]["Networks"].items()}
 
 
+START_CHANGES = {"OomScoreAdj": (0, 200), "OomKillDisable": (False, None)}   # the real daemon's only create->start HostConfig changes: {field: (created, started)} (T9 log probe)
+
+
+def _started(record, started):
+    """The created record as the daemon reports it after start: only the pinned fields, only from their exact created value (type included: 0 is not
+    False). The `none` network's ID is empty until start and then a 64-hex ID (the retained probe shows it); no other network and no other ID shape."""
+    host = dict(record["HostConfig"])
+    for key, (before, after) in START_CHANGES.items():
+        if key in host and host[key] == before and type(host[key]) is type(before):
+            host[key] = after
+    later = ((started.get("NetworkSettings") or {}).get("Networks") or {}).get("none") or {}
+    networks = {name: {**value, "NetworkID": later["NetworkID"]} if name == "none" and value.get("NetworkID") == "" and CID.fullmatch(str(later.get("NetworkID"))) else value
+                for name, value in record["NetworkSettings"]["Networks"].items()}
+    return {**record, "HostConfig": host, "NetworkSettings": {**record["NetworkSettings"], "Networks": networks}}
+
+
+def _when(text, reason):
+    """A daemon timestamp (RFC 3339, up to nanoseconds, Z) as a datetime; a zero date, a malformed one or a non-string refuses."""
+    found = re.fullmatch(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?Z", text) if isinstance(text, str) else None
+    try:
+        moment = datetime.fromisoformat(found[1] + "." + (found[2] or "0")[:6].ljust(6, "0")) if found else None
+    except ValueError:
+        moment = None
+    require(moment is not None and moment.year > 1, reason)
+    return moment
+
+
 def manifest_gate(manifest, retained, tree):
     """Check retained operands, not qualification. Live admission still refuses."""
     require(isinstance(manifest, dict), "manifest_shape")
     require(manifest.get("version") == 1 and manifest.get("tree") == tree, "manifest_tree")
     require(manifest.get("socket") == SOCKET and manifest.get("cli_sha256") == CLI_SHA, "manifest_runtime")
-    require(manifest.get("platform") == "linux/amd64" and manifest.get("route") == "fixture", "manifest_route")
+    require(manifest.get("platform") == "linux/amd64" and manifest.get("route") in ("fixture", "real"), "manifest_route")
+    roles = ROLES if manifest["route"] == "fixture" else ROLES - {"fixture"}   # a real route has no fixture container, so no fixture image or configuration
     # Seam e: productive dispatch needs a supervised profile with a pinned qualified claim; a claim is not proof (v7 §2).
     require(manifest.get("supervision") == "supervised", "manifest_not_supervised")
     require(manifest.get("qualification_state") == "qualified" and isinstance(manifest.get("qualification_ref"), str)
@@ -53,7 +88,7 @@ def manifest_gate(manifest, retained, tree):
         require(isinstance(manifest.get(key), str) and manifest[key] not in PLACEHOLDERS, "manifest_" + key)
     for key in ("images", "configurations"):
         values = manifest.get(key)
-        require(isinstance(values, dict) and set(values) == ROLES, "manifest_roles")
+        require(isinstance(values, dict) and set(values) == roles, "manifest_roles")
         for role, value in values.items():
             pin = value.get("pin") if isinstance(value, dict) else None
             require(isinstance(pin, str) and PIN.fullmatch(pin), "manifest_pin")
@@ -108,9 +143,9 @@ def capture(job, argv, env, deadline, bounds):
 
 
 class DockerCLI:
-    def __init__(self, job, manifest, retained, tree, *, execute=capture, now=time.monotonic):
+    def __init__(self, job, manifest, retained, tree, *, execute=capture, now=time.monotonic, sleep=time.sleep):
         self.manifest = manifest_gate(manifest, retained, tree)
-        self.job, self.execute, self.now = job, execute, now
+        self.job, self.execute, self.now, self.sleep = job, execute, now, sleep
         self.deadline = now() + 120
         self.plan = job.read("docker-plan.json")
         require(isinstance(self.plan, dict) and bool(self.plan.get("origin")), "launch_originals")
@@ -118,7 +153,7 @@ class DockerCLI:
     def _command(self, args):
         operation = args[1] if args[0] == "network" else args[0]
         require(args[0] in COMMANDS or (args[0] == "network" and operation in {"create", "connect", "disconnect", "inspect", "rm"}), "cli_command")
-        mutation, logs = operation not in {"wait", "inspect", "logs"}, args[0] == "logs"
+        mutation, logs = operation not in {"wait", "inspect", "info", "logs"}, args[0] == "logs"
         seconds = {"wait": 120, "logs": 10, "stop": 10, "kill": 10}.get(operation, 5)
         bound = (4 << 20) if logs else (4096 if operation in {"create", "start", "wait"} else 65536)
         # I/D: rehash at use; never resolve a tag or inherit Docker/proxy config.
@@ -163,7 +198,7 @@ class DockerCLI:
                 "--memory", "1g", "--memory-swap", "1g", "--cpus", "1", "--ulimit", "fsize=16777216:16777216",
                 "--ulimit", "nofile=256:256", "--ulimit", "core=0:0", "--dns", "127.0.0.1", "--ipc=private",
                 "--cgroupns=private", "--no-healthcheck", "--log-driver", "local", "--log-opt", "max-size=4m",
-                "--log-opt", "max-file=1", "--network", network, "--ip", "172.31.254.3"]
+                "--log-opt", "max-file=1", "--log-opt", "compress=false", "--network", network, "--ip", "172.31.254.3"]
         for name, size, mode in (("work", "128m", "0700"), ("auth/codex", "16m", "0700"), ("tmp", "64m", "1777"), ("run", "4m", "0700")):
             args.extend(("--tmpfs", f"/{name}:rw,nodev,nosuid,size={size},mode={mode},uid=10001,gid=10001"))
         for name, source in binds.items():
@@ -188,28 +223,52 @@ class DockerCLI:
         require(isinstance(records, list) and len(records) == 1 and records[0].get("Id") == cid, "inspect_identity")
         return records[0]
 
+    def runtime(self):
+        """The dedicated daemon is the installed runtime this proof was qualified on, else no start."""
+        info = json.loads(self._command(("info", "--format", "{{json .}}")))
+        require(isinstance(info, dict) and all(info.get(k) == v for k, v in RUNTIME.items()) and all(
+            (info.get(k) or {}).get("ID") == v for k, v in RUNTIME_IDS.items()), "runtime_identity")
+
     def start(self, cid, role="runner"):
         free_space(self.plan["paths"], 16 << 30)
         original = self.job.read(role + ".json")
         expected = self.plan.get("expected", {}).get(role)
         require(expected and set(expected) == {"Config", "HostConfig"} and all(original[section].get(key) == value
                 for section, fields in expected.items() for key, value in fields.items()), "start_configuration")
+        require(expected["HostConfig"].get("PidMode") == "" and original["HostConfig"].get("PidMode") == "", "start_pid_mode")   # private PID namespace, pinned by the plan: absence refuses
         require(_binding(self.inspect(cid)) == _binding(original), "start_identity")
-        self._command(("start", cid))
+        with self.job.hold(self.deadline, .01):   # the seal check and the start cannot interleave with the seal write
+            require(read_scratch(self.job.dir, SEAL, 4096)["status"] == "absent", "start_after_seal")
+            self._command(("start", cid))
         started = self.inspect(cid)
-        require(_binding(started) == _binding(original) and started["State"]["StartedAt"], "start_changed")
+        require(_binding(started) == _binding(_started(original, started)), "start_changed")
+        _when(started["State"].get("StartedAt"), "start_changed")
         self.job.write(role + "-start.json", started)
 
-    def end(self, cid, descendants_ended, role="runner"):
+    def end(self, cid, role="runner"):
+        """The one end proof: a bounded wait, then the SAME exact container's inspect must show it exited with no process and no runtime error."""
         waited = self._command(("wait", cid)).strip()
         original, observed = self.job.read(role + "-start.json"), self.inspect(cid)
         require(original is not None, "end_original")
         require(_binding(observed) == _binding(original), "end_binding")
         state = observed["State"]
-        require(state["StartedAt"] == original["State"]["StartedAt"] and not any(state[k] for k in ("Running", "Restarting", "Paused", "OOMKilled")), "end_state")
-        require(waited == str(state["ExitCode"]).encode() and descendants_ended(original), "end_unconfirmed")
+        require(state.get("StartedAt") == original["State"]["StartedAt"] and state.get("Status") == "exited" and type(state.get("Pid")) is int and state["Pid"] == 0
+                and state.get("Error") == "" and all(state.get(k) is False for k in ("Running", "Restarting", "Paused", "OOMKilled")), "end_state")
+        require(_when(state.get("FinishedAt"), "end_state") >= _when(original["State"]["StartedAt"], "end_state"), "end_state")
+        require(type(state.get("ExitCode")) is int and waited == str(state["ExitCode"]).encode(), "end_unconfirmed")
         self.job.write(role + "-end.json", observed)
         return observed
+
+    def close_admission(self):
+        """The sole launcher's own durable seal, after the last permitted start; every later start refuses it. A failed write contains and keeps uncertainty."""
+        with self.job.hold(self.deadline, .01):
+            self.job.write(SEAL, {"origin": self.plan["origin"]})
+
+    def drain(self):
+        """The fixed grace after ingress closes: bounded waiting on the monotonic clock, refused if it overran or was cut short."""
+        before = self.now()
+        self.sleep(DRAIN_SECONDS)
+        require(self.now() - before <= DRAIN_LIMIT, "relay_drain")
 
     def logs(self, cid):
         require((self.job.read("runner-end.json") or {}).get("Id") == cid, "logs_before_end")
@@ -230,7 +289,7 @@ class DockerCLI:
         args = ["create", "--cidfile", str(self.job.dir / (role + ".cid")), "--pull=never", "--restart=no", "--read-only",
                 "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "32", "--memory", "128m",
                 "--memory-swap", "128m", "--cpus", ".25", "--no-healthcheck", "--ipc=private", "--cgroupns=private",
-                "--log-driver", "local", "--log-opt", "max-size=4m", "--log-opt", "max-file=1",
+                "--log-driver", "local", "--log-opt", "max-size=4m", "--log-opt", "max-file=1", "--log-opt", "compress=false",
                 "--tmpfs", "/tmp:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001", "--network", "none" if role == "initializer" else network]
         mounts = slots if role == "initializer" else {"evidence": str(Path(slots["evidence"]) / generation), "etc/nginx/nginx.conf": self.plan["relay_config"]}
         for name, source in mounts.items():
@@ -243,19 +302,33 @@ class DockerCLI:
             args.extend(("--user", "10001:10001", "--sysctl", "net.ipv4.ip_forward=0", "--ip", "172.31.254.2", self.manifest["images"]["relay"]["pin"]))
         return self._create(role, args)
 
-    def run(self, close_admission, descendants_ended, fixture_ended, drain, batch):
-        """I/L/E: supervised finite lane; trusted original observers, raw evidence only."""
+    def run(self, fixture_ended, batch):
+        """I/L/E: supervised finite lane; the end proof is the daemon's own final inspect, raw evidence only. The plan's route (it must be the manifest's) selects the
+        fixture lane or the real one: a real lane has no fixture container, joins the relay to the plan's persistent egress bridge BY ID, and
+        classifies against the plan's upstream. Any partial start is contained (every journaled CID killed and removed) before the error leaves."""
+        route = self.plan.get("route", "fixture")
+        real = route == "real"
+        require(route == self.manifest["route"], "plan_route")
         require(self.plan["binds"]["out"] == str(Path(self.plan["slots"]["out"]) / self.plan["generation"]), "backend_output_generation")
         identity = self.job.read("identity.json")
         require(identity is not None and os.getpid() in jobs.members(identity), "backend_unsupervised")
         with self.job.hold(self.deadline, .01):
             require(self.job.read("docker-attempt.json") is None, "backend_already_intended")
             self.job.write("docker-attempt.json", {"origin": self.plan["origin"]})
+        try:
+            return self._run(fixture_ended, batch, real)
+        except BaseException:
+            contain_job(self.job, execute=self.execute, now=self.now)   # whatever was started is ended before the failure leaves; a failure here refuses louder
+            raise
+
+    def _run(self, fixture_ended, batch, real):
+        self.runtime()
         initializer = self.create_auxiliary("initializer")
         self.start(initializer, "initializer")
-        require(self.end(initializer, descendants_ended, "initializer")["State"]["ExitCode"] == 0, "initializer_failed")
+        require(self.end(initializer, "initializer")["State"]["ExitCode"] == 0, "initializer_failed")
+        output = "judgment" if self.plan.get("output") == "judgment" else "outcome"
         originals = {}
-        for kind, name in (("outcome", "out"), ("access", "evidence")):
+        for kind, name in ((output, "out"), ("access", "evidence")):
             directory = Path(self.plan["slots"][name]) / self.plan["generation"]
             fd = slot(str(directory))
             try:
@@ -264,48 +337,65 @@ class DockerCLI:
             finally:
                 os.close(fd)
         self.job.write("docker-generations.json", originals)
-        network, upstream = self.network(self.plan["generation"]), self.network(self.plan["generation"], "fixture")
-        fixture = self.plan["fixture"]
-        require(_binding(self.inspect(fixture["Id"])) == _binding(fixture), "fixture_original")
-        self.endpoint("connect", upstream, fixture["Id"], "172.31.252.3")
+        network = self.network(self.plan["generation"])
+        if real:
+            upstream = self.plan["egress"]["network_id"]
+            require(CID.fullmatch(upstream), "egress_identity")
+            view = json.loads(self._command(("network", "inspect", upstream)))[0]
+            require(view["Id"] == upstream and not view["Internal"] and not view["Containers"], "egress_original")   # the persistent bridge, empty between jobs
+        else:
+            upstream = self.network(self.plan["generation"], "fixture")
+            fixture = self.plan["fixture"]
+            require(_binding(self.inspect(fixture["Id"])) == _binding(fixture), "fixture_original")
+            self.endpoint("connect", upstream, fixture["Id"], "172.31.252.3")
         relay = self.create_auxiliary("relay", network)
-        self.endpoint("connect", upstream, relay, "172.31.252.2")
+        self.endpoint("connect", upstream, relay, None if real else "172.31.252.2")
         observed = self.inspect(relay)
         require(_binding(observed)[0] == _binding(self.job.read("relay.json"))[0], "relay_changed")
-        require({n["NetworkID"]: n["IPAMConfig"]["IPv4Address"] for n in observed["NetworkSettings"]["Networks"].values()}
-                == {network: "172.31.254.2", upstream: "172.31.252.2"}, "relay_topology")
+        addresses = {n["NetworkID"]: (n.get("IPAMConfig") or {}).get("IPv4Address") for n in observed["NetworkSettings"]["Networks"].values()}
+        require(addresses == ({network: "172.31.254.2", upstream: addresses.get(upstream)} if real and upstream in addresses else
+                              {network: "172.31.254.2", upstream: "172.31.252.2"}), "relay_topology")
         self.job.write("relay.json", observed)
         self.start(relay, "relay")
         runner = self.create_runner(network, self.plan["binds"])
         self.start(runner)
         started = self.now()
-        close_admission()
-        ended = self.end(runner, descendants_ended)
+        self.close_admission()
+        ended = self.end(runner)
         elapsed = self.now() - started
         self.endpoint("disconnect", network, runner)
         view = json.loads(self._command(("network", "inspect", network)))[0]
         require(view["Id"] == network and set(view["Containers"]) == {relay}
                 and network not in {n["NetworkID"] for n in self.inspect(runner)["NetworkSettings"]["Networks"].values()}, "ingress_not_closed")
-        before = self.now()
-        require(drain(10) and self.now() - before <= 10, "relay_drain")
+        self.drain()
         self.contain(relay, role="relay")
-        require(self.end(relay, descendants_ended, "relay")["State"]["ExitCode"] == 0, "relay_stop_failed")
-        fixture_file = fixture_ended()
-        require(fixture_file, "fixture_writers_live")
-        refs = [batch.collect(*fixture_file, writers_ended=True, kind="fixture")]
+        require(self.end(relay, "relay")["State"]["ExitCode"] == 0, "relay_stop_failed")
+        refs = []
+        if not real:
+            fixture_file = fixture_ended()
+            require(fixture_file, "fixture_writers_live")
+            refs.append(batch.collect(*fixture_file, writers_ended=True, kind="fixture"))
         refs.extend(batch.stage(data, "application/octet-stream", kind) for kind, data in zip(("events", "diagnostics"), self.logs(runner)))
-        for kind, name in (("outcome", "out"), ("access", "evidence")):
+        for kind, name in ((output, "out"), ("access", "evidence")):
             fd = slot(self.plan["slots"][name])
             try:
                 refs.append(batch.collect(fd, self.plan["generation"], originals[kind], writers_ended=True, kind=kind))
+            except LiveProfileRefused as missing:
+                if not (kind == "judgment" and str(missing) == "collection_absent"):   # a runner that failed (a rejected credential) writes no judgment; it is still classified
+                    raise
             finally:
                 os.close(fd)
         held = batch.held
-        disposition = rejection.classify(held["access"], held["events"], held["fixture"], ended["State"]["ExitCode"], model=MODEL)
-        refs.append(batch.stage(json.dumps(rejection.usage_record(
-            {"origin": self.plan["origin"]}, held["events"], elapsed=elapsed, gateway_refs=[], raw_refs=list(refs),
-            observed_model=_observed_model(held["fixture"]), configured_model=MODEL), sort_keys=True).encode(), "application/json"))
-        self.job.write("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition})
+        disposition = rejection.classify(held["access"], held["events"], held.get("fixture"), ended["State"]["ExitCode"], model=MODEL,
+                                         route="real" if real else "fixture", upstream=self.plan.get("upstream"))
+        try:   # usage is optional normalization: the classified disposition and the raw references are retained whether or not it can be built
+            refs.append(batch.stage(json.dumps(rejection.usage_record(
+                {"origin": self.plan["origin"]}, held["events"], elapsed=elapsed, gateway_refs=[], raw_refs=list(refs),
+                observed_model=None if real else _observed_model(held["fixture"]), configured_model=MODEL, observed=not real), sort_keys=True).encode(), "application/json"))
+            usage = "recorded"
+        except LiveProfileRefused:
+            usage = "refused"
+        self.job.write("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition, "usage": usage})
         return refs
 
     def remove(self, cid, ack):
@@ -364,7 +454,8 @@ class EvidenceBatch:
         require(re.fullmatch(r"[0-9a-f]{32}", generation), "collection_generation")
         name, bound, media = {"outcome": ("outcome.json", 16 << 20, "application/json"),
                               "access": ("access.jsonl", 16 << 20, "application/x-ndjson"),
-                              "fixture": ("fixture.json", 1 << 20, "application/json")}[kind]
+                              "fixture": ("fixture.json", 1 << 20, "application/json"),
+                              "judgment": ("judgment.json", 1 << 20, "application/json")}[kind]   # the live agent's one output; the plan chooses, the caller names no file
         fd = os.open(generation, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=slot_fd)
         try:
             info = os.fstat(fd)
@@ -394,3 +485,52 @@ def initialize(generation):
 if __name__ == "__main__":
     import sys
     initialize(sys.argv[1])
+
+
+class ContainFailed(LiveProfileRefused):
+    """At least one journaled container could not be shown ended; `outcomes` has every attempt, the failures included."""
+
+    def __init__(self, outcomes: list[dict]) -> None:
+        super().__init__("contain_failed")
+        self.outcomes = outcomes
+
+
+def contain_job(job, *, execute=capture, now=time.monotonic) -> list[dict]:
+    """Kill and remove every container this job created, from its journaled cidfiles (initializer, relay, runner): the containment a failed or
+    cancelled live attempt owes, whatever the process group did (a Docker-managed container is not in the job's group). EVERY journaled container
+    is attempted, kill and removal independently, whatever happened to the others (a runner that will not die must not leave the relay, its provider
+    path, running); each outcome is journaled in `containment.json`. A container already gone is fine. A global trust failure (the CLI pin) stops
+    everything; any other failure, or an unreadable journal entry, is raised AFTER all attempts as `ContainFailed`, so the caller leaves the end
+    unconfirmed. Returns the outcomes."""
+    outcomes, failed = [], False
+    for role in ("runner", "relay", "initializer"):
+        found = read_scratch(job.dir, role + ".cid", 4096)
+        if found["status"] == "absent":
+            continue   # never created
+        entry = {"role": role, "cid": None, "kill": "not_attempted", "rm": "not_attempted"}
+        outcomes.append(entry)
+        cid = found["data"].strip().decode("ascii", "replace") if found["status"] == "present" else ""
+        if not CID.fullmatch(cid):
+            entry["kill"] = entry["rm"] = "journal_unreadable"
+            failed = True
+            continue
+        entry["cid"] = cid
+        try:
+            require(hashlib.sha256(Path(CLI).read_bytes()).hexdigest() == CLI_SHA, "cli_pin")   # the pinned CLI only; a failure here is not retried around
+        except OSError:
+            raise LiveProfileRefused("cli_pin") from None
+        for step, args in (("kill", ("kill", cid)), ("rm", ("rm", "-f", cid))):
+            try:
+                code, out, err = execute(job, (CLI, "--host", "unix://" + SOCKET, *args), {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
+                                         "DOCKER_CONFIG": str(job.dir / "docker-config")}, now() + 10, (65536, 4096))
+            except (OSError, LiveProfileRefused):
+                entry[step], failed = "error", True
+                continue
+            gone = b"No such container" in err or b"is not running" in err
+            entry[step] = "ok" if code == 0 else "gone" if gone else "failed"
+            failed = failed or entry[step] == "failed"
+    if outcomes:
+        job.write("containment.json", {"outcomes": outcomes})
+    if failed:
+        raise ContainFailed(outcomes)
+    return outcomes

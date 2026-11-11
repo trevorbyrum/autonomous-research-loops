@@ -75,15 +75,20 @@ def _fixture(data, row, model):
     return sent[0] == {"id": row["id"], "route": "/v1/responses", "model": model, "credential": "rejected"}
 
 
-def classify(access, events, fixture, exit_code, *, model):
-    """Return {"disposition", "reason"} from log, fixture record, runner events and exit code."""
+def classify(access, events, fixture, exit_code, *, model, route="fixture", upstream=None):
+    """Return {"disposition", "reason"} from log, fixture record, runner events and exit code. A fixture route's single row is checked against the
+    fixture's own upstream and the fixture's request record; a real route's against the PLAN's upstream and with NO fixture (a fixture label can
+    never stand for real provenance: the real route's attestation is deployment provenance, not a file the job can write)."""
     try:
+        if (route == "real") != (fixture is None) or route not in ("fixture", "real") or (route == "real" and not upstream):
+            raise Unknown("route_evidence")
         rows = _rows(access)
         failed = _jsonl(events, "events")
         if len(rows) != 1:
             raise Unknown("access_missing" if not rows else "access_extra_request")
         row = rows[0]
-        if any(row[key] != value for key, value in MODEL_ROW.items()):
+        wanted = {**MODEL_ROW, **({"upstream": upstream} if route == "real" else {})}
+        if any(row[key] != value for key, value in wanted.items()):
             raise Unknown("access_tuple")
         types = [event.get("type") for event in failed]
         if not set(types) <= EVENTS or types.count("turn.failed") != 1 or exit_code != 1:
@@ -92,7 +97,7 @@ def classify(access, events, fixture, exit_code, *, model):
             return {"disposition": "transport_failed", "reason": "upstream_" + row["upstream_status"]}
         if row["status"] != "401" or row["upstream_status"] != "401":
             raise Unknown("access_status")
-        if not _fixture(fixture, row, model):
+        if route == "fixture" and not _fixture(fixture, row, model):
             raise Unknown("fixture_disagrees")
         return {"disposition": "credentials_rejected", "reason": "relay_401"}
     except (Unknown, ValueError, RecursionError) as error:
@@ -104,9 +109,11 @@ def _count(value):
     return {"state": "reported", "value": value} if ok else {"state": "unknown", "reason": "absent_or_zero_not_evidence"}
 
 
-def usage_record(identity, events, *, elapsed, gateway_refs, raw_refs, observed_model, configured_model):
-    """Per-attempt immutable record: reported-or-unknown, raw refs kept, no invented cost."""
-    if observed_model != configured_model:
+def usage_record(identity, events, *, elapsed, gateway_refs, raw_refs, observed_model, configured_model, observed=True):
+    """Per-attempt immutable record: reported-or-unknown, raw refs kept, no invented cost. `observed=False` (the real route, where nothing observes
+    the model: the model-observation amendment) retains the configured string AS configured and records the model as unknown; a known mismatch
+    still refuses."""
+    if (observed or observed_model is not None) and observed_model != configured_model:
         raise LiveProfileRefused("usage_model_mismatch")
     try:
         done = [event for event in _jsonl(events, "events") if event.get("type") == "turn.completed"]
@@ -115,7 +122,8 @@ def usage_record(identity, events, *, elapsed, gateway_refs, raw_refs, observed_
     counts = done[0].get("usage") if len(done) == 1 and isinstance(done[0].get("usage"), dict) else {}
     seconds = {"state": "reported", "value": elapsed} if type(elapsed) in (int, float) and elapsed >= 0 else {"state": "unknown", "reason": "not_measured"}
     unknown = {"state": "unknown", "reason": "not reported"}
-    return {**identity, "model": observed_model, "raw_refs": list(raw_refs), "gateway_refs": list(gateway_refs),
+    model = observed_model if observed else {"state": "unknown", "configured": configured_model}
+    return {**identity, "model": model, "raw_refs": list(raw_refs), "gateway_refs": list(gateway_refs),
             "usage": {"input_tokens": _count(counts.get("input_tokens")), "output_tokens": _count(counts.get("output_tokens")),
                       "cached_tokens": _count(counts.get("cached_input_tokens")), "cost": unknown,
                       "elapsed_seconds": seconds, "gateway_credits": unknown}}

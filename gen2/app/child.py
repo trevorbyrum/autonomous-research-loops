@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from gen2.app import factories
+from gen2.app import factories, live
 from gen2.core import canonical
 from gen2.core.evidence_media import EVIDENCE_MEDIA, evidence_name
 from gen2.exec import job
@@ -74,7 +74,7 @@ def _no_judgment(prompt: bytes, raw_input: bytes, out: Path) -> int:
     return 0
 
 
-def run(key: str, directory: Path, *, input_digest: str, table: Mapping[str, Factory] | None = None,
+def run(key: str, directory: Path, *, input_digest: str, table: Mapping[str, Factory] | None = None, env: Mapping[str, str] | None = None,
         agent: job.Agent | None = None, validate: Callable[[str, object], None] | None = None) -> Path:
     """Run one order's purpose in `directory` and return the written outcome.json path."""
     factory = (factories.TABLE if table is None else table).get(key)
@@ -82,7 +82,7 @@ def run(key: str, directory: Path, *, input_digest: str, table: Mapping[str, Fac
         raise Refused(f"no builder is installed for {key}")
     code_only = key in CODE_ONLY
     if agent is None and not code_only:
-        raise Refused("the live runner entrance is closed: a model purpose needs an injected agent step")
+        agent = live.agent_for(Path(directory), env or {})   # a job with a plan gets the live agent; any other refuses "the live runner entrance is closed"
     kind, purpose = key.split("/")
     return job.run(purpose, Path(directory), input_digest=input_digest, agent=_no_judgment if code_only else agent,
                    builder=factory(evidence_stage(Path(directory)), bytes_of(Path(directory))), validate=(lambda *_: None) if code_only else (validate or validator(key)))
@@ -95,7 +95,10 @@ def main(argv: Sequence[str], *, env: Mapping[str, str] | None = None, table: Ma
         if len(argv) != 1:
             raise Refused("usage: gen2.app.child <directory>")
         key = env["GEN2_PURPOSE"]
-        run(key, Path(argv[0]), input_digest=env["GEN2_INPUT_DIGEST"], table=table, agent=agent)
+        run(key, Path(argv[0]), input_digest=env["GEN2_INPUT_DIGEST"], table=table, agent=agent, env=env)
+    except live.CredentialsRejected:
+        print("gen2.app.child: CredentialsRejected", file=sys.stderr)
+        return 1   # exit 1 is what the Router's rejection evidence requires of the job
     except (Refused, KeyError, OSError, ValueError) as error:
         print(f"gen2.app.child: {type(error).__name__}: {error}", file=sys.stderr)
         return 2

@@ -26,10 +26,10 @@ class ComposeTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.world = World(self.tmp.name)
         self.station = self.world.station()
-        self.composition = compose.Composition(TOPIC).bind(self.station)
+        self.composition = compose.Composition().bind(self.station)
 
     def kits(self):
-        return self.composition.kits(lanes=["semanticscholar"], gateway={"commercial": False, "accept_per_item": False, "policy_version": 1},
+        return self.composition.kits(TOPIC, lanes=["semanticscholar"], gateway={"commercial": False, "accept_per_item": False, "policy_version": 1},
                                      validate=lambda name, document: None)
 
     def test_every_purpose_of_the_workflow_has_a_kit_and_every_recorded_purpose_a_recorder(self):
@@ -91,3 +91,21 @@ class ComposeTest(unittest.TestCase):
                 seen += path.read_text(errors="replace")
         self.assertNotIn(CAPABILITY, seen)                                     # input.json, prompts, evidence, order.json (env) and journals
         self.assertNotIn(CAPABILITY, json.dumps([o.env for o in self.station.supervisor.submitted]))
+
+
+class AuthorityWiring(unittest.TestCase):
+    def test_the_authority_exists_only_when_the_record_its_pin_and_the_manifest_are_all_named(self):
+        from gen2.tests.test_supervisor_live import MANIFEST, record_doc, sealed
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data, pin = sealed(record_doc(root))
+            (root / "record.json").write_bytes(data)
+            (root / "manifest.json").write_bytes(MANIFEST)
+            names = {"GEN2_QUALIFICATION_RECORD": str(root / "record.json"), "GEN2_QUALIFICATION_PIN": pin, "GEN2_MANIFEST": str(root / "manifest.json")}
+            composition = compose.Composition()
+            self.assertTrue(composition.authority(root / "jobs", names).qualified)
+            for missing in names:
+                with self.subTest(missing=missing):
+                    self.assertIsNone(composition.authority(root / "jobs", {k: v for k, v in names.items() if k != missing}))
+            self.assertFalse(composition.authority(root / "jobs", {**names, "GEN2_QUALIFICATION_PIN": "sha256:" + "0" * 64}).qualified)   # a wrong pin: present but unqualified
+            self.assertIsNone(composition.authority(root / "jobs", {}))

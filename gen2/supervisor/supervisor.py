@@ -17,7 +17,8 @@ from gen2.core import canonical, instants
 from gen2.core.control import ControlUnavailable
 from gen2.core.evidence_media import EVIDENCE, EVIDENCE_MEDIA
 from gen2.supervisor import jobs
-from gen2.supervisor.isolation import ABSENT_PROFILE, refuse_live_profile
+from gen2.supervisor import docker_cli
+from gen2.supervisor.isolation import ABSENT_PROFILE, LiveProfileRefused, refuse_live_profile
 from gen2.supervisor.spool import Spool, SpoolConflict, SpoolFull, read_scratch
 
 OUTPUT = "outcome.json"          # the executor's one result file; its name is the supervisor's (C-9)
@@ -152,8 +153,10 @@ class Supervisor:
     def __init__(self, control, spool: Spool, jobs_root: str | Path, *, station_id: str, host_id: str, container_id: str | None = None,
                  policy: Policy = Policy(), policies: Callable[[str], Policy] | None = None, clock: Callable[[], str],
                  launcher: tuple[str, ...] = LAUNCHER, fault: Callable[[str], None] | None = None,
-                 recorders: Mapping[str, Callable] | None = None) -> None:
+                 recorders: Mapping[str, Callable] | None = None, dispatch=None) -> None:
         self.control = control
+        self.dispatch = dispatch   # a gen2.supervisor.authority.QualifiedAuthority, or None: every live order then refuses, as before
+        self._live_start = False   # set by advance(live_start=True) for that call only: the operator's per-call permission to start a live child
         self.recorders = dict(recorders or {})  # "kind/purpose" -> idempotent (control, order, grant, scratch) -> None
         self.spool = spool
         self.jobs_root = Path(jobs_root)
@@ -178,18 +181,24 @@ class Supervisor:
         before anything is written. Live preparation is refusal-only (2e1 F1);
         a supplied profile also requires the gate, regardless of `live`."""
         if live or isolation_profile is not ABSENT_PROFILE:
-            refuse_live_profile(isolation_profile)
+            if self.dispatch is None or not live or isolation_profile is not ABSENT_PROFILE:
+                refuse_live_profile(isolation_profile)   # no authority wired, or a caller-supplied profile: the refusal-only gate, as before
+            plan = self.dispatch.plan(asdict(order))     # raises LiveProfileRefused unless a verified qualification record stands
         key = self._recorder_key(asdict(order))
         if key is not None and key not in self.recorders:
             raise RecorderMissing(f"{key} needs a recorder and this station has none; nothing was written")
         if self._policies is not None:
             self._policies(order.config_bundle_hash)
-        self.job(order.invocation_id).prepare({**asdict(order), "command": list(order.command), "env": dict(order.env),
-                                               "reservation": None if order.reservation is None else dict(order.reservation)})
+        job = self.job(order.invocation_id)
+        job.prepare({**asdict(order), "command": list(order.command), "env": dict(order.env),
+                     "reservation": None if order.reservation is None else dict(order.reservation),
+                     **({"live": True, "plan": plan} if live else {})})   # one atomic write: live intent and its plan are inseparable from the order
+        if live and job.read("docker-plan.json") is None:
+            job.write("docker-plan.json", plan)   # the backend's copy; the start gate re-materializes it from the order if a crash lost it
 
     def submit(self, order: WorkOrder, *, live: bool = False, isolation_profile: object = ABSENT_PROFILE) -> str:
         self.prepare(order, live=live, isolation_profile=isolation_profile)
-        return self.advance(order.invocation_id)
+        return self.advance(order.invocation_id, live_start=live)
 
     def recover(self) -> dict[str, str]:
         """Resume each job under its lock without refilling spent budgets (L-6; Astra 1c A5)."""
@@ -302,8 +311,9 @@ class Supervisor:
         return found
 
 
-    def advance(self, invocation_id: str) -> str:
-        """Advance under the parent-before-delegate lock, finishing any unfinished recovery first (L-6, L-8; Astra 1e-repair re-review 1)."""
+    def advance(self, invocation_id: str, *, live_start: bool = False) -> str:
+        """Advance under the parent-before-delegate lock, finishing any unfinished recovery first (L-6, L-8; Astra 1e-repair re-review 1).
+        `live_start` is the operator's permission, for this call only, to start a live child; a stored live order is never authorization."""
         job = self.job(invocation_id)
         order = job.read("order.json")
         if order is None:
@@ -311,9 +321,13 @@ class Supervisor:
         try:
             with self._exclusive(order):
                 journal = self._journal(job)  # read under the lock: every write of this advance rests on it (_save)
-                if journal.get("recovering"):
-                    return self._recovering(job, order, journal).get("outcome", "stalled")
-                return self._advance(job, order, journal)
+                self._live_start = live_start
+                try:
+                    if journal.get("recovering"):
+                        return self._recovering(job, order, journal).get("outcome", "stalled")
+                    return self._advance(job, order, journal)
+                finally:
+                    self._live_start = False
         except Busy as busy:
             return str(busy)
 
@@ -489,7 +503,7 @@ class Supervisor:
             raise Held(job.handle, journal.get("settled"))
         plan = job.read("docker-plan.json")
         ending = method == "commit_outcome" or (method == "record_transition" and request["to_state"] in (*TERMINAL, "result_ready")) or (method == "reconcile" and request["resolution"] != "found_running")
-        if plan and ending and (job.read("docker-complete.json") or {}).get("origin") != plan["origin"]:
+        if plan and ending and not journal.get("unlaunched") and (job.read("docker-complete.json") or {}).get("origin") != plan["origin"]:
             raise Waiting("backend_end_unconfirmed")
         try:
             response = getattr(self.control, method)(request)
@@ -684,6 +698,11 @@ class Supervisor:
         """End the execution group (timeout or cancellation) and record it;
         the termination is kept before its record is staged (A4)."""
         ended = self._end_group(job, view["identity"])
+        if job.read("docker-plan.json") is not None:   # a Docker-managed container is not in the job's process group: kill and remove what the job created
+            try:
+                docker_cli.contain_job(job)
+            except LiveProfileRefused:
+                ended = {**ended, "confirmed": False}   # a container that could not be ended leaves the end unconfirmed, so capacity is not released (L-7)
         observation = {"process": self._process(view["identity"]), "exit": job.read("exit.json"), "termination": {"reason": reason},
                        "descendants": self._handled(ended),
                        "output": {"status": "not_collected", "content_hash": None, "size_bytes": None, "declared_digest": None, "detail": None},
@@ -818,11 +837,16 @@ class Supervisor:
     def _launching(self, job, order, journal, grant, status) -> str:
         view = job.lookup()
         if view["verdict"] == "not_started":  # launch intent is recorded and no start has happened: start it now
-            if job.read("docker-plan.json") is not None:
-                refuse_live_profile(ABSENT_PROFILE)
+            live = bool(order.get("live")) or job.read("docker-plan.json") is not None   # the order itself says it is live; the plan file alone also does
+            if live and self.dispatch is None:
+                refuse_live_profile(ABSENT_PROFILE)   # no authority wired: closed, before anything else is read
             refused = status["launch_admission"]  # the router's current launch-admission check, read before every actual start (L-7)
             if status["cancel_requested"] or self._past(order["deadline_at"]) or (refused and refused["reason"] == "deadline_passed"):
                 return self._end_unlaunched(job, order, journal, grant, status)
+            if live:   # the authority's gate, after a cancellation (which it may itself request) is honoured
+                gate = self._live_gate(job, order, journal, grant)
+                if gate is not None:
+                    return gate
             if refused is not None:  # recorded launch intent is not renewed authority: a recovery or a retried start is checked again
                 return self._refused_launch(job, journal, grant, refused["reason"])
             if not self._spend(job, journal, "spawn"):
@@ -845,6 +869,46 @@ class Supervisor:
         # a start this process did not see through (a crash between spawn and identity record, or a launcher that
         # never recorded one): the outcome is unknown until the job is looked up or its group terminated (L-3, L-4)
         return self._enter_unknown(job, order, journal, grant, status, "spawn_uncertain")
+
+    def _live_gate(self, job, order, journal, grant) -> str | None:
+        """A live child starts only with an authority wired, this call's permission, and the Router's authorization of THIS dispatch (the
+        slot, the route-wide rejection block, the trial stop, the ceiling and the attempts: the Router's predicates, not a copy). A refusal
+        ends the job cancelled, fail closed; a replayed authorization grants no second send. Returns the job's end, or None to go on."""
+        if self.dispatch is None:
+            refuse_live_profile(ABSENT_PROFILE)
+        if not self._live_start:
+            raise Waiting("live_not_authorized")   # recovery and every call without the operator's flag stop here: nothing is written, nothing starts
+        if job.read("docker-plan.json") is None:   # a crash lost the backend's copy; the order carries the plan. An order with no plan is incomplete preparation
+            if not isinstance(order.get("plan"), dict):
+                journal["unlaunched"] = True
+                return self._cancel_self(job, journal, grant, "dispatch refused: incomplete_live_preparation")
+            job.write("docker-plan.json", order["plan"])
+        if "admission_ref" not in journal.get("dispatch", {}):
+            if not self.dispatch.qualified:   # a retired or unverified record: no new start, whatever was prepared earlier
+                journal["unlaunched"] = True      # nothing was started and nothing will be: its cancellation has no backend end to confirm
+                return self._cancel_self(job, journal, grant, "dispatch refused: profile_qualification_unavailable")
+            request = {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "run_id": self.dispatch.run_id, "attempt": 1}
+            reply = self._call(job, journal, "authorize_dispatch", request)
+            if reply.get("status") not in ("authorized", "replayed"):
+                journal["unlaunched"] = True
+                return self._cancel_self(job, journal, grant, f"dispatch refused: {reply.get('reason')}")
+            journal["dispatch"] = {"admission_ref": reply["admission_ref"], "run_id": request["run_id"], "attempt": 1}
+            self._save(job, journal)
+            self._fault("dispatch_authorized")   # the Router holds the intent; the start has not happened
+        return None
+
+    def _record_dispatch(self, job, journal, grant, collected) -> None:
+        """After the backend's end is collected and before any terminal transition, record the result under the same authorization. The cost
+        is whatever the authority supplies (unknown today: the Router then charges the configured worst case and stops the trial)."""
+        dispatch = journal["dispatch"]
+        reply = self._call(job, journal, "record_dispatch_result", {
+            "capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "run_id": dispatch["run_id"], "attempt": dispatch["attempt"],
+            "admission_ref": dispatch["admission_ref"], "evidence_ref": collected["record"]["content_hash"]})
+        if reply.get("status") not in ("recorded", "replayed"):
+            self._incident(job, journal, "dispatch_result_unrecorded", reason=reply.get("reason"))
+            raise Waiting("stalled")
+        dispatch["recorded"] = True
+        self._save(job, journal)
 
     def _await_identity(self, job: jobs.Job, grace: float) -> dict:
         """Wait, within `grace`, for a launcher to record its identity. Before
@@ -870,6 +934,7 @@ class Supervisor:
     def _end_unlaunched(self, job, order, journal, grant, status) -> str:
         """Launch intent recorded, nothing ever started: cancelled if that was
         asked for, otherwise the deadline passed first."""
+        journal["unlaunched"] = True   # reached only after job.lookup() proved no start: a live order's cancellation or deadline has no backend end to wait for
         if status["cancel_requested"]:
             return self._end(job, order, journal, grant, "cancelled", self._unrun(None, "cancelled before the launcher started"), "job_handle_lookup")
         return self._end(job, order, journal, grant, "failed", self._unrun("never_started", "the deadline passed before the launcher started"), "job_handle_lookup")
@@ -919,6 +984,8 @@ class Supervisor:
         observation = collected["observation"]
         if observation["descendants"]["handling"] == "unconfirmed":  # capacity is not released on an unconfirmed group (L-7)
             return self._enter_unknown(job, order, journal, grant, status, "termination_unconfirmed")
+        if journal.get("dispatch") and not journal["dispatch"].get("recorded") and job.read("docker-complete.json") is not None:
+            self._record_dispatch(job, journal, grant, collected)
         facts = {"end_evidence_ref": collected["record"]["content_hash"]}
         if status["cancel_requested"] or observation["findings"]:
             self._settle_delegates(order)

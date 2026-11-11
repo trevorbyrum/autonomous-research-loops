@@ -75,6 +75,32 @@ class Classifier(unittest.TestCase):
         self.assertEqual(self.verdict(access=jl(*[{**ROW, "id": str(i)} for i in range(1025)]))["reason"], "access_bound")
 
 
+class RealRoute(unittest.TestCase):
+    """The real lane: no fixture, the plan's upstream, and a fixture label can never stand for real provenance."""
+    REAL = {**ROW, "upstream": "203.0.113.7:443"}
+
+    def verdict(self, route="real", fixture=None, upstream="203.0.113.7:443", access=None):
+        return r.classify(jl(self.REAL) if access is None else access, FAILED, fixture, 1, model="gpt-5.4", route=route, upstream=upstream)
+
+    def test_a_real_route_row_against_the_plans_upstream_with_no_fixture_is_a_rejection(self):
+        self.assertEqual(self.verdict(), {"disposition": "credentials_rejected", "reason": "relay_401"})
+
+    def test_each_operand_that_is_wrong_for_the_route_is_unknown(self):
+        for name, args in {"a fixture given on a real route": dict(fixture=json.dumps(FIXTURE).encode()), "no upstream in the plan": dict(upstream=None),
+                           "another upstream": dict(upstream="203.0.113.8:443"), "the fixture's upstream": dict(access=jl(ROW)),
+                           "a fixture route with no fixture": dict(route="fixture"), "an unknown route": dict(route="magic")}.items():
+            with self.subTest(name):
+                self.assertEqual(self.verdict(**args)["disposition"], "unknown")
+
+    def test_a_real_run_records_the_model_as_unknown_with_the_configured_string_kept_as_configured(self):
+        record = r.usage_record(IDENTITY, b"", elapsed=1, gateway_refs=[], raw_refs=[], observed_model=None, configured_model="gpt-5.4", observed=False)
+        self.assertEqual(record["model"], {"state": "unknown", "configured": "gpt-5.4"})
+        with self.assertRaisesRegex(LiveProfileRefused, "usage_model_mismatch"):   # a known mismatch still refuses
+            r.usage_record(IDENTITY, b"", elapsed=1, gateway_refs=[], raw_refs=[], observed_model="gpt-5.5", configured_model="gpt-5.4", observed=False)
+        with self.assertRaisesRegex(LiveProfileRefused, "usage_model_mismatch"):   # the fixture route still needs the observed model
+            r.usage_record(IDENTITY, b"", elapsed=1, gateway_refs=[], raw_refs=[], observed_model=None, configured_model="gpt-5.4")
+
+
 class Usage(unittest.TestCase):
     schemas = SchemaSet()
 

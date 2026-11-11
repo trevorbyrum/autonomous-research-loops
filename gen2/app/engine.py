@@ -46,6 +46,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 
+from gen2.app import compose, walk
 from gen2.app.station import Station, StationRefused, open_station
 from gen2.core.instants import utc_now
 from gen2.operator.auth import Credentials, CredentialsRefused
@@ -71,10 +72,10 @@ class _Owned:
     through it."""
 
     OPERATIONS = frozenset(COMMANDS) | {"status", "healthy"}
-    STATION = frozenset({"recover_incident"})  # the supervisor's; every other operation is the router's
+    STATION = frozenset({"recover_incident", "walk"})  # the supervisor's (and the hosted walk's); every other operation is the router's
 
-    def __init__(self, owner: ThreadPoolExecutor, station: Station) -> None:
-        self._owner, self._station = owner, station
+    def __init__(self, owner: ThreadPoolExecutor, station: Station, walker=None) -> None:
+        self._owner, self._station, self._walker = owner, station, walker
 
     def __getattr__(self, name: str):
         if name not in self.OPERATIONS:
@@ -83,13 +84,16 @@ class _Owned:
             record = self._station.router.record_capability_probe
             return lambda request: self._station.probe.run(
                 request, record=lambda observation: self._owner.submit(record, observation).result(timeout=ANSWER_TIMEOUT_S))
+        if name == "walk":   # one driver tick, on the owner thread; without a walker the engine says so
+            method = self._walker.walk if self._walker is not None else (lambda request: {"status": "refused", "reason": "walk_unavailable"})
+            return lambda *args: self._owner.submit(method, *args).result(timeout=ANSWER_TIMEOUT_S)
         method = getattr(self._station.supervisor if name in self.STATION else self._station.router, name)
         return lambda *args: self._owner.submit(method, *args).result(timeout=ANSWER_TIMEOUT_S)
 
 
 class Engine:
     def __init__(self, opener: Callable[[], Station], credentials: Credentials, *, listen: tuple[str, int] = ("127.0.0.1", 0),
-                 log: Callable[[str], None] | None = None) -> None:
+                 log: Callable[[str], None] | None = None, walker: Callable[[Station], object] | None = None) -> None:
         self._owner = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gen2-router")
         try:
             self.station = self._owner.submit(opener).result()
@@ -98,7 +102,7 @@ class Engine:
             raise
         self.log = log or (lambda line: print(line, file=sys.stderr, flush=True))
         supervisor = self.station.supervisor
-        self.service = OperatorService(_Owned(self._owner, self.station), credentials,
+        self.service = OperatorService(_Owned(self._owner, self.station, None if walker is None else walker(self.station)), credentials,
                                        incidents=lambda: self._owner.submit(supervisor.incidents).result(timeout=ANSWER_TIMEOUT_S), log=self.log)
         try:
             self._server = _Server(listen, _handler(self.service, self.log), self.log)
@@ -249,9 +253,14 @@ def main(argv: list[str] | None = None, environ=os.environ) -> int:
     try:
         credentials = Credentials.from_environ(environ)
         bundle = None if args.bundle is None else json.loads(Path(args.bundle).read_text(encoding="utf-8"))
-        engine = Engine(lambda: open_station(args.root, station_id=args.station_id, host_id=args.host_id, clock=utc_now,
-                                             config_bundle=bundle, create=args.create, auth_root=args.auth_root), credentials,
-                        listen=(host, int(port)))
+        composition = compose.Composition()
+        authority = composition.authority(Path(args.root) / "jobs", environ)   # None unless a verified qualification record is named: live stays closed
+        engine = Engine(lambda: composition.bind(open_station(args.root, station_id=args.station_id, host_id=args.host_id, clock=utc_now,
+                                                              config_bundle=bundle, create=args.create, auth_root=args.auth_root,
+                                                              router_options={"gateway_captures": composition.captures, "dispatch_authority": authority},
+                                                              supervisor_options={"recorders": composition.recorders(), "dispatch": authority})).station,
+                        credentials, listen=(host, int(port)),
+                        walker=lambda station: walk.Walker(walk.driver_factory(station, composition, environ)))
     except (CredentialsRefused, StationRefused, ValueError, OSError) as refused:  # never a token in any of these messages
         print(f"gen2 engine refused to start: {refused}", file=sys.stderr, flush=True)
         return 1
