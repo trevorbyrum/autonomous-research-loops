@@ -51,15 +51,17 @@ def _binding(record):
 START_CHANGES = {"OomScoreAdj": (0, 200), "OomKillDisable": (False, None)}   # the real daemon's only create->start HostConfig changes: {field: (created, started)} (T9 log probe)
 
 
-def _started(record, started):
+def _started(record, started, expected):
     """The created record as the daemon reports it after start: only the pinned fields, only from their exact created value (type included: 0 is not
-    False). The `none` network's ID is empty until start and then a 64-hex ID (the retained probe shows it); no other network and no other ID shape."""
+    False). Every attached network's ID is empty until start (created state, the retained native inspects) and then must be EXACTLY the expected ID of
+    that network name (`expected`: the job network and the upstream network, the backend's own); the `none` network has no ID the plan knows, so
+    any 64-hex ID the daemon shows. A network not named here keeps its created value, so it must be unchanged."""
     host = dict(record["HostConfig"])
     for key, (before, after) in START_CHANGES.items():
         if key in host and host[key] == before and type(host[key]) is type(before):
             host[key] = after
-    later = ((started.get("NetworkSettings") or {}).get("Networks") or {}).get("none") or {}
-    networks = {name: {**value, "NetworkID": later["NetworkID"]} if name == "none" and value.get("NetworkID") == "" and CID.fullmatch(str(later.get("NetworkID"))) else value
+    want = {**expected, "none": (((started.get("NetworkSettings") or {}).get("Networks") or {}).get("none") or {}).get("NetworkID")}
+    networks = {name: {**value, "NetworkID": want[name]} if value.get("NetworkID") == "" and CID.fullmatch(str(want.get(name))) else value
                 for name, value in record["NetworkSettings"]["Networks"].items()}
     return {**record, "HostConfig": host, "NetworkSettings": {**record["NetworkSettings"], "Networks": networks}}
 
@@ -246,7 +248,8 @@ class DockerCLI:
             require(read_scratch(self.job.dir, SEAL, 4096)["status"] == "absent", "start_after_seal")
             self._command(("start", cid))
         started = self.inspect(cid)
-        require(_binding(started) == _binding(_started(original, started)), "start_changed")
+        expected = {v["Name"]: v["Id"] for v in (self.job.read(name) for name in ("network-job.json", "network-upstream.json")) if v}
+        require(_binding(started) == _binding(_started(original, started, expected)), "start_changed")
         _when(started["State"].get("StartedAt"), "start_changed")
         self.job.write(role + "-start.json", started)
 
@@ -361,13 +364,15 @@ class DockerCLI:
             view = json.loads(self._command(("network", "inspect", upstream)))[0]
             require(view["Id"] == upstream and view["Internal"] and not view["EnableIPv6"] and view["Driver"] == "bridge"
                     and view["IPAM"]["Config"] == [{"Subnet": NETWORKS["fixture"]}] and set(view["Containers"]) == {fixture["Id"]}, "fixture_network_members")
+        self.job.write("network-upstream.json", view)   # its Name pairs the expected ID with the per-name view the daemon shows before start
         relay = self.create_auxiliary("relay", network)
         self.endpoint("connect", upstream, relay, None if real else "172.31.252.2")
         observed = self.inspect(relay)
         require(_binding(observed)[0] == _binding(self.job.read("relay.json"))[0], "relay_changed")
-        addresses = {n["NetworkID"]: (n.get("IPAMConfig") or {}).get("IPv4Address") for n in observed["NetworkSettings"]["Networks"].values()}
-        require(addresses == ({network: "172.31.254.2", upstream: addresses.get(upstream)} if real and upstream in addresses else
-                              {network: "172.31.254.2", upstream: "172.31.252.2"}), "relay_topology")
+        shown, names = observed["NetworkSettings"]["Networks"], {self.job.read("network-job.json")["Name"]: network, view["Name"]: upstream}
+        address = lambda name: (shown[name].get("IPAMConfig") or {}).get("IPv4Address")
+        require(set(shown) == set(names) and all(shown[n].get("NetworkID") in ("", i) for n, i in names.items())   # created, not started: by name, no ID yet
+                and address(next(iter(names))) == "172.31.254.2" and (real or address(view["Name"]) == "172.31.252.2"), "relay_topology")
         self.job.write("relay.json", observed)
         self.start(relay, "relay")
         runner = self.create_runner(network, self.plan["binds"])

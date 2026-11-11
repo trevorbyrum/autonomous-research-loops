@@ -1,0 +1,49 @@
+{
+ "created_networks": {
+  "gen2-2e1-live-fixture-28ae2b8a8b27557f95797986353940a6": {
+   "Aliases": [],
+   "DNSNames": [
+    "adoring_ganguly",
+    "c7c7f3fbbfc4"
+   ],
+   "DriverOpts": {},
+   "EndpointID": "",
+   "Gateway": "",
+   "GlobalIPv6Address": "",
+   "GlobalIPv6PrefixLen": 0,
+   "GwPriority": 0,
+   "IPAMConfig": {
+    "IPv4Address": "172.31.252.2"
+   },
+   "IPAddress": "",
+   "IPPrefixLen": 0,
+   "IPv6Gateway": "",
+   "Links": null,
+   "MacAddress": "",
+   "NetworkID": ""
+  },
+  "gen2-2e1-live-job-28ae2b8a8b27557f95797986353940a6": {
+   "Aliases": null,
+   "DNSNames": null,
+   "DriverOpts": null,
+   "EndpointID": "",
+   "Gateway": "",
+   "GlobalIPv6Address": "",
+   "GlobalIPv6PrefixLen": 0,
+   "GwPriority": 0,
+   "IPAMConfig": {
+    "IPv4Address": "172.31.254.2"
+   },
+   "IPAddress": "",
+   "IPPrefixLen": 0,
+   "IPv6Gateway": "",
+   "Links": null,
+   "MacAddress": "",
+   "NetworkID": ""
+  }
+ },
+ "expected_network_ids": {
+  "fixture": "faab427bc995d5765132f283bbaa9d23a0b64c603fdaeb768f03b49dee964029",
+  "job": "46fa710bf66e5ce8f0ec9db862f69e390e8361ee65aeed3b599d8e641f0159c9"
+ }
+}
