@@ -49,7 +49,8 @@ def prompt_pins():
 class Offline:
     """One fresh station, composition and driver over a temporary root; `operator` is the human, each method one production command."""
 
-    def __init__(self, counter: str = "empty", without_recorder: str | None = None) -> None:
+    def __init__(self, counter: str = "empty", without_recorder: str | None = None, *, record=None, live: bool = False,
+                 child_module: str = "gen2.tests.offline_child") -> None:
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         token = root / "gateway-token"
@@ -64,18 +65,29 @@ class Offline:
         self.path = mock.patch.dict(os.environ, {"PATH": f"{bin_dir}:{os.environ['PATH']}"})
         self.path.start()
         bundle = offline_world.bundle(workflow.executor_entries(prompt_pins()))
-        self.composition = compose.Composition(TOPIC)
+        self.composition = compose.Composition()
+        authority = live_env = None
+        if record is not None:   # a qualified authority from a record document, mounted the way the engine reads it (record, its pin, the manifest)
+            document, manifest = record(root / "station")   # a callable: (the station root) -> (record document, manifest bytes)
+            data = canonical.canonical_bytes(document)
+            files = {"GEN2_QUALIFICATION_RECORD": data, "GEN2_MANIFEST": manifest}
+            for name, content in files.items():
+                (root / name).write_bytes(content)
+            environ = {**{name: str(root / name) for name in files}, "GEN2_QUALIFICATION_PIN": canonical.bytes_digest(data)}
+            authority = self.composition.authority(root / "station" / "jobs", environ)
+            live_env = {"GEN2_MANIFEST": environ["GEN2_MANIFEST"], "GEN2_RETAINED_DIR": str(root)}
         self.station = open_station(root / "station", station_id="stn-offline", host_id="host-offline", clock=utc_now, config_bundle=bundle, create=True,
-                                    router_options={"gateway_captures": self.composition.captures},
-                                    supervisor_options={"recorders": {k: v for k, v in self.composition.recorders().items() if k != without_recorder}})
+                                    router_options={"gateway_captures": self.composition.captures, "dispatch_authority": authority},
+                                    supervisor_options={"recorders": {k: v for k, v in self.composition.recorders().items() if k != without_recorder},
+                                                        "dispatch": authority})
         self.composition.bind(self.station)
         self.router = self.station.router
         self.bundle_hash = self.router.status({})["config_bundles"]["active"]["bundle_hash"]
         self.said: list[str] = []
-        kits = self.composition.kits(lanes=["semanticscholar", "crossref"], validate=validate,
+        kits = self.composition.kits(TOPIC, lanes=["semanticscholar", "crossref"], validate=validate,
                                      gateway={"commercial": False, "accept_per_item": True, "policy_version": "gw/1"})
         self.driver = Driver(self.station, topic_id=TOPIC, bundle_hash=self.bundle_hash, kits=kits, prompt_dir=PROMPTS,
-                             child_module="gen2.tests.offline_child", discovery_module="gen2.tests.offline_discovery",
+                             child_module=child_module, live=live, live_env=live_env, discovery_module="gen2.tests.offline_discovery",
                              discovery_env={"GEN2_GATEWAY_URL": GATEWAY_URL, "GEN2_SECRET_GATEWAY_TOKEN_FILE": str(token), "GEN2_OFFLINE_COUNTER": counter},
                              say=self.said.append, sleep=lambda seconds: time.sleep(0.05))
         self.brief = RouterTestCase.brief_document(TOPIC)

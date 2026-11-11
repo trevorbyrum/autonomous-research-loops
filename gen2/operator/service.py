@@ -114,6 +114,7 @@ COMMANDS: dict[str, tuple[str, dict[str, Callable[[Principal], str]]]] = {
     "mark_brief_overdue": ("operator", {}),
     "propose_amendment": ("operator", {}),
     "recover_incident": ("operator", {"requested_by": _NAME}),  # the station's (core.control.OperatorBackend), not the router's
+    "walk": ("operator", {}),  # the station's too: one tick of the hosted walk for one topic (gen2/app/walk.py); the body is closed there
     "probe_capability": ("operator", {"requested_by": _NAME}),  # the station's too (task 1f)
     "ack_delivery": ("exporter", {}),
 }

@@ -74,6 +74,7 @@ class Wait:
 @dataclass(frozen=True)
 class Stop:
     reason: str
+    code: str = field(default="stopped", compare=False)   # a fixed word for the hosted walk's reply (the reason can carry ids and holds' text)
 
 
 @dataclass(frozen=True)
@@ -106,7 +107,7 @@ def plan(status: str, jobs: Mapping[Step, Job], *, max_passes: int = 1, max_roun
     if status in OPERATOR:
         return Wait(*OPERATOR[status])
     if status in BLOCKED:
-        return Stop(f"the topic is {status}")
+        return Stop(f"the topic is {status}", "topic_blocked")
     searches = iter(range(1, 10_000))
 
     def run(step: Step) -> Action | None:
@@ -115,7 +116,7 @@ def plan(status: str, jobs: Mapping[Step, Job], *, max_passes: int = 1, max_roun
             return Issue(step)
         if job.state == "live":
             return Advance(step)
-        return None if job.state == "committed" else Stop(f"{step.kind}/{step.purpose} #{step.ordinal} is {job.state}")
+        return None if job.state == "committed" else Stop(f"{step.kind}/{step.purpose} #{step.ordinal} is {job.state}", f"step_{job.state}")
 
     def then_search(step: Step) -> Action | None:
         """A committed step that proposed searches is followed by one discovery run, numbered in program order."""
@@ -130,9 +131,9 @@ def plan(status: str, jobs: Mapping[Step, Job], *, max_passes: int = 1, max_roun
             action = then_search(Step("research_pass", "scope", round_, pre))
             if action is not None:
                 return action
-        return Stop(f"scoping spent its {max_rounds} rounds")
+        return Stop(f"scoping spent its {max_rounds} rounds", "budget")
     if status not in ("queued", "active", "resting"):
-        return Stop(f"no step is defined for the topic status {status}")
+        return Stop(f"no step is defined for the topic status {status}", "topic_blocked")
     here = _context("c", contract)
     for number in range(1, max_passes + 1):
         action = then_search(Step("research_pass", "research", number, here))

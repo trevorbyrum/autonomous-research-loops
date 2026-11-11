@@ -1,140 +1,76 @@
-"""The command line (T17 CLI). Oracle: the driver's printed line and the exit code. Limits: the station is the driver tests' fake; the
-real station, router and supervisor lifecycle are the other suites'.
+"""The operator's walk client (T19 step 1). Oracle: the requests it sends (a scripted engine records them) and the lines and exit codes it
+produces. Limits: the engine's side is test_app_walk's, over real HTTP.
 """
-import tempfile
+import http.client
+import json
 import unittest
-from unittest import mock
-
-from gen2.app import compose
-from gen2.app.driver import Context
-from gen2.app.workflow import Step
-from gen2.core import canonical
-from gen2.discovery import requests
-from gen2.exec.common import Refused
 
 from gen2.app import run_topic
-from gen2.app.station import StationRefused
-from gen2.supervisor.supervisor import RECORDED
-from gen2.tests.test_app_driver import TOPIC, World
 
-WAIT = "waiting for: the scoping report awaits approval; run: apply_operator_decision kind=scope_approval"
-
-
-class RunTopicTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.world = World(self.tmp.name)
-        self.station, self.said, self.calls = self.world.station(), [], []
-
-    def run_main(self, argv, *, environ=None, opener=None):
-        def default(root, **options):
-            self.calls.append(options)
-            return self.station
-        return run_topic.main(argv, environ=environ or {}, opener=opener or default, say=self.said.append)
-
-    def test_it_wires_the_station_and_prints_the_wait_and_closes_the_station(self):
-        self.world.topic["status"] = "awaiting_scope_approval"
-        self.assertEqual((self.run_main([self.tmp.name, TOPIC]), self.said, self.station.closed), (0, [WAIT], True))
-        self.assertEqual(set(self.calls[0]["supervisor_options"]["recorders"]), set(RECORDED))
-        self.assertIn("gateway_captures", self.calls[0]["router_options"])
-
-    def test_exit_codes_distinguish_a_bad_call_a_station_that_will_not_start_and_a_stopped_walk(self):
-        def refusing(root, **options):
-            raise StationRefused("no bundle")
-        self.assertEqual(self.run_main([self.tmp.name]), 2)
-        self.assertEqual(self.run_main([self.tmp.name, TOPIC], opener=refusing), 2)
-        self.world.topic["holds"] = [{"hold_id": "hold_x", "clears_when": "an operator acts"}]
-        self.assertEqual(self.run_main([self.tmp.name, TOPIC]), 3)
-
-    def test_the_gateway_comes_from_the_environment_as_a_url_and_a_token_file_only(self):
-        self.world.topic["status"] = "awaiting_scope_approval"
-        with mock.patch.object(run_topic, "Driver", wraps=run_topic.Driver) as driver:
-            self.run_main([self.tmp.name, TOPIC], environ={"GEN2_GATEWAY_URL": "http://g.invalid", "GEN2_SECRET_GATEWAY_TOKEN_FILE": "/run/secrets/gw",
-                                                         "GEN2_SECRET_GATEWAY_TOKEN": "s3cret", "PATH": "/bin"})
-        self.assertEqual(driver.call_args.kwargs["discovery_env"], {"GEN2_GATEWAY_URL": "http://g.invalid", "GEN2_SECRET_GATEWAY_TOKEN_FILE": "/run/secrets/gw"})
+TOPIC = "fleet-a:t1"
+WAIT = {"status": "ok", "action": "wait", "command": "apply_operator_decision kind=scope_approval"}
+SHOWN = {"dossier": {"revision": 2, "content_hash": "sha256:" + "d" * 64, "state": "satisfied", "gates": []}, "approvable": True,
+         "reviews": [{"outcome": "insufficient", "summary": "claim 2 unsearched", "evidence": []}]}
 
 
-def proposal(n=1, **over):
-    return {"proposal_version": "search-proposal/1", "proposal_id": f"p{n}", "proposer": "primary", "lane": "semanticscholar", "request_type": "find",
-            "query": "q", "page_cap": 1, "obligation_ids": [], "rationale": "r", **over}
+class Engine:
+    """Scripted: each call answers with the next item (a reply, or an exception to raise)."""
+    def __init__(self, *items):
+        self.items, self.calls = list(items), []
+
+    def __call__(self, url, token, method, path, body=None, **kw):
+        self.calls.append((method, path, body, token))
+        item = self.items.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item if isinstance(item, tuple) else (200, item)
 
 
-class ProposalAssemblyTest(unittest.TestCase):
-    """The CLI's own validator through the real discovery intake and the real discovery kit."""
+class ClientTest(unittest.TestCase):
+    def run_client(self, *items, argv=(TOPIC,), environ=None):
+        engine, said = Engine(*items), []
+        code = run_topic.main(list(argv), environ=environ or {"GEN2_OPERATOR_TOKEN": "tok"}, call=engine, say=said.append, sleep=lambda s: None)
+        return code, said, engine
 
-    def committed(self, proposals):
-        payload = canonical.canonical_bytes({"invocation_id": "inv_p", "topic_id": TOPIC, "search_proposals": proposals})
-        return payload, {"invocation_id": "inv_p", "topic_id": TOPIC, "operation_kind": "final_outcome", "payload_digest": canonical.bytes_digest(payload)}
+    def test_it_calls_walk_one_tick_at_a_time_until_the_operators_move_and_prints_the_command(self):
+        code, said, engine = self.run_client({"status": "ok", "action": "issue"}, {"status": "ok", "action": "advance"}, WAIT)
+        self.assertEqual((code, said), (0, ["waiting for: the next move is the operator's; run: apply_operator_decision kind=scope_approval"]))
+        self.assertEqual([(m, p, json.loads(b), t) for m, p, b, t in engine.calls], [("POST", "/v1/commands/walk", {"topic_id": TOPIC}, "tok")] * 3)
 
-    def test_the_validator_accepts_valid_proposals_and_refuses_invalid_ones_by_refusal_not_by_schema_error(self):
-        payload, receipt = self.committed([proposal(1), proposal(2)])
-        self.assertEqual(len(requests.intake(payload, receipt, TOPIC, 10_000, run_topic.validate).proposals), 2)
-        for case, bad in (("missing field", {k: v for k, v in proposal().items() if k != "query"}), ("wrong type", proposal(page_cap="many")),
-                          ("extra key", proposal(extra=1))):
-            with self.subTest(case), self.assertRaises(Refused):
-                requests.intake(*self.committed([bad]), TOPIC, 10_000, run_topic.validate)
+    def test_the_completion_wait_prints_the_reviewed_status_block_and_an_unreviewed_one_is_refused(self):
+        completion = {"status": "ok", "action": "wait", "command": "apply_operator_decision kind=completion_approval"}
+        code, said, engine = self.run_client(completion, {"status": "ok", "topics": [{"review": SHOWN}]})
+        self.assertEqual(code, 0)
+        for fragment in ("run: apply_operator_decision kind=completion_approval", "dossier revision 2", "review insufficient: claim 2 unsearched"):
+            self.assertIn(fragment, said[0])
+        self.assertEqual(engine.calls[1][:2], ("GET", f"/v1/status?topic={TOPIC.replace(':', '%3A')}"))
+        for review in (None, {**SHOWN, "approvable": False}):
+            with self.subTest(review=review):
+                code, said, _ = self.run_client(completion, {"status": "ok", "topics": [{"review": review}]})
+                self.assertEqual((code, said[0].startswith("stopped: cannot show the review")), (3, True))
 
-    def test_the_discovery_kit_assembles_valid_proposals_and_refuses_invalid_ones_before_anything_runs(self):
-        with tempfile.TemporaryDirectory() as directory:
-            world = World(directory)
-            station = world.station()
-            kit = compose.Composition(TOPIC).bind(station).kits(lanes=["semanticscholar"], validate=run_topic.validate,
-                                                               gateway={"commercial": False, "accept_per_item": False, "policy_version": 1})[("discovery", "search")]
-            context = Context(Step("discovery", "search", 1, "c1"), "inv_d", TOPIC, {"context": "contract/1"}, [], None, lambda step: None,
-                              "2026-11-08T09:00:00Z", Step("research_pass", "research", 1, "c1"), 0, lambda step: "inv_p")
-            for proposals, expect in (([proposal(1)], True), ([proposal(1), {k: v for k, v in proposal(2).items() if k != "lane"}], False)):
-                payload, receipt = self.committed(proposals)
-                world.blobs[receipt["payload_digest"]] = payload
-                world.records["operation_receipts"] = [receipt]
-                with self.subTest(valid=expect):
-                    if expect:
-                        self.assertEqual(kit.view(context, {}, [])["committed"]["receipt"]["invocation_id"], "inv_p")
-                    else:
-                        with self.assertRaises(Refused):
-                            kit.view(context, {}, [])
-            self.assertEqual(station.supervisor.submitted, [])
+    def test_done_and_stops_use_fixed_words_only(self):
+        self.assertEqual(self.run_client({"status": "ok", "action": "done"})[:2], (0, ["done"]))
+        self.assertEqual(self.run_client({"status": "ok", "action": "stop", "code": "hold_open"})[:2], (3, [f"stopped: {run_topic.STOPS['hold_open']}"]))
+        self.assertEqual(self.run_client({"status": "stopped", "code": "refused"})[:2], (3, [f"stopped: {run_topic.STOPS['refused']}"]))
+        self.assertEqual(self.run_client({"status": "ok", "action": "stop", "code": "SENTINEL\nx"})[:2], (3, ["stopped: the walk stopped"]))   # an unknown word is not echoed
 
+    def test_an_answer_that_never_comes_is_ambiguous_stops_and_is_never_repeated(self):
+        for failure in (OSError("timed out"), ValueError("not json"), http.client.IncompleteRead(b"")):
+            with self.subTest(type(failure).__name__):
+                code, said, engine = self.run_client(failure)
+                self.assertEqual((code, said, len(engine.calls)), (2, [run_topic.NO_ANSWER], 1))
 
-class UncaughtTest(unittest.TestCase):
-    def test_a_refusal_during_the_walk_is_a_stop_with_its_reason_and_the_station_still_closes(self):
-        with tempfile.TemporaryDirectory() as directory:
-            world = World(directory)
-            station, said = world.station(), []
-            with mock.patch.object(run_topic.Driver, "run", side_effect=Refused("a view is malformed")):
-                code = run_topic.main([directory, TOPIC], environ={}, opener=lambda root, **o: station, say=said.append)
-            self.assertEqual((code, said, station.closed), (3, [f"stopped: an input was refused; {run_topic.DETAIL}"], True))
+    def test_a_refusal_a_bad_http_status_a_bad_reply_and_a_bad_call_are_exit_two_and_fixed(self):
+        for items, argv in (([{"status": "refused", "reason": "SENTINEL\nx"}], (TOPIC,)), ([(403, {"status": "refused"})], (TOPIC,)),
+                            ([(200, ["x"])], (TOPIC,)), ([{"status": "ok", "action": "dance"}], (TOPIC,)),
+                            ([{"status": "ok", "action": "wait", "command": "rm -rf /"}], (TOPIC,)), ([], ()), ([], (TOPIC, "extra"))):
+            with self.subTest(items=items, argv=argv):
+                code, said, engine = self.run_client(*items, argv=argv)
+                self.assertEqual(code, 2)
+                self.assertNotIn("SENTINEL", " ".join(said))
+                self.assertEqual(len(engine.calls), len(items))
 
-    def test_each_kind_of_failure_has_one_fixed_line_and_the_exception_text_is_never_printed(self):
-        for error, expected in ((Refused("MARK refused"), "an input was refused"), (OSError("MARK io"), "a file operation failed"),
-                                (ValueError("MARK value"), "a record was malformed"), (KeyError("MARK key"), "a record lacked a field")):
-            with self.subTest(type(error).__name__), tempfile.TemporaryDirectory() as directory:
-                said = []
-                with mock.patch.object(run_topic.Driver, "run", side_effect=error):
-                    code = run_topic.main([directory, TOPIC], environ={}, opener=lambda root, **o: World(directory).station(), say=said.append)
-                self.assertEqual((code, said), (3, [f"stopped: {expected}; {run_topic.DETAIL}"]))
-
-    def test_a_malformed_proposal_key_with_a_newline_never_reaches_any_output(self):
-        """End to end: a valid proposal plus a key carrying a marker and a newline is refused at assembly; the stop line is fixed."""
-        import contextlib
-        import io
-        evil = "CALLER_SENTINEL\nFORGED_LOG_LINE"
-        payload = canonical.canonical_bytes({"invocation_id": "inv_p", "topic_id": TOPIC, "search_proposals": [proposal(1, **{evil: 1})]})
-        receipt = {"invocation_id": "inv_p", "topic_id": TOPIC, "operation_kind": "final_outcome", "payload_digest": canonical.bytes_digest(payload)}
-        with tempfile.TemporaryDirectory() as directory:
-            world = World(directory)
-            world.blobs[receipt["payload_digest"]] = payload
-            world.records["operation_receipts"] = [receipt]
-            station, said, out, err = world.station(), [], io.StringIO(), io.StringIO()
-            context = Context(Step("discovery", "search", 1, "c1"), "inv_d", TOPIC, {"context": "contract/1"}, [], None, lambda step: None,
-                              "2026-11-08T09:00:00Z", Step("research_pass", "research", 1, "c1"), 0, lambda step: "inv_p")
-
-            def assemble(driver, *args, **kwargs):
-                return driver.kits[("discovery", "search")].view(context, {}, [])
-            with mock.patch.object(run_topic.Driver, "run", autospec=True, side_effect=assemble), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                code = run_topic.main([directory, TOPIC], environ={}, opener=lambda root, **o: station, say=said.append)
-        self.assertEqual((code, said, station.closed, station.supervisor.submitted), (3, [f"stopped: an input was refused; {run_topic.DETAIL}"], True, []))
-        for text in (*said, out.getvalue(), err.getvalue()):
-            self.assertNotIn("CALLER_SENTINEL", text)
-            self.assertNotIn("FORGED_LOG_LINE", text)
-            self.assertNotIn("\n", text)
+    def test_it_stops_after_the_call_cap_rather_than_loop_forever(self):
+        code, said, engine = self.run_client(*[{"status": "ok", "action": "issue"}] * run_topic.MAX_CALLS)
+        self.assertEqual((code, said, len(engine.calls)), (0, ["still working; run this again"], run_topic.MAX_CALLS))
