@@ -375,3 +375,7 @@ A committed sufficient review can move resting to awaiting_judgment in its
 receipt transaction, with fresh material and proposed-effect/blocker checks.
 Approval remains the operator's action. Trevor permits the exact synthetic
 predecessor upgrade witness; DEBT-056 keeps the later live-store check open.
+
+## Growth trigger raised to 18,000 (2026-11-11)
+
+Trevor raised `GROWTH_REVIEW` from 17,500 to 18,000 on 2026-11-10/11, because the reviewed live-path stack brings production to 17,551. The growth review itself happens at the Nov 15 Gate S, which picks deletions (Gate S #7 §4 "Later" items A–G). The gateway's own budget is unchanged.
