@@ -22,3 +22,14 @@ class Operands(unittest.TestCase):
         for change in (dict(manifest=manifest + b" "), dict(receipts={ref: receipt + b" "})):
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, "stale"):
                 operands.pack(view | change)
+
+    def test_real_record_carries_exact_relay_only_provider_files(self):
+        manifest = b'{"route":"real"}'
+        record = dict(route="real", manifest_pin=canonical.bytes_digest(manifest), witnesses=[], plan=dict(operands.PROVIDER_FILES))
+        view = dict(record=record, manifest=manifest, receipts={})
+        data, _ = operands.pack(view)
+        self.assertEqual(json.loads(data)["plan"], operands.PROVIDER_FILES)
+        for key in operands.PROVIDER_FILES:
+            for replacement in (None, "/tmp/unreviewed"):
+                with self.subTest(key=key, replacement=replacement), self.assertRaisesRegex(ValueError, "provider file operand"):
+                    operands.pack(view | {"record": record | {"plan": record["plan"] | {key: replacement}}})

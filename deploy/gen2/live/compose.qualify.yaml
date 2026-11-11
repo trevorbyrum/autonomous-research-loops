@@ -1,0 +1,5 @@
+services:
+  engine:
+    healthcheck: {disable: true}
+  gateway:
+    healthcheck: {disable: true}
