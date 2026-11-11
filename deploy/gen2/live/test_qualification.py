@@ -1,132 +1,19 @@
-"""T8-1/2/3: offline recipe and orchestration witnesses, never host qualification.
-Fake Docker replies expose missing evidence and denied routes without sockets.
-"""
+"""Pure Q receipt predicates and protocol refusals; native qualification is separate."""
 import contextlib
 import io
 import json
-import runpy
-import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from deploy.gen2.live import fixture, q_net, qualify
 
-OBSERVER_ROLES = set(q_net.ROLES) | {"fixture", "service", "db"}
-
-
-class Driver:
-    def __init__(self, *, missing=(), unstarted=None, denied=False):
-        roles = list(qualify.ROLES) + ["fixture", "service", "db", "runner", "relay", "control"]
-        self.ids = {role: f"{i:064x}" for i, role in enumerate(roles, 1)}
-        self.values = dict.fromkeys(roles, 0)
-        self.probes, self.raw, self.record = [], b"", b""
-        self.exec_preflight = set()
-        self.unstarted, self.denied = unstarted, denied
-        self.views = {cid: dict(Id=cid, Image="sha256:" + "f" * 64, State=dict(Running=True, StartedAt="original", Pid=i),
-                               NetworkSettings=dict(Networks={}), HostConfig={}) for i, cid in enumerate(self.ids.values(), 1)}
-        bindings = {cid: dict(image=v["Image"], start=v["State"]["StartedAt"], pid=v["State"]["Pid"], networks={},
-                              policy=dict.fromkeys(("Dns", "Sysctls", "NetworkMode", "CapDrop", "SecurityOpt", "ReadonlyRootfs", "Privileged", "PortBindings")))
-                    for cid, v in self.views.items()}
-        self.plan = dict(nonce="a" * 32, started=0, runner=self.ids["runner"], relay=self.ids["relay"], job="e" * 64,
-                         bindings=bindings, services={r: self.ids[r] for r in ("fixture", "service", "db")},
-                         controls={r: self.ids["control"] for r in OBSERVER_ROLES},
-                         observers={r: dict(cid=self.ids[r], origin=dict(role=r)) for r in qualify.ROLES if r not in missing})
-
-    def logs(self, role):
-        if role == self.unstarted:
-            return b""
-        rows = [dict(event="ready", nonce=self.plan["nonce"], origin=dict(role=role))]
-        rows += [dict(event="delivery", nonce=self.plan["nonce"], origin=dict(role=role), count=i, forwarded=0)
-                 for i in range(1, self.values[role] + 1)]
-        return "\n".join(map(json.dumps, rows)).encode()
-
-    def check_output(self, argv, **_kwargs):
-        operation, args = argv[3], argv[4:]
-        if operation == "inspect":
-            return json.dumps([self.views[args[0]]]).encode()
-        if operation == "network":
-            members = {self.ids[r]: dict(IPv4Address=ip + "/29") for r, ip in (("runner", "172.31.254.3"), ("relay", "172.31.254.2"))}
-            return json.dumps([dict(Id=self.plan["job"], Internal=True, EnableIPv6=False, Containers=members,
-                                    Options={"com.docker.network.bridge.gateway_mode_ipv4": "isolated"})]).encode()
-        if operation == "logs":
-            role = next(r for r in qualify.ROLES if self.ids[r] == args[0])
-            return self.logs(role)
-        if operation != "exec":
-            raise AssertionError(argv)
-        if args[1] == "/bin/cat":
-            role = next(r for r, cid in self.ids.items() if cid == args[0])
-            if args[2] == "/evidence/raw.jsonl":
-                return self.raw
-            if args[2] == "/evidence/fixture.json":
-                return self.record
-            if role == "relay":
-                return b"0\n0\n"
-            address, port = q_net.TARGETS[role]
-            local = bytes(map(int, address.split(".")))[::-1].hex().upper()
-            return (f"0: {local}:{port:04X} 00000000:0000 0A\n"
-                    f"Tcp: RtoAlgorithm PassiveOpens\nTcp: 1 {self.values[role]}\n").encode()
-        actor, command = args[2], args[5:]
-        if command == ["inspect"]:
-            self.exec_preflight.add(actor)
-            return b"{}"
-        mode, address, nonce, port, protocol = command
-        assert self.exec_preflight == {self.ids["runner"], self.ids["control"]}, "active probe before read-only exec preflight"
-        self.probes.append((actor, address, int(port), protocol))
-        target = (address, int(port))
-        if target == q_net.TARGETS["relay"]:
-            request = dict(model="gpt-5.4", stream=True, input=nonce,
-                           tools=[dict(name=name) for name in ("exec_command", "write_stdin", "apply_patch")])
-            rid = "c" * 32
-            self.raw = json.dumps(dict(ordinal=1, id=rid, method="POST", route="/v1/responses", model="gpt-5.4",
-                                       status=200, case="accepted", request=request)).encode()
-            self.record = json.dumps({"v": 1, "requests": [dict(id=rid, route="/v1/responses", model="gpt-5.4", credential="accepted")]}).encode()
-            self.values["fixture"] += 1
-            # Legacy GET deliberately receives 403; the old driver accepted it.
-            return json.dumps(dict(connected=True, nonce=nonce, answer=b"HTTP/1.1 403 Forbidden\r\n\r\n".hex(),
-                                   status=403 if self.denied else 200, media="text/event-stream",
-                                   body=fixture.response("accepted", 1, request)[2].hex())).encode()
-        connected = actor != self.ids["runner"]
-        if connected:
-            role = "outside" if target == q_net.TARGETS["alternate_dns"] else next(r for r in OBSERVER_ROLES if q_net.TARGETS[r] == target)
-            self.values[role] += 1
-        return json.dumps(dict(connected=connected, answer=(b"\x7f\x00\x00\x2a" if connected else b"").hex())).encode()
-
-    def run(self):
-        output = io.StringIO()
-        with patch.object(sys, "argv", [qualify.__file__, "/home/trevor/.config/gen2-2e1/q-test.json"]), \
-                patch("gen2.supervisor.spool.read_scratch", return_value=dict(status="present", data=json.dumps(self.plan).encode())), \
-                patch("pathlib.Path.read_bytes", return_value=b"mock CLI bytes"), \
-                patch("hashlib.sha256") as digest, patch("time.monotonic", return_value=1), \
-                patch("subprocess.check_output", side_effect=self.check_output), contextlib.redirect_stdout(output):
-            digest.return_value.hexdigest.return_value = qualify.CLI_SHA
-            runpy.run_path(qualify.__file__, run_name="__main__")
-        return json.loads(output.getvalue())
-
-
 class Qualification(unittest.TestCase):
     def test_runner_recipe_contains_invoked_probe(self):
         recipe = Path(qualify.__file__).with_name("Dockerfile").read_text()
         stage = recipe.split("FROM base AS runner\n", 1)[1].split("\nFROM ", 1)[0]
         self.assertIn("deploy/gen2/live/q_net.py /opt/live/q_net.py", stage)
-        self.assertIn('"/opt/live/q_net.py"', Path(qualify.__file__).read_text())
-
-    def test_paired_driver_requires_observers_before_probes(self):
-        for missing, unstarted in ((tuple(qualify.ROLES), None), (("resolver",), None), ((), "outside")):
-            with self.subTest(missing=missing, unstarted=unstarted):
-                driver = Driver(missing=missing, unstarted=unstarted)
-                with self.assertRaisesRegex(ValueError, "required_observers|observer_ready"):
-                    driver.run()
-                self.assertEqual(driver.probes, [])
-        driver = Driver()
-        result = driver.run()
-        self.assertIsNone(result["qualification"])
-        self.assertEqual(len(result["probes"]), 17)
-        self.assertEqual(set(result["probes"][0]["before"]), OBSERVER_ROLES)
-
-    def test_denied_relay_fails_driver(self):
-        with self.assertRaisesRegex(ValueError, "relay_ingress"):
-            Driver(denied=True).run()
+        self.assertIn('"/opt/live"', Path(qualify.__file__).with_name("tool_probe.py").read_text())
 
     def test_service_and_counter_refusals(self):
         before = dict.fromkeys(qualify.OBSERVERS, 0)
@@ -136,7 +23,7 @@ class Qualification(unittest.TestCase):
                 qualify.delivery_delta(before, after, [])
         with self.assertRaisesRegex(ValueError, "service_observer_ready"):
             qualify.service_count(b"Tcp: PassiveOpens\nTcp: 0\n", "db")
-        plan = Driver().plan
+        plan = dict(observers=dict.fromkeys(qualify.ROLES), services=dict.fromkeys(qualify.SERVICES), controls=dict.fromkeys(qualify.OBSERVERS))
         plan["services"].pop("db")
         with self.assertRaisesRegex(ValueError, "required_service_observers"):
             qualify.observer_set(plan)
@@ -169,10 +56,40 @@ class Qualification(unittest.TestCase):
         for change in (dict(status=403), dict(body=b"denied".hex())):
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, "relay_ingress"):
                 qualify.relay_response(answer | change)
-        driver = Driver()
-        driver.run()
-        allowed = dict(nonce=json.loads(driver.raw)["request"]["input"])
-        qualify.relay_record(allowed, driver.raw, driver.record)
-        for independent in (b'{"v":1,"requests":[]}', driver.record.replace(b'accepted', b'rejected')):
-            with self.subTest(independent=independent), self.assertRaisesRegex(ValueError, "relay_fixture_record"):
-                qualify.relay_record(allowed, driver.raw, independent)
+        request = q_net.model_request(nonce)
+        raw = json.dumps(dict(ordinal=1, method="POST", route="/v1/responses", status=200, case="accepted", id="c" * 32, request=request)).encode()
+        independent = json.dumps({"v": 1, "requests": [dict(id="c" * 32, route="/v1/responses", model="gpt-5.4", credential="accepted")]}).encode()
+        qualify.relay_record(dict(nonce=nonce), raw, independent)
+        for changed in (b'{"v":1,"requests":[]}', independent.replace(b"accepted", b"rejected")):
+            with self.subTest(independent=changed), self.assertRaisesRegex(ValueError, "relay_fixture_record"):
+                qualify.relay_record(dict(nonce=nonce), raw, changed)
+
+    def test_bracket_rejects_missing_observation_and_runner_access(self):
+        """Own receipt operands exercise the predicate; native identities require the Q run."""
+        counts = dict.fromkeys(qualify.OBSERVERS, 0)
+        plan = dict(nonce="a" * 32, job="job", runner="runner", relay="relay", observers=dict.fromkeys(qualify.ROLES),
+                    services=dict.fromkeys(qualify.SERVICES), controls=dict.fromkeys(qualify.OBSERVERS))
+        network = dict(Id="job", Internal=True, EnableIPv6=False, Options={"com.docker.network.bridge.gateway_mode_ipv4": "isolated"},
+                       Containers={role: dict(IPv4Address=ip) for role, ip in (("runner", "172.31.254.3/29"), ("relay", "172.31.254.2/29"))})
+        answers = [dict(target=target, protocol=protocol, connected=True, answer="7f00002a") for target, protocol in qualify.POSITIVES]
+        delivered = ["outside" if a["target"] == "alternate_dns" else a["target"] for a in answers]
+        after = {role: counts[role] + delivered.count(role) for role in counts}
+        control = dict(before=counts, after=after, answers=answers)
+        ended = after | {"fixture": after["fixture"] + 2}
+        final_control = dict(before=ended, after={role: ended[role] + delivered.count(role) for role in counts}, answers=answers)
+        probe = dict(nonce=plan["nonce"], docker_socket=2, files=dict.fromkeys(qualify.PROTECTED, "denied"),
+                     denials={target + "/" + protocol: dict(nonce=plan["nonce"], address=qualify.TARGETS[target][0],
+                              port=qualify.TARGETS[target][1], protocol=protocol, connected=False, answer="") for target, protocol in qualify.DENIALS})
+        rows = [dict(ordinal=i, method="POST", route="/v1/responses", status=200, model="gpt-5.4", id=str(i) * 32) for i in (1, 2)]
+        independent = {"v": 1, "requests": [dict(id=r["id"], route=r["route"], model=r["model"], credential="accepted") for r in rows]}
+        view = dict(plan=plan, probe=probe, network=network, controls=dict(before=control, after=final_control),
+                    before=after, after=ended, raw="\n".join(map(json.dumps, rows)), independent=json.dumps(independent))
+        self.assertIsNone(qualify.bracket(view)["qualification"])
+        reachable = probe["denials"] | {"host/tcp": probe["denials"]["host/tcp"] | {"connected": True}}
+        dead = [answer | {"connected": False} for answer in answers]
+        for changed in (view | {"after": {}}, view | {"controls": dict(before=control | {"answers": []}, after=final_control)},
+                        view | {"probe": probe | {"files": {}}}, view | {"probe": probe | {"docker_socket": 0}},
+                        view | {"independent": '{"v":1,"requests":[]}'}, view | {"probe": probe | {"denials": reachable}},
+                        view | {"controls": dict(before=control | {"answers": dead}, after=final_control)}):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                qualify.bracket(changed)

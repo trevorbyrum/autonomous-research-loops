@@ -5,10 +5,15 @@ publication. This pure packer neither sets qualification state nor grants it.
 """
 from gen2.core import canonical
 
+PROVIDER_FILES = {"provider_auth": "/home/trevor/.config/gen2-2e1/provider-auth.conf",
+                  "provider_ca": "/home/trevor/.config/gen2-2e1/provider-ca.pem"}
+
 
 def pack(view):
     """Hash only carried bytes; refuse stale manifest/receipt pins before serialization."""
     record = view["record"]
+    if record["route"] == "real" and any(record["plan"].get(key) != path for key, path in PROVIDER_FILES.items()):
+        raise ValueError("provider file operand")
     if canonical.bytes_digest(view["manifest"]) != record["manifest_pin"]:
         raise ValueError("stale manifest operand")
     for witness in record["witnesses"]:

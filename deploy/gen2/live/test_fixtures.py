@@ -22,6 +22,33 @@ ENTITLEMENT = re.search(rb'Pass "(--allow=fs.read=[^"]+)"', ENTITLEMENT_ERROR)[1
 
 
 class Fixtures(unittest.TestCase):
+    def test_compose_uses_the_pinned_plugin_and_dedicated_selector(self):
+        with patch.object(Path, "read_bytes", return_value=b"retained plugin"), patch.object(build.hashlib, "sha256") as digest:
+            digest.return_value.hexdigest.return_value = build.COMPOSE_SHA
+            self.assertEqual(build.compose_command("version"), [str(build.COMPOSE), *build.docker_command("version")[1:]])
+            digest.return_value.hexdigest.return_value = "changed"
+            with self.assertRaisesRegex(ValueError, "Compose plugin pin"):
+                build.compose_command("version")
+
+    def test_compose_refuses_a_shadowing_user_or_extra_directory_plugin(self):
+        """Shadow candidates cannot replace the exact executable; mismatched bytes refuse."""
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory)
+            shadow = config / "cli-plugins" / "docker-compose"
+            shadow.parent.mkdir()
+            shadow.write_bytes(b"shadow plugin")
+            (config / "config.json").write_text(json.dumps({"cliPluginsExtraDirs": [str(shadow.parent)]}))
+            with (
+                patch.dict(os.environ, {"DOCKER_CONFIG": directory}),
+                patch.object(Path, "read_bytes", return_value=b"retained plugin"),
+                patch.object(build.hashlib, "sha256") as digest,
+            ):
+                digest.return_value.hexdigest.return_value = build.COMPOSE_SHA
+                self.assertEqual(build.compose_command("version")[0], "/usr/libexec/docker/cli-plugins/docker-compose")
+            with patch.dict(os.environ, {"DOCKER_CONFIG": directory}), patch.object(build, "COMPOSE", shadow):
+                with self.assertRaisesRegex(ValueError, "Compose plugin pin"):
+                    build.compose_command("version")
+
     def test_fresh_control_requires_exact_d03_layout(self):
         """A06 admits the two empty D03 directories and refuses partial or unsafe roots."""
         for case in ("valid", "extra", "missing", "content", "mode", "owner", "link", "file"):
@@ -82,6 +109,11 @@ class Fixtures(unittest.TestCase):
                     build.buildx_preflight(wrong, bake, {})
             with self.assertRaisesRegex(ValueError, "canonical"):
                 build.buildx_preflight(version, rows[1]["argv"][:-1], {})
+        targets = ("engine", "gateway", "fixture")
+        with patch.object(subprocess, "run") as call:
+            selected_bake = build.bake_command(name, targets)
+            build.buildx_preflight(version, selected_bake, {}, targets)
+            self.assertEqual(call.call_args_list[0].args[0], selected_bake + ["--print"])
         selected = build.builder_view(name, LISTING)
         self.assertEqual(selected, VIEW)
         build.builder_gate(name, selected, {name: CONTEXT["Endpoints"]["docker"]["Host"]})

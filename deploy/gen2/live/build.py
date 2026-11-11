@@ -9,7 +9,11 @@ from pathlib import Path
 
 from gen2.supervisor.docker_cli import CLI, CLI_SHA, SOCKET, free_space
 
+COMPOSE = Path("/usr/libexec/docker/cli-plugins/docker-compose")
+COMPOSE_SHA = "40343e21ca777173e69cff5dbafeb37c6f81f3b0d57d9e597f036e95eb63e76a"
+
 BUILDX_VERSION = "github.com/docker/buildx v0.38.0 0dbe87f36ed472fe36b6796c3f70b4210a731fc5"
+IMAGE_TARGETS = ("runner", "engine", "gateway", "fixture")
 BUILDER_LIST = ("buildx", "ls", "--format", "json")
 BUILD_INPUTS = Path("/home/trevor/.local/share/gen2-2e1/storage/build-inputs")
 
@@ -21,6 +25,13 @@ def docker_command(*args, context=None):
     return [CLI, *(["--host", "unix://" + SOCKET] if context is None else ["--context", context]), *args]
 
 
+def compose_command(*args):
+    """Execute the checked plugin itself with the canonical dedicated-runtime arguments."""
+    if hashlib.sha256(COMPOSE.read_bytes()).hexdigest() != COMPOSE_SHA:
+        raise ValueError("Compose plugin pin")
+    return [str(COMPOSE), *docker_command(*args)[1:]]
+
+
 def checked(argv, **kwargs):
     """Retain the real interface's failure, never parse a failed command as evidence."""
     try:
@@ -29,7 +40,7 @@ def checked(argv, **kwargs):
         raise ValueError(error.stderr.decode("utf-8", "replace")) from error
 
 
-def bake_command(builder, targets=("runner", "engine", "gateway", "fixture")):
+def bake_command(builder, targets=IMAGE_TARGETS):
     """I02/D11: grant read access only to the pinned, unredirected staged-inputs path."""
     if BUILD_INPUTS.resolve() != BUILD_INPUTS:
         raise ValueError("staged inputs must match the pinned host layout")
@@ -37,11 +48,11 @@ def bake_command(builder, targets=("runner", "engine", "gateway", "fixture")):
                           "deploy/gen2/live/docker-bake.hcl", *targets, context=builder)
 
 
-def buildx_preflight(version, bake, env):
+def buildx_preflight(version, bake, env, targets=IMAGE_TARGETS):
     """Print validates configuration, not execution: the context argv is separately fixed."""
     if version.strip() != BUILDX_VERSION:
         raise ValueError("Buildx version/commit pin")
-    if bake != bake_command(bake[2]):
+    if bake != bake_command(bake[2], targets):
         raise ValueError("canonical dedicated-context Bake argv required")
     subprocess.run([*bake, "--print"], env=env, check=True, stdout=subprocess.DEVNULL, timeout=30)
     subprocess.run(bake_command(bake[2], ("cli-contract",)), env=env, check=True, stdout=subprocess.DEVNULL, timeout=30)
@@ -74,10 +85,13 @@ def builder_gate(builder, view, contexts):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or any(os.environ.get(k) for k in ("BUILDX_BUILDER", "BUILDKIT_HOST", "DOCKER_HOST", "DOCKER_CONTEXT")):
+    if len(sys.argv) < 2 or any(os.environ.get(k) for k in ("BUILDX_BUILDER", "BUILDKIT_HOST", "DOCKER_HOST", "DOCKER_CONTEXT")):
         raise ValueError("pass the dedicated builder explicitly; ambient selection refused")
     if hashlib.sha256(Path("/usr/bin/docker").read_bytes()).hexdigest() != CLI_SHA:
         raise ValueError("Docker CLI pin")
+    targets = tuple(sys.argv[2:]) or IMAGE_TARGETS
+    if len(set(targets)) != len(targets) or not set(targets) <= set(IMAGE_TARGETS):
+        raise ValueError("explicit application image targets required")
     root = BUILD_INPUTS.parent
     free_space([str(root / p) for p in ("outputs", "relay-evidence", "spool", "control", "docker")], 16 << 30)
     env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "DOCKER_CONFIG": "/home/trevor/.config/gen2-2e1/buildx"}
@@ -89,10 +103,10 @@ if __name__ == "__main__":
     version = text("buildx", "version")
     contexts = {c["Name"]: c["Endpoints"]["docker"]["Host"] for c in read("context", "inspect", sys.argv[1])}
     builder_gate(sys.argv[1], builder_view(sys.argv[1], text(*BUILDER_LIST)), contexts)
-    bake = bake_command(sys.argv[1])
-    buildx_preflight(version, bake, env)
+    bake = bake_command(sys.argv[1], targets)
+    buildx_preflight(version, bake, env, targets)
     subprocess.run(bake, env=env, check=True, timeout=1800)
-    images = {role: read("image", "inspect", "gen2-2e1-" + role + ":offline")[0]["Id"] for role in ("runner", "engine", "gateway", "fixture")}
+    images = {role: read("image", "inspect", "gen2-2e1-" + role + ":offline")[0]["Id"] for role in IMAGE_TARGETS}
     if any(not re.fullmatch("sha256:[0-9a-f]{64}", pin) for pin in images.values()):
         raise ValueError("missing immutable custom image IDs")
     print(json.dumps({"digest_kind": "engine-image-id", "images": images, "builder": sys.argv[1], "qualification": None}))

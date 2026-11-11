@@ -1,21 +1,14 @@
-"""Q1–Q3: paired live controls over T9 originals; no provisioning or Q PASS.
-The independent verifier owns final namespace/route interpretation.
+"""Q1–Q3 evidence from the production runner, bracketed by independent controls.
+
+The operator collects original snapshots; the verifier owns namespace review.
 """
-import hashlib
+from collections import Counter
 import json
-import os
 import re
-import secrets
-import sys
-import time
-from pathlib import Path
 
 from deploy.gen2.live import fixture
-from deploy.gen2.live.build import checked, docker_command
 from deploy.gen2.live.q_net import ROLES, TARGETS, model_request
-from gen2.supervisor import jobs
-from gen2.supervisor.docker_cli import CLI, CLI_SHA, require
-from gen2.supervisor.spool import read_scratch
+from gen2.supervisor.docker_cli import require
 
 SERVICES = {role: TARGETS[role] for role in ("fixture", "service", "db")}
 OBSERVERS = set(ROLES) | set(SERVICES)
@@ -45,7 +38,8 @@ def service_count(data, role):
 
 def delivery_delta(before, after, delivered):
     require(set(before) == set(after) == OBSERVERS and set(delivered) <= OBSERVERS, "required_observer_counts")
-    require(all(after[role] == before[role] + int(role in delivered) for role in OBSERVERS), "delivery_counts")
+    expected = Counter(delivered)
+    require(all(after[role] == before[role] + expected[role] for role in OBSERVERS), "delivery_counts")
 
 
 def relay_response(answer):
@@ -72,92 +66,48 @@ def counts(data, nonce, origin):
     return len(rows) - 1
 
 
-if __name__ == "__main__":
-    path = Path(sys.argv[1])
-    require(path.parent == Path("/home/trevor/.config/gen2-2e1"), "approved_plan_directory")
-    kept = read_scratch(path.parent, path.name, 1 << 20)
-    require(kept["status"] == "present", "protected_plan")
-    p = json.loads(kept["data"])
-    require(len(p["nonce"]) == 32 and set(p["nonce"]) <= set("0123456789abcdef"), "original_nonce")
-    require(hashlib.sha256(Path(CLI).read_bytes()).hexdigest() == CLI_SHA, "cli_pin")
-    deadline = p["started"] + 600
-    cli, env = docker_command(), {"PATH": "/usr/local/bin:/usr/bin:/bin"}
-    def run(argv):
-        require(time.monotonic() < deadline, "Q_window")
-        data = checked(argv, env=env, timeout=min(10, deadline - time.monotonic()))
-        require(len(data) <= 4 << 20, "Q_output_bound")
-        return data
-    def inspect(cid):
-        v = json.loads(run(cli + ["inspect", cid]))[0]
-        require(v["Id"] == cid and v["State"]["Running"], "original_live_CID")
-        return dict(image=v["Image"], start=v["State"]["StartedAt"], pid=v["State"]["Pid"], networks=v["NetworkSettings"]["Networks"],
-                    policy={k: v["HostConfig"].get(k) for k in ("Dns", "Sysctls", "NetworkMode", "CapDrop", "SecurityOpt", "ReadonlyRootfs", "Privileged", "PortBindings")})
-    def execute(actor, arguments):
-        if actor == "host":
-            prefix = [sys.executable, str(Path(__file__).with_name("q_net.py"))]
-        elif actor == "child":
-            state = jobs.proc_stat(p["child"]["pid"])
-            require(state and str(state[2]) == p["child"]["start"] and jobs.boot_id() == p["child"]["boot"] and os.readlink(f"/proc/{p['child']['pid']}/ns/net") == p["child"]["netns"], "original_child")
-            prefix = ["/usr/bin/sudo", "-n", "/usr/bin/nsenter", "--target", str(p["child"]["pid"]), "--user", "--net", "--", "/usr/bin/python3", str(Path(__file__).resolve().with_name("q_net.py"))]
-        else:
-            require(actor in p["bindings"] and inspect(actor) == p["bindings"][actor], "actor_binding")
-            prefix = cli + ["exec", "--user", "10001:10001", actor, "python3", "/opt/live/q_net.py"]
-        return json.loads(run(prefix + arguments))
-    def snapshot():
-        observer_set(p)
-        result = {}
-        for role, observer in p["observers"].items():
-            if "cid" in observer:
-                require(inspect(observer["cid"]) == p["bindings"][observer["cid"]], "observer_binding")
-                data = run(cli + ["logs", observer["cid"]])
-            else:
-                kept = read_scratch(observer["directory"], "q-" + role + ".jsonl", 1 << 20)
-                require(kept["status"] == "present", "observer_present")
-                data = kept["data"]
-            result[role] = counts(data, p["nonce"], observer["origin"])
-        for role, cid in p["services"].items():
-            require(cid in p["bindings"] and inspect(cid) == p["bindings"][cid], "service_observer_binding")
-            result[role] = service_count(run(cli + ["exec", cid, "/bin/cat", "/proc/net/tcp", "/proc/net/snmp"]), role)
-        return result
-    network = json.loads(run(cli + ["network", "inspect", p["job"]]))[0]
-    require(network["Id"] == p["job"] and network["Internal"] and not network["EnableIPv6"] and set(network["Containers"]) == {p["runner"], p["relay"]}, "two_member_job")
-    require(network["Containers"][p["runner"]]["IPv4Address"] == "172.31.254.3/29" and network["Containers"][p["relay"]]["IPv4Address"] == "172.31.254.2/29", "job_addresses")
+PROTECTED = {"/var/lib/gen2/control", "/evidence/access.jsonl", "/root/.codex/auth.json", "/inputs/other-topic",
+             "/etc/gen2/provider-auth.conf", "/etc/gen2/provider-ca.pem"}
+POSITIVES = {(role, "tcp") for role in OBSERVERS - {"resolver"}} | {
+    (target, protocol) for target in ("resolver", "alternate_dns") for protocol in ("udp", "tcp")}
+DENIALS = {(target, "tcp") for target in ("host_alias", "host", "child", "lan", "outside", "peer", "fixture", "service", "db")} | {
+    (target, protocol) for target in ("local_dns", "embedded_dns", "resolver", "alternate_dns") for protocol in ("udp", "tcp")}
+
+
+def bracket(view):
+    """One original attempt between two live controls; no absent observer or synthetic PASS."""
+    plan, probe, network = view["plan"], view["probe"], view["network"]
+    observer_set(plan)
+    require(probe["nonce"] == plan["nonce"] and re.fullmatch("[0-9a-f]{32}", probe["nonce"]), "probe_nonce")
+    require(network["Id"] == plan["job"] and network["Internal"] and not network["EnableIPv6"]
+            and set(network["Containers"]) == {plan["runner"], plan["relay"]}, "two_member_job")
+    for role, address in (("runner", "172.31.254.3/29"), ("relay", "172.31.254.2/29")):
+        require(network["Containers"][plan[role]]["IPv4Address"] == address, "job_addresses")
     require(network["Options"].get("com.docker.network.bridge.gateway_mode_ipv4") == "isolated", "isolated_job")
-    cases = [(name, "tcp", ["host" if name == "host_alias" else name]) for name in ("host_alias", "host", "child", "lan", "outside", "peer", "fixture", "service", "db")]
-    cases += [(name, protocol, ["resolver", "outside"]) for name in ("local_dns", "embedded_dns", "resolver", "alternate_dns") for protocol in ("udp", "tcp")]
-    receipts = []
-    def probe(actor, target, protocol):
-        address, port = TARGETS[target]
-        return execute(actor, ["relay" if target == "relay" else "probe", address, p["nonce"][:16] + secrets.token_hex(8), str(port), protocol])
-    def fixture_file(name):
-        return run(cli + ["exec", p["services"]["fixture"], "/bin/cat", "/evidence/" + name])
-    def relay_namespace():
-        return run(cli + ["exec", p["relay"], "/bin/cat", "/proc/sys/net/ipv4/ip_forward", "/proc/sys/net/ipv6/conf/all/forwarding", "/proc/net/route", "/proc/net/ipv6_route"])
-    require(all(inspect(cid) == binding for cid, binding in p["bindings"].items()), "preflight_originals")
-    snapshot()  # fail on absent/unstarted observers before any positive or negative probe
-    for actor in {p["runner"], *p["controls"].values()}:
-        execute(actor, ["inspect"])  # exec has no dry-run: exercise its read-only form
-    for name in ("raw.jsonl", "fixture.json"):
-        fixture_file(name)
-    relay_namespace()
-    allowed = probe(p["runner"], "relay", "tcp")
-    relay_response(allowed)
-    fixture_raw, fixture_record = fixture_file("raw.jsonl"), fixture_file("fixture.json")
-    relay_record(allowed, fixture_raw, fixture_record)
-    for target, protocol, controls in cases:
-        for phase in ("before", "after"):
-            counters = snapshot()
-            for role in controls:
-                positive = "alternate_dns" if role == "outside" and TARGETS[target][1] == 53 else role
-                answer = probe(p["controls"][role], positive, protocol)
-                require(answer["connected"] and (bytes.fromhex(answer["answer"]).endswith(b"\x7f\x00\x00\x2a") if TARGETS[positive][1] == 53 else True), "live_positive")
-            delivery_delta(counters, snapshot(), controls)
-            if phase == "before":
-                before = snapshot()
-                negative = probe(p["runner"], target, protocol)
-                require(not negative["connected"] if TARGETS[target][1] != 53 else not bytes.fromhex(negative["answer"]).endswith(b"\x7f\x00\x00\x2a"), "denied_probe")
-                delivery_delta(before, snapshot(), [])
-        receipts.append(dict(target=target, protocol=protocol, before=before, after=snapshot(), negative=negative))
-    require(all(inspect(cid) == binding for cid, binding in p["bindings"].items()), "final_originals")
-    print(json.dumps(dict(qualification=None, namespace_review_required=True, relay_probe=allowed, fixture_raw=fixture_raw.decode(), fixture_record=json.loads(fixture_record), probes=receipts, network=network, routes=execute(p["runner"], ["inspect"]),
-        relay_namespace=relay_namespace().decode())))
+    for phase in ("before", "after"):
+        control = view["controls"][phase]
+        require({(a["target"], a["protocol"]) for a in control["answers"]} == POSITIVES
+                and len(control["answers"]) == len(POSITIVES), "required_controls")
+        delivered = []
+        for answer in control["answers"]:
+            target = answer["target"]
+            require(answer["connected"] is True and (TARGETS[target][1] != 53 or
+                    bytes.fromhex(answer["answer"]).endswith(b"\x7f\x00\x00\x2a")), "live_positive")
+            delivered.append("outside" if target == "alternate_dns" else target)
+        delivery_delta(control["before"], control["after"], delivered)
+    require(set(probe["denials"]) == {target + "/" + protocol for target, protocol in DENIALS}, "required_probes")
+    for key, answer in probe["denials"].items():
+        target, protocol = key.split("/")
+        require(answer["nonce"] == plan["nonce"] and (answer["address"], answer["port"], protocol) == (*TARGETS[target], answer["protocol"]), "probe_binding")
+        require(answer["connected"] is False if TARGETS[target][1] != 53 else
+                not bytes.fromhex(answer["answer"]).endswith(b"\x7f\x00\x00\x2a"), "denied_probe")
+    require(type(probe["docker_socket"]) is int and probe["docker_socket"] != 0 and set(probe["files"]) == PROTECTED
+            and all(value == "denied" for value in probe["files"].values()), "runner_isolation")
+    require(view["before"] == view["controls"]["before"]["after"] and view["after"] == view["controls"]["after"]["before"], "bracket_order")
+    raw, independent = [json.loads(line) for line in view["raw"].splitlines()], json.loads(view["independent"])
+    require(len(raw) == 2 and len({r["id"] for r in raw}) == 2 and [r["ordinal"] for r in raw] == [1, 2]
+            and all(r["method"] == "POST" and r["route"] == "/v1/responses" and r["status"] == 200
+                    and r["model"] == "gpt-5.4" and re.fullmatch("[0-9a-f]{32}", r["id"]) for r in raw), "relay_fixture_request")
+    require(independent == {"v": 1, "requests": [dict(id=r["id"], route=r["route"], model=r["model"], credential="accepted") for r in raw]}, "relay_fixture_record")
+    delivery_delta(view["before"], view["after"], ["fixture", "fixture"])
+    return dict(qualification=None, namespace_review_required=True, probe=probe, network=network, fixture_record=independent)

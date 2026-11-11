@@ -71,3 +71,12 @@ class LivePolicy(unittest.TestCase):
         for ordinal, change in ((2, {}), (1, {"tools": None}), (1, {"tools": [{"name": "exec_command"}]}), (1, {"model": "other"})):
             with self.subTest(ordinal=ordinal, change=change), self.assertRaises(ValueError):
                 fixture.response("tool-less", ordinal, request | change)
+
+    def test_hold_uses_the_accepted_tool_sequence(self):
+        request = dict(model="gpt-5.4", stream=True, tools=[{"name": n} for n in ("exec_command", "write_stdin", "apply_patch")])
+        self.assertEqual(fixture.credential("hold"), "accepted")
+        self.assertEqual(fixture.response("hold", 1, request), fixture.response("accepted", 1, request))
+        request["input"] = [dict(type="function_call_output", call_id="call_2e1", output="2e1-tool-ok")]
+        self.assertEqual(fixture.response("hold", 2, request), fixture.response("accepted", 2, request))
+        with self.assertRaisesRegex(ValueError, "extra send"):
+            fixture.response("hold", 3, request)
