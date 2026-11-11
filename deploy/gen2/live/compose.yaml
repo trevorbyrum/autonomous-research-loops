@@ -31,7 +31,7 @@ services:
     volumes:
       - /home/trevor/.local/share/gen2-2e1/storage/control:/var/lib/gen2/control
       - /home/trevor/.local/share/gen2-2e1/storage/spool:/var/lib/gen2/control/spool
-      - /home/trevor/.local/share/gen2-2e1/storage/journal:/var/lib/gen2/control/jobs
+      - /home/trevor/.local/share/gen2-2e1/storage/control/journal:/var/lib/gen2/control/jobs
       - /home/trevor/.local/share/gen2-2e1/storage/staging:/var/lib/gen2/staging
       - /home/trevor/.local/share/gen2-2e1/storage/outputs/slot-0:/home/trevor/.local/share/gen2-2e1/storage/outputs/slot-0:ro
       - /home/trevor/.local/share/gen2-2e1/storage/relay-evidence/slot-0:/home/trevor/.local/share/gen2-2e1/storage/relay-evidence/slot-0:ro
