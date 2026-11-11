@@ -1,0 +1,14 @@
+{
+ "Config": {
+  "Cmd": [
+   "nginx",
+   "-g",
+   "daemon off;"
+  ],
+  "Entrypoint": [
+   "/docker-entrypoint.sh"
+  ],
+  "User": null
+ },
+ "Id": "sha256:09ab424a8c788f8d0fe3a64429f6d19dfa526885c8609b748d0943a75dcb9f8c"
+}

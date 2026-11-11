@@ -26,7 +26,7 @@ class DockerBoundary(unittest.TestCase):
         self.real_read_bytes = Path.read_bytes
         self.job = jobs.Job(self.root, "job-fixture")
         self.job.prepare({"test": "unqualified offline fixture"})
-        self.job.write("docker-plan.json", {"origin": {"invocation": "fixture"}, "paths": [str(self.root)]})
+        self.job.write("docker-plan.json", {"origin": {"invocation": "fixture", "invocation_id": "inv_fixture0001"}, "paths": [str(self.root)]})
         self.pin = "sha256:" + hashlib.sha256(b"configuration").hexdigest()
         self.manifest = {"version": 1, "tree": "reviewed-tree", "platform": "linux/amd64", "route": "fixture",
                          "socket": d.SOCKET, "cli_sha256": d.CLI_SHA, "daemon_version": "29.0.0",
@@ -264,6 +264,7 @@ class DockerBoundary(unittest.TestCase):
             "--cpus", "1", "--ulimit", "fsize=16777216:16777216", "--ulimit", "nofile=256:256", "--ulimit", "core=0:0",
             "--dns", "127.0.0.1", "--ipc=private", "--cgroupns=private", "--no-healthcheck", "--log-driver", "local",
             "--log-opt", "max-size=4m", "--log-opt", "max-file=1", "--log-opt", "compress=false", "--network", NET, "--ip", "172.31.254.3",
+            "--env", "GEN2_INVOCATION_ID=inv_fixture0001",
             "--tmpfs", "/work:rw,nodev,nosuid,size=128m,mode=0700,uid=10001,gid=10001",
             "--tmpfs", "/auth/codex:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001",
             "--tmpfs", "/tmp:rw,nodev,nosuid,size=64m,mode=1777,uid=10001,gid=10001",
@@ -273,6 +274,28 @@ class DockerBoundary(unittest.TestCase):
         self.assertEqual(self.execute.call_args_list[0].args[1], expected)
         self.assertEqual(self.execute.call_args_list[1].args[1], (d.CLI, "--host", "unix://" + d.SOCKET, "inspect", CID))
         self.refused(lambda: self.cli.create_runner(NET, {**binds, "out": "/different"}), "runner_originals")
+
+    def test_the_runner_gets_exactly_one_environment_variable_its_invocation_and_the_relay_an_explicit_command(self):
+        """Retained native receipts (host-T9/native-window-20261111T061545Z): the runner image has no GEN2_INVOCATION_ID and runner.launch reads it; the
+        official nginx image's CMD is `nginx -g "daemon off;"` while the mounted conf already says `daemon off;`."""
+        binds = self.runner_binds()
+        record = {"Id": CID, "Image": "sha256:" + CID, "Config": {"Image": "sha256:" + CID}}
+        self.execute.side_effect = lambda *a: ((self.job.dir / "runner.cid").write_text(CID), (0, CID.encode() if a[1][3] == "create" else json.dumps([record]).encode(), b""))[1]
+        with mock.patch.object(d.Path, "read_bytes", autospec=True, side_effect=lambda path: b"pinned-cli" if str(path) == d.CLI else self.real_read_bytes(path)), mock.patch.object(d, "CLI_SHA", hashlib.sha256(b"pinned-cli").hexdigest()):
+            self.cli.create_runner(NET, binds)
+        argv = self.execute.call_args_list[0].args[1]
+        self.assertEqual([argv[i + 1] for i, a in enumerate(argv) if a in ("--env", "-e", "--env-file")], ["GEN2_INVOCATION_ID=inv_fixture0001"])
+        self.assertNotIn("capability", " ".join(argv).lower())
+        for label, origin in (("missing", {}), ("empty", {"invocation_id": ""}), ("space", {"invocation_id": "a b"}), ("equals", {"invocation_id": "a=b"}),
+                              ("long", {"invocation_id": "a" * 257}), ("number", {"invocation_id": 7})):
+            self.cli.plan = {**self.cli.plan, "origin": origin}
+            (self.job.dir / "runner.cid").unlink(missing_ok=True)
+            with self.subTest(label), self.assertRaisesRegex(LiveProfileRefused, "runner_invocation"):
+                self.cli.create_runner(NET, binds)
+        nginx = json.loads((Path(__file__).parent / "fixtures" / "docker_inspect" / "nginx-image-20261111.json").read_text())["Config"]
+        conf = (Path(__file__).parents[2] / "deploy" / "gen2" / "live" / "nginx.conf").read_text()
+        self.assertEqual((nginx["Entrypoint"], nginx["Cmd"]), (["/docker-entrypoint.sh"], ["nginx", "-g", "daemon off;"]))
+        self.assertIn("\ndaemon off;\n", "\n" + conf)                                              # so the image's own CMD would repeat the directive
 
     def test_missing_create_identity_retains_intent_and_blocks_retry(self):
         binds = self.runner_binds()
@@ -300,7 +323,7 @@ class DockerBoundary(unittest.TestCase):
                 "--user", "0:0", "--cap-add", "CHOWN", "--entrypoint", "/usr/local/bin/python", "sha256:" + CID, "-m", "gen2.supervisor.docker_cli", GENERATION)),
             ("relay", NET, (NET, "--mount", f"type=bind,src=/slots/evidence/{GENERATION},dst=/evidence", "--mount",
                 "type=bind,src=/reviewed/nginx.conf,dst=/etc/nginx/nginx.conf,readonly", "--user", "10001:10001", "--sysctl", "net.ipv4.ip_forward=0",
-                "--ip", "172.31.254.2", "sha256:" + CID))):
+                "--ip", "172.31.254.2", "sha256:" + CID, "nginx", "-c", "/etc/nginx/nginx.conf"))):
             record = {"Id": CID, "Image": "sha256:" + "d" * 64, "Config": {"Image": "sha256:" + CID}}
             def execute(*args):
                 (self.job.dir / (role + ".cid")).write_text(CID)
