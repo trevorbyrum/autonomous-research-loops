@@ -2,16 +2,33 @@
 import hashlib
 import os
 import re
+import stat
 import sys
 from pathlib import Path
+
+CONTROL_OWNER = (10001, 10001)
+
+
+def _require_fresh_control(path, entries=frozenset({"state", "journal"}), *, dir_fd=None):
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dir_fd)
+    try:
+        info = os.fstat(fd)
+        if ((info.st_uid, info.st_gid) != CONTROL_OWNER or stat.S_IMODE(info.st_mode) != 0o700
+                or set(os.listdir(fd)) != entries):
+            raise ValueError("fresh control root required")
+        for name in entries:
+            _require_fresh_control(name, frozenset(), dir_fd=fd)
+    finally:
+        os.close(fd)
+
 
 if __name__ == "__main__":
     operation = sys.argv[1]
     if operation == "store":
         from gen2.store.api import open_store
-        if any(Path("/var/lib/gen2/control").iterdir()):
-            raise ValueError("fresh control root required")
-        open_store("/var/lib/gen2/control/store.sqlite3", create=True).close()
+        root = Path("/var/lib/gen2/control")
+        _require_fresh_control(root)
+        open_store(root / "store.sqlite3", create=True).close()
     elif operation == "generation":
         generation = sys.argv[2]
         if not re.fullmatch("[0-9a-f]{32}", generation) or os.geteuid() != 0:
