@@ -1,0 +1,1 @@
+2026/11/11 09:37:10 [emerg] 1#1: mkdir() "/var/cache/nginx/fastcgi_temp" failed (30: Read-only file system)

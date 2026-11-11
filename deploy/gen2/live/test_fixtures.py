@@ -22,6 +22,19 @@ ENTITLEMENT = re.search(rb'Pass "(--allow=fs.read=[^"]+)"', ENTITLEMENT_ERROR)[1
 
 
 class Fixtures(unittest.TestCase):
+    def test_all_compiled_nginx_temp_paths_use_the_existing_tmpfs(self):
+        """Retained binary flags and startup refusal pin every temp directory; no daemon."""
+        flags = (CAPTURE / "nginx-version.stderr").read_text()
+        compiled = {name.replace("-", "_") + "_temp_path": path for name, path in re.findall(r"--http-([a-z-]+)-temp-path=([^\s]+)", flags)}
+        self.assertEqual(set(compiled), {"client_body_temp_path", "proxy_temp_path", "fastcgi_temp_path", "uwsgi_temp_path", "scgi_temp_path"})
+        failure = (CAPTURE / "nginx-temp.stderr-line").read_text()
+        failed = re.search(r'mkdir\(\) "([^"]+)" failed \(30: Read-only file system\)', failure)[1]
+        self.assertIn(failed, compiled.values())
+        config = Path(__file__).with_name("nginx.conf").read_text()
+        declared = dict(re.findall(r"^\s*(\w+_temp_path)\s+([^;\s]+);", config, re.MULTILINE))
+        self.assertEqual(set(declared), set(compiled))
+        self.assertEqual({Path(path).parent for path in declared.values()}, {Path("/tmp")})
+
     def test_engine_pins_import_root_without_pythonpath(self):
         """Scrubbed child imports use the namespace package's parent in the pinned image."""
         recipe = Path(__file__).with_name("Dockerfile").read_text()
