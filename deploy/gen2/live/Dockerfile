@@ -17,7 +17,9 @@ FROM base AS engine
 COPY gen2/ /opt/gen2/gen2/
 COPY --from=approved-inputs --chmod=0555 docker /usr/bin/docker
 COPY gen2/requirements.txt /opt/locks/engine.txt
-RUN python3 -m pip install --disable-pip-version-check --no-input --require-hashes --no-deps --only-binary=:all: --no-cache-dir -r /opt/locks/engine.txt
+COPY --from=approved-inputs wheels/rfc8785-0.1.4-py3-none-any.whl /opt/wheels/
+RUN python3 -m pip install --disable-pip-version-check --no-input --require-hashes --no-deps --only-binary=:all: --no-cache-dir \
+    --no-index --find-links=/opt/wheels -r /opt/locks/engine.txt
 RUN echo 'adbc67ecdc2cd2d350c01a5964a205bd81470b485aba1fb90c2f559de9e4584f  /usr/bin/docker' | sha256sum -c -
 RUN /usr/bin/docker --version && python3 -m gen2.store.compat
 COPY deploy/gen2/live/initialize.py deploy/gen2/live/tool_probe.py deploy/gen2/live/runner-config.toml /opt/live/
@@ -29,7 +31,11 @@ ENTRYPOINT ["python3", "-m", "gen2.app.engine"]
 FROM base AS gateway
 COPY gateway/research_gateway/ /opt/gateway/research_gateway/
 COPY gateway/requirements-ci.txt /opt/locks/gateway.txt
-RUN python3 -m pip install --disable-pip-version-check --no-input --require-hashes --no-deps --only-binary=:all: --no-cache-dir -r /opt/locks/gateway.txt
+COPY --from=approved-inputs wheels/psycopg-3.1.18-py3-none-any.whl \
+    wheels/psycopg_binary-3.1.18-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl \
+    wheels/typing_extensions-4.10.0-py3-none-any.whl /opt/wheels/
+RUN python3 -m pip install --disable-pip-version-check --no-input --require-hashes --no-deps --only-binary=:all: --no-cache-dir \
+    --no-index --find-links=/opt/wheels -r /opt/locks/gateway.txt
 COPY deploy/gen2/live/q_2e1.py /opt/gateway/research_gateway/adapters/q_2e1.py
 COPY deploy/gen2/live/q-source.toml deploy/gen2/live/initialize.py /opt/live/
 RUN python3 /opt/live/initialize.py build-registry
