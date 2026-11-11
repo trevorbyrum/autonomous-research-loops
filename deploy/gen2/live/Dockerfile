@@ -15,6 +15,7 @@ ENTRYPOINT ["python3", "/opt/live/runner.py"]
 
 FROM base AS engine
 COPY gen2/ /opt/gen2/gen2/
+RUN printf '%s\n' /opt/gen2 > /usr/local/lib/python3.12/site-packages/gen2.pth
 COPY --from=approved-inputs --chmod=0555 docker /usr/bin/docker
 COPY gen2/requirements.txt /opt/locks/engine.txt
 COPY --from=approved-inputs wheels/rfc8785-0.1.4-py3-none-any.whl /opt/wheels/

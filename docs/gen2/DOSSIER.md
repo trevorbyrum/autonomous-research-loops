@@ -379,3 +379,5 @@ predecessor upgrade witness; DEBT-056 keeps the later live-store check open.
 ## Growth trigger raised to 18,000 (2026-11-11)
 
 Trevor raised `GROWTH_REVIEW` from 17,500 to 18,000 on 2026-11-10/11, because the reviewed live-path stack brings production to 17,551. The growth review itself happens at the Nov 15 Gate S, which picks deletions (Gate S #7 §4 "Later" items A–G). The gateway's own budget is unchanged.
+
+- **2026-11-11, supervised engine imports:** the live engine image registers `/opt/gen2` in site-packages so jobshim's strict environment scrub preserves module imports. T9 retains the production-order failure; native acceptance after the reviewed rebuild covers model and discovery child imports without changing order environments.
