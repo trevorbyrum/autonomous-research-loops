@@ -22,6 +22,13 @@ ENTITLEMENT = re.search(rb'Pass "(--allow=fs.read=[^"]+)"', ENTITLEMENT_ERROR)[1
 
 
 class Fixtures(unittest.TestCase):
+    def test_engine_pins_import_root_without_pythonpath(self):
+        """Scrubbed child imports use the namespace package's parent in the pinned image."""
+        recipe = Path(__file__).with_name("Dockerfile").read_text()
+        engine = recipe.split("FROM base AS engine\n", 1)[1].split("\nFROM base AS gateway\n", 1)[0]
+        writes = re.findall(r"^RUN (.+\.pth)$", engine, re.MULTILINE)
+        self.assertEqual(writes, ["printf '%s\\n' /opt/gen2 > /usr/local/lib/python3.12/site-packages/gen2.pth"])
+
     def test_compose_uses_the_pinned_plugin_and_dedicated_selector(self):
         with patch.object(Path, "read_bytes", return_value=b"retained plugin"), patch.object(build.hashlib, "sha256") as digest:
             digest.return_value.hexdigest.return_value = build.COMPOSE_SHA
