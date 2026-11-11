@@ -417,11 +417,18 @@ class DockerBoundary(unittest.TestCase):
         """I/L/E: ordered end/closure/collection, no complete marker on uncertainty; sequencing mocks only."""
         upstream, relay, fixture_id = "d" * 64, "e" * 64, "f" * 64
         record = {"Id": relay, "Image": "sha256:" + CID, "Config": {}, "HostConfig": {}, "NetworkSettings": {"Networks": {}}}
-        connected = {**record, "NetworkSettings": {"Networks": {n: {"NetworkID": n, "IPAMConfig": {"IPv4Address": ip}} for n, ip in ((NET, "172.31.254.2"), (upstream, "172.31.252.2"))}}}
+        jobn, fixn = "gen2-2e1-live-job-" + GENERATION, "gen2-2e1-live-fixture-" + GENERATION
+        self.job.write("network-job.json", {"Id": NET, "Name": jobn})
+        created = lambda **over: {**record, "NetworkSettings": {"Networks": {jobn: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.254.2"}},
+                                                                            fixn: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.252.2"}}, **over}}}   # the real daemon's created state: every ID empty
+        connected = created()
+        topology = {"relay_topology": created(**{fixn: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.252.9"}}}),
+                    "relay_topology_id": created(**{fixn: {"NetworkID": "9" * 64, "IPAMConfig": {"IPv4Address": "172.31.252.2"}}}),
+                    "relay_topology_extra": created(extra={"NetworkID": "", "IPAMConfig": None}), "relay_topology_job_ip": created(**{jobn: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.254.9"}}})}
         member = {"NetworkID": upstream, "IPAMConfig": {"IPv4Address": "172.31.252.3"}, "Aliases": None}
         fixture = {**record, "Id": fixture_id, "NetworkSettings": {"Networks": {"fixture-upstream": member}}}   # created ON lane C's per-attempt network (a `none`-mode container joins nothing)
         # the fixture's network and its members as the daemon would show them, and the single-operand ways the hand-off can be wrong
-        view = {"Id": upstream, "Internal": True, "EnableIPv6": False, "Driver": "bridge", "IPAM": {"Config": [{"Subnet": d.NETWORKS["fixture"]}]}, "Containers": {fixture_id: {}}}
+        view = {"Id": upstream, "Name": fixn, "Internal": True, "EnableIPv6": False, "Driver": "bridge", "IPAM": {"Config": [{"Subnet": d.NETWORKS["fixture"]}]}, "Containers": {fixture_id: {}}}
         wrong = {"fixture_network_none": {"Networks": {"none": {"NetworkID": "9" * 64, "IPAMConfig": None, "Aliases": None}}},   # the retained T9 native shape: connect was refused by the daemon
                  "fixture_network_ip": {"Networks": {"fixture-upstream": {**member, "IPAMConfig": {"IPv4Address": "172.31.252.9"}}}},
                  "fixture_network_two": {"Networks": {"fixture-upstream": member, "other": {**member, "NetworkID": "8" * 64}}},
@@ -435,11 +442,12 @@ class DockerBoundary(unittest.TestCase):
         self.cli.plan.update(generation=GENERATION, slots=slots, binds={"out": str(Path(slots["out"]) / GENERATION)}, fixture=fixture)
         self.job.write("identity.json", {"pid": os.getpid()})
         self.job.write("relay.json", record)
-        for reason in (None, "backend_unsupervised", "initializer_failed", "ingress_not_closed", "relay_drain", "relay_stop_failed", "fixture_writers_live", *wrong, *views):
+        for reason in (None, "backend_unsupervised", "initializer_failed", "ingress_not_closed", "relay_drain", "relay_stop_failed", "fixture_writers_live", *wrong, *views, *topology):
             with self.subTest(reason=reason), contextlib.ExitStack() as stack:
                 shown = {**fixture, "NetworkSettings": wrong[reason]} if reason in wrong else fixture
                 self.cli.plan["fixture"] = shown
                 network_view = views.get(reason, view)
+                connected = topology.get(reason, created())
                 batch, ended, watch = mock.Mock(), mock.Mock(return_value=None if reason == "fixture_writers_live" else (0, GENERATION, (1, 2))), mock.Mock()
                 stack.enter_context(mock.patch.object(d.jobs, "members", return_value=[] if reason == "backend_unsupervised" else [os.getpid()]))
                 batch.held = {"access": b"", "events": b"", "fixture": b'{"v":1,"requests":[{"model":"gpt-5.4"}]}'}
@@ -453,9 +461,10 @@ class DockerBoundary(unittest.TestCase):
                 if reason == "backend_unsupervised":
                     self.refused(lambda: self.cli.run(ended, batch), reason)
                 elif reason:
-                    with self.assertRaisesRegex(LiveProfileRefused, "^" + ("fixture_network_members" if reason in views else "fixture_network" if reason in wrong else reason) + "$"):
+                    with self.assertRaisesRegex(LiveProfileRefused, "^" + ("fixture_network_members" if reason in views else "fixture_network" if reason in wrong else "relay_topology" if reason in topology else reason) + "$"):
                         self.cli.run(ended, batch)
-                    self.assertNotIn(mock.call.endpoint("connect", mock.ANY, mock.ANY, mock.ANY), watch.mock_calls) if reason in (*wrong, *views) else None   # refused before any connect
+                    self.assertNotIn(mock.call.endpoint("connect", mock.ANY, mock.ANY, mock.ANY), watch.mock_calls) if reason in (*wrong, *views) else None
+                    self.assertNotIn(mock.call.start(relay, "relay"), watch.mock_calls) if reason in topology else None   # refused before the relay starts   # refused before any connect
                     self.assertIsNotNone(self.job.read("docker-attempt.json"))
                     self.assertIsNone(self.job.read("docker-complete.json"))
                     batch.collect.assert_not_called()
@@ -487,14 +496,15 @@ class DockerBoundary(unittest.TestCase):
         return cli, egress, relay, record
 
     def real_run(self, cli, egress, relay, record, *, collect=None, end_error=None):
-        connected = {**record, "NetworkSettings": {"Networks": {NET: {"NetworkID": NET, "IPAMConfig": {"IPv4Address": "172.31.254.2"}},
-                                                               egress: {"NetworkID": egress, "IPAMConfig": None}}}}
+        self.job.write("network-job.json", {"Id": NET, "Name": "gen2-2e1-live-job-" + GENERATION})
+        connected = {**record, "NetworkSettings": {"Networks": {"gen2-2e1-live-job-" + GENERATION: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.254.2"}},
+                                                               "egress": {"NetworkID": "", "IPAMConfig": None}}}}   # created, not started: names and addresses, no IDs
         batch = mock.Mock()
         batch.held = {"access": b"", "events": b"", "judgment": b'{"judgment_version": "x"}'}
         batch.collect.side_effect = collect or (lambda *a, **k: {"content_hash": "sha256:" + CID})
         batch.stage.return_value = {"content_hash": "sha256:" + CID}
         ends = [{"State": {"ExitCode": 0}}, {"State": {"ExitCode": 0}}, {"State": {"ExitCode": 0}}]
-        egress_view = json.dumps([{"Id": egress, "Internal": False, "Containers": {}}]).encode()
+        egress_view = json.dumps([{"Id": egress, "Name": "egress", "Internal": False, "Containers": {}}]).encode()
         ingress = json.dumps([{"Id": NET, "Containers": {relay: {}}}]).encode()
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(d.jobs, "members", return_value=[os.getpid()]))
@@ -553,7 +563,7 @@ class DockerBoundary(unittest.TestCase):
         """Replays the retained created/started/ended inspect records of the T9 log probe (host-T9/reuse-20261110T090130Z, CID 53bcee86...)."""
         real = json.loads((Path(__file__).parent / "fixtures" / "docker_inspect" / "log-probe-20261110.json").read_text())
         created, started, ended = real["created"], real["started"], real["ended"]
-        self.assertEqual(d._binding(d._started(created, started)), d._binding(started))        # OomScoreAdj 0->200, OomKillDisable false->null and the none network's ID
+        self.assertEqual(d._binding(d._started(created, started, {})), d._binding(started))        # OomScoreAdj 0->200, OomKillDisable false->null and the none network's ID
         self.assertNotEqual(d._binding(created), d._binding(started))                           # so strict equality alone would refuse (T9 start_changed)
         self.assertEqual(d._binding(started), d._binding(ended))                               # stable after start: the end check stays strict
         self.assertEqual(started["HostConfig"]["LogConfig"]["Config"], {"compress": "false", "max-file": "1", "max-size": "4m"})
@@ -577,6 +587,37 @@ class DockerBoundary(unittest.TestCase):
             self.job.write("runner.json", odd)
             with mock.patch.object(self.cli, "inspect", side_effect=[odd, started]):
                 self.refused(lambda: self.cli.start(cid), "start_changed")
+
+    def test_every_attached_network_id_is_empty_until_start_and_then_exactly_the_expected_one(self):
+        """Replays the relay's retained created-state networks (host-T9/native-pr172-20261111T085554Z): names and IPAM addresses, every NetworkID empty."""
+        real = json.loads((Path(__file__).parent / "fixtures" / "docker_inspect" / "relay-created-networks-20261111.json").read_text())
+        ids = real["expected_network_ids"]
+        job = next(n for n in real["created_networks"] if "-job-" in n)
+        fixture = next(n for n in real["created_networks"] if "-fixture-" in n)
+        self.assertEqual({v["NetworkID"] for v in real["created_networks"].values()}, {""})
+        created = {"Id": CID, "Image": "sha256:" + CID, "Config": {}, "HostConfig": {}, "NetworkSettings": {"Networks": real["created_networks"]}}
+        expected = {job: ids["job"], fixture: ids["fixture"]}
+        after = lambda **ids_: {**created, "NetworkSettings": {"Networks": {n: {**v, "NetworkID": ids_.get(n, expected.get(n))} for n, v in real["created_networks"].items()}}}
+        self.assertEqual(d._binding(d._started(created, after(), expected)), d._binding(after()))             # exactly the expected IDs are accepted
+        for label, started in (("job id other", after(**{job: "9" * 64})), ("fixture id other", after(**{fixture: "9" * 64})), ("job id swapped", after(**{job: ids["fixture"]})),
+                               ("id still empty", after(**{fixture: ""})), ("short id", after(**{job: "abc"}))):
+            with self.subTest(label):
+                self.assertNotEqual(d._binding(d._started(created, started, expected)), d._binding(started))
+        extra = {**created["NetworkSettings"]["Networks"], "other": {**created["NetworkSettings"]["Networks"][job]}}   # a network the backend did not attach cannot take an ID
+        self.assertNotEqual(d._binding(d._started({**created, "NetworkSettings": {"Networks": extra}}, {**after(), "NetworkSettings": {"Networks": {**after()["NetworkSettings"]["Networks"], "other": {**extra["other"], "NetworkID": "7" * 64}}}}, expected)),
+                            d._binding({**after(), "NetworkSettings": {"Networks": {**after()["NetworkSettings"]["Networks"], "other": {**extra["other"], "NetworkID": "7" * 64}}}}))
+        self.cli.plan["expected"] = {"relay": {"Config": {}, "HostConfig": {"PidMode": ""}}}                    # through start(): the journal names the expected IDs
+        self.job.write("relay.json", {**created, "HostConfig": {"PidMode": ""}, "State": {}})
+        self.job.write("network-job.json", {"Id": ids["job"], "Name": job})
+        self.job.write("network-upstream.json", {"Id": ids["fixture"], "Name": fixture})
+        later = {**after(), "HostConfig": {"PidMode": ""}, "State": {"StartedAt": self.STARTED}}
+        with mock.patch.object(d, "free_space"), mock.patch.object(self.cli, "_command"):
+            with mock.patch.object(self.cli, "inspect", side_effect=[{**created, "HostConfig": {"PidMode": ""}}, later]):
+                self.cli.start(CID, "relay")
+            wrong = {**later, "NetworkSettings": {"Networks": {n: {**v, "NetworkID": "9" * 64} for n, v in later["NetworkSettings"]["Networks"].items()}}}
+            (self.job.dir / "relay-start.json").unlink()
+            with mock.patch.object(self.cli, "inspect", side_effect=[{**created, "HostConfig": {"PidMode": ""}}, wrong]):
+                self.refused(lambda: self.cli.start(CID, "relay"), "start_changed")
 
     def test_runtime_identity_and_the_bounded_drain(self):
         """Gate S #7c: the proof is bound to the installed runtime; a changed field, or a drain that overran or was cut short, refuses."""
