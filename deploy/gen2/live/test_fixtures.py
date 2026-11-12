@@ -22,6 +22,13 @@ ENTITLEMENT = re.search(rb'Pass "(--allow=fs.read=[^"]+)"', ENTITLEMENT_ERROR)[1
 
 
 class Fixtures(unittest.TestCase):
+    def setUp(self):
+        """Roots the recorded native capture ran under."""
+        data = ENTITLEMENT.removeprefix("--allow=fs.read=").removesuffix("/storage/build-inputs")
+        patcher = patch.dict(os.environ, {"GEN2_DATA_ROOT": data})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_all_compiled_nginx_temp_paths_use_the_existing_tmpfs(self):
         """Retained binary flags and startup refusal pin every temp directory; no daemon."""
         flags = (CAPTURE / "nginx-version.stderr").read_text()
@@ -147,7 +154,9 @@ class Fixtures(unittest.TestCase):
 
     def test_pinned_read_entitlement(self):
         """I02/D11: native stderr names the sole grant; redirected layout fails before Bake."""
-        self.assertEqual(ENTITLEMENT, "--allow=fs.read=/home/trevor/.local/share/gen2-2e1/storage/build-inputs")
+        self.assertEqual(ENTITLEMENT, "--allow=fs.read=" + str(build.build_inputs()))
+        with patch.dict(os.environ, {"GEN2_DATA_ROOT": "relative"}), self.assertRaisesRegex(ValueError, "GEN2_DATA_ROOT"):
+            build.bake_command(CONTEXT["Name"])
         for targets in (("runner", "engine", "gateway", "fixture"), ("cli-contract",)):
             with self.subTest(targets=targets):
                 self.assertEqual([a for a in build.bake_command(CONTEXT["Name"], targets) if a.startswith("--allow=")], [ENTITLEMENT])

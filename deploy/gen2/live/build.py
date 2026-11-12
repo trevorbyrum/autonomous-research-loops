@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from deploy.gen2.live.operands import root
 from gen2.supervisor.docker_cli import CLI, CLI_SHA, SOCKET, free_space
 
 COMPOSE = Path("/usr/libexec/docker/cli-plugins/docker-compose")
@@ -15,7 +16,10 @@ COMPOSE_SHA = "40343e21ca777173e69cff5dbafeb37c6f81f3b0d57d9e597f036e95eb63e76a"
 BUILDX_VERSION = "github.com/docker/buildx v0.38.0 0dbe87f36ed472fe36b6796c3f70b4210a731fc5"
 IMAGE_TARGETS = ("runner", "engine", "gateway", "fixture")
 BUILDER_LIST = ("buildx", "ls", "--format", "json")
-BUILD_INPUTS = Path("/home/trevor/.local/share/gen2-2e1/storage/build-inputs")
+
+
+def build_inputs():
+    return root("GEN2_DATA_ROOT") / "storage" / "build-inputs"
 
 
 def docker_command(*args, context=None):
@@ -42,9 +46,10 @@ def checked(argv, **kwargs):
 
 def bake_command(builder, targets=IMAGE_TARGETS):
     """I02/D11: grant read access only to the pinned, unredirected staged-inputs path."""
-    if BUILD_INPUTS.resolve() != BUILD_INPUTS:
+    inputs = build_inputs()
+    if inputs.resolve() != inputs:
         raise ValueError("staged inputs must match the pinned host layout")
-    return docker_command("buildx", "bake", "--allow=fs.read=" + str(BUILD_INPUTS), "--builder", builder, "--file",
+    return docker_command("buildx", "bake", "--allow=fs.read=" + str(inputs), "--builder", builder, "--file",
                           "deploy/gen2/live/docker-bake.hcl", *targets, context=builder)
 
 
@@ -92,9 +97,10 @@ if __name__ == "__main__":
     targets = tuple(sys.argv[2:]) or IMAGE_TARGETS
     if len(set(targets)) != len(targets) or not set(targets) <= set(IMAGE_TARGETS):
         raise ValueError("explicit application image targets required")
-    root = BUILD_INPUTS.parent
-    free_space([str(root / p) for p in ("outputs", "relay-evidence", "spool", "control", "docker")], 16 << 30)
-    env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "DOCKER_CONFIG": "/home/trevor/.config/gen2-2e1/buildx"}
+    data = root("GEN2_DATA_ROOT") / "storage"
+    free_space([str(data / p) for p in ("outputs", "relay-evidence", "spool", "control", "docker")], 16 << 30)
+    env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "DOCKER_CONFIG": str(root("GEN2_CONFIG_ROOT") / "buildx"),
+           "GEN2_DATA_ROOT": str(root("GEN2_DATA_ROOT"))}
     cli = docker_command()
     def text(*args):
         return checked([*cli, *args], env=env, timeout=10).decode("utf-8")

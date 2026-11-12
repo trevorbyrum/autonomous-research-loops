@@ -1,5 +1,7 @@
 # Protected live operands
 
+Host paths come from two operator-set absolute roots, required with no defaults (unset or relative refuses): `GEN2_CONFIG_ROOT` (protected configuration: secrets, bundle, record, manifest, prompts, provider files, buildx config) and `GEN2_DATA_ROOT` (storage: control, spool, staging, outputs, relay-evidence, gateway-db, build-inputs). Export them for compose and `build.py`.
+
 The operator uses `operands.pack` only with the independent verifier's retained record and exact manifest/receipt bytes. Retain all operands; publish no `qualified` record before applicable native witnesses pass (real additionally needs DEBT-004). Publish regular, single-link files under the protected configuration root, read-only to the engine UID and outside every job/model mount; set the returned byte pin independently of the record. Never put a credential value/hash in these operands. N10's approved returned full ID goes only in `plan.egress_network_id`; no name adoption or auto-create.
 Use the explicit `compose.live.yaml` override with the base compose only after provisioning the exact read-only mounts and independent `GEN2_QUALIFICATION_PIN`. Keep the token in its engine-only file and prompts at their pinned module path. Lane B validates the record and owns dispatch authority; changing the record requires a new engine process/epoch, never a reload or resume of old authority. Applying this override, N10, credential use and provider sends remain subject to their separate approvals/readiness gates.
 
