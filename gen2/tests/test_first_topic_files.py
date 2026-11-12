@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -17,6 +18,13 @@ from gen2.router.boundary import work_id
 from gen2.router.schemas import SchemaSet
 from gen2.tests import children, first_topic_files as files, offline_run
 
+TRIPWIRE = """import os, sys
+def _deny(event, args):
+    if event == "sqlite3.connect" or (event == "open" and isinstance(args[0], (str, bytes, os.PathLike))
+                                      and os.path.realpath(os.fsdecode(args[0])).startswith({deny!r})):
+        raise RuntimeError("operator process touched the private store: " + event)
+sys.addaudithook(_deny)
+"""
 ROOT = children.path("examples/gen2/first-topic")
 
 
@@ -47,33 +55,38 @@ class FirstTopic(unittest.TestCase):
         self.assertNotIn("opd_brieft101", text)
 
     def test_the_runbook_commands_run_as_documented_against_the_authenticated_listener(self):
-        """The runbook's own shell blocks run verbatim (cwd = repo, `python` = this interpreter, listener URL/token in the environment).
-        Test-boundary work is only fixture setup and the sentinel staging a dedicated stack would do. No private Engine/Router/store
-        access may supply a decision: the runbook may import only the allowed modules, and every decision is checked in the records."""
+        """The runbook's shell blocks run verbatim (cwd = repo, `python` = this interpreter, listener URL/token in the environment), a non-live
+        fixture execution of the documented sequence with one explicit substitution: `--live` is dropped, because this fixture has no qualified
+        live dispatch authority (LiveProfileRefused: profile_absent). Test-boundary work is only fixture setup and the sentinel staging a dedicated
+        stack would do. A runtime tripwire (audit hook, PEP 578) in every operator subprocess refuses any open under the station directory and any
+        sqlite3.connect, so no private store read can supply a decision; this is a focused regression oracle, not a sandbox. Decisions are also
+        checked in the records, and the subprocess environment names neither the fixture root nor any GEN2_STORE*."""
         book = children.path("docs/gen2/FIRST-TOPIC.md").read_text()
         prepare, helper, to_scope, contracts, research = re.findall(r"```sh\n(.*?)\n```", book, re.S)
         for block, command in ((prepare, "activate_config_bundle"), (to_scope, "scope_approval"), (contracts, "draft_contract"), (research, "completion_approval")):
             self.assertIn(command, block)
-        allowed = ("json", "os", "re", "sys", "pathlib", "gen2.core", "gen2.app.cli", "gen2.app.run_topic")
-        code = "\n".join((prepare, helper, to_scope, contracts, research))
-        used = set(re.findall(r"^\s*(?:from|import) ([\w.]+)", code, re.M)) | set(re.findall(r"python -m ([\w.]+)", code))
-        self.assertEqual({u for u in used if not any(u == a or u.startswith(a + ".") for a in allowed)}, set(), "private access in the runbook")
-        self.assertNotRegex(code, r"sqlite|GEN2_STORE")
         with mock.patch.object(offline_run, "TOPIC", files.TOPIC):
             run = offline_run.Offline()
             self.addCleanup(run.close)
             root = Path(run.tmp.name)
-            for name in ("operator-tmp", "shim"):
-                (root / name).mkdir()
+            (root / "shim").mkdir()
+            apart = tempfile.TemporaryDirectory()   # the operator's TMPDIR lies outside the fixture root
+            self.addCleanup(apart.cleanup)
+            tmpdir, trip = Path(apart.name) / "operator-tmp", Path(apart.name) / "tripwire"
+            tmpdir.mkdir()
+            trip.mkdir()
+            (trip / "sitecustomize.py").write_text(TRIPWIRE.format(deny=os.path.realpath(root / "station")))
             shim = root / "shim" / "python"
             shim.write_text(f'#!/bin/sh\nexec {sys.executable} "$@"\n')
             shim.chmod(0o755)
-            base = {**children.env(), **run.environ, "PATH": f"{root / 'shim'}:{os.environ['PATH']}", "TMPDIR": str(root / "operator-tmp")}
+            base = {**children.env(), **run.environ, "PATH": f"{root / 'shim'}:{os.environ['PATH']}", "TMPDIR": str(tmpdir)}
+            base["PYTHONPATH"] += os.pathsep + str(trip)
+            self.assertFalse([k for k in base if k.startswith("GEN2_STORE")] or [v for v in base.values() if str(root) in v and v != base["PATH"]])
 
             def sh(block, **extra):
                 return subprocess.run(["sh", "-e", "-c", block], cwd=children.path("."), env={**base, **extra}, capture_output=True, text=True, timeout=600)
 
-            def local(block):   # the one boundary edit: the fixture has no network-capable discovery entry, so `--live` (a permission flag) is dropped
+            def local(block):   # the one boundary edit: the fixture has no qualified live dispatch authority, so `--live` (a permission flag) is dropped
                 self.assertIn("run_topic", block)
                 return block.replace(" --live", "")
 
@@ -82,7 +95,7 @@ class FirstTopic(unittest.TestCase):
                 self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
                 return done
             ok(prepare, GEN2_OPERATOR_NAME="alice", GEN2_BRIEF_REVIEW_DEADLINE="2099-01-01T00:00:00Z")
-            (working,) = (root / "operator-tmp").iterdir()
+            (working,) = tmpdir.iterdir()
             env = {"GEN2_FIRST_TOPIC_DIR": str(working), "GEN2_SENTINEL_REFERENCE": str(working / "sentinel-ref.json"),
                    "GEN2_FIRST_TOPIC_ID": files.TOPIC}   # the operator's shell keeps what the earlier blocks exported
             ok(helper, **env)

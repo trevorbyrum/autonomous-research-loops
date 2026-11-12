@@ -17,6 +17,7 @@ from gen2.app import compose, workflow
 from gen2.app.driver import Driver
 from gen2.exec.common import Refused
 from gen2.router.schemas import SchemaSet
+from gen2.supervisor.isolation import LiveProfileRefused
 
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 DISCOVERY = ("GEN2_GATEWAY_URL", "GEN2_SECRET_GATEWAY_TOKEN_FILE")   # the gateway's URL and its token FILE; the token itself is never read here
@@ -25,7 +26,7 @@ GATEWAY = {"commercial": False, "accept_per_item": False, "policy_version": 1}
 LANES = ["semanticscholar"]
 
 TOPIC = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*:[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
-FAILURES = ((Refused, "refused"), (OSError, "io"), (ValueError, "malformed"), (KeyError, "malformed"))   # first match wins; a code per kind, never the text
+FAILURES = ((LiveProfileRefused, "live_refused"), (Refused, "refused"), (OSError, "io"), (ValueError, "malformed"), (KeyError, "malformed"))   # first match wins; a code per kind, never the text
 
 
 class Walker:
