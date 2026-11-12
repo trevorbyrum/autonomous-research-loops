@@ -15,6 +15,15 @@ ROOT = Path(__file__).parent
 
 
 class LivePolicy(unittest.TestCase):
+    def test_retained_configuration_mount_is_engine_only_and_read_only(self):
+        """S8: protect the child's digest lookup; native UID accessibility is a host witness."""
+        document = (ROOT / "compose.live.yaml").read_text()
+        self.assertIn("      GEN2_RETAINED_DIR: /etc/gen2/retained-configurations\n", document)
+        self.assertIn("      - ${GEN2_CONFIG_ROOT:?configuration root}/retained-configurations:/etc/gen2/retained-configurations:ro\n", document)
+        self.assertEqual([line for line in document.splitlines() if line.startswith("  ") and not line.startswith("   ")], ["  engine:"])
+        self.assertNotIn("provider-auth.conf", document)
+        self.assertNotIn("retained-configurations", (ROOT / "compose.yaml").read_text())
+
     def test_live_seed_changes_only_the_two_tool_features(self):
         original = (ROOT / "runner-config.toml").read_bytes()
         data = live.runner_config(original)

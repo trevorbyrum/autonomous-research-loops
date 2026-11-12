@@ -6,8 +6,10 @@ services:
       GEN2_QUALIFICATION_RECORD: /etc/gen2/qualification-record.json
       GEN2_QUALIFICATION_PIN: ${GEN2_QUALIFICATION_PIN:?operator's independent record-byte pin}
       GEN2_MANIFEST: /etc/gen2/manifest.json
+      GEN2_RETAINED_DIR: /etc/gen2/retained-configurations
     volumes:
       - ${GEN2_CONFIG_ROOT:?configuration root}/prompts:/opt/gen2/gen2/prompts:ro
       - ${GEN2_CONFIG_ROOT:?configuration root}/secrets/discovery-token:/etc/gen2/discovery-token:ro
       - ${GEN2_CONFIG_ROOT:?configuration root}/qualification-record.json:/etc/gen2/qualification-record.json:ro
       - ${GEN2_CONFIG_ROOT:?configuration root}/deployment-manifest.json:/etc/gen2/manifest.json:ro
+      - ${GEN2_CONFIG_ROOT:?configuration root}/retained-configurations:/etc/gen2/retained-configurations:ro
