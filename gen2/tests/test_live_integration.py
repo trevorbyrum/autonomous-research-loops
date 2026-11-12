@@ -10,7 +10,6 @@ import sqlite3
 import unittest
 from pathlib import Path
 
-from gen2.supervisor.isolation import LiveProfileRefused
 from gen2.tests.offline_run import Offline
 from gen2.tests.test_supervisor_live import MANIFEST, record_doc
 
@@ -44,6 +43,22 @@ class LiveFixtureRoute(unittest.TestCase):
         self.assertEqual({(r["charge_minor_units"], r["response"]["charge_state"]) for r in results}, {(400, "worst_case")})   # unknown cost: U, and the walk continued (DEBT-052)
         self.assertEqual(run.topic()["status"], "completed_with_qualified_conclusions")
 
+    def test_refused_fixture_judgment_has_a_confirmed_failed_end_and_worst_case_charge(self):
+        """Local oracle for the native fixture seam; this does not run the dedicated endpoint."""
+        run = self.world(record=record, live=True, invalid_judgment=True)
+        self.assertTrue(run.walk().startswith("stopped"))
+        self.assertEqual([(r["state"], r["failure_class"]) for r in run.records("invocations")], [("failed", "exit_nonzero")])
+        self.assertEqual(len(audit(run, "dispatch_authorized")), 1)
+        (result,) = audit(run, "dispatch_result")
+        self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]), (400, "worst_case"))
+        (end,) = (Path(run.tmp.name) / "station" / "jobs").glob("*/exit.json")
+        self.assertEqual(json.loads(end.read_text())["code"], 2)
+        self.assertTrue(end.with_name("docker-complete.json").exists())
+        journal = json.loads(end.with_name("journal.json").read_text())
+        self.assertEqual(journal["settled"], "failed")
+        self.assertNotEqual(journal["collected"]["observation"]["descendants"]["handling"], "unconfirmed")
+        self.assertEqual(run.records("operator_decisions")[-1]["kind"], "brief_confirmation")
+
     def test_without_the_flag_the_same_record_is_never_used_and_no_intent_is_written(self):
         run = self.world(record=record, live=False)
         self.assertEqual(run.walk(), "done")
@@ -51,8 +66,7 @@ class LiveFixtureRoute(unittest.TestCase):
 
     def test_with_no_record_a_live_walk_refuses_at_the_first_model_step_and_starts_nothing(self):
         run = self.world(live=True)
-        with self.assertRaisesRegex(LiveProfileRefused, "profile_absent"):                  # every live order refuses by default; the walker maps it to a fixed code
-            run.walk()
+        self.assertEqual(run.walk(), "stopped: malformed")  # the listener maps LiveProfileRefused to a fixed code
         self.assertEqual(audit(run, "dispatch_authorized"), [])
         self.assertFalse(list((Path(run.tmp.name) / "station" / "jobs").glob("*/spawn.json")))
 
@@ -60,7 +74,7 @@ class LiveFixtureRoute(unittest.TestCase):
         run = self.world(record=record, live=True)
         (Path(run.tmp.name) / "station" / "no-end").write_text("")                         # the backend leaves no confirmed end
         text = run.walk()
-        self.assertTrue(text.startswith("stopped") and "backend_end_unconfirmed" in text, text)
+        self.assertTrue(text.startswith("stopped") and "needs_person" in text, text)
         self.assertEqual((len(audit(run, "dispatch_authorized")), audit(run, "dispatch_result")), (1, []))
 
 

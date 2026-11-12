@@ -9,9 +9,11 @@ from gen2.supervisor import jobs
 from gen2.tests.offline_agent import OfflineAgent
 
 if __name__ == "__main__":
-    code = child.main(sys.argv[1:], agent=OfflineAgent())
     directory = Path(sys.argv[1])
     job = jobs.Job(directory.parent.parent, directory.parent.name)
-    if code == 0 and job.read("docker-plan.json") is not None and not (directory.parent.parent.parent / "no-end").exists():   # only a live job has a plan
+    invalid = (directory.parent.parent.parent / "invalid-judgment").exists()
+    agent = OfflineAgent({("research_pass", "scope"): lambda work: {}}) if invalid else OfflineAgent()
+    code = child.main(sys.argv[1:], agent=agent)
+    if job.read("docker-plan.json") is not None and not (directory.parent.parent.parent / "no-end").exists():   # only a live job has a plan
         job.write("docker-complete.json", {"origin": job.read("docker-plan.json")["origin"], "refs": [], "disposition": {"disposition": "unknown", "reason": "fixture"}})
     sys.exit(code)

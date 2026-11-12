@@ -959,6 +959,9 @@ class ScopeDecisionTest(Workflow):
                 self.assertEqual(self.decide_scope("opd_scopereject", self.v1, "rejected")["status"], "applied")
                 self.commit_at("inv_scoping02", report, reading)
                 before = self.state()
+                shown = self.router.status({"topic_id": TOPIC})["topics"][0]["scoping_report"]
+                self.assertEqual(shown, {"report_id": report["report_id"], "version": report["version"], "content_hash": report["content_hash"], "document": report})
+                self.assertEqual(self.state(), before)  # read-only, including the audit log
                 for disposition in ("approved", "rejected"):
                     stale = self.decide_scope(f"opd_stale{disposition}", self.v1, disposition)
                     self.assertEqual((stale["status"], stale.get("reason")), ("rejected", "decision_refused"), stale)
