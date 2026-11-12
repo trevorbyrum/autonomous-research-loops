@@ -38,11 +38,11 @@ class ComposeTest(unittest.TestCase):
 
     def test_the_exchange_index_lists_this_topics_discovery_scratches_only(self):
         root = self.world.root / "jobs"
-        for iid, topic, purpose in (("inv_a", TOPIC, "discovery/search"), ("inv_b", "fleet:other", "discovery/search"), ("inv_c", TOPIC, "research_pass/research"),
-                                    ("inv_d", TOPIC, "discovery/search")):
+        for iid, topic, purpose in (("inv_disc000a", TOPIC, "discovery/search"), ("inv_disc000b", "fleet:other", "discovery/search"), ("inv_disc000c", TOPIC, "research_pass/research"),
+                                    ("inv_disc000d", TOPIC, "discovery/search")):
             supervisor_jobs.Job(root, "job-" + iid).prepare({"invocation_id": iid, "topic_id": topic, "env": {"GEN2_PURPOSE": purpose, "GEN2_STEP": "discovery/search#1"}})
         listed = compose.discovery_scratches(self.station, TOPIC)()
-        self.assertEqual(sorted(p.parent.name for p in listed), ["job-inv_a", "job-inv_d"])   # purpose, not the step name, and this topic
+        self.assertEqual(sorted(p.parent.name for p in listed), ["job-inv_disc000a", "job-inv_disc000d"])   # purpose, not the step name, and this topic
 
     def test_the_scope_and_dossier_kits_build_and_the_discovery_kit_refuses_without_its_proposer(self):
         kits = self.kits()

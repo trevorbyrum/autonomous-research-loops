@@ -44,6 +44,7 @@ import errno
 import fcntl
 import json
 import os
+import re
 import signal
 import struct
 import subprocess
@@ -107,6 +108,7 @@ def atomic_write(path: Path, value: dict) -> None:
 
 
 VALID, FOREIGN, PRE_PREPARE, CORRUPT = "valid", "foreign", "pre_prepare", "corrupt"
+INVOCATION_ID = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")  # common.schema.json#/$defs/invocation_id: also the job's directory name
 HARNESS_ORDER_KEYS = frozenset({"command", "env"})  # the whole of a qualification harness's order (the T9 harness's Job.prepare)
 
 
@@ -116,9 +118,35 @@ class Entry:
         self.name, self.kind, self.order, self.journal, self.reason = name, kind, order, journal or {}, reason
 
 
+def _present(path: Path) -> tuple[bool, object]:
+    try:
+        return True, json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return False, None
+
+
+def _journal_shaped(journal: object) -> bool:
+    """Every journal field a consumer indexes, typed: the incident-like fields are an object with `since` (or none), the rest their kind."""
+    if not isinstance(journal, dict):
+        return False
+    dated = lambda v: isinstance(v, dict) and "since" in v
+    recovering = journal.get("recovering")
+    return (all(journal.get(k) is None or isinstance(journal[k], dict) for k in ("exhausted", "collected", "budgets", "recovering"))
+            and (journal.get("incident") is None or dated(journal["incident"])) and (recovering is None or dated(recovering.get("incident")))
+            and isinstance(journal.get("recoveries", []), list) and all(isinstance(r, dict) and dated(r.get("incident")) for r in journal.get("recoveries", [])))
+
+
+def _order_shaped(order: object, name: str) -> bool:
+    """The order fields consumers rely on, typed: invocation_id of the id form and naming this directory, a non-empty topic_id, env an object."""
+    return (isinstance(order, dict) and isinstance(order.get("invocation_id"), str) and bool(INVOCATION_ID.fullmatch(order["invocation_id"]))
+            and name == "job-" + order["invocation_id"] and isinstance(order.get("topic_id"), str) and bool(order["topic_id"])
+            and isinstance(order.get("env", {}), dict)
+            and (order.get("parent_invocation_id") is None or isinstance(order["parent_invocation_id"], str) and bool(INVOCATION_ID.fullmatch(order["parent_invocation_id"]))))
+
+
 def entries(root: Path) -> list[Entry]:
     """Interpret every entry of the jobs root, once and statelessly (nothing cached or written); every reader of the root uses this.
-    VALID: an order object that names its job (invocation_id matching the directory, a topic_id) and a journal, if any, that is an object.
+    VALID: an order whose consumed fields are typed (_order_shaped) and a journal, if any, likewise (_journal_shaped).
     FOREIGN: positively not this station's: an order whose keys are exactly the harness's and no journal. PRE_PREPARE: a directory the
     driver made before its order (nothing but a scratch). Everything else (damaged or non-object JSON, missing or wrong identity, a
     journal beside an unreadable order, an unknown entry) is CORRUPT: ambiguous station state, never absence, never capacity released."""
@@ -129,21 +157,22 @@ def entries(root: Path) -> list[Entry]:
             found.append(Entry(name, CORRUPT, reason="not a job directory"))
             continue
         try:
-            order, journal = job.read("order.json"), job.read("journal.json")
+            files = {n: _present(path / n) for n in ("order.json", "journal.json")}  # (exists, decoded): a JSON null is present, never absence
         except (ValueError, OSError) as failure:
             found.append(Entry(name, CORRUPT, reason=f"unreadable order or journal: {type(failure).__name__}"))
             continue
-        if order is None and journal is None:
+        (has_order, order), (has_journal, journal) = files["order.json"], files["journal.json"]
+        if not has_order and not has_journal:
             kind = PRE_PREPARE if {e.name for e in path.iterdir()} <= {"scratch"} else CORRUPT
             found.append(Entry(name, kind, reason="" if kind == PRE_PREPARE else "files without an order"))
-        elif journal is not None and not isinstance(journal, dict):
-            found.append(Entry(name, CORRUPT, reason="journal is not an object"))
-        elif isinstance(order, dict) and journal is None and set(order) == HARNESS_ORDER_KEYS:
+        elif has_journal and not _journal_shaped(journal):
+            found.append(Entry(name, CORRUPT, reason="journal is not a station journal"))
+        elif not has_journal and isinstance(order, dict) and set(order) == HARNESS_ORDER_KEYS:
             found.append(Entry(name, FOREIGN))
-        elif isinstance(order, dict) and order.get("invocation_id") and name == "job-" + str(order["invocation_id"]) and isinstance(order.get("topic_id"), str):
+        elif has_order and _order_shaped(order, name):
             found.append(Entry(name, VALID, order, journal))
         else:
-            found.append(Entry(name, CORRUPT, reason="order is not a station order for this directory" if order is not None else "journal without an order"))
+            found.append(Entry(name, CORRUPT, reason="order is not a station order for this directory" if has_order else "journal without an order"))
     return found
 
 

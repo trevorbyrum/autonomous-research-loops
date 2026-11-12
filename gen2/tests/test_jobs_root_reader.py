@@ -9,6 +9,7 @@ Oracles: the fixture root written by hand. What they cannot show: the host's rea
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -96,3 +97,33 @@ class MixedRootTest(sf.SupervisedTestCase):
         self.assertEqual([o["invocation_id"] for o in valid], ["inv_valid00001"])
         self.assertEqual(list(Driver._orders(SimpleNamespace(station=station, topic_id=rf.TOPIC))), valid)
         self.assertEqual(discovery_scratches(station, rf.TOPIC)(), [Path(self.supervisor.jobs_root / "job-inv_valid00001" / "scratch")])
+
+    def test_every_consumed_shape_is_checked_by_the_reader(self) -> None:
+        station = {"invocation_id": "inv_shaped0001", "topic_id": rf.TOPIC}
+        cases = {  # label: (directory, order, journal text): each must be CORRUPT, blocking, and leave the valid job's status and recovery readable
+            "null_journal_harness": ("job-inv_nulljrn_h", {"command": [], "env": {}}, "null"),
+            "null_journal_station": ("job-inv_shaped0001", station, "null"),
+            "incident_list": ("job-inv_shaped0001", station, json.dumps({"incident": ["broken"]})),
+            "recovering_without_incident": ("job-inv_shaped0001", station, json.dumps({"recovering": {"requested_by": "x"}})),
+            "exhausted_string": ("job-inv_shaped0001", station, json.dumps({"exhausted": "x"})),
+            "recoveries_not_list": ("job-inv_shaped0001", station, json.dumps({"recoveries": 3})),
+            "numeric_invocation": ("job-123", {"invocation_id": 123, "topic_id": rf.TOPIC}, None),
+            "empty_topic": ("job-inv_shaped0001", {**station, "topic_id": ""}, None),
+            "malformed_invocation": ("job-bad", {"invocation_id": "bad", "topic_id": rf.TOPIC}, None),
+            "env_not_object": ("job-inv_shaped0001", {**station, "env": ["x"]}, None),
+        }
+        self.build(corrupt=False)
+        for label, (handle, order, journal) in cases.items():
+            with self.subTest(label):
+                self.put(handle, "order.json", json.dumps(order))
+                if journal is not None:
+                    self.put(handle, "journal.json", journal)
+                census = self.supervisor.census()
+                self.assertEqual(([c["entry"] for c in census["corrupt"]], census["blocking"], census["valid"]), ([handle], True, 1))
+                self.assertEqual([i["invocation_id"] for i in self.supervisor.incidents()], ["inv_valid00001"])
+                with self.assertRaises(ControlFailure) as raised:
+                    self.recover()
+                self.assertEqual(raised.exception.outcomes, {handle: "corrupt_job_state", "inv_valid00001": "advanced:inv_valid00001"})
+                with self.assertRaises(Waiting):
+                    self.supervisor._settle_delegates({"kind": "research_pass", "invocation_id": "inv_parent0001"})
+                shutil.rmtree(self.supervisor.jobs_root / handle)

@@ -36,7 +36,6 @@ FINAL_REFUSALS = frozenset({"transition_conflict", "reconciliation_conflict", "c
 DIGEST = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
 MAX_EVIDENCE = 64          # files a job may set aside in its scratch (core.evidence_media names the form), and the bytes they may total
 MAX_EVIDENCE_BYTES = 32 << 20
-INVOCATION_ID = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")  # common.schema.json#/$defs/invocation_id: also the job's directory name
 
 
 def _refusal(reason: str, detail: str, **facts) -> dict:
@@ -232,7 +231,7 @@ class Supervisor:
 
     def recover_incident(self, request: Mapping) -> dict:
         """Record operator recovery unfinished before drawing its allowance, then carry it to completion (Astra 1e-repair re-review 1)."""
-        if not _request_shape(request, self.RECOVERY_REQUEST) or not INVOCATION_ID.fullmatch(request["invocation_id"]):
+        if not _request_shape(request, self.RECOVERY_REQUEST) or not jobs.INVOCATION_ID.fullmatch(request["invocation_id"]):
             return _refusal("request_invalid", "a recovery names invocation_id, incident_since, requested_by and reason, each a string")
         inv, since = request["invocation_id"], request["incident_since"]
         job = self.job(inv)
