@@ -25,6 +25,27 @@ from gen2.tests import router_fixtures as rf
 from gen2.tests import supervisor_fixtures as sf
 
 DISCOVERY = {"GEN2_PURPOSE": "discovery/search", "GEN2_CONTEXT": "c1.e1"}
+OBS = {"descendants": {"handling": "none_found", "count": 0}, "termination": None, "findings": [], "output": {"status": "present"}}
+REF = {"content_hash": "sha256:" + "a" * 64, "size_bytes": 1}
+KEPT = {"observation": OBS, "result": REF, "method": "exit_observed"}   # the journal's nested records as the supervisor writes them
+SINCE = {"since": "2026-09-27T10:00:00Z"}
+COLLECTED = {**KEPT, "record": REF}
+GRANT = {"capability_id": "cap_1", "invocation_id": "inv_aaaa0001", "topic_id": rf.TOPIC, "admission": {}, "config_bundle_hash": "h",
+         "lease": {"lease_id": "l", "generation": 1}}
+PENDING = {"purpose": "reconcile:1", "record": REF, "method": "job_handle_lookup", "observation": OBS, "resolution": "found_result", "identity": None, "digest": None}
+GENUINE = {"incident": SINCE, "exhausted": SINCE, "recovering": {"incident": SINCE, "requested_by": "op"}, "outage": SINCE, "grant": GRANT,
+           "recoveries": [{"incident": SINCE, "outcome": "resumed"}], "collected": COLLECTED, "pending": PENDING, "unresolved": {"episode": 1, **SINCE},
+           "dispatch": {"admission_ref": "a", "run_id": "r", "attempt": 1}, "budgets": {"write": 1}, "revision": 3}
+NESTED_DAMAGE = {  # structure: damaged values of that journal field, each beside the consumer that indexes it (see the table in jobs.py)
+    "incident": [{"since": ""}, {**SINCE, "last_refusal": {}}], "exhausted": [None, {"kind": "x"}], "recovering": [None, {"incident": SINCE}],
+    "recoveries": [None, [{"incident": SINCE}]],
+    "observing": [None, {}, {**KEPT, "method": None}, {**KEPT, "observation": {}}, {k: v for k, v in KEPT.items() if k != "result"},
+                  {"descendants": OBS["descendants"]}, {"descendants": None, "termination": None}],   # the phases: kept end, and _collect's first save
+    "collected": [None, KEPT, {**COLLECTED, "observation": {**OBS, "descendants": {}}}, {**COLLECTED, "result": None}, {**COLLECTED, "evidence": None},
+                  {**COLLECTED, "rehandled": {}}],
+    "grant": [None, {}, {"capability_id": "cap_1"}, {**GRANT, "lease": {}}], "unresolved": [None, {"episode": 1}], "outage": [None, {}],
+    "pending": [None, {"purpose": "end:failed"}, {k: v for k, v in PENDING.items() if k != "digest"}], "dispatch": [None, {}, {"admission_ref": "a"}],
+}
 
 
 class MixedRootTest(sf.SupervisedTestCase):
@@ -136,10 +157,37 @@ class MixedRootTest(sf.SupervisedTestCase):
                     self.supervisor._settle_delegates({"kind": "research_pass", "invocation_id": "inv_parent0001"})
                 shutil.rmtree(self.supervisor.jobs_root / handle)
 
+    def test_nested_records_are_checked_against_their_consumers(self) -> None:
+        """Every nested structure the supervisor, driver and compose index (the table in jobs.py): genuine states are valid; a null, a wrong
+        type or an incomplete record of each is CORRUPT, blocking, and real recovery (advance not stubbed) still reaches the valid job."""
+        self.build(corrupt=False)
+        order, handle = sf.bare_order("inv_aaaa0001", rf.TOPIC), "job-inv_aaaa0001"
+        self.put(handle, "order.json", json.dumps(order))
+        self.put(handle, "journal.json", json.dumps(GENUINE))
+        self.assertEqual((self.supervisor.census()["valid"], self.supervisor.census()["blocking"]), (2, False))
+        self.put(handle, "journal.json", json.dumps({"observing": {"descendants": OBS["descendants"], "termination": None}}))  # _collect's first save
+        self.assertFalse(self.supervisor.census()["blocking"])
+        self.put(handle, "journal.json", json.dumps({"observing": KEPT}))  # a kept end awaiting staging
+        self.assertFalse(self.supervisor.census()["blocking"])
+        for field, damaged in NESTED_DAMAGE.items():
+            for n, value in enumerate(damaged):
+                with self.subTest(field=field, case=n):
+                    self.put(handle, "journal.json", json.dumps({field: value}))
+                    census = self.supervisor.census()
+                    self.assertEqual(([c["entry"] for c in census["corrupt"]], census["blocking"], census["valid"]), ([handle], True, 1))
+                    with mock.patch.object(self.supervisor, "advance", wraps=self.supervisor.advance) as advance, self.assertRaises(ControlFailure) as raised:
+                        self.supervisor.recover()
+                    advance.assert_called_once_with("inv_valid00001")
+                    self.assertEqual(raised.exception.outcomes, {handle: "corrupt_job_state", "inv_valid00001": "failed"})
+                    with self.assertRaises(Waiting):
+                        self.supervisor._settle_delegates({"kind": "research_pass", "invocation_id": "inv_parent0001"})
 
-class ConsumedFieldsAreInTheTableTest(unittest.TestCase):
-    """The reader's tables (jobs.JOURNAL_FIELDS, jobs.ORDER_FIELDS) are what consumers assume: a journal or order field read by the
-    supervisor, driver or compose that is missing from its table fails here, so a check and its consumer cannot drift (round 1 and 2 of S8-B)."""
+
+class ConsumedFieldsLintTest(unittest.TestCase):
+    """A LIMITED LINT, not a proof of coverage: a journal or order field read by constant key straight off a variable or attribute named
+    journal/djournal/order/dorder (or off a direct read of the file), in supervisor.py, driver.py or compose.py, must be in the reader's table
+    (jobs.JOURNAL_FIELDS, jobs.ORDER_FIELDS). It misses aliases (`j = journal`), helper parameters, copies, computed keys and other modules,
+    and says nothing of nested keys or shapes; the behavioural tests of MixedRootTest are the oracle of correctness."""
     MODULES = ("supervisor/supervisor.py", "app/driver.py", "app/compose.py")
     KINDS = {"journal": ("journal", "djournal"), "order": ("order", "dorder")}
 

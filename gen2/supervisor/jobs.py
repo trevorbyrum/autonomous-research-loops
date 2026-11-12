@@ -133,12 +133,16 @@ def _obj(v: object) -> bool:
     return isinstance(v, dict)
 
 
-def _dated(v: object) -> bool:
-    return isinstance(v, dict) and "since" in v
+def _any(v: object) -> bool:
+    return True
 
 
 def _opt(check):
     return lambda v: v is None or check(v)
+
+
+def _list(check):
+    return lambda v: isinstance(v, list) and all(check(x) for x in v)
 
 
 def _text(v: object) -> bool:
@@ -149,18 +153,66 @@ def _id(v: object) -> bool:
     return isinstance(v, str) and bool(INVOCATION_ID.fullmatch(v))
 
 
-# THE contract of the two files consumers read: field -> (must be present, validator of a present value). A field a consumer
-# reads (journal[...]/.get/.pop/.setdefault, order[...]/.get) is listed here, and a test fails if one is not; absence of an optional
-# field keeps the consumer's default (a fresh journal), but a present value that fails its validator is CORRUPT, never normalized.
+def _fields(doc: object, table: dict) -> bool:
+    """A mapping whose every table entry (required?, validator) holds: required fields present, a present value valid (null included)."""
+    return isinstance(doc, dict) and all((name in doc if required else True) and (name not in doc or check(doc[name]))
+                                         for name, (required, check) in table.items())
+
+
+def _of(table: dict):
+    return lambda v: _fields(v, table)
+
+
+# THE contract of the two files consumers read: field -> (must be present, validator of a present value). Absence of an optional
+# field keeps the consumer's default (a fresh journal); a present value that fails its validator, null included, is CORRUPT, never
+# normalized. Nested records are tables too. Each NESTED structure, with every place that indexes it (supervisor.py unless named;
+# `seen` is journal["observing"] and `entry` is journal["recovering"]):
+#   incident/exhausted since, last_refusal.reason    216-218, 250-256, 281-282, 312-315; operator/status.py incident_view
+#   recovering   incident.since, requested_by         244-280 (entry), 292-293, 308-312
+#   recoveries   incident.since, outcome              252-254, 293
+#   observing    phase 1 (_collect's first save): descendants, termination             602-605 (seen), 627
+#                phase 2 (kept end, awaiting staging): observation, result, method, evidence, terminated   548-550, 629, 722-726
+#   collected    observation.{descendants.handling, termination, findings, output}, result.{content_hash, size_bytes}, record.content_hash,
+#                evidence[].content_hash, rehandled.descendants, terminated   272-280, 686-687, 982-1014, 1054-1076, _unknown 1091-1121;
+#                driver.py outcome (result), authority.py _origin/result
+#   grant        capability_id, invocation_id, topic_id, admission, config_bundle_hash, lease.{lease_id, generation}   645, 746, 772-775, 1076-1080
+#   pending      purpose, record.content_hash, method, observation.findings; a reconcile's resolution, identity, digest   955-960, 975-977, 1150-1170
+#   dispatch     admission_ref, run_id, attempt, recorded                                         893, 910-917, 994
+#   unresolved   episode, since                                                                   491-499
+#   outage       since                                                                            516-518
+INCIDENT = {"since": (True, _text), "last_refusal": (False, _opt(_of({"reason": (True, _any)})))}
+HANDLING = _of({"handling": (True, _text)})
+REF = {"content_hash": (True, _text)}
+OBSERVATION = {"descendants": (True, HANDLING), "termination": (True, _opt(_obj)), "findings": (True, _list(_any)), "output": (True, _obj)}
+OBSERVING_PARTIAL = {"descendants": (True, HANDLING), "termination": (True, _opt(_obj))}
+OBSERVING_KEPT = {"observation": (True, _of(OBSERVATION)), "method": (True, _text), "result": (True, _opt(_of({**REF, "size_bytes": (True, _count)}))),
+                  "evidence": (False, _list(_of(REF))), "terminated": (False, _text)}
+COLLECTED = {**OBSERVING_KEPT, "record": (True, _of(REF)), "rehandled": (False, _of({"descendants": (True, HANDLING)}))}
+PENDING = {"purpose": (True, _text), "record": (True, _opt(_of(REF))), "method": (True, _text), "observation": (True, _of(OBSERVATION))}
+
+
+def _collected(v: object) -> bool:  # a result may be absent only where findings or a termination explain it (the consumer indexes it otherwise)
+    return _fields(v, COLLECTED) and (v["result"] is not None or bool(v["observation"]["findings"]) or bool(v.get("terminated")))
+
+
+def _pending(v: object) -> bool:
+    return _fields(v, PENDING) and (not v["purpose"].startswith("reconcile:") or all(k in v for k in ("resolution", "identity", "digest")))
+
+
 JOURNAL_FIELDS = {
-    "incident": (False, _opt(_dated)), "exhausted": (False, _opt(_obj)), "collected": (False, _opt(_obj)),
-    "recovering": (False, _opt(lambda v: _obj(v) and _dated(v.get("incident")))),
-    "recoveries": (False, lambda v: isinstance(v, list) and all(_obj(r) and _dated(r.get("incident")) for r in v)),
+    "incident": (False, _opt(_of(INCIDENT))), "exhausted": (False, _of(INCIDENT)),
+    "collected": (False, _collected), "pending": (False, _pending),
+    "observing": (False, lambda v: _fields(v, OBSERVING_KEPT if _obj(v) and "observation" in v else OBSERVING_PARTIAL)),
+    "recovering": (False, _of({"incident": (True, _of(INCIDENT)), "requested_by": (True, _any)})),
+    "recoveries": (False, _list(_of({"incident": (True, _of(INCIDENT)), "outcome": (True, _any)}))),
+    "grant": (False, _of({k: (True, _any) for k in ("capability_id", "invocation_id", "topic_id", "admission", "config_bundle_hash")}
+                          | {"lease": (True, _of({"lease_id": (True, _any), "generation": (True, _any)}))})),
+    "dispatch": (False, _of({"admission_ref": (True, _any), "run_id": (True, _any), "attempt": (True, _any), "recorded": (False, lambda v: isinstance(v, bool))})),
+    "unresolved": (False, _of({"episode": (True, _any), "since": (True, _text)})), "outage": (False, _of({"since": (True, _text)})),
     "budgets": (False, lambda v: _obj(v) and all(_count(n) for n in v.values())),  # an object of retry counters, each incremented by _spend
     "revision": (False, _count), "settled": (False, _opt(_text)), "unlaunched": (False, lambda v: isinstance(v, bool)),
     "recorded": (False, lambda v: isinstance(v, bool)),
-    **{k: (False, _opt(_obj)) for k in ("write_failure", "pending", "refusal", "unresolved", "outage", "observing", "grant", "dispatch",
-                                        "record_failure", "envelope", "spawn_refused", "refused")},
+    **{k: (False, _obj) for k in ("write_failure", "refusal", "record_failure", "envelope", "spawn_refused", "refused")},
 }
 ORDER_FIELDS = {
     "invocation_id": (True, _id), "topic_id": (True, _text), "kind": (True, _text), "config_bundle_hash": (True, _text),
@@ -169,11 +221,6 @@ ORDER_FIELDS = {
     "env": (False, lambda v: _obj(v) and all(isinstance(k, str) and isinstance(x, str) for k, x in v.items())),
     "live": (False, lambda v: isinstance(v, bool)), "plan": (False, _obj),
 }
-
-
-def _fields(doc: object, table: dict) -> bool:
-    return isinstance(doc, dict) and all((name in doc if required else True) and (name not in doc or check(doc[name]))
-                                         for name, (required, check) in table.items())
 
 
 def _order_shaped(order: object, name: str) -> bool:
@@ -190,7 +237,7 @@ def entries(root: Path) -> list[Entry]:
     journal beside an unreadable order, an unknown entry) is CORRUPT: ambiguous station state, never absence, never capacity released."""
     found = []
     for path in sorted(Path(root).iterdir()) if Path(root).is_dir() else ():
-        job, name = Job(root, path.name), path.name
+        name = path.name
         if not path.is_dir():
             found.append(Entry(name, CORRUPT, reason="not a job directory"))
             continue
