@@ -52,6 +52,8 @@ import threading
 import time
 from pathlib import Path
 
+from gen2.core import canonical, instants
+
 PROC = Path("/proc")
 FLOCK = "hhqqi4x"  # struct flock on Linux: l_type, l_whence, l_start, l_len, l_pid (jobshim.py takes the job's lock with the same layout)
 _HELD = threading.local()  # the journal locks this thread holds, by (device, inode): Job.hold
@@ -149,6 +151,17 @@ def _text(v: object) -> bool:
     return isinstance(v, str) and bool(v)
 
 
+def _canonical(v: object) -> bool:
+    try:
+        canonical.canonical_bytes(v)
+    except canonical.CanonicalizationError:
+        return False
+    return True
+
+
+_instant = instants.is_utc_instant
+
+
 def _id(v: object) -> bool:
     return isinstance(v, str) and bool(INVOCATION_ID.fullmatch(v))
 
@@ -165,50 +178,62 @@ def _of(table: dict):
 
 # THE contract of the two files consumers read: field -> (must be present, validator of a present value). Absence of an optional
 # field keeps the consumer's default (a fresh journal); a present value that fails its validator, null included, is CORRUPT, never
-# normalized. Nested records are tables too. Each NESTED structure, with every place that indexes it (supervisor.py unless named;
-# `seen` is journal["observing"] and `entry` is journal["recovering"]):
-#   incident/exhausted since, last_refusal.reason    216-218, 250-256, 281-282, 312-315; operator/status.py incident_view
-#   recovering   incident.since, requested_by         244-280 (entry), 292-293, 308-312
-#   recoveries   incident.since, outcome              252-254, 293
-#   observing    phase 1 (_collect's first save): descendants, termination             602-605 (seen), 627
-#                phase 2 (kept end, awaiting staging): observation, result, method, evidence, terminated   548-550, 629, 722-726
-#   collected    observation.{descendants.handling, termination, findings, output}, result.{content_hash, size_bytes}, record.content_hash,
-#                evidence[].content_hash, rehandled.descendants, terminated   272-280, 686-687, 982-1014, 1054-1076, _unknown 1091-1121;
-#                driver.py outcome (result), authority.py _origin/result
-#   grant        capability_id, invocation_id, topic_id, admission, config_bundle_hash, lease.{lease_id, generation}   645, 746, 772-775, 1076-1080
-#   pending      purpose, record.content_hash, method, observation.findings; a reconcile's resolution, identity, digest   955-960, 975-977, 1150-1170
-#   dispatch     admission_ref, run_id, attempt, recorded                                         893, 910-917, 994
-#   unresolved   episode, since                                                                   491-499
-#   outage       since                                                                            516-518
+# normalized. A validator guarantees the OPERATION a consumer performs on the value (supervisor.py, driver.py, compose.py, authority.py,
+# operator/status.py), reached through aliases and copies too (`_retain` copies observing into collected):
+#   subscript ["k"]  the mapping carries k, of the type the next operation needs: incident.since, recovering.{incident,requested_by},
+#                    observation.{descendants.handling,findings,output}, result.{content_hash,size_bytes}, record/evidence[].content_hash,
+#                    grant.{...,lease.{lease_id,generation}}, pending.{purpose,record,method,observation,resolution,identity,digest}
+#   [0]              observation.findings[0] is sent as the failure_class of a failed end and of a confirmed_failed/terminated_group
+#                    reconcile: a failed end and confirmed_failed carry a finding (a cancellation's observation legitimately carries none)
+#   update/** spread incident, exhausted, last_refusal, recoveries[], observing, observation, output, pending.identity are mappings
+#                    (identity: exactly the process identity `_process` writes, so it cannot overwrite a request key)
+#   iteration        recoveries, findings, evidence are lists of the element shape read
+#   instant parsing  unresolved.since, outage.since and the order's deadline_at go through core.instants (`_instant`)
+#   arithmetic       budgets values and revision are counts; the dispatch/recorded/unlaunched flags are booleans
+#   serialization    an observation is staged canonically in the execution record, so it must canonicalize (`_observation`)
+#   result None      a kept or collected end may lack a result only where findings or a termination explain it, since the consumers
+#                    index result.content_hash otherwise (`_explained`); _collect's partial observing (descendants, termination) is separate
+PROCESS_KEYS = frozenset({"host_id", "container_id", "boot_id", "start_fingerprint"})  # what Supervisor._process writes
 INCIDENT = {"since": (True, _text), "last_refusal": (False, _opt(_of({"reason": (True, _any)})))}
 HANDLING = _of({"handling": (True, _text)})
 REF = {"content_hash": (True, _text)}
-OBSERVATION = {"descendants": (True, HANDLING), "termination": (True, _opt(_obj)), "findings": (True, _list(_any)), "output": (True, _obj)}
+OBSERVATION = {"descendants": (True, HANDLING), "termination": (True, _opt(_obj)), "findings": (True, _list(_text)), "output": (True, _obj)}
 OBSERVING_PARTIAL = {"descendants": (True, HANDLING), "termination": (True, _opt(_obj))}
-OBSERVING_KEPT = {"observation": (True, _of(OBSERVATION)), "method": (True, _text), "result": (True, _opt(_of({**REF, "size_bytes": (True, _count)}))),
+RECONCILE = {"resolution": (True, _text), "identity": (True, _opt(lambda v: _obj(v) and v.keys() == PROCESS_KEYS)), "digest": (True, _opt(_text))}
+
+
+def _observation(v: object) -> bool:
+    return _fields(v, OBSERVATION) and _canonical(v)
+
+
+def _explained(table: dict):
+    """A kept or collected end: a result may be absent only where findings or a termination explain it (consumers index result otherwise)."""
+    return lambda v: _fields(v, table) and (v["result"] is not None or bool(v["observation"]["findings"]) or bool(v.get("terminated")))
+
+
+OBSERVING_KEPT = {"observation": (True, _observation), "method": (True, _text), "result": (True, _opt(_of({**REF, "size_bytes": (True, _count)}))),
                   "evidence": (False, _list(_of(REF))), "terminated": (False, _text)}
 COLLECTED = {**{k: v for k, v in OBSERVING_KEPT.items() if k != "method"}, "record": (True, _of(REF)), "rehandled": (False, _of({"descendants": (True, HANDLING)}))}
-PENDING = {"purpose": (True, _text), "record": (True, _opt(_of(REF))), "method": (True, _text), "observation": (True, _of(OBSERVATION))}
-
-
-def _collected(v: object) -> bool:  # a result may be absent only where findings or a termination explain it (the consumer indexes it otherwise)
-    return _fields(v, COLLECTED) and (v["result"] is not None or bool(v["observation"]["findings"]) or bool(v.get("terminated")))
+PENDING = {"purpose": (True, _text), "record": (True, _opt(_of(REF))), "method": (True, _text), "observation": (True, _observation)}
 
 
 def _pending(v: object) -> bool:
-    return _fields(v, PENDING) and (not v["purpose"].startswith("reconcile:") or all(k in v for k in ("resolution", "identity", "digest")))
+    """A failed end and a confirmed_failed reconcile send observation.findings[0]; a reconcile also carries its resolution, identity, digest."""
+    if not _fields(v, PENDING) or (v["purpose"].startswith("reconcile:") and not _fields(v, RECONCILE)):
+        return False
+    return bool(v["observation"]["findings"]) or not (v["purpose"] == "end:failed" or v.get("resolution") == "confirmed_failed")
 
 
 JOURNAL_FIELDS = {
     "incident": (False, _opt(_of(INCIDENT))), "exhausted": (False, _of(INCIDENT)),
-    "collected": (False, _collected), "pending": (False, _pending),
-    "observing": (False, lambda v: _fields(v, OBSERVING_KEPT if _obj(v) and "observation" in v else OBSERVING_PARTIAL)),
+    "collected": (False, _explained(COLLECTED)), "pending": (False, _pending),
+    "observing": (False, lambda v: _explained(OBSERVING_KEPT)(v) if _obj(v) and "observation" in v else _fields(v, OBSERVING_PARTIAL)),
     "recovering": (False, _of({"incident": (True, _of(INCIDENT)), "requested_by": (True, _any)})),
     "recoveries": (False, _list(_of({"incident": (True, _of(INCIDENT)), "outcome": (True, _any)}))),
     "grant": (False, _of({k: (True, _any) for k in ("capability_id", "invocation_id", "topic_id", "admission", "config_bundle_hash")}
                           | {"lease": (True, _of({"lease_id": (True, _any), "generation": (True, _any)}))})),
     "dispatch": (False, _of({"admission_ref": (True, _any), "run_id": (True, _any), "attempt": (True, _any), "recorded": (False, lambda v: isinstance(v, bool))})),
-    "unresolved": (False, _of({"episode": (True, _any), "since": (True, _text)})), "outage": (False, _of({"since": (True, _text)})),
+    "unresolved": (False, _of({"episode": (True, _any), "since": (True, _instant)})), "outage": (False, _of({"since": (True, _instant)})),
     "budgets": (False, lambda v: _obj(v) and all(_count(n) for n in v.values())),  # an object of retry counters, each incremented by _spend
     "revision": (False, _count), "settled": (False, _opt(_text)), "unlaunched": (False, lambda v: isinstance(v, bool)),
     "recorded": (False, lambda v: isinstance(v, bool)),
@@ -216,7 +241,7 @@ JOURNAL_FIELDS = {
 }
 ORDER_FIELDS = {
     "invocation_id": (True, _id), "topic_id": (True, _text), "kind": (True, _text), "config_bundle_hash": (True, _text),
-    "deadline_at": (True, _text), "lease_expires_at": (True, _opt(_text)), "requested_by_invocation_id": (True, _opt(_text)),
+    "deadline_at": (True, _instant), "lease_expires_at": (True, _opt(_text)), "requested_by_invocation_id": (True, _opt(_text)),
     "parent_invocation_id": (False, _opt(_id)), "retry_of": (False, _opt(_text)), "reservation": (False, _opt(_obj)),
     "env": (False, lambda v: _obj(v) and all(isinstance(k, str) and isinstance(x, str) for k, x in v.items())),
     "live": (False, lambda v: isinstance(v, bool)), "plan": (False, _obj),

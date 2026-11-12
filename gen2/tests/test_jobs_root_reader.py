@@ -20,9 +20,12 @@ from gen2.app.compose import discovery_scratches
 from gen2.app.driver import Driver
 from gen2.operator import status as status_view
 from gen2.supervisor import jobs
-from gen2.supervisor.supervisor import ControlFailure, Waiting
+from gen2.supervisor.supervisor import ControlFailure, Supervisor, Waiting
+from gen2.tests import operator_fixtures as of
 from gen2.tests import router_fixtures as rf
 from gen2.tests import supervisor_fixtures as sf
+from gen2.tests.test_operator_recovery import RecoveryFaults
+from gen2.tests.test_supervisor_lifecycle import LifecycleFaults
 
 DISCOVERY = {"GEN2_PURPOSE": "discovery/search", "GEN2_CONTEXT": "c1.e1"}
 OBS = {"descendants": {"handling": "none_found", "count": 0}, "termination": None, "findings": [], "output": {"status": "present"}}
@@ -40,11 +43,15 @@ NESTED_DAMAGE = {  # structure: damaged values of that journal field, each besid
     "incident": [{"since": ""}, {**SINCE, "last_refusal": {}}], "exhausted": [None, {"kind": "x"}], "recovering": [None, {"incident": SINCE}],
     "recoveries": [None, [{"incident": SINCE}]],
     "observing": [None, {}, {**KEPT, "method": None}, {**KEPT, "observation": {}}, {k: v for k, v in KEPT.items() if k != "result"},
-                  {"descendants": OBS["descendants"]}, {"descendants": None, "termination": None}],   # the phases: kept end, and _collect's first save
+                  {"descendants": OBS["descendants"]}, {"descendants": None, "termination": None},   # the phases: kept end, and _collect's first save
+                  {**KEPT, "result": None}, {**KEPT, "result": None, "terminated": ""}, {**KEPT, "observation": {**OBS, "findings": [1]}},
+                  {**KEPT, "observation": {**OBS, "exit": float("nan")}}],   # null result unexplained (_retain copies it); findings[0]; not canonicalizable
     "collected": [None, KEPT, {**COLLECTED, "observation": {**OBS, "descendants": {}}}, {**COLLECTED, "result": None}, {**COLLECTED, "evidence": None},
                   {**COLLECTED, "rehandled": {}}],
-    "grant": [None, {}, {"capability_id": "cap_1"}, {**GRANT, "lease": {}}], "unresolved": [None, {"episode": 1}], "outage": [None, {}],
-    "pending": [None, {"purpose": "end:failed"}, {k: v for k, v in PENDING.items() if k != "digest"}], "dispatch": [None, {}, {"admission_ref": "a"}],
+    "grant": [None, {}, {"capability_id": "cap_1"}, {**GRANT, "lease": {}}], "unresolved": [None, {"episode": 1}, {"episode": 1, "since": "2026-13-45T00:00:00Z"}, {"episode": 1, "since": "tomorrow"}], "outage": [None, {}, {"since": "not-an-instant"}, {"since": 5}],
+    "pending": [None, {"purpose": "end:failed"}, {k: v for k, v in PENDING.items() if k != "digest"}, {**PENDING, "identity": 1}, {**PENDING, "identity": ["host_id"]},
+                {**PENDING, "identity": {"capability_id": "x"}}, {**PENDING, "digest": 5}, {**PENDING, "resolution": "confirmed_failed"},
+                {**PENDING, "purpose": "end:failed"}, {**PENDING, "observation": {**OBS, "exit": float("nan")}}], "dispatch": [None, {}, {"admission_ref": "a"}],
 }
 
 
@@ -131,6 +138,8 @@ class MixedRootTest(sf.SupervisedTestCase):
             "exhausted_string": ("job-inv_shaped0001", station, json.dumps({"exhausted": "x"})),
             "recoveries_not_list": ("job-inv_shaped0001", station, json.dumps({"recoveries": 3})),
             "numeric_invocation": ("job-123", {**station, "invocation_id": 123}, None),
+            "deadline_not_instant": ("job-inv_shaped0001", {**station, "deadline_at": "soon"}, None),
+            "deadline_not_text": ("job-inv_shaped0001", {**station, "deadline_at": 5}, None),
             "empty_topic": ("job-inv_shaped0001", {**station, "topic_id": ""}, None),
             "malformed_invocation": ("job-bad", {**station, "invocation_id": "bad"}, None),
             "env_not_object": ("job-inv_shaped0001", {**station, "env": ["x"]}, None),
@@ -161,18 +170,27 @@ class MixedRootTest(sf.SupervisedTestCase):
         """Every nested structure the supervisor, driver and compose index (the table in jobs.py): genuine states are valid; a null, a wrong
         type or an incomplete record of each is CORRUPT, blocking, and real recovery (advance not stubbed) still reaches the valid job."""
         self.build(corrupt=False)
-        order, handle = sf.bare_order("inv_aaaa0001", rf.TOPIC), "job-inv_aaaa0001"
-        self.put(handle, "order.json", json.dumps(order))
-        self.put(handle, "journal.json", json.dumps(GENUINE))
+        self.supervisor.submit(self.order("research_pass"))  # a REAL admitted job (its own order, grant and journal), sorted before the valid one
+        handle = f"job-{sf.MAIN}"
+        real = json.loads((self.supervisor.jobs_root / handle / "journal.json").read_text())
+        self.put(handle, "journal.json", json.dumps(real))
         self.assertEqual((self.supervisor.census()["valid"], self.supervisor.census()["blocking"]), (2, False))
-        self.put(handle, "journal.json", json.dumps({"observing": {"descendants": OBS["descendants"], "termination": None}}))  # _collect's first save
-        self.assertFalse(self.supervisor.census()["blocking"])
-        self.put(handle, "journal.json", json.dumps({"observing": KEPT}))  # a kept end awaiting staging
-        self.assertFalse(self.supervisor.census()["blocking"])
+        self.put(handle, "journal.json", json.dumps({**real, **GENUINE}))
+        self.assertEqual((self.supervisor.census()["valid"], self.supervisor.census()["blocking"]), (2, False))
+        for journal in ({"observing": {"descendants": OBS["descendants"], "termination": None}}, {"observing": KEPT},   # _collect's first save; a kept end
+                        {"observing": {**KEPT, "result": None, "observation": {**OBS, "findings": ["exit_nonzero"]}}},
+                        {"observing": {**KEPT, "result": None, "method": "execution_group_termination", "terminated": "cancellation"}},
+                        {"collected": {**COLLECTED, "result": None, "terminated": "cancellation"}},
+                        {"pending": {"purpose": "end:cancelled", "record": None, "method": "job_handle_lookup", "observation": OBS}},   # no finding: a cancellation
+                        {"pending": {**PENDING, "resolution": "terminated_group", "observation": {**OBS, "termination": {"reason": "cancellation"}}}},
+                        {"pending": {**PENDING, "resolution": "confirmed_failed", "observation": {**OBS, "findings": ["never_started"]},
+                                     "identity": dict.fromkeys(jobs.PROCESS_KEYS, "x")}}, {"outage": {"since": "2026-09-27T10:00:00.5Z"}}):
+            self.put(handle, "journal.json", json.dumps({**real, **journal}))
+            self.assertFalse(self.supervisor.census()["blocking"], journal)
         for field, damaged in NESTED_DAMAGE.items():
             for n, value in enumerate(damaged):
                 with self.subTest(field=field, case=n):
-                    self.put(handle, "journal.json", json.dumps({field: value}))
+                    self.put(handle, "journal.json", json.dumps({**real, field: value}))
                     census = self.supervisor.census()
                     self.assertEqual(([c["entry"] for c in census["corrupt"]], census["blocking"], census["valid"]), ([handle], True, 1))
                     with mock.patch.object(self.supervisor, "advance", wraps=self.supervisor.advance) as advance, self.assertRaises(ControlFailure) as raised:
@@ -222,3 +240,37 @@ class ConsumedFieldsLintTest(unittest.TestCase):
     def test_every_consumed_field_is_in_its_table(self) -> None:
         tables = {"journal": jobs.JOURNAL_FIELDS, "order": jobs.ORDER_FIELDS}
         self.assertEqual(sorted((kind, key) for kind, key in self.reads() if key not in tables[kind]), [])
+
+
+class ObservedWrites:
+    """Every journal the supervisor REALLY saves (the real `_save`, read back from disk) must classify VALID: the genuine states the
+    predicate may never reject, from real submit, collect, end, reconcile, outage, cancellation and operator recovery. Nothing is repaired."""
+    def setUp(self) -> None:
+        super().setUp()
+        self.saved, real = [], Supervisor._save
+
+        def observed(supervisor, job, journal):
+            real(supervisor, job, journal)
+            kind = {e.name: e.kind for e in jobs.entries(supervisor.jobs_root)}[job.handle]
+            self.saved.append((kind, job.handle, sorted(job.read("journal.json"))))
+        patch = mock.patch.object(Supervisor, "_save", observed)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def tearDown(self) -> None:
+        try:
+            self.assertEqual([w for w in self.saved if w[0] != jobs.VALID], [])
+        finally:
+            super().tearDown()
+
+
+class LifecycleWritesAreValidTest(ObservedWrites, LifecycleFaults, sf.SupervisedTestCase):
+    KIND = "research_pass"
+
+    def test_the_observer_sees_the_writes(self) -> None:  # the other tests call tearDown mid-test: this one shows the observer is not vacuous
+        self.assertEqual((self.submit(), self.supervisor.run(sf.MAIN)), ("running", "committed"))
+        self.assertGreaterEqual(len(self.saved), 5)
+
+
+class RecoveryWritesAreValidTest(ObservedWrites, RecoveryFaults, of.OperatorTestCase):
+    KIND = "research_pass"
