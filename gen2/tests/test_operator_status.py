@@ -32,6 +32,7 @@ import sys
 from gen2.core import canonical
 from gen2.supervisor import jobs
 from gen2.supervisor.supervisor import Supervisor, WorkOrder
+from gen2.tests import supervisor_fixtures as sf
 from gen2.tests import operator_fixtures as of
 from gen2.tests import router_fixtures as rf
 from gen2.tests.router_fixtures import OTHER, TOPIC, h
@@ -144,7 +145,7 @@ class StatusWorld(of.OperatorTestCase):
         assert outcomes[-1] == "cancelled", outcomes
         job = jobs.Job(self.root / "jobs", "job-inv_unknown0001")
         job.dir.mkdir(parents=True)
-        job.write("order.json", {"invocation_id": "inv_unknown0001", "topic_id": TOPIC})  # an order names its topic (Supervisor.prepare)
+        job.write("order.json", sf.bare_order("inv_unknown0001", TOPIC))  # an order names its topic (Supervisor.prepare)
         job.write("journal.json", {"incident": {"kind": "outcome_unknown_unresolved", "since": "2026-09-27T10:05:00Z", "owner": "supervisor:station-1",
                                                 "deadline_at": "2026-09-27T11:05:00Z", "budget": "unknown", "unknown_episode": 1,
                                                 "unresolved_since": "2026-09-27T10:04:00Z", "last_finding": COLLECTED_END}})
@@ -342,7 +343,7 @@ class HistoricalIncidentTest(StatusWorld):
         beside an end (written as its journal holds it), re-queued and replaced."""
         job = jobs.Job(self.root / "jobs", "job-inv_t4fail0001")
         job.dir.mkdir(parents=True)
-        job.write("order.json", {"invocation_id": "inv_t4fail0001", "topic_id": T4})
+        job.write("order.json", sf.bare_order("inv_t4fail0001", T4))
         job.write("journal.json", {"settled": "failed", "exhausted": {
             "kind": "retry_exhausted", "since": "2026-09-27T10:10:00Z", "owner": "supervisor:station-1", "deadline_at": "2026-09-27T11:10:00Z",
             "budget": "commit", "last_refusal": {"reason": "state_revision_stale", "detail": None}, "result_ref": None}})
