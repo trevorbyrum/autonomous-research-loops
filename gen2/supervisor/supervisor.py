@@ -203,10 +203,13 @@ class Supervisor:
     def recover(self) -> dict[str, str]:
         """Resume each job under its lock without refilling spent budgets (L-6; Astra 1c A5)."""
         outcomes, failures = {}, []
-        for path in sorted(self.jobs_root.iterdir()):
-            order = jobs.Job(self.jobs_root, path.name).read("order.json")
-            if order is None:
+        for entry in jobs.entries(self.jobs_root):
+            if entry.kind == jobs.CORRUPT:  # ambiguous station state: never skipped as absent, and the failure is raised below
+                outcomes[entry.name] = "corrupt_job_state"
+                failures.append(f"{entry.name}: {entry.reason}")
+            if entry.kind != jobs.VALID:
                 continue
+            order = entry.order
             job = self.job(order["invocation_id"])
             try:
                 with self._exclusive(order):
@@ -292,13 +295,16 @@ class Supervisor:
         self._save(job, journal)
         return finished
 
+    def census(self) -> dict:
+        """The classified facts of the jobs root (jobs.census): read-only, for status."""
+        return jobs.census(self.jobs_root)
+
     def incidents(self) -> list[dict]:
         """List owned, deadlined incidents with unfinished recoveries and their invocation topics (RG-3; Astra 1e finding 5)."""
         found = []
-        for path in sorted(self.jobs_root.iterdir()):
-            job = jobs.Job(self.jobs_root, path.name)
-            order, journal = job.read("order.json"), job.read("journal.json") or {}
-            if order is None:
+        for entry in jobs.entries(self.jobs_root):  # valid jobs only: the corrupt ones are status's blocking census (jobs.census)
+            order, journal = entry.order, entry.journal
+            if entry.kind != jobs.VALID:
                 continue
             named, unfinished = {"invocation_id": order["invocation_id"], "topic_id": order["topic_id"]}, journal.get("recovering")
             if unfinished is not None:
@@ -785,11 +791,13 @@ class Supervisor:
         if order["kind"] == "delegate":
             return
         pending = []
-        for path in sorted(self.jobs_root.iterdir()):
-            delegate = jobs.Job(self.jobs_root, path.name)
-            dorder = delegate.read("order.json")
-            if dorder is None or dorder.get("parent_invocation_id") != order["invocation_id"]:
+        for entry in jobs.entries(self.jobs_root):
+            if entry.kind == jobs.CORRUPT:  # it may be this parent's delegate: capacity is not released over it
+                pending.append(entry.name)
+            dorder = entry.order
+            if entry.kind != jobs.VALID or dorder.get("parent_invocation_id") != order["invocation_id"]:
                 continue
+            delegate = self.job(dorder["invocation_id"])
             with self._exclusive(dorder):  # its journal, under its own lock: this parent's is held already (parent before delegate)
                 djournal = self._journal(delegate)
                 if djournal.get("settled"):

@@ -123,10 +123,8 @@ class Driver:
 
     def _orders(self):
         """The orders of this topic that the supervisor holds (its own durable journal); each carries the context it was issued under."""
-        root = Path(self.station.supervisor.jobs_root)
-        for path in sorted(root.iterdir()) if root.is_dir() else ():
-            order = supervisor_jobs.Job(root, path.name).read("order.json")
-            if order and order.get("topic_id") == self.topic_id and "GEN2_CONTEXT" in (order.get("env") or {}):
+        for order in supervisor_jobs.orders(Path(self.station.supervisor.jobs_root)):
+            if order.get("topic_id") == self.topic_id and "GEN2_CONTEXT" in (order.get("env") or {}):
                 yield order
 
     def follow(self, topic: Mapping) -> tuple[str | None, bool]:

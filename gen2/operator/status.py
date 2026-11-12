@@ -70,11 +70,13 @@ def incident_view(incident: dict) -> dict:
     return view
 
 
-def compose(facts: dict, incidents: list[dict]) -> dict:
+def compose(facts: dict, incidents: list[dict], station: dict | None = None) -> dict:
+    """`station`: the jobs root's classified facts (jobs.census: counts of valid, foreign and pre-prepare entries, and the corrupt entries,
+    whose presence blocks recovery and delegate settlement). Counts and reasons only, never entry content."""
     listed = [{**incident_view(incident), **({"clears_when": "recover_incident"} if incident["blocking"] else {})} for incident in incidents]
     return {"status": "ok", "at": facts["at"], "topics": [_topic(topic, listed) for topic in facts["topics"]], "incidents": listed,
             "config_bundles": facts["config_bundles"], "capability_facts": facts["capability_facts"],
-            "waiting": [{"reason": "hold", **hold} for hold in facts["holds"]]}
+            "waiting": [{"reason": "hold", **hold} for hold in facts["holds"]], **({} if station is None else {"station": station})}
 
 
 def _incident(incident: dict) -> dict:  # nested: an incident's own fields never overwrite the reason

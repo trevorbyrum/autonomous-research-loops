@@ -106,6 +106,60 @@ def atomic_write(path: Path, value: dict) -> None:
         os.close(fd)
 
 
+VALID, FOREIGN, PRE_PREPARE, CORRUPT = "valid", "foreign", "pre_prepare", "corrupt"
+HARNESS_ORDER_KEYS = frozenset({"command", "env"})  # the whole of a qualification harness's order (the T9 harness's Job.prepare)
+
+
+class Entry:
+    """One jobs-root entry as the station reads it: its `kind`, its order when VALID, the journal when it has one, and why when CORRUPT."""
+    def __init__(self, name: str, kind: str, order: dict | None = None, journal: dict | None = None, reason: str = "") -> None:
+        self.name, self.kind, self.order, self.journal, self.reason = name, kind, order, journal or {}, reason
+
+
+def entries(root: Path) -> list[Entry]:
+    """Interpret every entry of the jobs root, once and statelessly (nothing cached or written); every reader of the root uses this.
+    VALID: an order object that names its job (invocation_id matching the directory, a topic_id) and a journal, if any, that is an object.
+    FOREIGN: positively not this station's: an order whose keys are exactly the harness's and no journal. PRE_PREPARE: a directory the
+    driver made before its order (nothing but a scratch). Everything else (damaged or non-object JSON, missing or wrong identity, a
+    journal beside an unreadable order, an unknown entry) is CORRUPT: ambiguous station state, never absence, never capacity released."""
+    found = []
+    for path in sorted(Path(root).iterdir()) if Path(root).is_dir() else ():
+        job, name = Job(root, path.name), path.name
+        if not path.is_dir():
+            found.append(Entry(name, CORRUPT, reason="not a job directory"))
+            continue
+        try:
+            order, journal = job.read("order.json"), job.read("journal.json")
+        except (ValueError, OSError) as failure:
+            found.append(Entry(name, CORRUPT, reason=f"unreadable order or journal: {type(failure).__name__}"))
+            continue
+        if order is None and journal is None:
+            kind = PRE_PREPARE if {e.name for e in path.iterdir()} <= {"scratch"} else CORRUPT
+            found.append(Entry(name, kind, reason="" if kind == PRE_PREPARE else "files without an order"))
+        elif journal is not None and not isinstance(journal, dict):
+            found.append(Entry(name, CORRUPT, reason="journal is not an object"))
+        elif isinstance(order, dict) and journal is None and set(order) == HARNESS_ORDER_KEYS:
+            found.append(Entry(name, FOREIGN))
+        elif isinstance(order, dict) and order.get("invocation_id") and name == "job-" + str(order["invocation_id"]) and isinstance(order.get("topic_id"), str):
+            found.append(Entry(name, VALID, order, journal))
+        else:
+            found.append(Entry(name, CORRUPT, reason="order is not a station order for this directory" if order is not None else "journal without an order"))
+    return found
+
+
+def orders(root: Path) -> list[dict]:
+    """The valid station orders, for the readers that follow orders only (Driver, discovery): the same interpretation, without the rest."""
+    return [entry.order for entry in entries(root) if entry.kind == VALID]
+
+
+def census(root: Path) -> dict:
+    """The classified facts of the root, for status: counts of each kind and each corrupt entry with its reason."""
+    found = entries(root)
+    corrupt = [{"entry": e.name, "reason": e.reason} for e in found if e.kind == CORRUPT]
+    return {"valid": sum(e.kind == VALID for e in found), "foreign": sum(e.kind == FOREIGN for e in found),
+            "pre_prepare": sum(e.kind == PRE_PREPARE for e in found), "corrupt": corrupt, "blocking": bool(corrupt)}
+
+
 class Job:
     def __init__(self, root: Path, handle: str) -> None:
         self.handle = handle

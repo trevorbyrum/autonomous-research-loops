@@ -36,13 +36,8 @@ def discovery_scratches(station, topic_id: str) -> Callable[[], list[Path]]:
     """The scratch directories of this topic's discovery jobs, from the supervisor's durable orders (topic and purpose both)."""
     def listing() -> list[Path]:
         root = Path(station.supervisor.jobs_root)
-        found = []
-        for path in sorted(root.iterdir()) if root.is_dir() else ():
-            job = supervisor_jobs.Job(root, path.name)
-            order = job.read("order.json") or {}
-            if order.get("topic_id") == topic_id and (order.get("env") or {}).get("GEN2_PURPOSE") == "discovery/search":
-                found.append(job.scratch)
-        return found
+        return [supervisor_jobs.Job(root, "job-" + order["invocation_id"]).scratch for order in supervisor_jobs.orders(root)
+                if order.get("topic_id") == topic_id and (order.get("env") or {}).get("GEN2_PURPOSE") == "discovery/search"]
     return listing
 
 
