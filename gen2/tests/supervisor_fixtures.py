@@ -138,6 +138,13 @@ def bare_order(invocation_id: str, topic_id: str, **fields) -> dict:
             "deadline_at": "2099-01-01T00:00:00Z", "lease_expires_at": None, "requested_by_invocation_id": None, "env": {}, **fields}
 
 
+def committed_journal(invocation_id: str) -> dict:
+    """A settled journal whose kept end is complete as the supervisor writes it (jobs.COLLECTED): tests that only read a job's result."""
+    ref = {"content_hash": f"sha256:{invocation_id}", "size_bytes": 1}
+    return {"settled": "committed", "collected": {"result": ref, "record": ref, "observation": {
+        "descendants": {"handling": "none_found", "count": 0}, "termination": None, "findings": [], "output": {}}}}
+
+
 class SupervisedTestCase(rf.RouterTestCase):
     POLICY = FAST
 
