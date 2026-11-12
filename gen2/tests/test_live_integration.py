@@ -66,7 +66,7 @@ class LiveFixtureRoute(unittest.TestCase):
 
     def test_with_no_record_a_live_walk_refuses_at_the_first_model_step_and_starts_nothing(self):
         run = self.world(live=True)
-        self.assertEqual(run.walk(), "stopped: malformed")  # the listener maps LiveProfileRefused to a fixed code
+        self.assertEqual(run.walk(), "stopped: live_refused")  # the walker maps LiveProfileRefused to its own fixed code
         self.assertEqual(audit(run, "dispatch_authorized"), [])
         self.assertFalse(list((Path(run.tmp.name) / "station" / "jobs").glob("*/spawn.json")))
 
