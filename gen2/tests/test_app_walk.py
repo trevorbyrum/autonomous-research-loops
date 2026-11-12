@@ -11,6 +11,7 @@ from gen2.app import compose, walk, workflow
 from gen2.app.engine import Engine
 from gen2.app.station import open_station
 from gen2.exec.common import Refused
+from gen2.supervisor.isolation import LiveProfileRefused
 from gen2.tests import operator_fixtures as of
 from gen2.tests.router_fixtures import TOPIC
 
@@ -55,7 +56,7 @@ class WalkerTest(unittest.TestCase):
                 self.assertEqual(self.walker(action).walk({"topic_id": TOPIC}), expected)
 
     def test_a_failing_tick_is_a_fixed_code_and_never_the_exception_text(self):
-        for error, code in ((Refused(SECRET), "refused"), (OSError(SECRET), "io"), (ValueError(SECRET), "malformed"), (KeyError(SECRET), "malformed")):
+        for error, code in ((Refused(SECRET), "refused"), (OSError(SECRET), "io"), (LiveProfileRefused("profile_absent"), "live_refused"), (ValueError(SECRET), "malformed"), (KeyError(SECRET), "malformed")):
             with self.subTest(type(error).__name__):
                 self.assertEqual(self.walker(error).walk({"topic_id": TOPIC}), {"status": "stopped", "code": code})
 

@@ -1,0 +1,5 @@
+{
+  "PLACEHOLDER": "OPERATOR_STOPPING_RULE_RULING_PENDING",
+  "not_for_staging": true,
+  "replace_with": "A nonempty JSON array of operator-selected canonical wrk_ ids, never bare DOIs."
+}
