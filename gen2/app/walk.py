@@ -58,9 +58,11 @@ def validate(name: str, document: object) -> None:
 
 def driver_factory(station, composition: compose.Composition, environ: Mapping[str, str]) -> Callable[..., Driver]:
     """The driver for one topic, built per call from the opened station (the active bundle and the kits are read fresh each time)."""
+    # Selection is pinned in each new discovery order; a later non-live tick does not revoke that job's network access.
     def make(topic_id: str, live: bool = False) -> Driver:
         bundle = station.router.status({})["config_bundles"]["active"]["bundle_hash"]
         kits = composition.kits(topic_id, lanes=LANES, gateway=GATEWAY, validate=validate)
         return Driver(station, topic_id=topic_id, bundle_hash=bundle, kits=kits, prompt_dir=Path(environ.get("GEN2_PROMPTS", PROMPTS)),
+                      discovery_module="gen2.app.discovery" if live else "gen2.discovery.child",
                       discovery_env={k: environ[k] for k in DISCOVERY if k in environ}, live_env={k: environ[k] for k in LIVE if k in environ}, live=live, say=lambda line: None)
     return make
