@@ -23,26 +23,26 @@ services:
     <<: *service
     image: sha256:${GEN2_ENGINE_ID:?64-hex engine image ID}
     command: [--root, /var/lib/gen2/control, --station-id, station-2e1, --host-id, "${GEN2_HOST_ID:?original host identity}", --bundle, /etc/gen2/bundle.json]
-    env_file: [/home/trevor/.config/gen2-2e1/secrets/engine.env]
+    env_file: ["${GEN2_CONFIG_ROOT:?configuration root}/secrets/engine.env"]
     environment: {GEN2_OPERATOR_LISTEN: "0.0.0.0:8770"}
     group_add: ["0"]
     stop_signal: SIGINT
     ports: ["127.0.0.1:8770:8770"]
     volumes:
-      - /home/trevor/.local/share/gen2-2e1/storage/control:/var/lib/gen2/control
-      - /home/trevor/.local/share/gen2-2e1/storage/spool:/var/lib/gen2/control/spool
-      - /home/trevor/.local/share/gen2-2e1/storage/control/journal:/var/lib/gen2/control/jobs
-      - /home/trevor/.local/share/gen2-2e1/storage/staging:/var/lib/gen2/staging
-      - /home/trevor/.local/share/gen2-2e1/storage/outputs/slot-0:/home/trevor/.local/share/gen2-2e1/storage/outputs/slot-0:ro
-      - /home/trevor/.local/share/gen2-2e1/storage/relay-evidence/slot-0:/home/trevor/.local/share/gen2-2e1/storage/relay-evidence/slot-0:ro
+      - ${GEN2_DATA_ROOT:?data root}/storage/control:/var/lib/gen2/control
+      - ${GEN2_DATA_ROOT:?data root}/storage/spool:/var/lib/gen2/control/spool
+      - ${GEN2_DATA_ROOT:?data root}/storage/control/journal:/var/lib/gen2/control/jobs
+      - ${GEN2_DATA_ROOT:?data root}/storage/staging:/var/lib/gen2/staging
+      - ${GEN2_DATA_ROOT:?data root}/storage/outputs/slot-0:${GEN2_DATA_ROOT:?data root}/storage/outputs/slot-0:ro
+      - ${GEN2_DATA_ROOT:?data root}/storage/relay-evidence/slot-0:${GEN2_DATA_ROOT:?data root}/storage/relay-evidence/slot-0:ro
       - /run/user/1000/gen2-2e1/docker.sock:/run/user/1000/gen2-2e1/docker.sock
-      - /home/trevor/.config/gen2-2e1/bundle.json:/etc/gen2/bundle.json:ro
+      - ${GEN2_CONFIG_ROOT:?configuration root}/bundle.json:/etc/gen2/bundle.json:ro
     networks: {service: {ipv4_address: 172.31.250.2}}
     healthcheck: {test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8770/v1/health',timeout=2)"], interval: 10s, timeout: 3s, retries: 1}
   gateway:
     <<: *service
     image: sha256:${GEN2_GATEWAY_ID:?64-hex gateway image ID}
-    env_file: [/home/trevor/.config/gen2-2e1/secrets/gateway.env]
+    env_file: ["${GEN2_CONFIG_ROOT:?configuration root}/secrets/gateway.env"]
     environment: {RESEARCH_GATEWAY_LISTEN: "0.0.0.0:8765"}
     stop_signal: SIGINT
     ports: ["127.0.0.1:8771:8765"]
@@ -52,8 +52,8 @@ services:
     <<: *service
     image: docker.io/library/postgres@sha256:cf5d353f55240ecc2f811827a15c7d1f2d562f08019b49dca12b5a59f4ab5962
     user: "999:999"
-    env_file: [/home/trevor/.config/gen2-2e1/secrets/db.env]
-    volumes: [/home/trevor/.local/share/gen2-2e1/storage/gateway-db:/var/lib/postgresql/data]
+    env_file: ["${GEN2_CONFIG_ROOT:?configuration root}/secrets/db.env"]
+    volumes: ["${GEN2_DATA_ROOT:?data root}/storage/gateway-db:/var/lib/postgresql/data"]
     tmpfs: ["/tmp:rw,nodev,nosuid,size=16m,mode=1777", "/var/run/postgresql:rw,nodev,nosuid,size=4m,mode=0700,uid=999,gid=999"]
     networks: {db: {ipv4_address: 172.31.249.3}}
     healthcheck: {test: [CMD, pg_isready, -U, gen2_gateway, -d, gen2_gateway, -h, /var/run/postgresql], interval: 10s, timeout: 3s, retries: 1}
@@ -69,7 +69,7 @@ services:
     tmpfs: ["/tmp:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001"]
     healthcheck: {disable: true}
     sysctls: {net.ipv4.ip_forward: "0", net.ipv6.conf.all.forwarding: "0"}
-    volumes: ["${GEN2_RELAY_EVIDENCE:?original relay generation}:/evidence", /home/trevor/.config/gen2-2e1/relay-fixture.conf:/etc/gen2/nginx.conf:ro]
+    volumes: ["${GEN2_RELAY_EVIDENCE:?original relay generation}:/evidence", "${GEN2_CONFIG_ROOT:?configuration root}/relay-fixture.conf:/etc/gen2/nginx.conf:ro"]
     networks: {job: {ipv4_address: 172.31.254.2}, fixture-upstream: {ipv4_address: 172.31.252.2}}
   fixture: &fixture
     <<: *service
