@@ -33,7 +33,7 @@ def main(argv: Sequence[str], *, environ: Mapping[str, str] = os.environ, call: 
     if len(argv) not in (1, 2) or (len(argv) == 2 and argv[1] != "--live"):
         say("usage: gen2.app.run_topic <topic> [--live]")
         return 2
-    topic, live = argv[0], len(argv) == 2   # --live is this run's permission to start live work; every call carries it, nothing stores it
+    topic, live = argv[0], len(argv) == 2   # --live is carried on every call: it selects the network-capable discovery entry for newly issued jobs (that choice persists with the job; cancel explicitly to stop) and is the model per-call dispatch gate
     url, token = environ.get("GEN2_OPERATOR_URL", "http://127.0.0.1:8770"), environ.get("GEN2_OPERATOR_TOKEN")
 
     def ask(method: str, path: str, body: bytes | None = None):
