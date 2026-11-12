@@ -1,4 +1,4 @@
-I02 uses exactly four wheels in D11 `/home/trevor/.local/share/gen2-2e1/storage/build-inputs/wheels`:
+I02 uses exactly four wheels in D11 `$GEN2_DATA_ROOT/storage/build-inputs/wheels`:
 
 - `rfc8785-0.1.4-py3-none-any.whl`
 - `psycopg-3.1.18-py3-none-any.whl`
