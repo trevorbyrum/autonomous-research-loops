@@ -29,7 +29,7 @@ OBS = {"descendants": {"handling": "none_found", "count": 0}, "termination": Non
 REF = {"content_hash": "sha256:" + "a" * 64, "size_bytes": 1}
 KEPT = {"observation": OBS, "result": REF, "method": "exit_observed"}   # the journal's nested records as the supervisor writes them
 SINCE = {"since": "2026-09-27T10:00:00Z"}
-COLLECTED = {**KEPT, "record": REF}
+COLLECTED = {"observation": OBS, "result": REF, "record": REF}   # no method: _retain does not keep it
 GRANT = {"capability_id": "cap_1", "invocation_id": "inv_aaaa0001", "topic_id": rf.TOPIC, "admission": {}, "config_bundle_hash": "h",
          "lease": {"lease_id": "l", "generation": 1}}
 PENDING = {"purpose": "reconcile:1", "record": REF, "method": "job_handle_lookup", "observation": OBS, "resolution": "found_result", "identity": None, "digest": None}

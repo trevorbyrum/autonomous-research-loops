@@ -187,7 +187,7 @@ OBSERVATION = {"descendants": (True, HANDLING), "termination": (True, _opt(_obj)
 OBSERVING_PARTIAL = {"descendants": (True, HANDLING), "termination": (True, _opt(_obj))}
 OBSERVING_KEPT = {"observation": (True, _of(OBSERVATION)), "method": (True, _text), "result": (True, _opt(_of({**REF, "size_bytes": (True, _count)}))),
                   "evidence": (False, _list(_of(REF))), "terminated": (False, _text)}
-COLLECTED = {**OBSERVING_KEPT, "record": (True, _of(REF)), "rehandled": (False, _of({"descendants": (True, HANDLING)}))}
+COLLECTED = {**{k: v for k, v in OBSERVING_KEPT.items() if k != "method"}, "record": (True, _of(REF)), "rehandled": (False, _of({"descendants": (True, HANDLING)}))}
 PENDING = {"purpose": (True, _text), "record": (True, _opt(_of(REF))), "method": (True, _text), "observation": (True, _of(OBSERVATION))}
 
 
