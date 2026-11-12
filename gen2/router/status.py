@@ -131,7 +131,7 @@ class Status:
                         "deadline_passed": instant(now) >= instant(b["review_deadline"])}
                        for b in sorted(self._core._store.select("intake_briefs", where), key=lambda b: (b["brief_id"], b["version"]))
                        if b["status"] in ("awaiting_confirmation", "confirmed")],
-            "drafts": self._drafts(tid),
+            "scoping_report": self._scoping_report(tid), "drafts": self._drafts(tid),
             "holds": [{**_pick(h, HOLD), "deadline_passed": instant(now) >= instant(h["deadline_at"])} for h in sorted(holds, key=lambda h: h["created_at"])],
             "invocations": [self._invocation_facts(i, now, holds, retries) for i in sorted(invocations, key=lambda i: i["admitted_at"]) if i["state"] in LIVE],
             "lanes": self._lane_facts(tid, invocations, retries, holds),
@@ -140,6 +140,12 @@ class Status:
             "signals": [{**_pick(t, ("trigger_identity", "reason_code", "signal_source", "observed_at"))}
                         for t in self._core._store.select("review_triggers", where) if t["episode_id"] is None and t["handled_at"] is None],
             "reviews": [_pick(e, ("episode_id", "kind", "opened_at")) for e in self._core._store.select("review_episodes", where) if e["closed_at"] is None]}
+
+    def _scoping_report(self, tid: str) -> dict | None:
+        """G-13's current subject is the last committed report, not the largest version across independent report series."""
+        reports = self._core._store.select("scoping_reports", {"topic_id": tid})
+        newest = max(reports, key=lambda r: self._core._one("operation_receipts", {"operation_id": r["committed_by_operation_id"]})["state_revision_after"], default=None)
+        return None if newest is None else _pick(newest, ("report_id", "version", "content_hash", "document"))
 
     def _review(self, topic: dict, completion: dict | None) -> dict | None:
         """Show the approved completion revision, or the latest current-contract candidate.
