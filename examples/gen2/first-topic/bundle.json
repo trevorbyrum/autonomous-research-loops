@@ -1,0 +1,13 @@
+{
+  "bundle_version": "config-bundle/1",
+  "version": 3,
+  "policy": {
+    "executors": [{"kind": "checkpoint", "purpose": "challenge", "prompt": {"version": 1, "content_hash": "sha256:c670842d651459cc28f618911ef611a07c5b8f540abf56af3c1c6e0788683ea2"}, "deadline_s": 3600, "lease_s": 4200, "max_input_bytes": 524288, "max_output_bytes": 131072}, {"kind": "checkpoint", "purpose": "dossier", "prompt": {"version": 1, "content_hash": "sha256:7f8b858ce6cf6afd0fe78d573e17249c559e183b60ec18522a5e83fad9c4900e"}, "deadline_s": 600, "lease_s": 900, "max_input_bytes": 65536, "max_output_bytes": 65536}, {"kind": "checkpoint", "purpose": "review", "prompt": {"version": 1, "content_hash": "sha256:93a9215c47822005ec33031ca80ff3c8c3728423aed04cfaa0a397fb74088709"}, "deadline_s": 1800, "lease_s": 2400, "max_input_bytes": 524288, "max_output_bytes": 65536}, {"kind": "discovery", "purpose": "search", "prompt": {"version": 1, "content_hash": "sha256:7f8b858ce6cf6afd0fe78d573e17249c559e183b60ec18522a5e83fad9c4900e"}, "deadline_s": 1800, "lease_s": 2400, "max_input_bytes": 262144, "max_output_bytes": 1048576}, {"kind": "research_pass", "purpose": "research", "prompt": {"version": 1, "content_hash": "sha256:0c0f7ac4859c3776f3cdf9d6d36bf43be6ee992700b8cfb619daf6ebfefe9f9d"}, "deadline_s": 3600, "lease_s": 4200, "max_input_bytes": 524288, "max_output_bytes": 131072}, {"kind": "research_pass", "purpose": "scope", "prompt": {"version": 1, "content_hash": "sha256:412fd09e480b70bfedbb4554a28caed0598236492271b610ae44dcd098354756"}, "deadline_s": 1800, "lease_s": 2400, "max_input_bytes": 262144, "max_output_bytes": 65536}, {"kind": "verification", "purpose": "verify", "prompt": {"version": 1, "content_hash": "sha256:692dc4d893979c8d7359b8fc523aa1ec3a2b1f41cd6482f61979e22095d09631"}, "deadline_s": 3600, "lease_s": 4200, "max_input_bytes": 524288, "max_output_bytes": 131072}],
+    "search_capture": "proposal-discovery/1"
+  },
+  "questions": [],
+  "templates": {
+    "obligation": [{"template_id": "T-comparison", "template_version": 1, "claim_type": "comparison", "required_slots": ["comparator", "intervention", "outcome", "population"], "optional_slots": ["setting"]}],
+    "method_design": [{"template_id": "MD-sr-plus-initiation", "template_version": 1, "families": [{"family": "systematic_review", "role": "primary"}, {"family": "truth_discovery", "role": "added", "purpose": "initiation"}]}, {"template_id": "MD-scoping-initiation", "template_version": 1, "families": [{"family": "scoping_mapping", "role": "primary"}, {"family": "truth_discovery", "role": "added", "purpose": "initiation"}]}]
+  }
+}

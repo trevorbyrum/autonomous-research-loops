@@ -1,0 +1,12 @@
+{
+  "facets": {
+    "F-frameworks": {"band": "critical", "score": 8},
+    "F-parallel": {"band": "critical", "score": 8},
+    "F-conflicts": {"band": "critical", "score": 8}
+  },
+  "obligations": {
+    "O-1": {"band": "critical", "score": 8},
+    "O-2": {"band": "critical", "score": 8},
+    "O-3": {"band": "critical", "score": 8}
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "brief_confirmation": {
+    "decision_id": "opd_ft_brief01",
+    "topic_id": "first-topic:research-to-design",
+    "kind": "brief_confirmation",
+    "disposition": "approved",
+    "subject": {"kind": "intake_brief", "ref": null, "revision": null, "hash": null},
+    "decided_at": null,
+    "notes": null,
+    "payload": null
+  },
+  "scope_approval": {
+    "decision_id": "opd_ft_scope01",
+    "topic_id": "first-topic:research-to-design",
+    "kind": "scope_approval",
+    "disposition": "approved",
+    "subject": {"kind": "scoping_report", "ref": null, "revision": null, "hash": null},
+    "decided_at": null,
+    "notes": null,
+    "payload": null
+  },
+  "rating_approval": {
+    "decision_id": "opd_ft_rate01",
+    "topic_id": "first-topic:research-to-design",
+    "kind": "rating_approval",
+    "disposition": "approved",
+    "subject": {"kind": "contract_revision", "ref": null, "revision": null, "hash": null},
+    "decided_at": null,
+    "notes": null,
+    "payload": null
+  },
+  "contract_approval": {
+    "decision_id": "opd_ft_cntr01",
+    "topic_id": "first-topic:research-to-design",
+    "kind": "contract_approval",
+    "disposition": "approved",
+    "subject": {"kind": "contract_revision", "ref": null, "revision": null, "hash": null},
+    "decided_at": null,
+    "notes": null,
+    "payload": null
+  },
+  "completion_approval": {
+    "decision_id": "opd_ft_done01",
+    "topic_id": "first-topic:research-to-design",
+    "kind": "completion_approval",
+    "disposition": "approved",
+    "subject": {"kind": "dossier", "ref": null, "revision": null, "hash": null},
+    "decided_at": null,
+    "notes": null,
+    "payload": null
+  }
+}
