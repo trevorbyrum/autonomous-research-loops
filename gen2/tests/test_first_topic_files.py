@@ -4,7 +4,10 @@ Scientific content comes from the draft; canned judgments prove only wiring. The
 never treats the shipped placeholder as a real inventory, and checks the actual persisted principals and mandatory completion gates.
 """
 import json
+import os
 import re
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -43,64 +46,59 @@ class FirstTopic(unittest.TestCase):
         self.assertNotIn("2026-09-27", text)
         self.assertNotIn("opd_brieft101", text)
 
-    def test_proposed_files_load_through_authenticated_routes_and_keep_all_completion_gates(self):
+    def test_the_runbook_commands_run_as_documented_against_the_authenticated_listener(self):
+        """The runbook's own shell blocks run verbatim (cwd = repo, `python` = this interpreter, listener URL/token in the environment).
+        Test-boundary work is only fixture setup and the sentinel staging a dedicated stack would do. No private Engine/Router/store
+        access may supply a decision: the runbook may import only the allowed modules, and every decision is checked in the records."""
         book = children.path("docs/gen2/FIRST-TOPIC.md").read_text()
-        prepare, bind_contracts = re.findall(r"python - <<'PY'\n(.*?)\nPY", book, re.S)
-        helper = re.search(r"cat > .*?/decision.py\" <<'PY'\n(.*?)\nPY", book, re.S)[1]
+        prepare, helper, to_scope, contracts, research = re.findall(r"```sh\n(.*?)\n```", book, re.S)
+        for block, command in ((prepare, "activate_config_bundle"), (to_scope, "scope_approval"), (contracts, "draft_contract"), (research, "completion_approval")):
+            self.assertIn(command, block)
+        allowed = ("json", "os", "re", "sys", "pathlib", "gen2.core", "gen2.app.cli", "gen2.app.run_topic")
+        code = "\n".join((prepare, helper, to_scope, contracts, research))
+        used = set(re.findall(r"^\s*(?:from|import) ([\w.]+)", code, re.M)) | set(re.findall(r"python -m ([\w.]+)", code))
+        self.assertEqual({u for u in used if not any(u == a or u.startswith(a + ".") for a in allowed)}, set(), "private access in the runbook")
+        self.assertNotRegex(code, r"sqlite|GEN2_STORE")
         with mock.patch.object(offline_run, "TOPIC", files.TOPIC):
             run = offline_run.Offline()
             self.addCleanup(run.close)
-            root = children.path("examples/gen2/first-topic")
-            working = Path(run.tmp.name) / "operator-inputs"
-            working.mkdir()
-            for path in root.glob("*.json"):
-                (working / path.name).write_bytes(path.read_bytes())
-            def read(name):
-                return json.loads((working / (name + ".json")).read_text())
-            def status(name):
-                _, shown = run.cli(["status", "--topic", files.TOPIC])
-                path = working / (name + ".json")
-                path.write_text(json.dumps(shown))
-                return str(path)
-            _, station = run.cli(["status"])
-            (working / "station-status.json").write_text(json.dumps(station))
-            env = {"GEN2_FIRST_TOPIC_DIR": str(working), "GEN2_OPERATOR_NAME": "alice", "GEN2_BRIEF_REVIEW_DEADLINE": "2099-01-01T00:00:00Z",
-                   "GEN2_SENTINEL_REFERENCE": str(working / "sentinel-ref.json")}
-            def execute(code, *args):
-                return children.python(["-c", code, *args], env={**children.env(), **env}, capture_output=True, text=True, timeout=30)
-            prepared = execute(prepare)
-            self.assertEqual(prepared.returncode, 0, prepared.stderr)
-            run.command("activate_config_bundle", read("bundle"))
-            def intake():
-                run.command("create_topic", read("topic"))
-                run.command("open_brief", read("brief"))
-            def decide(kind, shown=None):
-                out = execute(helper, kind, *([shown] if shown else []))
-                self.assertEqual(out.returncode, 0, out.stderr)
-                return run.command("apply_operator_decision", json.loads(out.stdout))
-            def contract():
-                refused = execute(bind_contracts)  # the runbook refuses its shipped placeholder
-                self.assertNotEqual(refused.returncode, 0)
-                self.assertIn("AssertionError", refused.stderr)
-                (working / "sentinel.json").write_bytes(canonical.canonical_bytes([work_id("doi", "10.1/offline-a")]))
-                (working / "sentinel-ref.json").write_text(json.dumps(run.sentinel))  # authorized fixture setup from the station opener
-                bound = execute(bind_contracts)
-                self.assertEqual(bound.returncode, 0, bound.stderr)
-                run.command("draft_contract", read("contract-r1"))
-                decide("rating_approval")
-                run.command("draft_contract", read("contract-r2"))
-                decide("contract_approval")
-            def complete():
-                decide("completion_approval", status("completion-status"))
-            run.intake, run.approve_contract, run.approve_completion = intake, contract, complete
-            run.confirm_brief = lambda: decide("brief_confirmation")
-            run.approve_scope = lambda: decide("scope_approval", status("scope-status"))
-            run.open_review = lambda: run.command("open_review", {"episode_id": "rev_ft_review01", "topic_id": files.TOPIC, "kind": "fixed_cadence"})
-            with mock.patch.object(run, "records", side_effect=AssertionError("private operator read")):
-                self.assertEqual(run.walk(), "done")
+            root = Path(run.tmp.name)
+            for name in ("operator-tmp", "shim"):
+                (root / name).mkdir()
+            shim = root / "shim" / "python"
+            shim.write_text(f'#!/bin/sh\nexec {sys.executable} "$@"\n')
+            shim.chmod(0o755)
+            base = {**children.env(), **run.environ, "PATH": f"{root / 'shim'}:{os.environ['PATH']}", "TMPDIR": str(root / "operator-tmp")}
+
+            def sh(block, **extra):
+                return subprocess.run(["sh", "-e", "-c", block], cwd=children.path("."), env={**base, **extra}, capture_output=True, text=True, timeout=600)
+
+            def local(block):   # the one boundary edit: the fixture has no network-capable discovery entry, so `--live` (a permission flag) is dropped
+                self.assertIn("run_topic", block)
+                return block.replace(" --live", "")
+
+            def ok(block, **extra):
+                done = sh(block, **extra)
+                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+                return done
+            ok(prepare, GEN2_OPERATOR_NAME="alice", GEN2_BRIEF_REVIEW_DEADLINE="2099-01-01T00:00:00Z")
+            (working,) = (root / "operator-tmp").iterdir()
+            env = {"GEN2_FIRST_TOPIC_DIR": str(working), "GEN2_SENTINEL_REFERENCE": str(working / "sentinel-ref.json"),
+                   "GEN2_FIRST_TOPIC_ID": files.TOPIC}   # the operator's shell keeps what the earlier blocks exported
+            ok(helper, **env)
+            ok(local(to_scope), **env)   # the walk stops at the scope wait; the approval is the runbook's own command
+            refused = sh(contracts, **env)   # the shipped placeholder is refused by the runbook before anything is drafted
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn("AssertionError", refused.stderr)
+            (working / "sentinel.json").write_bytes(canonical.canonical_bytes([work_id("doi", "10.1/offline-a")]))
+            (working / "sentinel-ref.json").write_text(json.dumps(run.sentinel))   # authorized fixture staging at the station opener
+            ok(contracts, **env)
+            ok(local(research), **env)
             decisions = run.records("operator_decisions")
             self.assertEqual({d["operator_id"] for d in decisions}, {"alice"})
             self.assertEqual({d["decision_id"] for d in decisions}, set(files.DECISIONS.values()))
+            (scope,) = [d for d in decisions if d["kind"] == "scope_approval"]
+            self.assertIn(scope["subject_hash"], {r["content_hash"] for r in run.records("scoping_reports")})
             (completion,) = [d for d in decisions if d["kind"] == "completion_approval"]
             dossier = next(d for d in run.records("dossiers") if d["dossier_revision"] == completion["subject_revision"])
             self.assertEqual(completion["subject_hash"], dossier["content_hash"])

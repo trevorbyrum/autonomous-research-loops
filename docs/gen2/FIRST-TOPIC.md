@@ -6,6 +6,10 @@ The draft's broad lane list is historical: this first walk uses Semantic Scholar
 
 `examples/gen2/first-topic/sentinel.json` is **NOT FOR STAGING**: the stopping-rule ruling and named works are pending. The known-item profile is a conditional template, not the ruling. Stop before contract drafting until the operator chooses the rule and an authorized procedure stages its operand. There is currently no `stage_operand` CLI command; do not invent one or write the store. If another rule is selected, revise both contracts and revalidate instead of using these known-item instructions.
 
+**Operator protocol choices pending** (not ruled; the files only propose them):
+- The stopping-rule ruling and the named sentinel works (above).
+- The `confidence_scheme` labels both contracts inherit from the fixture (low = one source or disagreement; high = two or more independent agreeing sources): Astra's concern is that agreement or count alone does not measure study quality, relevance or strength of validation, so agreement among unvalidated methodological assertions could be labelled high confidence. Revise or accept it explicitly before contract approval; the rubric is unchanged here.
+
 Preparation timestamps describe file preparation, not model outputs or operator approvals. Decisions have no `operator_id`: identity comes from the listener token. Null decision subjects/times, the brief owner/deadline and sentinel must be filled locally. Read expanded JSON with `python -m json.tool FILE` before approving content. Regenerate proposed files, without activation, with `python -m gen2.tests.first_topic_files DESTINATION` if prompt bytes change.
 
 ## Prepare local copies and the brief
