@@ -25,7 +25,7 @@ class Fixtures(unittest.TestCase):
     def setUp(self):
         """Roots the recorded native capture ran under."""
         data = ENTITLEMENT.removeprefix("--allow=fs.read=").removesuffix("/storage/build-inputs")
-        patcher = patch.dict(os.environ, {"GEN2_DATA_ROOT": data})
+        patcher = patch.dict(os.environ, {"GEN2_DATA_ROOT": data, "GEN2_CONFIG_ROOT": "/cfg"})
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -56,6 +56,31 @@ class Fixtures(unittest.TestCase):
             digest.return_value.hexdigest.return_value = "changed"
             with self.assertRaisesRegex(ValueError, "Compose plugin pin"):
                 build.compose_command("version")
+
+    def test_compose_command_refuses_unset_or_relative_roots(self):
+        with patch.object(Path, "read_bytes", return_value=b"plugin"), patch.object(build.hashlib, "sha256") as digest:
+            digest.return_value.hexdigest.return_value = build.COMPOSE_SHA
+            for name in ("GEN2_CONFIG_ROOT", "GEN2_DATA_ROOT"):
+                for value in (None, "./r", "../r"):
+                    env = {k: v for k, v in os.environ.items() if k != name} | ({} if value is None else {name: value})
+                    with self.subTest(name=name, value=value), patch.dict(os.environ, env, clear=True), self.assertRaisesRegex(ValueError, name):
+                        build.compose_command("config")
+
+    def test_bake_definition_refuses_unset_or_relative_data_root(self):
+        """Native HCL validation under the pinned buildx; --print is local, no daemon."""
+        buildx = "/usr/libexec/docker/cli-plugins/docker-buildx"
+        bake = Path(__file__).with_name("docker-bake.hcl")
+        env = {"PATH": "/usr/bin:/bin"}
+        self.assertEqual(subprocess.run([buildx, "version"], env=env, capture_output=True, text=True).stdout.strip(), build.BUILDX_VERSION)
+        for value in (None, "", "./r", "../r", "r"):
+            with self.subTest(value=value):
+                run = subprocess.run([buildx, "bake", "--print", "-f", str(bake)], env=env | ({} if value is None else {"GEN2_DATA_ROOT": value}), capture_output=True, text=True, timeout=30)
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn("GEN2_DATA_ROOT must be set to an absolute path", run.stderr)
+        run = subprocess.run([buildx, "bake", "--print", "-f", str(bake)], env=env | {"GEN2_DATA_ROOT": "/d"}, capture_output=True, text=True, timeout=30)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        with patch.dict(os.environ, {"GEN2_DATA_ROOT": "/d"}):
+            self.assertEqual(json.loads(run.stdout)["target"]["runner"]["contexts"]["approved-inputs"], str(build.build_inputs()))
 
     def test_compose_refuses_a_shadowing_user_or_extra_directory_plugin(self):
         """Shadow candidates cannot replace the exact executable; mismatched bytes refuse."""

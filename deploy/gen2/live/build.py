@@ -33,6 +33,7 @@ def compose_command(*args):
     """Execute the checked plugin itself with the canonical dedicated-runtime arguments."""
     if hashlib.sha256(COMPOSE.read_bytes()).hexdigest() != COMPOSE_SHA:
         raise ValueError("Compose plugin pin")
+    root("GEN2_CONFIG_ROOT"), root("GEN2_DATA_ROOT")  # Compose accepts relative roots; refuse before it runs
     return [str(COMPOSE), *docker_command(*args)[1:]]
 
 

@@ -1,4 +1,9 @@
-variable "GEN2_DATA_ROOT" {}
+variable "GEN2_DATA_ROOT" {
+  validation {
+    condition = GEN2_DATA_ROOT != null && length(regexall("^/", GEN2_DATA_ROOT)) > 0
+    error_message = "GEN2_DATA_ROOT must be set to an absolute path"
+  }
+}
 
 group "default" {
   targets = ["runner", "engine", "gateway", "fixture"]
