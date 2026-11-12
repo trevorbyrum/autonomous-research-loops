@@ -14,6 +14,7 @@ from gen2.app.workflow import Step
 from gen2.core import canonical
 from gen2.exec.common import Refused
 from gen2.supervisor import jobs as supervisor_jobs
+from gen2.tests import supervisor_fixtures as sf
 
 TOPIC = "fleet:topic"
 BUNDLE = "sha256:" + "b" * 64
@@ -67,7 +68,7 @@ class Supervisor:
         self.lives.append(live)
         if self.world.fail_submit:
             raise OSError("disk full")
-        self.job(order.invocation_id).prepare({"invocation_id": order.invocation_id, "topic_id": order.topic_id, "env": dict(order.env)})
+        self.job(order.invocation_id).prepare(sf.bare_order(order.invocation_id, order.topic_id, kind=order.kind, env=dict(order.env)))
         self.submitted.append(order)
         return "running"
 
@@ -223,7 +224,7 @@ class DriverTest(unittest.TestCase):
         never issued; this helper adds no field to an order."""
         job = supervisor_jobs.Job(self.world.root / "jobs", "job-" + iid)
         if job.read("order.json") is None:
-            job.prepare({"invocation_id": iid, "topic_id": TOPIC, "env": {}})
+            job.prepare(sf.bare_order(iid, TOPIC))
         job.write("journal.json", journal)
 
     def settle(self, d, step, proposals=False):

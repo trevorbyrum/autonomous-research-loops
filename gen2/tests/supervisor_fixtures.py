@@ -131,6 +131,13 @@ class Unreachable:
         return call
 
 
+
+def bare_order(invocation_id: str, topic_id: str, **fields) -> dict:
+    """A station order with every field the reader requires (jobs.ORDER_FIELDS) and nothing else; tests that need a job on disk without a lifecycle."""
+    return {"invocation_id": invocation_id, "topic_id": topic_id, "kind": "research_pass", "config_bundle_hash": "sha256:" + "0" * 64,
+            "deadline_at": "2099-01-01T00:00:00Z", "lease_expires_at": None, "requested_by_invocation_id": None, "env": {}, **fields}
+
+
 class SupervisedTestCase(rf.RouterTestCase):
     POLICY = FAST
 

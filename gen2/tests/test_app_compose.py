@@ -15,6 +15,7 @@ from gen2.core import canonical
 from gen2.exec.common import Refused
 from gen2.supervisor import jobs as supervisor_jobs
 from gen2.supervisor.supervisor import RECORDED
+from gen2.tests import supervisor_fixtures as sf
 from gen2.tests.test_app_driver import TOPIC, World, contract, checkpoint, scope
 
 CAPABILITY = "cap_" + "d" * 32       # a distinctive bearer-style value from a prior receipt
@@ -40,7 +41,7 @@ class ComposeTest(unittest.TestCase):
         root = self.world.root / "jobs"
         for iid, topic, purpose in (("inv_disc000a", TOPIC, "discovery/search"), ("inv_disc000b", "fleet:other", "discovery/search"), ("inv_disc000c", TOPIC, "research_pass/research"),
                                     ("inv_disc000d", TOPIC, "discovery/search")):
-            supervisor_jobs.Job(root, "job-" + iid).prepare({"invocation_id": iid, "topic_id": topic, "env": {"GEN2_PURPOSE": purpose, "GEN2_STEP": "discovery/search#1"}})
+            supervisor_jobs.Job(root, "job-" + iid).prepare(sf.bare_order(iid, topic, env={"GEN2_PURPOSE": purpose, "GEN2_STEP": "discovery/search#1"}))
         listed = compose.discovery_scratches(self.station, TOPIC)()
         self.assertEqual(sorted(p.parent.name for p in listed), ["job-inv_disc000a", "job-inv_disc000d"])   # purpose, not the step name, and this topic
 

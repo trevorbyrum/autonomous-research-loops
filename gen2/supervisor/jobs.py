@@ -125,28 +125,66 @@ def _present(path: Path) -> tuple[bool, object]:
         return False, None
 
 
-def _journal_shaped(journal: object) -> bool:
-    """Every journal field a consumer indexes, typed: the incident-like fields are an object with `since` (or none), the rest their kind."""
-    if not isinstance(journal, dict):
-        return False
-    dated = lambda v: isinstance(v, dict) and "since" in v
-    recovering = journal.get("recovering")
-    return (all(journal.get(k) is None or isinstance(journal[k], dict) for k in ("exhausted", "collected", "budgets", "recovering"))
-            and (journal.get("incident") is None or dated(journal["incident"])) and (recovering is None or dated(recovering.get("incident")))
-            and isinstance(journal.get("recoveries", []), list) and all(isinstance(r, dict) and dated(r.get("incident")) for r in journal.get("recoveries", [])))
+def _count(v: object) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 0
+
+
+def _obj(v: object) -> bool:
+    return isinstance(v, dict)
+
+
+def _dated(v: object) -> bool:
+    return isinstance(v, dict) and "since" in v
+
+
+def _opt(check):
+    return lambda v: v is None or check(v)
+
+
+def _text(v: object) -> bool:
+    return isinstance(v, str) and bool(v)
+
+
+def _id(v: object) -> bool:
+    return isinstance(v, str) and bool(INVOCATION_ID.fullmatch(v))
+
+
+# THE contract of the two files consumers read: field -> (must be present, validator of a present value). A field a consumer
+# reads (journal[...]/.get/.pop/.setdefault, order[...]/.get) is listed here, and a test fails if one is not; absence of an optional
+# field keeps the consumer's default (a fresh journal), but a present value that fails its validator is CORRUPT, never normalized.
+JOURNAL_FIELDS = {
+    "incident": (False, _opt(_dated)), "exhausted": (False, _opt(_obj)), "collected": (False, _opt(_obj)),
+    "recovering": (False, _opt(lambda v: _obj(v) and _dated(v.get("incident")))),
+    "recoveries": (False, lambda v: isinstance(v, list) and all(_obj(r) and _dated(r.get("incident")) for r in v)),
+    "budgets": (False, lambda v: _obj(v) and all(_count(n) for n in v.values())),  # an object of retry counters, each incremented by _spend
+    "revision": (False, _count), "settled": (False, _opt(_text)), "unlaunched": (False, lambda v: isinstance(v, bool)),
+    "recorded": (False, lambda v: isinstance(v, bool)),
+    **{k: (False, _opt(_obj)) for k in ("write_failure", "pending", "refusal", "unresolved", "outage", "observing", "grant", "dispatch",
+                                        "record_failure", "envelope", "spawn_refused", "refused")},
+}
+ORDER_FIELDS = {
+    "invocation_id": (True, _id), "topic_id": (True, _text), "kind": (True, _text), "config_bundle_hash": (True, _text),
+    "deadline_at": (True, _text), "lease_expires_at": (True, _opt(_text)), "requested_by_invocation_id": (True, _opt(_text)),
+    "parent_invocation_id": (False, _opt(_id)), "retry_of": (False, _opt(_text)), "reservation": (False, _opt(_obj)),
+    "env": (False, lambda v: _obj(v) and all(isinstance(k, str) and isinstance(x, str) for k, x in v.items())),
+    "live": (False, lambda v: isinstance(v, bool)), "plan": (False, _obj),
+}
+
+
+def _fields(doc: object, table: dict) -> bool:
+    return isinstance(doc, dict) and all((name in doc if required else True) and (name not in doc or check(doc[name]))
+                                         for name, (required, check) in table.items())
 
 
 def _order_shaped(order: object, name: str) -> bool:
-    """The order fields consumers rely on, typed: invocation_id of the id form and naming this directory, a non-empty topic_id, env an object."""
-    return (isinstance(order, dict) and isinstance(order.get("invocation_id"), str) and bool(INVOCATION_ID.fullmatch(order["invocation_id"]))
-            and name == "job-" + order["invocation_id"] and isinstance(order.get("topic_id"), str) and bool(order["topic_id"])
-            and isinstance(order.get("env", {}), dict)
-            and (order.get("parent_invocation_id") is None or isinstance(order["parent_invocation_id"], str) and bool(INVOCATION_ID.fullmatch(order["parent_invocation_id"]))))
+    """A station order: every ORDER_FIELDS entry, naming this directory, and a delegate naming its parent."""
+    return (_fields(order, ORDER_FIELDS) and name == "job-" + order["invocation_id"]
+            and (order["kind"] != "delegate" or order.get("parent_invocation_id") is not None))
 
 
 def entries(root: Path) -> list[Entry]:
     """Interpret every entry of the jobs root, once and statelessly (nothing cached or written); every reader of the root uses this.
-    VALID: an order whose consumed fields are typed (_order_shaped) and a journal, if any, likewise (_journal_shaped).
+    VALID: an order whose consumed fields are typed (ORDER_FIELDS) and a journal, if any, likewise (JOURNAL_FIELDS).
     FOREIGN: positively not this station's: an order whose keys are exactly the harness's and no journal. PRE_PREPARE: a directory the
     driver made before its order (nothing but a scratch). Everything else (damaged or non-object JSON, missing or wrong identity, a
     journal beside an unreadable order, an unknown entry) is CORRUPT: ambiguous station state, never absence, never capacity released."""
@@ -165,7 +203,7 @@ def entries(root: Path) -> list[Entry]:
         if not has_order and not has_journal:
             kind = PRE_PREPARE if {e.name for e in path.iterdir()} <= {"scratch"} else CORRUPT
             found.append(Entry(name, kind, reason="" if kind == PRE_PREPARE else "files without an order"))
-        elif has_journal and not _journal_shaped(journal):
+        elif has_journal and not _fields(journal, JOURNAL_FIELDS):
             found.append(Entry(name, CORRUPT, reason="journal is not a station journal"))
         elif not has_journal and isinstance(order, dict) and set(order) == HARNESS_ORDER_KEYS:
             found.append(Entry(name, FOREIGN))

@@ -8,8 +8,10 @@ valid incidents stay visible; every reader of the root sees the same valid order
 Oracles: the fixture root written by hand. What they cannot show: the host's real debris (Lane C)."""
 from __future__ import annotations
 
+import ast
 import json
 import shutil
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -32,7 +34,7 @@ class MixedRootTest(sf.SupervisedTestCase):
         (directory / name).write_text(text)
 
     def build(self, *, corrupt: bool) -> None:
-        self.put("job-inv_valid00001", "order.json", json.dumps({"invocation_id": "inv_valid00001", "topic_id": rf.TOPIC, "env": DISCOVERY}))
+        self.put("job-inv_valid00001", "order.json", json.dumps(sf.bare_order("inv_valid00001", rf.TOPIC, env=DISCOVERY)))
         self.put("job-inv_valid00001", "journal.json", json.dumps({"settled": "failed", "exhausted": {"kind": "retry_exhausted", "since": "2026-09-27T10:00:00Z"}}))
         for n in range(2):  # the actual harness shape
             self.put(f"job-inv_native_engine_{n}", "order.json", json.dumps({"command": ["x"], "env": {}}))
@@ -41,10 +43,10 @@ class MixedRootTest(sf.SupervisedTestCase):
         if corrupt:
             self.put("job-inv_badjson001", "order.json", "{not json")
             self.put("job-inv_nonobject1", "order.json", "[1, 2]")
-            self.put("job-inv_wrongid001", "order.json", json.dumps({"invocation_id": "inv_other00001", "topic_id": rf.TOPIC}))
+            self.put("job-inv_wrongid001", "order.json", json.dumps(sf.bare_order("inv_other00001", rf.TOPIC)))
             self.put("job-inv_noidentity", "order.json", json.dumps({"kind": "research_pass", "env": {}}))
             self.put("job-inv_damaged001", "journal.json", json.dumps({"incident": {"since": "x"}}))  # a journal, no order
-            self.put("job-inv_badjournal", "order.json", json.dumps({"invocation_id": "inv_badjournal", "topic_id": rf.TOPIC}))
+            self.put("job-inv_badjournal", "order.json", json.dumps(sf.bare_order("inv_badjournal", rf.TOPIC)))
             self.put("job-inv_badjournal", "journal.json", "[]")
             self.put("job-inv_harnessjrn", "order.json", json.dumps({"command": [], "env": {}}))
             self.put("job-inv_harnessjrn", "journal.json", "{}")  # two keys but station state beside it: not positively foreign
@@ -99,7 +101,7 @@ class MixedRootTest(sf.SupervisedTestCase):
         self.assertEqual(discovery_scratches(station, rf.TOPIC)(), [Path(self.supervisor.jobs_root / "job-inv_valid00001" / "scratch")])
 
     def test_every_consumed_shape_is_checked_by_the_reader(self) -> None:
-        station = {"invocation_id": "inv_shaped0001", "topic_id": rf.TOPIC}
+        station = sf.bare_order("inv_shaped0001", rf.TOPIC)
         cases = {  # label: (directory, order, journal text): each must be CORRUPT, blocking, and leave the valid job's status and recovery readable
             "null_journal_harness": ("job-inv_nulljrn_h", {"command": [], "env": {}}, "null"),
             "null_journal_station": ("job-inv_shaped0001", station, "null"),
@@ -107,10 +109,16 @@ class MixedRootTest(sf.SupervisedTestCase):
             "recovering_without_incident": ("job-inv_shaped0001", station, json.dumps({"recovering": {"requested_by": "x"}})),
             "exhausted_string": ("job-inv_shaped0001", station, json.dumps({"exhausted": "x"})),
             "recoveries_not_list": ("job-inv_shaped0001", station, json.dumps({"recoveries": 3})),
-            "numeric_invocation": ("job-123", {"invocation_id": 123, "topic_id": rf.TOPIC}, None),
+            "numeric_invocation": ("job-123", {**station, "invocation_id": 123}, None),
             "empty_topic": ("job-inv_shaped0001", {**station, "topic_id": ""}, None),
-            "malformed_invocation": ("job-bad", {"invocation_id": "bad", "topic_id": rf.TOPIC}, None),
+            "malformed_invocation": ("job-bad", {**station, "invocation_id": "bad"}, None),
             "env_not_object": ("job-inv_shaped0001", {**station, "env": ["x"]}, None),
+            "env_value_not_text": ("job-inv_shaped0001", {**station, "env": {"A": 1}}, None),
+            "missing_kind": ("job-inv_shaped0001", {k: v for k, v in station.items() if k != "kind"}, None),
+            "delegate_without_parent": ("job-inv_shaped0001", {**station, "kind": "delegate"}, None),
+            **{f"budgets_{label}": ("job-inv_aaaa0001", sf.bare_order("inv_aaaa0001", rf.TOPIC), json.dumps({"incident": {"since": "x"}, "budgets": budgets}))
+               for label, budgets in (("null", None), ("list", []), ("string_counter", {"recovery": "broken"}), ("bool_counter", {"recovery": True}),
+                                      ("negative_counter", {"recovery": -1}), ("float_counter", {"write": 1.5}), ("null_counter", {"router": None}))},
         }
         self.build(corrupt=False)
         for label, (handle, order, journal) in cases.items():
@@ -127,3 +135,42 @@ class MixedRootTest(sf.SupervisedTestCase):
                 with self.assertRaises(Waiting):
                     self.supervisor._settle_delegates({"kind": "research_pass", "invocation_id": "inv_parent0001"})
                 shutil.rmtree(self.supervisor.jobs_root / handle)
+
+
+class ConsumedFieldsAreInTheTableTest(unittest.TestCase):
+    """The reader's tables (jobs.JOURNAL_FIELDS, jobs.ORDER_FIELDS) are what consumers assume: a journal or order field read by the
+    supervisor, driver or compose that is missing from its table fails here, so a check and its consumer cannot drift (round 1 and 2 of S8-B)."""
+    MODULES = ("supervisor/supervisor.py", "app/driver.py", "app/compose.py")
+    KINDS = {"journal": ("journal", "djournal"), "order": ("order", "dorder")}
+
+    def reads(self) -> set[tuple[str, str]]:
+        def kind(node):  # which document a base expression is: a variable or attribute named for it, or a read of its file
+            while isinstance(node, ast.BoolOp):
+                node = node.values[0]
+            name = node.id if isinstance(node, ast.Name) else node.attr if isinstance(node, ast.Attribute) else None
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "read" and node.args \
+                    and isinstance(node.args[0], ast.Constant):
+                name = {"journal.json": "journal", "order.json": "order"}.get(node.args[0].value)
+            return next((k for k, names in self.KINDS.items() if name == k or name in names), None)
+        found = set()
+        for module in self.MODULES:
+            for node in ast.walk(ast.parse((Path(jobs.__file__).parent.parent / module).read_text())):
+                if isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Load) and isinstance(node.slice, ast.Constant):
+                    base, key = node.value, node.slice.value
+                elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("get", "pop", "setdefault") \
+                        and node.args and isinstance(node.args[0], ast.Constant):
+                    base, key = node.func.value, node.args[0].value
+                else:
+                    continue
+                if isinstance(key, str) and kind(base):
+                    found.add((kind(base), key))
+        return found
+
+    def test_the_scan_sees_the_known_consumers(self) -> None:
+        found = self.reads()
+        for pair in (("journal", "budgets"), ("journal", "settled"), ("journal", "revision"), ("order", "topic_id"), ("order", "env"), ("order", "kind")):
+            self.assertIn(pair, found)
+
+    def test_every_consumed_field_is_in_its_table(self) -> None:
+        tables = {"journal": jobs.JOURNAL_FIELDS, "order": jobs.ORDER_FIELDS}
+        self.assertEqual(sorted((kind, key) for kind, key in self.reads() if key not in tables[kind]), [])
