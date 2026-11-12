@@ -34,7 +34,7 @@ class Walker:
 
     def walk(self, request: Mapping) -> dict:
         """{topic_id, live?} -> {status: ok, action: issue|advance|wait|stop|done, code?, command?}, or {status: refused, reason}. One tick.
-        `live` is the operator's per-call permission to start live work: the exact boolean true, default off, never stored."""
+        `live` is the exact boolean true, default off. It selects the network-capable discovery entry for newly issued discovery jobs; that selection persists with the job (later non-live ticks neither revoke it nor prevent a deferred start; stop existing work by explicit cancellation). It is distinct from the model per-call dispatch gate."""
         if (not isinstance(request, Mapping) or not {"topic_id"} <= set(request) <= {"topic_id", "live"} or not isinstance(request["topic_id"], str)
                 or not TOPIC.match(request["topic_id"]) or type(request.get("live", False)) is not bool):
             return {"status": "refused", "reason": "request_invalid"}
