@@ -1,0 +1,26 @@
+{
+  "fixture": {
+    "schema": "live-vocabulary.schema.json#/$defs/policy_accounting",
+    "expect": "valid",
+    "tests": "Gate S #9 proposal only: REQ/6/42 pending operator ruling and physical-window qualification; fragment grants no live authority"
+  },
+  "instance": {
+    "run_id": "PENDING_OPERATOR_RUN_ID",
+    "accounting_owner": "PENDING_OPERATOR_PRINCIPAL",
+    "deadline_at": "2026-11-13T00:00:00Z",
+    "max_attempts": 7,
+    "max_concurrent_attempts": 1,
+    "ceiling_minor_units": 42,
+    "currency": "REQ",
+    "ceiling_scope": [
+      "model",
+      "delegates",
+      "retries",
+      "verification",
+      "gateway",
+      "maintenance"
+    ],
+    "policy_version": "s9-proposal",
+    "topic_id": "first-topic:research-to-design"
+  }
+}

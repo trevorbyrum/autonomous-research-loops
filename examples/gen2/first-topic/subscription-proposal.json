@@ -1,0 +1,41 @@
+{
+  "status": "pending_operator_decision",
+  "not_for_staging": true,
+  "source": "Gate S #9, 2026-11-13; Astra P1-2: see FIRST-TOPIC.md for the effective send-window trace",
+  "terms_approved": false,
+  "ceiling_approved": false,
+  "credential_rule_approved": false,
+  "date_approved": false,
+  "upper_scope": "confirmed end (normal end or confirmed containment) within the qualified send window only",
+  "unknown_end": {
+    "finite_upper": null,
+    "rate_per_minute": 1,
+    "action": "Run stops, admission closes, present operator ends relay",
+    "debt": "DEBT-060"
+  },
+  "weekly_used_percent_stop_proposal": 80,
+  "min_token_remaining_seconds_proposal": 7200,
+  "record_template": {
+    "record_version": "qualification-record/1",
+    "state": "unqualified",
+    "route": "real",
+    "backend": "docker-cli/1",
+    "provider_route": "chatgpt-subscription",
+    "runner_version": "0.153.2",
+    "manifest_pin": null,
+    "credential_ref": null,
+    "deployment_id": null,
+    "affected_lanes": [],
+    "witnesses": [],
+    "plan": null,
+    "upper_minor_units": 6,
+    "policy": {"run_id": "PENDING_OPERATOR_RUN_ID", "accounting_owner": "PENDING_OPERATOR_PRINCIPAL", "deadline_at": null, "max_attempts": 7, "max_concurrent_attempts": 1, "ceiling_minor_units": 42, "currency": "REQ", "ceiling_scope": ["model", "delegates", "retries", "verification", "gateway", "maintenance"], "policy_version": "s9-proposal"}
+  },
+  "orders": [
+    {"invocation_id": "inv_98fb917b0849bda40e075288e85027ea", "kind": "research_pass", "topic_id": "first-topic:research-to-design", "config_bundle_hash": "sha256:22ab568757ab27c14b0eb67167a781eb8a3c1c479e137889b5034dd53954e9e9", "deadline_at": "2026-11-12T04:28:17Z", "lease_expires_at": "2026-11-12T05:03:17Z", "command": ["python3", "-m", "gen2.exec.job", "scope", "PENDING_JOB_SCRATCH"], "env": {"GEN2_PURPOSE": "research_pass/scope", "GEN2_INPUT_DIGEST": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+    {"invocation_id": "inv_885f362f8e905c3b99a65f5bf9ff9e7f", "kind": "research_pass", "topic_id": "first-topic:research-to-design", "config_bundle_hash": "sha256:22ab568757ab27c14b0eb67167a781eb8a3c1c479e137889b5034dd53954e9e9", "deadline_at": "2026-11-12T04:28:17Z", "lease_expires_at": "2026-11-12T05:33:17Z", "command": ["python3", "-m", "gen2.exec.job", "research", "PENDING_JOB_SCRATCH"], "env": {"GEN2_PURPOSE": "research_pass/research", "GEN2_INPUT_DIGEST": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+    {"invocation_id": "inv_7e124c03d643d82fb2d4cca9fd1d5629", "kind": "verification", "topic_id": "first-topic:research-to-design", "config_bundle_hash": "sha256:22ab568757ab27c14b0eb67167a781eb8a3c1c479e137889b5034dd53954e9e9", "deadline_at": "2026-11-12T04:28:17Z", "lease_expires_at": "2026-11-12T05:33:17Z", "command": ["python3", "-m", "gen2.exec.job", "verify", "PENDING_JOB_SCRATCH"], "env": {"GEN2_PURPOSE": "verification/verify", "GEN2_INPUT_DIGEST": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+    {"invocation_id": "inv_46f846e5c8aabac4e1edc80e6f0c3abf", "kind": "checkpoint", "topic_id": "first-topic:research-to-design", "config_bundle_hash": "sha256:22ab568757ab27c14b0eb67167a781eb8a3c1c479e137889b5034dd53954e9e9", "deadline_at": "2026-11-12T04:28:17Z", "lease_expires_at": "2026-11-12T05:33:17Z", "command": ["python3", "-m", "gen2.exec.job", "challenge", "PENDING_JOB_SCRATCH"], "env": {"GEN2_PURPOSE": "checkpoint/challenge", "GEN2_INPUT_DIGEST": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+    {"invocation_id": "inv_4ca78760b49e85d7943efb9a91692e39", "kind": "checkpoint", "topic_id": "first-topic:research-to-design", "config_bundle_hash": "sha256:22ab568757ab27c14b0eb67167a781eb8a3c1c479e137889b5034dd53954e9e9", "deadline_at": "2026-11-12T04:28:17Z", "lease_expires_at": "2026-11-12T05:03:17Z", "command": ["python3", "-m", "gen2.exec.job", "review", "PENDING_JOB_SCRATCH"], "env": {"GEN2_PURPOSE": "checkpoint/review", "GEN2_INPUT_DIGEST": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}}
+  ]
+}
