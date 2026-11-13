@@ -20,6 +20,8 @@ def response(case, ordinal, request):
     case = "accepted" if case == "hold" else case
     if request.get("model") != "gpt-5.4" or request.get("stream") is not True:
         raise ValueError("model/stream")
+    if case == "limited" and ordinal == 1:
+        return 429, "application/json", b'{"error":{"type":"usage_limit_reached","resets_at":253402300799}}\n'
     if case == "rejected" and ordinal == 1:
         return 401, "application/json", b'{"error":{"message":"fixture credential rejected","type":"invalid_api_key"}}\n'
     if case not in {"accepted", "tool-less"} or ordinal not in ((1, 2) if case == "accepted" else (1,)):
@@ -79,10 +81,16 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("source route")
                 status, media, data = 200, "application/json", SOURCE
             else:
-                if self.command != "POST" or self.path != "/v1/responses" or not re.fullmatch("[0-9a-f]{32}", rid):
+                subscription = isinstance(self.connection, ssl.SSLSocket) and self.path == "/backend-api/codex/responses"
+                if self.command != "POST" or (self.path != "/v1/responses" and not subscription) or not re.fullmatch("[0-9a-f]{32}", rid):
                     raise ValueError("model route/id")
-                if self.headers.get("Authorization") != "Bearer 2e1-fixture-" + credential(self.server.case):
-                    raise ValueError("dummy credential")
+                expected = {"Authorization": "Bearer e30.eyJleHAiOjI1MzQwMjMwMDc5OX0.c2ln", "ChatGPT-Account-ID": "fixture-session", "originator": "codex_cli_rs", "version": "0.153.2", "Host": "chatgpt.com", "Content-Type": "application/json", "Accept": "text/event-stream"} if subscription else {"Authorization": "Bearer 2e1-fixture-" + credential(self.server.case)}
+                if any(self.headers.get_all(k) != [v] for k, v in expected.items()):
+                    raise ValueError("dummy credential/headers")
+                if subscription and {k.lower() for k in self.headers} - ({k.lower() for k in expected} | {"content-length", "x-request-id"}):
+                    raise ValueError("unexpected subscription header")
+                if subscription and json.loads(raw).get("tools", []) != []:
+                    raise ValueError("tool-less request required")
                 request = json.loads(raw) if raw.lstrip().startswith(b"{") else {}
                 status, media, data = response(self.server.case, self.server.count, request)
         finally:
@@ -122,7 +130,7 @@ if __name__ == "__main__":
         raise ValueError("finite hold required")
     tls = Path("/certs").is_dir()
     address = ("172.31.251.3", 18081) if case == "source" else ("172.31.252.3", 443 if tls else 8081)
-    if case not in {"source", "accepted", "rejected", "tool-less", "hold"}:
+    if case not in {"source", "accepted", "rejected", "tool-less", "hold", "limited"}:
         raise ValueError("fixture case")
     with HTTPServer(address, Handler) as server, open("/evidence/fixture.json", "x+") as record, open("/evidence/raw.jsonl", "x") as raw:
         if tls:
