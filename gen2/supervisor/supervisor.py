@@ -172,7 +172,6 @@ class Supervisor:
         self._clock = clock
         self.launcher = tuple(launcher)
         self._fault = fault or (lambda point: None)
-        self._contained: dict[str, str] = {}  # job -> the consumed-state failure its last recovery or settlement step contained (census shows it)
         self._children: dict[str, object] = {}  # launchers this process started: reaped here, and trusted to be this session's own start
 
     # -- public ----------------------------------------------------------------
@@ -231,9 +230,7 @@ class Supervisor:
                 failures.append(f"{job.handle}: {failure}")
             except CONSUMED as failure:  # see _contain: the job stays as its last save left it, and the other jobs go on
                 outcomes[order["invocation_id"]] = "corrupt_job_state"
-                failures.append(f"{job.handle}: {self._contain(job.handle, failure)}")
-            else:
-                self._contained.pop(job.handle, None)
+                failures.append(f"{job.handle}: {self._contain(job, failure, 'recover')}")
         if failures:
             raise ControlFailure("; ".join(failures), outcomes)
         return outcomes
@@ -305,18 +302,20 @@ class Supervisor:
         self._save(job, journal)
         return finished
 
-    def _contain(self, handle: str, failure: Exception) -> str:
-        """Keep a consumed-state failure as this job's BLOCKING fact (census; settlement waits on the job). Contained only around a per-job
-        step whose every effect is saved as it happens (a journal write, a router call recorded before its reply is used), so a failure
-        leaves what a crash at that point would: nothing is completed, released or settled, and the next recovery repeats the step."""
-        self._contained[handle] = reason = f"{type(failure).__name__}: {failure}"
-        return reason
+    def _contain(self, job: jobs.Job, failure: Exception, step: str) -> str:
+        """Save a consumed-state failure of a per-job step as that job's BLOCKING fact (jobs.CONTAINED: the reader classes the job corrupt,
+        recovery and settlement wait on it, across restarts; the operator clears it by deleting the file, never a step), and return its
+        fixed reason class. It adds no rollback: effects the step already had (a router call accepted before a later local failure) stay,
+        and recovery relies on the existing replay (saved pending requests, stable operation identities). If the fact cannot be saved the
+        failure is not contained durably: the class returned is 'containment_unsaved' and the caller's ControlFailure still stands."""
+        try:
+            return job.contain(failure, step)
+        except OSError:
+            return "containment_unsaved"
 
     def census(self) -> dict:
-        """The classified facts of the jobs root (jobs.census) and the jobs whose step failed on their state: read-only, for status."""
-        facts = jobs.census(self.jobs_root)
-        held = [{"entry": handle, "reason": reason} for handle, reason in self._contained.items()]
-        return {**facts, "corrupt": facts["corrupt"] + held, "blocking": facts["blocking"] or bool(held)}
+        """The classified facts of the jobs root (jobs.census), contained failures included: read-only, for status."""
+        return jobs.census(self.jobs_root)
 
     def incidents(self) -> list[dict]:
         """List owned, deadlined incidents with unfinished recoveries and their invocation topics (RG-3; Astra 1e finding 5)."""
@@ -835,7 +834,7 @@ class Supervisor:
                     if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
                         pending.append(dorder["invocation_id"])
             except CONSUMED as failure:  # a delegate whose state fails its step is not ended: the parent keeps its capacity and waits
-                self._contain(delegate.handle, failure)
+                self._contain(delegate, failure, 'settle')
                 pending.append(dorder["invocation_id"])
         if pending:
             raise Waiting("delegates_pending")

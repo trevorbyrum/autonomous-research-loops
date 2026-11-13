@@ -111,6 +111,9 @@ def atomic_write(path: Path, value: dict) -> None:
 
 VALID, FOREIGN, PRE_PREPARE, CORRUPT = "valid", "foreign", "pre_prepare", "corrupt"
 INVOCATION_ID = re.compile(r"inv_[A-Za-z0-9_-]{8,64}")  # common.schema.json#/$defs/invocation_id: also the job's directory name
+CONTAINED = "contained.json"  # a job whose step failed on its own saved state (Supervisor._contain): {reason, step}, both from the fixed sets below
+CONTAINED_REASONS = ("consumed_type", "consumed_key", "consumed_index", "consumed_value", "canonical")  # the class of the failure, never its text
+CONTAINED_STEPS = ("recover", "settle")
 HARNESS_ORDER_KEYS = frozenset({"command", "env"})  # the whole of a qualification harness's order (the T9 harness's Job.prepare)
 
 
@@ -282,6 +285,9 @@ def entries(root: Path) -> list[Entry]:
         if not path.is_dir():
             found.append(Entry(name, CORRUPT, reason="not a job directory"))
             continue
+        if (path / CONTAINED).exists():  # a contained failure stays blocking across restarts; the operator clears it (delete the file), never a step
+            found.append(Entry(name, CORRUPT, reason=_contained_reason(path / CONTAINED)))
+            continue
         try:
             files = {n: _present(path / n) for n in ("order.json", "journal.json")}  # (exists, decoded): a JSON null is present, never absence
         except (ValueError, OSError) as failure:
@@ -300,6 +306,17 @@ def entries(root: Path) -> list[Entry]:
         else:
             found.append(Entry(name, CORRUPT, reason="order is not a station order for this directory" if has_order else "journal without an order"))
     return found
+
+
+def _contained_reason(path: Path) -> str:
+    """The marker's fixed reason class and step; anything else it holds (or an unreadable marker) reads as 'unreadable', never echoed."""
+    try:
+        marker = json.loads(path.read_text(encoding="utf-8"))
+        if marker["reason"] in CONTAINED_REASONS and marker["step"] in CONTAINED_STEPS:
+            return f"contained: {marker['reason']} in {marker['step']}"
+    except (ValueError, OSError, KeyError, TypeError):
+        pass
+    return "contained: unreadable marker"
 
 
 def orders(root: Path) -> list[dict]:
@@ -340,6 +357,13 @@ class Job:
             self.write("order.json", order)
         elif existing != order:
             raise ValueError(f"job {self.handle} was prepared with another order")
+
+    def contain(self, failure: Exception, step: str) -> str:
+        """Save that `step` failed on this job's state, as the failure's fixed class (never its text); the class is returned."""
+        reason = ("canonical" if isinstance(failure, canonical.CanonicalizationError) else
+                  {TypeError: "consumed_type", KeyError: "consumed_key", IndexError: "consumed_index"}.get(type(failure), "consumed_value"))
+        self.write(CONTAINED, {"reason": reason, "step": step})
+        return reason
 
     def spawn(self, launcher: list[str], before_start=lambda: None) -> subprocess.Popen:
         """Start the launcher in a new session (its execution group). spawn.json

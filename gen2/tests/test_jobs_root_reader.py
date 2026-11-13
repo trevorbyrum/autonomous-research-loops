@@ -318,7 +318,7 @@ class ContainmentTest(sf.SupervisedTestCase):
                 self.supervisor.recover()
             return raised.exception.outcomes, advanced, self.supervisor.census()
 
-    def assertContained(self, kind: type, *, reader_accepts: bool = True) -> None:
+    def assertContained(self, reason: str, *, reader_accepts: bool = True) -> None:
         handle = f"job-{sf.MAIN}"
         outcomes, advanced, census = self.recover(reader_accepts=reader_accepts)
         self.assertEqual(outcomes[sf.MAIN], "corrupt_job_state")
@@ -326,35 +326,60 @@ class ContainmentTest(sf.SupervisedTestCase):
         self.assertNotIn("settled", self.supervisor.job(sf.MAIN).read("journal.json"))  # nothing completed, released or settled
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", sf.MAIN), "outcome_unknown")
         self.assertTrue(census["blocking"])
-        self.assertIn(kind.__name__, [c["reason"] for c in census["corrupt"] if c["entry"] == handle][0])
+        self.assertEqual([c["reason"] for c in census["corrupt"] if c["entry"] == handle], [f"contained: {reason} in recover"])  # a fixed class, once
+        self.assertEqual(census["valid"], 1)  # the later job only: a contained job is not also counted valid
+        self.assertNotIn(sf.MAIN, json.dumps(census["corrupt"]).replace(handle, ""))
+        self.assertTrue(census["blocking"] and status_view.compose({"at": "t", "topics": [], "config_bundles": [], "capability_facts": [], "holds": []},
+                                                                    [], jobs.census(self.root / "jobs"))["station"]["blocking"])  # from the files alone
         doc = status_view.compose({"at": "t", "topics": [], "config_bundles": [], "capability_facts": [], "holds": []}, [], census)
         self.assertEqual(doc["station"], census)
 
     def test_terminated_group_without_a_finding_or_cancellation(self) -> None:
         self.damage(pending=self.TERMINATED_GROUP)
-        self.assertContained(IndexError)
+        self.assertContained("consumed_index")
 
     def test_a_kept_end_without_a_result_or_finding(self) -> None:
         kept = {**KEPT, "result": None, "terminated": "timeout", "observation": {**OBS, "termination": {"reason": "timeout"}}}
         self.damage(observing=kept, collected=None)
-        self.assertContained(IndexError)
+        self.assertContained("consumed_index")
 
     def test_a_method_that_will_not_serialize(self) -> None:
         self.damage(pending={**PENDING, "record": None, "resolution": "confirmed_failed", "method": "\ud800", "observation": {**OBS, "findings": ["x"]}})
-        self.assertContained(CanonicalizationError)
+        self.assertContained("canonical")
 
     def test_an_outage_at_the_last_supported_instant(self) -> None:  # the reader accepts it: only the window arithmetic fails
         down = sf.Unreachable(self.control)
         down.down = True
         self.supervisor = self.make_supervisor(control=down)
         self.damage(outage={"since": "9999-12-31T23:59:59Z"})
-        self.assertContained(ValueError, reader_accepts=False)
+        self.assertContained("consumed_value", reader_accepts=False)
 
     def test_a_cancellation_the_router_does_not_know(self) -> None:  # the journal alone cannot tell: accepted by the reader itself
         cancelled = {**PENDING, "resolution": "terminated_group", "method": "execution_group_termination",
                      "observation": CANCELLED}
         self.damage(pending=cancelled)
-        self.assertContained(IndexError, reader_accepts=False)
+        self.assertContained("consumed_index", reader_accepts=False)
+
+    def test_a_contained_failure_blocks_a_fresh_supervisor_before_any_recovery(self) -> None:
+        self.damage(pending=self.TERMINATED_GROUP)
+        self.recover(reader_accepts=True)
+        fresh = self.make_supervisor()  # a restart: no recover() yet
+        census = fresh.census()
+        self.assertTrue(census["blocking"])
+        self.assertEqual([c["reason"] for c in census["corrupt"]], ["contained: consumed_index in recover"])
+        self.assertEqual(census["valid"], 1)
+        with self.assertRaises(ControlFailure):  # and recovery does not skip it either
+            fresh.recover()
+
+    def test_status_shows_no_exception_text_or_stored_value(self) -> None:
+        sentinel = "PRIVATE_SENTINEL_1152921504606846977"
+        self.damage(pending={**PENDING, "record": None, "resolution": "confirmed_failed", "method": "\ud800",
+                             "observation": {**OBS, "findings": [sentinel]}})
+        self.recover(reader_accepts=True)
+        job = self.supervisor.job(sf.MAIN)
+        job.write(jobs.CONTAINED, {"reason": sentinel, "step": sentinel})  # a marker holding anything else is not echoed either
+        self.assertNotIn(sentinel, json.dumps(self.supervisor.census()))
+        self.assertIn("unreadable marker", json.dumps(self.supervisor.census()))
 
     def test_a_delegate_that_fails_its_settlement_step_keeps_its_parent_waiting(self) -> None:
         delegate = self.root / "jobs" / "job-inv_delegate001"
@@ -365,3 +390,4 @@ class ContainmentTest(sf.SupervisedTestCase):
             with self.assertRaises(Waiting):
                 self.supervisor._settle_delegates({"kind": "research_pass", "invocation_id": "inv_parent0001"})
             self.assertEqual([c["entry"] for c in self.supervisor.census()["corrupt"]], ["job-inv_delegate001"])
+        self.assertEqual(self.supervisor.job("inv_delegate001").read(jobs.CONTAINED), {"reason": "consumed_type", "step": "settle"})
