@@ -11,9 +11,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from datetime import datetime, timedelta
 from unittest import mock
 
+from gen2.app import workflow
 from gen2.core import canonical
+from gen2.exec import orders
+from gen2.supervisor.authority import verify_record
 from gen2.router.boundary import work_id
 from gen2.router.schemas import SchemaSet
 from gen2.tests import children, first_topic_files as files, offline_run
@@ -53,6 +57,34 @@ class FirstTopic(unittest.TestCase):
         self.assertNotIn("fleet-a:t1", text)
         self.assertNotIn("2026-09-27", text)
         self.assertNotIn("opd_brieft101", text)
+
+    def test_subscription_proposal_pins_all_model_order_deadlines_but_grants_no_authority(self):
+        data = inputs()
+        bundle, proposal = data["bundle"], data["subscription-proposal"]
+        self.assertEqual((proposal["status"], proposal["not_for_staging"]), ("pending_operator_decision", True))
+        self.assertFalse(any(proposal[k] for k in ("terms_approved", "ceiling_approved", "credential_rule_approved", "date_approved")))
+        self.assertIn("confirmed end", proposal["upper_scope"])
+        self.assertEqual((proposal["unknown_end"]["finite_upper"], proposal["unknown_end"]["rate_per_minute"], proposal["unknown_end"]["debt"]), (None, 1, "DEBT-060"))
+        record = proposal["record_template"]
+        self.assertEqual((record["state"], record["policy"]["currency"], record["upper_minor_units"], record["policy"]["max_attempts"], record["policy"]["ceiling_minor_units"]), ("unqualified", "REQ", 6, 7, 42))
+        raw = canonical.canonical_bytes(record)
+        self.assertIsNone(verify_record(raw, canonical.bytes_digest(raw), b"{}"))
+        self.assertNotIn("live_trial", bundle["policy"])
+        self.assertEqual(bundle["policy"]["supervisor"], {"term_grace_s": 2, "kill_grace_s": 2})
+        schema = SchemaSet()
+        self.assertTrue(schema.errors(record["policy"], "live-vocabulary.schema.json#/$defs/policy_accounting"))  # missing deadline/topic
+        instance = dict(record["policy"], topic_id=files.TOPIC, deadline_at="2099-01-01T00:00:00Z")
+        self.assertEqual(schema.errors(instance, "live-vocabulary.schema.json#/$defs/policy_accounting"), [])
+        prepared = datetime.fromisoformat(data["brief"]["document"]["created_at"].replace("Z", "+00:00"))
+        self.assertEqual({o["env"]["GEN2_PURPOSE"] for o in proposal["orders"]}, {"/".join(key) for key in workflow.MODEL})
+        for kind, purpose in workflow.MODEL:
+            order = orders.build_order(bundle=bundle, bundle_hash=canonical.content_hash(bundle), kind=kind, purpose=purpose,
+                topic_id=files.TOPIC, ordinal=9, now=prepared, directory="PENDING_JOB_SCRATCH", input_digest="sha256:" + "0" * 64)
+            self.assertEqual(datetime.fromisoformat(order.deadline_at.replace("Z", "+00:00")), (prepared + timedelta(seconds=300)).replace(microsecond=0))  # order timestamps round down
+            example = next(o for o in proposal["orders"] if o["env"]["GEN2_PURPOSE"] == f"{kind}/{purpose}")
+            self.assertEqual((example["deadline_at"], example["config_bundle_hash"]), (order.deadline_at, order.config_bundle_hash))
+        for kind, purpose in workflow.CODE_ONLY:
+            self.assertEqual(orders.executor_entry(bundle, kind, purpose)["deadline_s"], workflow.LIMITS[(kind, purpose)][0])
 
     def test_the_runbook_commands_run_as_documented_against_the_authenticated_listener(self):
         """The runbook's shell blocks run verbatim (cwd = repo, `python` = this interpreter, listener URL/token in the environment), a non-live

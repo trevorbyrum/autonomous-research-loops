@@ -567,7 +567,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: an unknown end or stale result retains the whole original authorized upper bound U and permanently stops the trial. There is no settlement, downward adjustment or resumption route for these stops. A later slice designs any reconciliation that would let such a trial resume.
   T2 / 2e1 3a retains original U on uncertain intent or end, including U=0; append-only stops survive new Router/policy/run IDs. No reconciliation or resumption is implemented.
   T3 / 3b-i also retains original U after expired/released leases, terminal state, changed epoch or stale pins; no late evidence can lower it or resume the trial.
-  Trevor's 2026-11-07/08 F5 ruling: with a confirmed end and current lease, pins and origin, unknown cost alone charges full original U and continues. Admission and final start still require S + U_next ≤ the configured ceiling (10,000 cents for the supervised run). Unknown end and stale/uncertain result stops remain; no downward settlement is added.
+  Trevor's 2026-11-07/08 F5 ruling: with a confirmed end and current lease, pins and origin, unknown cost alone charges full original U and continues. Admission and final start still require S + U_next ≤ the configured ceiling (historically 10,000 cents under the prepaid-org plan). The 2026-11-13 subscription ruling replaces that organization; Gate S #9 proposes REQ U=6 for confirmed-ended attempts, seven attempts and ceiling 42, pending the operator's ceiling decision including DEBT-060. A retained U on unknown end is an accounting reservation, not a finite physical send cap; run stop, admission closure and present-operator intervention remain required. Unknown end and stale/uncertain result stops remain; no downward settlement is added.
 - source: 2e1 design v2 B1 (Astra, private/reviews/gen2-2e1-design-review-astra-20261031.md); Gate S rule "cut automatic post-unknown resumption if it cannot be given a small explicit contract"; Trevor ruling 2026-11-07/08, Gate S #7b §2/§7.1 (private/reviews/gen2-gate-s7b-live-path-fable-20261107.md)
 - removal: a reviewed slice adds an append-only, narrowly authorized reconciliation for stopped trials, or the operator rules that those trials never resume.
 
@@ -575,7 +575,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: phase 2
-- what: after a genuine provider rejection, 2e1-minimum blocks productive dispatch for that deployment and provider route. A local usable probe, a generic hold clearance, a policy reactivation and an old qualification each leave the block in place. Productive use after the genuine negative-auth experiment (DEBT-004) needs a separately reviewed operator remediation procedure.
+- what: after a genuine provider rejection, 2e1-minimum blocks productive dispatch for that deployment and provider route. A local usable probe, a generic hold clearance, a policy reactivation and an old qualification each leave the block in place. Every retained credential rejection, including natural expiry, keeps admission closed until a separately reviewed, rejection-bound remediation audit completes with approved manifest/credential/qualification pins. Productive use after the genuine negative-auth experiment (DEBT-004) needs that procedure too. For the subscription procedure, "replacement credentials" means a new login session, not another access-token export from the rejected session (Gate S #9's proposed credential-identity rule, pending operator ruling). A healthy probe, export, new record alone or generic hold clearance never remediates. Without a rejection, routine export occurs only between ended attempts and preserves account/session identity and protected publication rules.
 - source: 2e1 design v2 B2 (Astra rounds 1–2, private/reviews/gen2-2e1-design-review-astra-20261031.md)
   T4a implements the route-wide retained-rejection predicate, including known-zero cost; reviewed remediation remains T4b and the pre-2f operator procedure.
 - removal: a reviewed remediation procedure exists and passes before 2f's productive dispatch.
@@ -630,3 +630,20 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
   - **T17 PR3b:** discovery routes to `gen2.discovery.child`.
 - source: operator ruling Gate S #6 (all rows) and section 8, 2026-11-05 (private/reviews/gen2-gate-s6-two-week-plan-fable-20261105.md)
 - removal: each of R12, R14 and R17 is delivered with its qualification evidence or explicitly removed by the operator, and the Phase 3 review confirms it; the other items close with their own entries.
+
+
+### DEBT-059 - subscription used-percent relay logging and supervisor stop (Phase 3)
+- kind: obligation
+- status: open
+- owner: phase 3
+- what: retain the provider's primary/secondary used-percent, window and reset-at response headers in the relay's versioned log, then stop/refuse the next supervised attempt at the operator's approved threshold. Bind logs to the actual upstream exchange; missing/malformed headers are unknown, not zero. Review the exact log-key/version change with rejection.classify and rerun dependent Q11/new-render witnesses; ordinary local refusals do not count as upstream usage. Surface usage_limit_reached and usage_not_included dispositions with reset-at information without treating all 429 shapes as known. Until then, the present operator reads the usage dashboard before every attempt. This is an account-wide stop observation, not attribution, an observed-request settlement or an account-wide ledger.
+- source: Gate S #9 2026-11-13, change 9 and section 2.3; Astra's subscription-path acceptance with changes, P1-2/P1-3. The proposed 80% threshold remains pending operator decision.
+- removal: a reviewed implementation retains the versioned upstream header evidence, enforces the approved supervisor stop and passes dependent native and classifier qualification.
+
+### DEBT-060 - relay send-window bound under failed containment (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: host lane owns an enforcement design for the relay send window when daemon containment fails or relay end is unknown. U=6 covers only an attempt with confirmed normal end or confirmed containment within the qualified effective window. On unknown end the existing ruled behaviour is run stop, admission closure and present-operator intervention; upstream usage can continue at the relay's 1 r/m rate until the operator ends it (plus initial admission), with no finite physical U. Retaining six in the ledger is not an upstream cap. The operator's subscription ceiling decision must explicitly consider this residual; the REQ/6/42 proposal remains unqualified and pending. Do not reopen admission, retry, reset the relay zone or declare a finite larger U to conceal an unbounded window.
+- source: operator clarification 2026-11-13 during S9b: confirmed-ended scope for U=6, honest rate-times-time-until-operator-end residual, host-lane debt requiring an enforcement design; Astra P1-2 effective send-window requirement.
+- removal: the host lane's enforcement design is independently reviewed and implemented, and a native failed-containment witness establishes the resulting finite physical send window, including buffered requests, ingress closure and relay end; the operator rules on the revised ceiling and deployment operands are requalified.
