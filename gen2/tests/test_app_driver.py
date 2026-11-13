@@ -14,6 +14,7 @@ from gen2.app.workflow import Step
 from gen2.core import canonical
 from gen2.exec.common import Refused
 from gen2.supervisor import jobs as supervisor_jobs
+from gen2.tests import supervisor_fixtures as sf
 
 TOPIC = "fleet:topic"
 BUNDLE = "sha256:" + "b" * 64
@@ -67,14 +68,14 @@ class Supervisor:
         self.lives.append(live)
         if self.world.fail_submit:
             raise OSError("disk full")
-        self.job(order.invocation_id).prepare({"invocation_id": order.invocation_id, "topic_id": order.topic_id, "env": dict(order.env)})
+        self.job(order.invocation_id).prepare(sf.bare_order(order.invocation_id, order.topic_id, kind=order.kind, env=dict(order.env)))
         self.submitted.append(order)
         return "running"
 
     def advance(self, invocation_id, live_start=False):
         result = self.script.get(invocation_id, "running")
         if result == "committed":
-            self.job(invocation_id).write("journal.json", {"settled": "committed", "collected": {"result": {"content_hash": f"sha256:{invocation_id}"}}})
+            self.job(invocation_id).write("journal.json", sf.committed_journal(invocation_id))
         return result
 
     def recover(self):
@@ -182,7 +183,7 @@ class DriverTest(unittest.TestCase):
     def test_a_failed_or_incident_holding_job_stops_the_walk_instead_of_being_retried(self):
         d = self.world.driver()
         iid = d.invocation_id(scope(1))
-        for journal, state in (({"settled": "failed"}, "failed"), ({"exhausted": {"kind": "retry_exhausted"}}, "held"), ({"incident": {"kind": "x"}}, "held"),
+        for journal, state in (({"settled": "failed"}, "failed"), ({"exhausted": {"kind": "retry_exhausted"}}, "held"), ({"incident": {"kind": "x", "since": "t"}}, "held"),
                                ({"settled": "cancelled"}, "failed"), ({}, "live")):
             with self.subTest(journal):
                 self.put(iid, journal)
@@ -223,12 +224,12 @@ class DriverTest(unittest.TestCase):
         never issued; this helper adds no field to an order."""
         job = supervisor_jobs.Job(self.world.root / "jobs", "job-" + iid)
         if job.read("order.json") is None:
-            job.prepare({"invocation_id": iid, "topic_id": TOPIC, "env": {}})
+            job.prepare(sf.bare_order(iid, TOPIC))
         job.write("journal.json", journal)
 
     def settle(self, d, step, proposals=False):
         iid = d.invocation_id(step)
-        self.put(iid, {"settled": "committed", "collected": {"result": {"content_hash": f"sha256:{iid}"}}})
+        self.put(iid, sf.committed_journal(iid))
         if proposals:
             self.world.blobs[f"sha256:{iid}"] = canonical.canonical_bytes({"search_proposals": [{"proposal_id": "p1"}]})
 

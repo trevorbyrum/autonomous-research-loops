@@ -103,7 +103,8 @@ class Engine:
         self.log = log or (lambda line: print(line, file=sys.stderr, flush=True))
         supervisor = self.station.supervisor
         self.service = OperatorService(_Owned(self._owner, self.station, None if walker is None else walker(self.station)), credentials,
-                                       incidents=lambda: self._owner.submit(supervisor.incidents).result(timeout=ANSWER_TIMEOUT_S), log=self.log)
+                                       incidents=lambda: self._owner.submit(supervisor.incidents).result(timeout=ANSWER_TIMEOUT_S),
+                                       station=lambda: self._owner.submit(supervisor.census).result(timeout=ANSWER_TIMEOUT_S), log=self.log)
         try:
             self._server = _Server(listen, _handler(self.service, self.log), self.log)
         except BaseException:

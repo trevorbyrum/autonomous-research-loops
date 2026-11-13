@@ -193,10 +193,11 @@ def _status_query(query: str) -> dict | None:
 
 class OperatorService:
     def __init__(self, backend, credentials: Credentials, *, incidents: Callable[[], list[dict]] = lambda: [],
-                 log: Callable[[str], None] = lambda line: None) -> None:
+                 station: Callable[[], dict | None] = lambda: None, log: Callable[[str], None] = lambda line: None) -> None:
         self._backend = backend
         self._credentials = credentials
         self._incidents = incidents
+        self._station = station
         self._log = log
 
     def handle(self, method: str, target: str, authorization: str | None, length: str | None, read: Callable[[int], bytes]) -> tuple[int, dict]:
@@ -246,7 +247,7 @@ class OperatorService:
                 # Map the reply view; the recorded fact stays unchanged.
                 if (fact["capability"], fact["state"]) in (("config-bundle", "failing"),):
                     fact["detail"] = "configuration rejected"
-            return 200, status_view.compose(facts, self._incidents())
+            return 200, status_view.compose(facts, self._incidents(), self._station())
         return 200, _backend_reply(facts)
 
     def _command(self, principal: Principal, name: str, body: dict) -> tuple[int, dict]:
