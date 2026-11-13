@@ -18,6 +18,7 @@ from unittest import mock
 
 from gen2.app.compose import discovery_scratches
 from gen2.app.driver import Driver
+from gen2.core.canonical import CanonicalizationError
 from gen2.operator import status as status_view
 from gen2.supervisor import jobs
 from gen2.supervisor.supervisor import ControlFailure, Supervisor, Waiting
@@ -30,6 +31,7 @@ from gen2.tests.test_supervisor_lifecycle import LifecycleFaults
 DISCOVERY = {"GEN2_PURPOSE": "discovery/search", "GEN2_CONTEXT": "c1.e1"}
 OBS = {"descendants": {"handling": "none_found", "count": 0}, "termination": None, "findings": [], "output": {"status": "present"}}
 REF = {"content_hash": "sha256:" + "a" * 64, "size_bytes": 1}
+CANCELLED = {**OBS, "termination": {"reason": "cancellation"}}   # what _terminate writes for a cancellation: no finding, no result
 KEPT = {"observation": OBS, "result": REF, "method": "exit_observed"}   # the journal's nested records as the supervisor writes them
 SINCE = {"since": "2026-09-27T10:00:00Z"}
 COLLECTED = {"observation": OBS, "result": REF, "record": REF}   # no method: _retain does not keep it
@@ -44,13 +46,15 @@ NESTED_DAMAGE = {  # structure: damaged values of that journal field, each besid
     "recoveries": [None, [{"incident": SINCE}]],
     "observing": [None, {}, {**KEPT, "method": None}, {**KEPT, "observation": {}}, {k: v for k, v in KEPT.items() if k != "result"},
                   {"descendants": OBS["descendants"]}, {"descendants": None, "termination": None},   # the phases: kept end, and _collect's first save
-                  {**KEPT, "result": None}, {**KEPT, "result": None, "terminated": ""}, {**KEPT, "observation": {**OBS, "findings": [1]}},
+                  {**KEPT, "result": None}, {**KEPT, "result": None, "terminated": ""},
+                  {**KEPT, "result": None, "terminated": "timeout", "observation": {**OBS, "termination": {"reason": "timeout"}}}, {**KEPT, "method": "\ud800"}, {**KEPT, "observation": {**OBS, "findings": [1]}},
                   {**KEPT, "observation": {**OBS, "exit": float("nan")}}],   # null result unexplained (_retain copies it); findings[0]; not canonicalizable
     "collected": [None, KEPT, {**COLLECTED, "observation": {**OBS, "descendants": {}}}, {**COLLECTED, "result": None}, {**COLLECTED, "evidence": None},
                   {**COLLECTED, "rehandled": {}}],
     "grant": [None, {}, {"capability_id": "cap_1"}, {**GRANT, "lease": {}}], "unresolved": [None, {"episode": 1}, {"episode": 1, "since": "2026-13-45T00:00:00Z"}, {"episode": 1, "since": "tomorrow"}], "outage": [None, {}, {"since": "not-an-instant"}, {"since": 5}],
     "pending": [None, {"purpose": "end:failed"}, {k: v for k, v in PENDING.items() if k != "digest"}, {**PENDING, "identity": 1}, {**PENDING, "identity": ["host_id"]},
-                {**PENDING, "identity": {"capability_id": "x"}}, {**PENDING, "digest": 5}, {**PENDING, "resolution": "confirmed_failed"},
+                {**PENDING, "identity": {"capability_id": "x"}}, {**PENDING, "digest": 5}, {**PENDING, "resolution": "confirmed_failed"}, {**PENDING, "resolution": "terminated_group"},
+                {**PENDING, "method": "\ud800"},
                 {**PENDING, "purpose": "end:failed"}, {**PENDING, "observation": {**OBS, "exit": float("nan")}}], "dispatch": [None, {}, {"admission_ref": "a"}],
 }
 
@@ -179,10 +183,10 @@ class MixedRootTest(sf.SupervisedTestCase):
         self.assertEqual((self.supervisor.census()["valid"], self.supervisor.census()["blocking"]), (2, False))
         for journal in ({"observing": {"descendants": OBS["descendants"], "termination": None}}, {"observing": KEPT},   # _collect's first save; a kept end
                         {"observing": {**KEPT, "result": None, "observation": {**OBS, "findings": ["exit_nonzero"]}}},
-                        {"observing": {**KEPT, "result": None, "method": "execution_group_termination", "terminated": "cancellation"}},
-                        {"collected": {**COLLECTED, "result": None, "terminated": "cancellation"}},
+                        {"observing": {**KEPT, "result": None, "method": "execution_group_termination", "terminated": "cancellation", "observation": CANCELLED}},
+                        {"collected": {**COLLECTED, "result": None, "terminated": "cancellation", "observation": CANCELLED}},
                         {"pending": {"purpose": "end:cancelled", "record": None, "method": "job_handle_lookup", "observation": OBS}},   # no finding: a cancellation
-                        {"pending": {**PENDING, "resolution": "terminated_group", "observation": {**OBS, "termination": {"reason": "cancellation"}}}},
+                        {"pending": {**PENDING, "resolution": "terminated_group", "observation": CANCELLED}},
                         {"pending": {**PENDING, "resolution": "confirmed_failed", "observation": {**OBS, "findings": ["never_started"]},
                                      "identity": dict.fromkeys(jobs.PROCESS_KEYS, "x")}}, {"outage": {"since": "2026-09-27T10:00:00.5Z"}}):
             self.put(handle, "journal.json", json.dumps({**real, **journal}))
@@ -274,3 +278,90 @@ class LifecycleWritesAreValidTest(ObservedWrites, LifecycleFaults, sf.Supervised
 
 class RecoveryWritesAreValidTest(ObservedWrites, RecoveryFaults, of.OperatorTestCase):
     KIND = "research_pass"
+
+
+class ContainmentTest(sf.SupervisedTestCase):
+    """Real recovery over a real unknown-outcome job (a refused launcher, the router's own outcome_unknown) placed BEFORE a valid job:
+    a failure of the damaged job's step on its persisted state is a blocking outcome for that job, the later job still advances, recovery
+    raises ControlFailure, settlement waits and status shows it; the job's journal and hold are exactly as they were. With the reader's
+    journal check withdrawn (`reader_accepts`), containment alone stands between each round-5 case and an aborted recovery."""
+    KIND = "research_pass"
+    LATER = "inv_valid00001"
+    TERMINATED_GROUP = {**PENDING, "resolution": "terminated_group", "method": "execution_group_termination"}
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.prepare(self.KIND)
+        refused = self.make_supervisor(launcher=(str(self.root / "missing-interpreter"),))
+        self.assertEqual(refused.submit(self.order(self.KIND)), "launching")
+        grant = self.journal()["grant"]
+        self.assertEqual(self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": sf.MAIN, "to_state": "outcome_unknown",
+                                                         "unknown_episode": 1, "unknown_cause": "spawn_uncertain"})["status"], "recorded")
+        later = self.root / "jobs" / f"job-{self.LATER}"
+        later.mkdir()
+        (later / "order.json").write_text(json.dumps(sf.bare_order(self.LATER, rf.TOPIC, env=DISCOVERY)))
+        (later / "journal.json").write_text(json.dumps({"settled": "failed"}))
+        self.supervisor = self.make_supervisor()
+
+    def damage(self, **fields) -> None:
+        job = self.supervisor.job(sf.MAIN)
+        job.write("journal.json", {**job.read("journal.json"), **fields})
+
+    def recover(self, *, reader_accepts: bool) -> tuple[dict, list, dict]:
+        advanced, real = [], self.supervisor.advance
+
+        def recording(inv, **kwargs):
+            advanced.append(inv)
+            return real(inv, **kwargs)
+        with mock.patch.object(self.supervisor, "advance", recording), mock.patch.object(jobs, "JOURNAL_FIELDS", {} if reader_accepts else jobs.JOURNAL_FIELDS):
+            with self.assertRaises(ControlFailure) as raised:
+                self.supervisor.recover()
+            return raised.exception.outcomes, advanced, self.supervisor.census()
+
+    def assertContained(self, kind: type, *, reader_accepts: bool = True) -> None:
+        handle = f"job-{sf.MAIN}"
+        outcomes, advanced, census = self.recover(reader_accepts=reader_accepts)
+        self.assertEqual(outcomes[sf.MAIN], "corrupt_job_state")
+        self.assertIn(self.LATER, advanced)  # the later valid job still advanced
+        self.assertNotIn("settled", self.supervisor.job(sf.MAIN).read("journal.json"))  # nothing completed, released or settled
+        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", sf.MAIN), "outcome_unknown")
+        self.assertTrue(census["blocking"])
+        self.assertIn(kind.__name__, [c["reason"] for c in census["corrupt"] if c["entry"] == handle][0])
+        doc = status_view.compose({"at": "t", "topics": [], "config_bundles": [], "capability_facts": [], "holds": []}, [], census)
+        self.assertEqual(doc["station"], census)
+
+    def test_terminated_group_without_a_finding_or_cancellation(self) -> None:
+        self.damage(pending=self.TERMINATED_GROUP)
+        self.assertContained(IndexError)
+
+    def test_a_kept_end_without_a_result_or_finding(self) -> None:
+        kept = {**KEPT, "result": None, "terminated": "timeout", "observation": {**OBS, "termination": {"reason": "timeout"}}}
+        self.damage(observing=kept, collected=None)
+        self.assertContained(IndexError)
+
+    def test_a_method_that_will_not_serialize(self) -> None:
+        self.damage(pending={**PENDING, "record": None, "resolution": "confirmed_failed", "method": "\ud800", "observation": {**OBS, "findings": ["x"]}})
+        self.assertContained(CanonicalizationError)
+
+    def test_an_outage_at_the_last_supported_instant(self) -> None:  # the reader accepts it: only the window arithmetic fails
+        down = sf.Unreachable(self.control)
+        down.down = True
+        self.supervisor = self.make_supervisor(control=down)
+        self.damage(outage={"since": "9999-12-31T23:59:59Z"})
+        self.assertContained(ValueError, reader_accepts=False)
+
+    def test_a_cancellation_the_router_does_not_know(self) -> None:  # the journal alone cannot tell: accepted by the reader itself
+        cancelled = {**PENDING, "resolution": "terminated_group", "method": "execution_group_termination",
+                     "observation": CANCELLED}
+        self.damage(pending=cancelled)
+        self.assertContained(IndexError, reader_accepts=False)
+
+    def test_a_delegate_that_fails_its_settlement_step_keeps_its_parent_waiting(self) -> None:
+        delegate = self.root / "jobs" / "job-inv_delegate001"
+        delegate.mkdir()
+        (delegate / "order.json").write_text(json.dumps(sf.bare_order("inv_delegate001", rf.TOPIC, kind="delegate", parent_invocation_id="inv_parent0001")))
+        (delegate / "journal.json").write_text(json.dumps({"grant": "damaged"}))
+        with mock.patch.object(jobs, "JOURNAL_FIELDS", {}):
+            with self.assertRaises(Waiting):
+                self.supervisor._settle_delegates({"kind": "research_pass", "invocation_id": "inv_parent0001"})
+            self.assertEqual([c["entry"] for c in self.supervisor.census()["corrupt"]], ["job-inv_delegate001"])

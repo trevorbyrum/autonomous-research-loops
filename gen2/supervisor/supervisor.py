@@ -38,6 +38,11 @@ MAX_EVIDENCE = 64          # files a job may set aside in its scratch (core.evid
 MAX_EVIDENCE_BYTES = 32 << 20
 
 
+# What a defect in a job's persisted state raises where a step consumes it (a wrong type, a missing key or element, a value outside its
+# range, a value that will not serialize: CanonicalizationError is a ValueError). A per-job step contains exactly these and nothing else.
+CONSUMED = (TypeError, KeyError, IndexError, ValueError)
+
+
 def _refusal(reason: str, detail: str, **facts) -> dict:
     return {"status": "refused", "reason": reason, "detail": detail[:500], **facts}
 
@@ -167,6 +172,7 @@ class Supervisor:
         self._clock = clock
         self.launcher = tuple(launcher)
         self._fault = fault or (lambda point: None)
+        self._contained: dict[str, str] = {}  # job -> the consumed-state failure its last recovery or settlement step contained (census shows it)
         self._children: dict[str, object] = {}  # launchers this process started: reaped here, and trusted to be this session's own start
 
     # -- public ----------------------------------------------------------------
@@ -223,6 +229,11 @@ class Supervisor:
             except (ControlFailure, OSError) as failure:
                 outcomes[order["invocation_id"]] = "control_failure"
                 failures.append(f"{job.handle}: {failure}")
+            except CONSUMED as failure:  # see _contain: the job stays as its last save left it, and the other jobs go on
+                outcomes[order["invocation_id"]] = "corrupt_job_state"
+                failures.append(f"{job.handle}: {self._contain(job.handle, failure)}")
+            else:
+                self._contained.pop(job.handle, None)
         if failures:
             raise ControlFailure("; ".join(failures), outcomes)
         return outcomes
@@ -294,9 +305,18 @@ class Supervisor:
         self._save(job, journal)
         return finished
 
+    def _contain(self, handle: str, failure: Exception) -> str:
+        """Keep a consumed-state failure as this job's BLOCKING fact (census; settlement waits on the job). Contained only around a per-job
+        step whose every effect is saved as it happens (a journal write, a router call recorded before its reply is used), so a failure
+        leaves what a crash at that point would: nothing is completed, released or settled, and the next recovery repeats the step."""
+        self._contained[handle] = reason = f"{type(failure).__name__}: {failure}"
+        return reason
+
     def census(self) -> dict:
-        """The classified facts of the jobs root (jobs.census): read-only, for status."""
-        return jobs.census(self.jobs_root)
+        """The classified facts of the jobs root (jobs.census) and the jobs whose step failed on their state: read-only, for status."""
+        facts = jobs.census(self.jobs_root)
+        held = [{"entry": handle, "reason": reason} for handle, reason in self._contained.items()]
+        return {**facts, "corrupt": facts["corrupt"] + held, "blocking": facts["blocking"] or bool(held)}
 
     def incidents(self) -> list[dict]:
         """List owned, deadlined incidents with unfinished recoveries and their invocation topics (RG-3; Astra 1e finding 5)."""
@@ -797,22 +817,26 @@ class Supervisor:
             if entry.kind != jobs.VALID or dorder.get("parent_invocation_id") != order["invocation_id"]:
                 continue
             delegate = self.job(dorder["invocation_id"])
-            with self._exclusive(dorder):  # its journal, under its own lock: this parent's is held already (parent before delegate)
-                djournal = self._journal(delegate)
-                if djournal.get("settled"):
-                    continue
-                try:  # its capability: the grant kept, or replayed (a claim lost in a crash), or a fresh claim, cancelled below at once
-                    grant = self._grant(delegate, dorder, djournal)
-                    status = self._status(delegate, djournal, grant)
-                    if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:
-                        response = self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
-                                                                                     "reason": f"its parent {order['invocation_id']} has ended",
-                                                                                     "capability_id": grant["capability_id"]})
-                        self._write(delegate, djournal, response, "cancel", accepted=("cancelled", "recorded", "replayed"))
-                except Waiting:  # a stalled delegate's calls are refused at the chokepoint (Held): nothing is sent
-                    pass
-                if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
-                    pending.append(dorder["invocation_id"])
+            try:
+                with self._exclusive(dorder):  # its journal, under its own lock: this parent's is held already (parent before delegate)
+                    djournal = self._journal(delegate)
+                    if djournal.get("settled"):
+                        continue
+                    try:  # its capability: the grant kept, or replayed (a claim lost in a crash), or a fresh claim, cancelled below at once
+                        grant = self._grant(delegate, dorder, djournal)
+                        status = self._status(delegate, djournal, grant)
+                        if status["state"] not in (*TERMINAL, "result_ready") and status["cancel_requested"] is None:
+                            response = self._call(delegate, djournal, "request_cancel", {"invocation_id": grant["invocation_id"], "requested_by": "supervisor",
+                                                                                         "reason": f"its parent {order['invocation_id']} has ended",
+                                                                                         "capability_id": grant["capability_id"]})
+                            self._write(delegate, djournal, response, "cancel", accepted=("cancelled", "recorded", "replayed"))
+                    except Waiting:  # a stalled delegate's calls are refused at the chokepoint (Held): nothing is sent
+                        pass
+                    if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
+                        pending.append(dorder["invocation_id"])
+            except CONSUMED as failure:  # a delegate whose state fails its step is not ended: the parent keeps its capacity and waits
+                self._contain(delegate.handle, failure)
+                pending.append(dorder["invocation_id"])
         if pending:
             raise Waiting("delegates_pending")
 

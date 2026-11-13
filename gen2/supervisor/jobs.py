@@ -159,6 +159,11 @@ def _canonical(v: object) -> bool:
     return True
 
 
+def _clean(v: object) -> bool:
+    """A text that also serializes canonically (a lone surrogate does not): the method and topic go into the execution record."""
+    return _text(v) and _canonical(v)
+
+
 _instant = instants.is_utc_instant
 
 
@@ -179,7 +184,9 @@ def _of(table: dict):
 # THE contract of the two files consumers read: field -> (must be present, validator of a present value). Absence of an optional
 # field keeps the consumer's default (a fresh journal); a present value that fails its validator, null included, is CORRUPT, never
 # normalized. A validator guarantees the OPERATION a consumer performs on the value (supervisor.py, driver.py, compose.py, authority.py,
-# operator/status.py), reached through aliases and copies too (`_retain` copies observing into collected):
+# operator/status.py), reached through aliases and copies too (`_retain` copies observing into collected), GIVEN the journal's own
+# values alone: what only external state decides (the router's cancellation, the clock, the configured windows, an unavailable store) is
+# not checked here, and a step that still fails on a persisted value is contained per job (Supervisor._contain), never trusted to pass:
 #   subscript ["k"]  the mapping carries k, of the type the next operation needs: incident.since, recovering.{incident,requested_by},
 #                    observation.{descendants.handling,findings,output}, result.{content_hash,size_bytes}, record/evidence[].content_hash,
 #                    grant.{...,lease.{lease_id,generation}}, pending.{purpose,record,method,observation,resolution,identity,digest}
@@ -190,9 +197,10 @@ def _of(table: dict):
 #   iteration        recoveries, findings, evidence are lists of the element shape read
 #   instant parsing  unresolved.since, outage.since and the order's deadline_at go through core.instants (`_instant`)
 #   arithmetic       budgets values and revision are counts; the dispatch/recorded/unlaunched flags are booleans
-#   serialization    an observation is staged canonically in the execution record, so it must canonicalize (`_observation`)
-#   result None      a kept or collected end may lack a result only where findings or a termination explain it, since the consumers
-#                    index result.content_hash otherwise (`_explained`); _collect's partial observing (descendants, termination) is separate
+#   serialization    an execution record is staged canonically from the order's topic, the method and the observation (`_clean`, `_observation`)
+#   result None      a kept or collected end may lack a result only where findings or a cancellation termination explain it (what _terminate
+#                    writes: a timeout carries its finding), since the consumers index result.content_hash otherwise (`_explained`);
+#                    _collect's partial observing (descendants, termination) is separate
 PROCESS_KEYS = frozenset({"host_id", "container_id", "boot_id", "start_fingerprint"})  # what Supervisor._process writes
 INCIDENT = {"since": (True, _text), "last_refusal": (False, _opt(_of({"reason": (True, _any)})))}
 HANDLING = _of({"handling": (True, _text)})
@@ -202,26 +210,34 @@ OBSERVING_PARTIAL = {"descendants": (True, HANDLING), "termination": (True, _opt
 RECONCILE = {"resolution": (True, _text), "identity": (True, _opt(lambda v: _obj(v) and v.keys() == PROCESS_KEYS)), "digest": (True, _opt(_text))}
 
 
+def _cancelled(observation: dict) -> bool:
+    return (observation["termination"] or {}).get("reason") == "cancellation"
+
+
 def _observation(v: object) -> bool:
     return _fields(v, OBSERVATION) and _canonical(v)
 
 
 def _explained(table: dict):
-    """A kept or collected end: a result may be absent only where findings or a termination explain it (consumers index result otherwise)."""
-    return lambda v: _fields(v, table) and (v["result"] is not None or bool(v["observation"]["findings"]) or bool(v.get("terminated")))
+    """A kept or collected end: a result may be absent only where findings or a cancellation explain it (consumers index result otherwise)."""
+    return lambda v: _fields(v, table) and (v["result"] is not None or bool(v["observation"]["findings"])
+                                            or (v.get("terminated") == "cancellation" and _cancelled(v["observation"])))
 
 
-OBSERVING_KEPT = {"observation": (True, _observation), "method": (True, _text), "result": (True, _opt(_of({**REF, "size_bytes": (True, _count)}))),
+OBSERVING_KEPT = {"observation": (True, _observation), "method": (True, _clean), "result": (True, _opt(_of({**REF, "size_bytes": (True, _count)}))),
                   "evidence": (False, _list(_of(REF))), "terminated": (False, _text)}
 COLLECTED = {**{k: v for k, v in OBSERVING_KEPT.items() if k != "method"}, "record": (True, _of(REF)), "rehandled": (False, _of({"descendants": (True, HANDLING)}))}
-PENDING = {"purpose": (True, _text), "record": (True, _opt(_of(REF))), "method": (True, _text), "observation": (True, _observation)}
+PENDING = {"purpose": (True, _text), "record": (True, _opt(_of(REF))), "method": (True, _clean), "observation": (True, _observation)}
 
 
 def _pending(v: object) -> bool:
     """A failed end and a confirmed_failed reconcile send observation.findings[0]; a reconcile also carries its resolution, identity, digest."""
     if not _fields(v, PENDING) or (v["purpose"].startswith("reconcile:") and not _fields(v, RECONCILE)):
         return False
-    return bool(v["observation"]["findings"]) or not (v["purpose"] == "end:failed" or v.get("resolution") == "confirmed_failed")
+    resolution, observation = v.get("resolution"), v["observation"]
+    if resolution == "terminated_group":  # without a finding only a cancellation (which _reconcile sends without one if the router agrees)
+        return bool(observation["findings"]) or _cancelled(observation)
+    return bool(observation["findings"]) or not (v["purpose"] == "end:failed" or resolution == "confirmed_failed")
 
 
 JOURNAL_FIELDS = {
@@ -240,7 +256,7 @@ JOURNAL_FIELDS = {
     **{k: (False, _obj) for k in ("write_failure", "refusal", "record_failure", "envelope", "spawn_refused", "refused")},
 }
 ORDER_FIELDS = {
-    "invocation_id": (True, _id), "topic_id": (True, _text), "kind": (True, _text), "config_bundle_hash": (True, _text),
+    "invocation_id": (True, _id), "topic_id": (True, _clean), "kind": (True, _text), "config_bundle_hash": (True, _text),
     "deadline_at": (True, _instant), "lease_expires_at": (True, _opt(_text)), "requested_by_invocation_id": (True, _opt(_text)),
     "parent_invocation_id": (False, _opt(_id)), "retry_of": (False, _opt(_text)), "reservation": (False, _opt(_obj)),
     "env": (False, lambda v: _obj(v) and all(isinstance(k, str) and isinstance(x, str) for k, x in v.items())),
