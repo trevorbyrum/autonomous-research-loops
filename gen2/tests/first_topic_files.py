@@ -8,10 +8,13 @@ import json
 import re
 import sys
 from pathlib import Path
+from dataclasses import asdict
+from datetime import datetime
 
 from gen2.app import workflow
 from gen2.core import canonical
 from gen2.core.instants import utc_now
+from gen2.exec import orders
 from gen2.tests import children, offline_world
 from gen2.tests.offline_run import prompt_pins
 from gen2.tests.router_fixtures import RouterTestCase, ratings
@@ -39,6 +42,10 @@ def generate(prepared_at):
         evidence_that_would_change_it=bullets("What evidence would change the operator's mind"), constraints=constraints,
         operator_hypotheses=[{"statement": h, "testable_as": h} for h in bullets("Operator hypotheses (as testables)")], surfaced_assumptions=assumptions)
     bundle = copy.deepcopy(offline_world.bundle(workflow.executor_entries(prompt_pins()), version=3))
+    for entry in bundle["policy"]["executors"]:
+        if (entry["kind"], entry["purpose"]) in workflow.MODEL:
+            entry["deadline_s"] = 300
+    bundle["policy"]["supervisor"] = {"term_grace_s": 2, "kill_grace_s": 2}
     bundle["questions"] = []  # disabled decision layer: no invented provider answers
     method = {"template_id": "MD-scoping-initiation", "template_version": 1,
               "families": [{"family": "scoping_mapping", "role": "primary"}, {"family": "truth_discovery", "role": "added", "purpose": "initiation"}]}
@@ -94,7 +101,24 @@ def generate(prepared_at):
     templates = {kind: {"decision_id": did, "topic_id": TOPIC, "kind": kind, "disposition": "approved",
         "subject": {"kind": {"brief_confirmation": "intake_brief", "scope_approval": "scoping_report", "completion_approval": "dossier"}.get(kind, "contract_revision"),
                     "ref": None, "revision": None, "hash": None}, "decided_at": None, "notes": None, "payload": None} for kind, did in DECISIONS.items()}
-    return {"bundle": bundle, "topic": {"topic_id": TOPIC, "priority": 5},
+    proposal = {"status": "pending_operator_decision", "not_for_staging": True,
+                "source": "Gate S #9, 2026-11-13; Astra P1-2: see FIRST-TOPIC.md for the effective send-window trace",
+                "terms_approved": False, "ceiling_approved": False, "credential_rule_approved": False, "date_approved": False,
+                "upper_scope": "confirmed end (normal end or confirmed containment) within the qualified send window only",
+                "unknown_end": {"finite_upper": None, "rate_per_minute": 1, "action": "Run stops, admission closes, present operator ends relay", "debt": "DEBT-060"},
+                "weekly_used_percent_stop_proposal": 80, "min_token_remaining_seconds_proposal": 7200,
+                "record_template": {"record_version": "qualification-record/1", "state": "unqualified", "route": "real",
+                    "backend": "docker-cli/1", "provider_route": "chatgpt-subscription", "runner_version": "0.153.2",
+                    "manifest_pin": None, "credential_ref": None, "deployment_id": None, "affected_lanes": [], "witnesses": [], "plan": None,
+                    "upper_minor_units": 6,
+                    "policy": {"run_id": "PENDING_OPERATOR_RUN_ID", "accounting_owner": "PENDING_OPERATOR_PRINCIPAL", "deadline_at": None,
+                        "max_attempts": 7, "max_concurrent_attempts": 1, "ceiling_minor_units": 42, "currency": "REQ",
+                        "ceiling_scope": ["model", "delegates", "retries", "verification", "gateway", "maintenance"], "policy_version": "s9-proposal"}},
+                "orders": [asdict(orders.build_order(bundle=bundle, bundle_hash=canonical.content_hash(bundle), kind=kind, purpose=purpose,
+                    topic_id=TOPIC, ordinal=1, now=datetime.fromisoformat(prepared_at.replace("Z", "+00:00")),
+                    directory="PENDING_JOB_SCRATCH", input_digest="sha256:" + "0" * 64)) for kind, purpose in workflow.MODEL]}
+    proposal = json.loads(json.dumps(proposal))
+    return {"bundle": bundle, "subscription-proposal": proposal, "topic": {"topic_id": TOPIC, "priority": 5},
             "brief": {"document": brief, "owner_operator_id": "REPLACE_WITH_OPERATOR_NAME", "review_deadline": None},
             "contract-r1": {"document": first}, "contract-r2": {"document": doc}, "ratings": ratings(doc), "decisions": templates, "sentinel": SENTINEL}
 
