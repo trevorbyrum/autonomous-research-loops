@@ -314,7 +314,7 @@ class DockerCLI:
                          "nginx", "-c", "/etc/nginx/nginx.conf"))
         return self._create(role, args)
 
-    def run(self, fixture_ended, batch):
+    def run(self, batch):
         """I/L/E: supervised finite lane; the end proof is the daemon's own final inspect, raw evidence only. The plan's route (it must be the manifest's) selects the
         fixture lane or the real one: a real lane has no fixture container, joins the relay to the plan's persistent egress bridge BY ID, and
         classifies against the plan's upstream. Any partial start is contained (every journaled CID killed and removed) before the error leaves."""
@@ -328,27 +328,17 @@ class DockerCLI:
             require(self.job.read("docker-attempt.json") is None, "backend_already_intended")
             self.job.write("docker-attempt.json", {"origin": self.plan["origin"]})
         try:
-            return self._run(fixture_ended, batch, real)
+            return self._run(batch, real)
         except BaseException:
             contain_job(self.job, execute=self.execute, now=self.now)   # whatever was started is ended before the failure leaves; a failure here refuses louder
             raise
 
-    def _run(self, fixture_ended, batch, real):
+    def _run(self, batch, real):
         self.runtime()
         initializer = self.create_auxiliary("initializer")
         self.start(initializer, "initializer")
         require(self.end(initializer, "initializer")["State"]["ExitCode"] == 0, "initializer_failed")
         output = "judgment" if self.plan.get("output") == "judgment" else "outcome"
-        originals = {}
-        for kind, name in ((output, "out"), ("access", "evidence")):
-            directory = Path(self.plan["slots"][name]) / self.plan["generation"]
-            fd = slot(str(directory))
-            try:
-                info = os.fstat(fd)
-                originals[kind] = (info.st_dev, info.st_ino)
-            finally:
-                os.close(fd)
-        self.job.write("docker-generations.json", originals)
         network = self.network(self.plan["generation"])
         if real:
             upstream = self.plan["egress"]["network_id"]
@@ -357,6 +347,16 @@ class DockerCLI:
             require(view["Id"] == upstream and not view["Internal"] and not view["Containers"], "egress_original")   # the persistent bridge, empty between jobs
         else:   # the fixture's network is lane C's, per attempt: the fixture was created ON it at .3 (a `none`-mode container can join nothing), and only the relay joins
             fixture = self.plan["fixture"]
+            mounts = [m for m in fixture.get("Mounts", []) if m.get("Destination") == "/evidence"]
+            require(len(mounts) == 1 and mounts[0].get("Type") == "bind", "fixture_evidence_mount")
+            fixture_directory = Path(mounts[0]["Source"])
+            require(fixture_directory.parent == Path(self.plan["slots"]["evidence"]) and re.fullmatch(r"[0-9a-f]{32}", fixture_directory.name), "fixture_evidence_mount")
+            require(not fixture["HostConfig"].get("Binds") and [m for m in fixture["HostConfig"].get("Mounts", []) if m.get("Target") == "/evidence"] ==
+                    [{"Type": "bind", "Source": str(fixture_directory), "Target": "/evidence"}], "fixture_evidence_mount")
+            require(fixture["HostConfig"].get("PidMode") == "" and fixture["HostConfig"].get("RestartPolicy") == {"Name": "no", "MaximumRetryCount": 0}, "fixture_runtime")
+            _when(fixture["State"].get("StartedAt"), "fixture_original")
+            self.job.write("fixture.json", fixture)
+            self.job.write("fixture-start.json", fixture)
             require(_binding(self.inspect(fixture["Id"])) == _binding(fixture), "fixture_original")
             members = list(fixture["NetworkSettings"]["Networks"].values())
             require(len(members) == 1 and (members[0].get("IPAMConfig") or {}).get("IPv4Address") == "172.31.252.3" and CID.fullmatch(str(members[0].get("NetworkID"))), "fixture_network")
@@ -364,6 +364,16 @@ class DockerCLI:
             view = json.loads(self._command(("network", "inspect", upstream)))[0]
             require(view["Id"] == upstream and view["Internal"] and not view["EnableIPv6"] and view["Driver"] == "bridge"
                     and view["IPAM"]["Config"] == [{"Subnet": NETWORKS["fixture"]}] and set(view["Containers"]) == {fixture["Id"]}, "fixture_network_members")
+        originals = {}
+        for kind, directory in {output: Path(self.plan["binds"]["out"]), "access": Path(self.plan["slots"]["evidence"]) / self.plan["generation"],
+                                **({"fixture": fixture_directory} if not real else {})}.items():
+            fd = slot(str(directory))
+            try:
+                info = os.fstat(fd)
+                originals[kind] = (info.st_dev, info.st_ino)
+            finally:
+                os.close(fd)
+        self.job.write("docker-generations.json", originals)
         self.job.write("network-upstream.json", view)   # its Name pairs the expected ID with the per-name view the daemon shows before start
         relay = self.create_auxiliary("relay", network)
         self.endpoint("connect", upstream, relay, None if real else "172.31.252.2")
@@ -390,9 +400,13 @@ class DockerCLI:
         require(self.end(relay, "relay")["State"]["ExitCode"] == 0, "relay_stop_failed")
         refs = []
         if not real:
-            fixture_file = fixture_ended()
-            require(fixture_file, "fixture_writers_live")
-            refs.append(batch.collect(*fixture_file, writers_ended=True, kind="fixture"))
+            self.contain(fixture["Id"], role="fixture")
+            self.end(fixture["Id"], "fixture")
+            fd = slot(self.plan["slots"]["evidence"])
+            try:
+                refs.append(batch.collect(fd, fixture_directory.name, originals["fixture"], writers_ended=True, kind="fixture"))
+            finally:
+                os.close(fd)
         refs.extend(batch.stage(data, "application/octet-stream", kind) for kind, data in zip(("events", "diagnostics"), self.logs(runner)))
         for kind, name in ((output, "out"), ("access", "evidence")):
             fd = slot(self.plan["slots"][name])

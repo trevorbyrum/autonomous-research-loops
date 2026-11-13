@@ -1,0 +1,33 @@
+{
+  "purpose": "T10 fixture-only dry run; plan fragment, not a qualification record or send authority",
+  "seed_source": "seed",
+  "seed_pins": {
+    "config.toml": "sha256:091116a3ed2da058bf14c48bcb267ce2004971b1866db403f0830ae82e556752",
+    "models.json": "sha256:d4e673030e9962e60f92c327fc52c31e770a8177ccf04138eb221e8df04bd341",
+    "auth.json": "sha256:65790c43345b599f4b6a86174bfce09490505e81f62aeb0f0ecd3d664d7ed1b5"
+  },
+  "fixture_case": "tool-less",
+  "fixture_command": [
+    "/opt/live/fixture.py",
+    "tool-less"
+  ],
+  "late_bound_original": "/plan/fixture",
+  "plan": {
+    "binds": {
+      "seed": "${GEN2_CONFIG_ROOT}/t10-tool-less-seed"
+    },
+    "relay_config": "${GEN2_CONFIG_ROOT}/retained-configurations/0688d2355b9e327d66fa3be1f9b5654275ef333bbe47f28a091749b34eddd276"
+  },
+  "relay_configuration_pin": "sha256:0688d2355b9e327d66fa3be1f9b5654275ef333bbe47f28a091749b34eddd276",
+  "relay_host_source": "${GEN2_CONFIG_ROOT}/retained-configurations/0688d2355b9e327d66fa3be1f9b5654275ef333bbe47f28a091749b34eddd276",
+  "relay_engine_source": "/etc/gen2/retained-configurations/0688d2355b9e327d66fa3be1f9b5654275ef333bbe47f28a091749b34eddd276",
+  "backend_relay_destination": "/etc/nginx/nginx.conf",
+  "offline_relay_destination": "/etc/gen2/nginx.conf",
+  "expected": {
+    "requests": 1,
+    "fixture_text": "2e1 complete",
+    "invocation_state": "failed",
+    "dispatch_results": 1,
+    "charge": "full configured U"
+  }
+}

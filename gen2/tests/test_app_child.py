@@ -147,7 +147,9 @@ class ChildTest(unittest.TestCase):
         env = inputs(self.dir, "checkpoint", "dossier")
         with self.assertRaisesRegex(common.Refused, "no builder is installed"):
             child.run("checkpoint/dossier", self.dir, input_digest=env["GEN2_INPUT_DIGEST"], table={})
-        (self.dir / "inputs" / "input.json").write_bytes(b"{}")
+        tampered = self.dir / "inputs" / "input.json"
+        tampered.chmod(0o600)  # the producer writes inputs 0400; a same-UID tamperer can still chmod
+        tampered.write_bytes(b"{}")
         with self.assertRaisesRegex(common.Refused, "does not match the order's digest"):
             child.run("checkpoint/dossier", self.dir, input_digest=env["GEN2_INPUT_DIGEST"], table={"checkpoint/dossier": empty_factory})
 

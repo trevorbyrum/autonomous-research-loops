@@ -9,6 +9,7 @@ work: which purpose runs next, and its ordinal, are the driver's.
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -66,15 +67,19 @@ def work_input(*, kind: str, purpose: str, invocation_id: str, topic_id: str, ad
 
 
 def write_inputs(directory: Path, *, entry: Mapping, prompt: bytes, document: Mapping) -> str:
-    """Write inputs/prompt.md and inputs/input.json under `directory`; returns input.json's byte digest.
+    """Pre-prepare re-issue replaces runner inputs: regular, single-link, owner-owned, 0400; returns input.json's digest.
+    The supported engine umask retains owner read (0400); its protected parent/mount prevents input replacement during execution.
     An input over the entry's cap is refused, never truncated (truncation is the view's recorded act)."""
     data = canonical.canonical_bytes(document)
     if len(data) > entry["max_input_bytes"]:
         raise Refused(f"input is {len(data)} bytes, over the {entry['max_input_bytes']} cap")
     target = Path(directory) / INPUT_DIR
     target.mkdir(parents=True, exist_ok=True)
-    (target / PROMPT).write_bytes(prompt)
-    (target / INPUT).write_bytes(data)
+    for name, contents in ((PROMPT, prompt), (INPUT, data)):
+        path = target / name
+        path.unlink(missing_ok=True)
+        with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400), "wb") as stream:
+            stream.write(contents)
     return canonical.bytes_digest(data)
 
 

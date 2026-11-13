@@ -414,7 +414,7 @@ class DockerBoundary(unittest.TestCase):
             process.assert_not_called()
 
     def test_relay_sequence_and_refusal_rows(self):
-        """I/L/E: ordered end/closure/collection, no complete marker on uncertainty; sequencing mocks only."""
+        """I/L/E: ordered end/closure/collection, no complete marker on uncertainty; actual fixture end and collection; other Docker operations are sequencing doubles."""
         upstream, relay, fixture_id = "d" * 64, "e" * 64, "f" * 64
         record = {"Id": relay, "Image": "sha256:" + CID, "Config": {}, "HostConfig": {}, "NetworkSettings": {"Networks": {}}}
         jobn, fixn = "gen2-2e1-live-job-" + GENERATION, "gen2-2e1-live-fixture-" + GENERATION
@@ -429,51 +429,118 @@ class DockerBoundary(unittest.TestCase):
         fixture = {**record, "Id": fixture_id, "NetworkSettings": {"Networks": {"fixture-upstream": member}}}   # created ON lane C's per-attempt network (a `none`-mode container joins nothing)
         # the fixture's network and its members as the daemon would show them, and the single-operand ways the hand-off can be wrong
         view = {"Id": upstream, "Name": fixn, "Internal": True, "EnableIPv6": False, "Driver": "bridge", "IPAM": {"Config": [{"Subnet": d.NETWORKS["fixture"]}]}, "Containers": {fixture_id: {}}}
-        wrong = {"fixture_network_none": {"Networks": {"none": {"NetworkID": "9" * 64, "IPAMConfig": None, "Aliases": None}}},   # the retained T9 native shape: connect was refused by the daemon
-                 "fixture_network_ip": {"Networks": {"fixture-upstream": {**member, "IPAMConfig": {"IPv4Address": "172.31.252.9"}}}},
-                 "fixture_network_two": {"Networks": {"fixture-upstream": member, "other": {**member, "NetworkID": "8" * 64}}},
-                 "fixture_network_short": {"Networks": {"fixture-upstream": {**member, "NetworkID": "abc"}}}}
+        wrong = {"fixture_network_none": {"NetworkSettings": {"Networks": {"none": {"NetworkID": "9" * 64, "IPAMConfig": None, "Aliases": None}}}},   # the retained T9 native shape: connect was refused by the daemon
+                 "fixture_network_ip": {"NetworkSettings": {"Networks": {"fixture-upstream": {**member, "IPAMConfig": {"IPv4Address": "172.31.252.9"}}}}},
+                 "fixture_network_two": {"NetworkSettings": {"Networks": {"fixture-upstream": member, "other": {**member, "NetworkID": "8" * 64}}}},
+                 "fixture_network_short": {"NetworkSettings": {"Networks": {"fixture-upstream": {**member, "NetworkID": "abc"}}}}}
         views = {"fixture_network_members": {**view, "Containers": {fixture_id: {}, "7" * 64: {}}}, "fixture_network_members_empty": {**view, "Containers": {}},
                  "fixture_network_members_open": {**view, "Internal": False}, "fixture_network_members_v6": {**view, "EnableIPv6": True},
                  "fixture_network_members_subnet": {**view, "IPAM": {"Config": [{"Subnet": "172.31.250.0/29"}]}}}
         slots = {n: str(self.root / n) for n in ("out", "evidence")}
         for path in slots.values():
             (Path(path) / GENERATION).mkdir(parents=True)
+        fixture_directory = Path(slots["evidence"]) / ("4" * 32)
+        fixture_directory.mkdir()
+        fixture.update(Mounts=[{"Type": "bind", "Source": str(fixture_directory), "Destination": "/evidence"}],
+                       HostConfig={"PidMode": "", "RestartPolicy": {"Name": "no", "MaximumRetryCount": 0},
+                                   "Mounts": [{"Type": "bind", "Source": str(fixture_directory), "Target": "/evidence"}]},
+                       State={"StartedAt": "2026-11-13T01:00:00Z"})
+        for key, mounts in {"missing": [], "multiple": fixture["Mounts"] * 2,
+                            "wrong_destination": [{**fixture["Mounts"][0], "Destination": "/other"}],
+                            "wrong_type": [{**fixture["Mounts"][0], "Type": "volume"}],
+                            "out_of_slot": [{**fixture["Mounts"][0], "Source": str(self.root / ("4" * 32))}],
+                            "bad_generation": [{**fixture["Mounts"][0], "Source": str(fixture_directory.parent / "bad")} ]}.items():
+            wrong["fixture_mount_" + key] = {"Mounts": mounts}
+        for key, change in {"mount_source": {"Mounts": [{"Type": "bind", "Source": "/other", "Target": "/evidence"}]},
+                            "multiple": {"Mounts": fixture["HostConfig"]["Mounts"] * 2}, "pid": {"PidMode": "host"},
+                            "restart": {"RestartPolicy": {"Name": "always"}}}.items():
+            wrong["fixture_host_" + key] = {"HostConfig": {**fixture["HostConfig"], **change}}
         self.cli.plan.update(generation=GENERATION, slots=slots, binds={"out": str(Path(slots["out"]) / GENERATION)}, fixture=fixture)
         self.job.write("identity.json", {"pid": os.getpid()})
         self.job.write("relay.json", record)
-        for reason in (None, "backend_unsupervised", "initializer_failed", "ingress_not_closed", "relay_drain", "relay_stop_failed", "fixture_writers_live", *wrong, *views, *topology):
+        for reason in (None, "backend_unsupervised", "initializer_failed", "ingress_not_closed", "relay_drain", "relay_stop_failed", "fixture_stop_failed", "end_binding", "end_state", "end_unconfirmed", "collection_absent", "collection_identity", "generation_symlink", *wrong, *views, *topology):
             with self.subTest(reason=reason), contextlib.ExitStack() as stack:
-                shown = {**fixture, "NetworkSettings": wrong[reason]} if reason in wrong else fixture
+                shown = copy.deepcopy({**fixture, **wrong.get(reason, {})})
                 self.cli.plan["fixture"] = shown
                 network_view = views.get(reason, view)
                 connected = topology.get(reason, created())
-                batch, ended, watch = mock.Mock(), mock.Mock(return_value=None if reason == "fixture_writers_live" else (0, GENERATION, (1, 2))), mock.Mock()
+                batch, watch = mock.Mock(), mock.Mock()
+                (fixture_directory / "fixture.json").write_bytes(b'{"v":1,"requests":[{"model":"gpt-5.4"}]}')
+                if reason == "generation_symlink":
+                    fixture_directory.rename(fixture_directory.with_name("saved"))
+                    fixture_directory.symlink_to(fixture_directory.with_name("saved"), target_is_directory=True)
+                actual_batch = d.EvidenceBatch(Spool(self.root / "spool", quota_bytes=64 << 20), "fleet:fixture")
+                actual_end = self.cli.end
+                def collect(*args, **kwargs):
+                    if kwargs["kind"] == "fixture":
+                        return actual_batch.collect(*args, **kwargs)
+                    return {"content_hash": "sha256:" + CID}
+                def end(cid, role="runner"):
+                    if role == "fixture":
+                        return actual_end(cid, role)
+                    return {"State": {"ExitCode": int(reason == "initializer_failed" if role == "initializer" else reason == "relay_stop_failed" if role == "relay" else True)}}
+                def contain(cid, *, role):
+                    if role == "fixture":
+                        if reason == "fixture_stop_failed":
+                            raise LiveProfileRefused(reason)
+                        if reason == "collection_absent":
+                            (fixture_directory / "fixture.json").unlink()
+                        if reason == "collection_identity":
+                            fixture_directory.rename(fixture_directory.with_name("saved"))
+                            fixture_directory.mkdir()
+                final = {**fixture, "State": {"StartedAt": fixture["State"]["StartedAt"], "FinishedAt": "2026-11-13T01:01:00Z",
+                                             "ExitCode": 143, "Status": "exited", "Pid": 0, "Error": "",
+                                             **{k: False for k in ("Running", "Restarting", "Paused", "OOMKilled")}}}
+                if reason == "end_binding": final = {**final, "Image": "sha256:" + "9" * 64}
+                if reason == "end_state":
+                    self.cli.plan["fixture"] = copy.deepcopy(fixture)
+                    final["State"]["StartedAt"] = "2026-11-13T01:00:01Z"
+                    shown["State"] = dict(final["State"])  # a restart before admission must not replace the protected start snapshot
+                def command(args):
+                    if args[0] == "wait": return b"0" if reason == "end_unconfirmed" else b"143"
+                    return json.dumps([network_view if args[2] == upstream else {"Id": NET, "Containers": {relay: {}, **({CID: {}} if reason == "ingress_not_closed" else {})}}]).encode()
+                stack.enter_context(mock.patch.object(d, "free_space"))
+                stack.enter_context(mock.patch.object(d, "contain_job"))
                 stack.enter_context(mock.patch.object(d.jobs, "members", return_value=[] if reason == "backend_unsupervised" else [os.getpid()]))
                 batch.held = {"access": b"", "events": b"", "fixture": b'{"v":1,"requests":[{"model":"gpt-5.4"}]}'}
-                batch.collect.return_value = batch.stage.return_value = {"content_hash": "sha256:" + CID}
-                actions = {"create_auxiliary": [CID, relay], "start": None, "end": [{"State": {"ExitCode": int(reason == "initializer_failed")}}, {"State": {"ExitCode": 1}}, {"State": {"ExitCode": int(reason == "relay_stop_failed")}}], "network": [NET], "endpoint": None, "create_runner": CID,
-                           "inspect": [shown, connected, {"NetworkSettings": {"Networks": {}}}], "contain": None, "runtime": None, "close_admission": None,
-                           "drain": None if reason != "relay_drain" else LiveProfileRefused("relay_drain"), "logs": (b"events", b"diagnostics"), "_command": lambda args: json.dumps([network_view if args[2] == upstream else {"Id": NET, "Containers": {relay: {}, **({CID: {}} if reason == "ingress_not_closed" else {})}}]).encode()}
+                batch.collect.side_effect = collect
+                batch.stage.return_value = {"content_hash": "sha256:" + CID}
+                actions = {"create_auxiliary": [CID, relay], "start": None, "end": end, "network": [NET], "endpoint": None, "create_runner": CID,
+                           "inspect": [shown, connected, {"NetworkSettings": {"Networks": {}}}, final], "contain": contain, "runtime": None, "close_admission": None,
+                           "drain": None if reason != "relay_drain" else LiveProfileRefused("relay_drain"), "logs": (b"events", b"diagnostics"), "_command": command}
                 for name, result in actions.items():
                     patched = stack.enter_context(mock.patch.object(self.cli, name, **({"side_effect": result} if isinstance(result, (list, BaseException)) or callable(result) else {"return_value": result})))
                     watch.attach_mock(patched, name)
                 if reason == "backend_unsupervised":
-                    self.refused(lambda: self.cli.run(ended, batch), reason)
+                    self.refused(lambda: self.cli.run(batch), reason)
+                elif reason == "generation_symlink":
+                    with self.assertRaises(OSError):
+                        self.cli.run(batch)
+                    self.assertIsNone(self.job.read("docker-complete.json"))
                 elif reason:
-                    with self.assertRaisesRegex(LiveProfileRefused, "^" + ("fixture_network_members" if reason in views else "fixture_network" if reason in wrong else "relay_topology" if reason in topology else reason) + "$"):
-                        self.cli.run(ended, batch)
+                    expected = "fixture_evidence_mount" if reason.startswith("fixture_mount_") or reason in ("fixture_host_mount_source", "fixture_host_multiple") else "fixture_runtime" if reason.startswith("fixture_host_") else "fixture_network" if reason in wrong else "fixture_network_members" if reason in views else "relay_topology" if reason in topology else reason
+                    with self.assertRaisesRegex(LiveProfileRefused, "^" + expected + "$"):
+                        self.cli.run(batch)
                     self.assertNotIn(mock.call.endpoint("connect", mock.ANY, mock.ANY, mock.ANY), watch.mock_calls) if reason in (*wrong, *views) else None
                     self.assertNotIn(mock.call.start(relay, "relay"), watch.mock_calls) if reason in topology else None   # refused before the relay starts   # refused before any connect
                     self.assertIsNotNone(self.job.read("docker-attempt.json"))
                     self.assertIsNone(self.job.read("docker-complete.json"))
-                    batch.collect.assert_not_called()
+                    if reason not in ("collection_absent", "collection_identity"):
+                        batch.collect.assert_not_called()
                 else:
-                    refs = self.cli.run(ended, batch)
+                    refs = self.cli.run(batch)
                     self.assertEqual(len(refs), 6)
                     self.assertEqual(self.job.read("docker-complete.json")["disposition"]["disposition"], "unknown")
-                    watch.assert_has_calls([mock.call.start(CID), mock.call.close_admission(), mock.call.end(CID), mock.call.endpoint("disconnect", NET, CID), mock.call._command(("network", "inspect", NET)), mock.call.inspect(CID), mock.call.drain(), mock.call.contain(relay, role="relay"), mock.call.end(relay, "relay"), mock.call.logs(CID)])
+                    watch.assert_has_calls([mock.call.start(CID), mock.call.close_admission(), mock.call.end(CID), mock.call.endpoint("disconnect", NET, CID), mock.call._command(("network", "inspect", NET)), mock.call.inspect(CID), mock.call.drain(), mock.call.contain(relay, role="relay"), mock.call.end(relay, "relay"), mock.call.contain(fixture_id, role="fixture"), mock.call.end(fixture_id, "fixture"), mock.call._command(("wait", fixture_id)), mock.call.inspect(fixture_id), mock.call.logs(CID)])
                     self.assertEqual(batch.collect.call_count, 3)
+                    self.assertEqual(self.job.read("fixture-start.json"), fixture)
+                    self.assertEqual(self.job.read("fixture-end.json"), final)
+                    self.assertEqual(actual_batch.held["fixture"], (fixture_directory / "fixture.json").read_bytes())
+                if fixture_directory.is_symlink(): fixture_directory.unlink()
+                saved = fixture_directory.with_name("saved")
+                if saved.exists():
+                    if fixture_directory.exists(): fixture_directory.rmdir()
+                    saved.rename(fixture_directory)
                 for name in ("docker-attempt.json", "docker-generations.json", "docker-complete.json"):
                     (self.job.dir / name).unlink(missing_ok=True)
                 self.job.write("relay.json", record)
@@ -517,7 +584,7 @@ class DockerBoundary(unittest.TestCase):
                 watch.attach_mock(patched, name)
             contained = stack.enter_context(mock.patch.object(d, "contain_job"))
             try:
-                refs = cli.run(lambda: self.fail("a real route has no fixture"), batch)
+                refs = cli.run(batch)
             except BaseException as error:
                 return error, batch, watch, contained
             return refs, batch, watch, contained
