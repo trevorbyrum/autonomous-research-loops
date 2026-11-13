@@ -808,7 +808,7 @@ class Supervisor:
         """End every delegate before releasing parent capacity, preserving stalled delegates and their local deadlines (L-7, L-8, C-10; Astra 1c A3)."""
         if order["kind"] == "delegate":
             return
-        pending = []
+        pending, unsaved = [], []
         for entry in jobs.entries(self.jobs_root):
             if entry.kind == jobs.CORRUPT:  # it may be this parent's delegate: capacity is not released over it
                 pending.append(entry.name)
@@ -834,8 +834,11 @@ class Supervisor:
                     if self.advance(dorder["invocation_id"]) not in (*TERMINAL, "not_admitted"):
                         pending.append(dorder["invocation_id"])
             except CONSUMED as failure:  # a delegate whose state fails its step is not ended: the parent keeps its capacity and waits
-                self._contain(delegate, failure, 'settle')
+                if self._contain(delegate, failure, 'settle') == "containment_unsaved":
+                    unsaved.append(delegate.handle)
                 pending.append(dorder["invocation_id"])
+        if unsaved:  # no marker holds the failure: it is raised, not left as ordinary waiting (the parent keeps its capacity either way)
+            raise ControlFailure(f"{order['invocation_id']}: containment_unsaved for {', '.join(unsaved)}")
         if pending:
             raise Waiting("delegates_pending")
 

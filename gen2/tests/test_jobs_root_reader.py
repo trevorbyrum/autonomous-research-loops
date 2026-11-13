@@ -391,3 +391,16 @@ class ContainmentTest(sf.SupervisedTestCase):
                 self.supervisor._settle_delegates({"kind": "research_pass", "invocation_id": "inv_parent0001"})
             self.assertEqual([c["entry"] for c in self.supervisor.census()["corrupt"]], ["job-inv_delegate001"])
         self.assertEqual(self.supervisor.job("inv_delegate001").read(jobs.CONTAINED), {"reason": "consumed_type", "step": "settle"})
+
+    def test_a_delegate_whose_marker_cannot_be_saved_is_an_explicit_control_failure_and_its_parent_stays_held(self) -> None:
+        delegate = self.root / "jobs" / "job-inv_delegate001"
+        delegate.mkdir()
+        (delegate / "order.json").write_text(json.dumps(sf.bare_order("inv_delegate001", rf.TOPIC, kind="delegate", parent_invocation_id="inv_parent0001")))
+        (delegate / "journal.json").write_text(json.dumps({"grant": "damaged"}))
+        with mock.patch.object(jobs, "JOURNAL_FIELDS", {}), mock.patch.object(jobs.Job, "contain", side_effect=OSError("PRIVATE_DISK_TEXT")):
+            with self.assertRaises(ControlFailure) as raised:
+                self.supervisor._settle_delegates({"kind": "research_pass", "invocation_id": "inv_parent0001"})
+        self.assertIn("containment_unsaved", str(raised.exception))
+        self.assertNotIn("PRIVATE_DISK_TEXT", str(raised.exception))
+        self.assertFalse((delegate / jobs.CONTAINED).exists())
+        self.assertNotIn("settled", self.supervisor.job(sf.MAIN).read("journal.json"))  # the parent's hold is untouched
