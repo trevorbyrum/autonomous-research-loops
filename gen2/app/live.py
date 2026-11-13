@@ -57,7 +57,7 @@ def agent_for(directory: Path, env: Mapping[str, str], *, execute=docker_cli.cap
     def agent(prompt: bytes, raw_input: bytes, out: Path) -> int:
         batch = ScratchBatch(directory)
         try:
-            docker_cli.DockerCLI(job, manifest, retained, manifest.get("tree"), execute=execute).run(lambda: None, batch)
+            docker_cli.DockerCLI(job, manifest, retained, manifest.get("tree"), execute=execute).run(batch)
         except LiveProfileRefused as refused:
             raise Refused(f"the live backend refused: {refused}") from None
         if job.read("docker-complete.json")["disposition"]["disposition"] == "credentials_rejected":
