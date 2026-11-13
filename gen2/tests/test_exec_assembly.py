@@ -2,7 +2,10 @@
 verdict on work-input/1, and the digest of the bytes written (hashlib). Limits: purpose builders, views and the
 real agent step are other PRs'; the agent here is a stub that writes one canned file."""
 import hashlib
+import importlib.util
 import json
+import os
+import stat
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -98,6 +101,47 @@ class OrdersTest(unittest.TestCase):
         self.assertEqual(order.command[-2:], ("scope", "/scratch/x"))
         with self.assertRaises(common.Refused):
             orders.build_order(**{**args, "bundle": bundle()})
+
+    def test_producer_inputs_pass_the_tracked_runner_and_safely_replace_links_on_reissue(self):
+        source = Path(__file__).resolve().parents[2] / "deploy/gen2/live/runner.py"
+        spec = importlib.util.spec_from_file_location("tracked_runner", source)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)  # stdlib loader: deployment is outside the component import graph
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            target = root / "inputs"
+            target.mkdir()
+            victim = root / "unchanged"
+            victim.write_bytes(b"original target")
+            (target / "prompt.md").symlink_to(victim)
+            os.link(victim, target / "input.json")
+            before = victim.stat()
+            raw = canonical.canonical_bytes(self.document())
+            for attempt in range(2):
+                with self.subTest(attempt=attempt):
+                    # Keep old files open so inode reuse cannot hide a rewrite instead of replacement.
+                    with (target / "prompt.md").open("rb") as old_prompt, (target / "input.json").open("rb") as old_input:
+                        digest = orders.write_inputs(root, entry=entry(), prompt=PROMPT, document=self.document())
+                        for name, old in (("prompt.md", old_prompt), ("input.json", old_input)):
+                            info = (target / name).stat()
+                            self.assertTrue(stat.S_ISREG(info.st_mode))
+                            self.assertEqual((stat.S_IMODE(info.st_mode), info.st_nlink, info.st_uid), (0o400, 1, os.geteuid()))
+                            self.assertNotEqual(info.st_ino, os.fstat(old.fileno()).st_ino)
+                    fd = os.open(target, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        self.assertEqual(runner.read_file(fd, "input.json", len(raw)), raw)
+                        self.assertEqual(digest, canonical.bytes_digest(raw))
+                        self.assertEqual(runner.work_prompt(fd), PROMPT.decode() + "\n\nInput JSON:\n" + raw.decode())
+                        with self.assertRaisesRegex(ValueError, "oversized"):
+                            runner.read_file(fd, "input.json", len(raw) - 1)
+                    finally:
+                        os.close(fd)
+                    with self.assertRaises(common.Refused):
+                        orders.write_inputs(root, entry=entry(max_input_bytes=len(raw) - 1), prompt=b"changed", document=self.document())
+                    self.assertEqual((target / "prompt.md").read_bytes(), PROMPT)
+                    self.assertEqual((target / "input.json").read_bytes(), raw)
+            self.assertEqual(victim.read_bytes(), b"original target")
+            self.assertEqual((victim.stat().st_ino, victim.stat().st_mode), (before.st_ino, before.st_mode))
 
 
 class JobTest(unittest.TestCase):

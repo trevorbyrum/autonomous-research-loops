@@ -52,10 +52,9 @@ class Agent(unittest.TestCase):
             def __init__(self, job_, manifest, retained, tree, **kw):
                 self.job = job_
 
-            def run(self, fixture, batch):
+            def run(self, batch):
                 if refuse:
                     raise LiveProfileRefused(refuse)
-                assert fixture() is None                                   # a real route has no fixture
                 if judgment is not None:
                     batch.stage(judgment, "application/json", "judgment")
                 self.job.write("docker-complete.json", {"origin": {}, "refs": [], "disposition": {"disposition": disposition}})
@@ -93,6 +92,8 @@ class Agent(unittest.TestCase):
         self.assertEqual(self.main(scratch, env, disposition="credentials_rejected"), 1)
         self.assertEqual(self.main(scratch, env, refuse="end_unconfirmed"), 2)
         self.assertEqual(self.main(scratch, env, judgment=None), 2)
+        self.assertEqual(self.main(scratch, env, judgment=b"2e1 complete"), 2)  # tool-less T10 prose, not a scope judgment
+        self.assertIsNotNone(job.read("docker-complete.json"))
 
     def main(self, scratch, env, **kw):
         """The child's own `main` over the real live agent (DockerCLI stubbed): the exit code is what the supervisor and the Router see."""
