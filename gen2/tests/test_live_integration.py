@@ -10,6 +10,7 @@ import sqlite3
 import unittest
 from pathlib import Path
 
+from gen2.core import canonical
 from gen2.tests.offline_run import Offline
 from gen2.tests.test_supervisor_live import MANIFEST, record_doc
 
@@ -51,6 +52,10 @@ class LiveFixtureRoute(unittest.TestCase):
         self.assertEqual(len(audit(run, "dispatch_authorized")), 1)
         (result,) = audit(run, "dispatch_result")
         self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]), (400, "worst_case"))
+        self.assertEqual(len(result["evidence"]["artifacts"]), 3)                          # two set-aside backend refs plus the execution record: non-vacuous
+        with sqlite3.connect(Path(run.tmp.name) / "station" / "store.sqlite3") as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM artifacts WHERE content_hash IN (?, ?)", (canonical.bytes_digest(b"2e1 complete"), canonical.bytes_digest(b'{"usage": "recorded"}'))).fetchone()[0], 2)
+        self.assertEqual(audit(run, "dispatch_result_unrecorded"), [])
         (end,) = (Path(run.tmp.name) / "station" / "jobs").glob("*/exit.json")
         self.assertEqual(json.loads(end.read_text())["code"], 2)
         self.assertTrue(end.with_name("docker-complete.json").exists())
