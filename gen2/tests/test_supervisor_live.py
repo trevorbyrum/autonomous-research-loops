@@ -326,6 +326,62 @@ class RealRoute(LiveWorld):
         self.assertIsNone(self.authority.result("adm", record["content_hash"]))               # an unassemblable rejection is no result: fixed U
 
 
+class FailedEnd(LiveWorld):
+    """Evidence the backend set aside is staged at every observed end, so a failed end's result records (Gate S #12 change 1)."""
+    JUDGMENT, USAGE = b"2e1 complete", b'{"usage": "recorded"}'
+
+    def failed_end(self, disposition, code=2):
+        supervisor = self.live_supervisor()
+        names = {"evidence-" + canonical.bytes_digest(b)[len("sha256:"):] + ext: (b, media) for b, ext, media in
+                 ((self.JUDGMENT, ".txt", "text/plain"), (self.USAGE, ".json", "application/json"))}
+        steps = [{"op": "write", "name": n, "hex": b.hex()} for n, (b, _) in names.items()] + [{"op": "exit", "code": code}]
+        job = self.prepare(supervisor, steps=steps)
+        refs = [{"content_hash": canonical.bytes_digest(b), "size_bytes": len(b), "media_type": m} for b, m in names.values()]
+        job.write("docker-complete.json", {"origin": job.read("docker-plan.json")["origin"], "refs": refs, "disposition": disposition})
+        outcome = LiveStart.drive(self, supervisor)
+        return job, refs, outcome
+
+    def assert_recorded(self, job, refs, outcome):
+        self.assertEqual(outcome, "failed")
+        self.assertTrue(refs)                                                              # non-vacuous: real set-aside refs
+        (result,) = self.audit("dispatch_result")
+        self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"], result["trial_stopped"]), (400, "worst_case", False))
+        recorded = {a["content_hash"] for a in result["evidence"]["artifacts"]}
+        self.assertTrue({r["content_hash"] for r in refs} <= recorded)
+        stored = {row[0] for row in self.rows("SELECT content_hash FROM artifacts WHERE topic_id = ?", rf.TOPIC)}
+        self.assertTrue({r["content_hash"] for r in refs} <= stored)                       # registered as Router artifacts
+        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "failed")
+        self.assertEqual(job.read("journal.json")["collected"]["result"], None)
+        self.assertEqual(self.audit("dispatch_result_unrecorded"), [])
+
+    def test_a_refused_judgment_after_a_confirmed_end_records_a_failed_result_with_its_set_aside_evidence(self):
+        self.assert_recorded(*self.failed_end({"disposition": "unknown", "reason": "runner_not_failed_turn"}))
+
+    def test_a_credential_rejection_shaped_end_with_no_outcome_also_records(self):
+        self.assert_recorded(*self.failed_end({"disposition": "unknown", "reason": "relay_401"}, code=1))
+
+    def test_a_failed_job_lists_the_evidence_it_set_aside_in_its_collected_end(self):
+        job, refs, _ = self.failed_end({"disposition": "unknown"})
+        self.assertEqual(sorted(r["content_hash"] for r in job.read("journal.json")["collected"]["evidence"]), sorted(r["content_hash"] for r in refs))
+
+    def test_a_terminated_job_stages_the_evidence_it_had_set_aside(self):
+        supervisor = self.live_supervisor()
+        data = b"set aside before the deadline"
+        name = "evidence-" + canonical.bytes_digest(data)[len("sha256:"):] + ".txt"
+        job = self.prepare(supervisor, steps=[{"op": "write", "name": name, "hex": data.hex()}, {"op": "hang"}])
+        self.finish_backend(job)
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
+        with unittest.mock.patch("gen2.supervisor.docker_cli.contain_job"):
+            self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+            for _ in range(200):
+                supervisor.advance(MAIN, live_start=True)
+                if job.read("journal.json").get("collected"):
+                    break
+        collected = job.read("journal.json")["collected"]
+        self.assertTrue(collected["terminated"])
+        self.assertEqual([r["content_hash"] for r in collected["evidence"]], [canonical.bytes_digest(data)])
+
+
 class Containment(LiveWorld):
     def test_a_deadline_or_cancel_termination_of_a_live_job_kills_and_removes_its_containers_and_an_unendable_one_leaves_the_end_unconfirmed(self):
         for failing in (False, True):
