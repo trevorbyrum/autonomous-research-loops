@@ -61,7 +61,7 @@ with open(os.path.join(home, "behaviour.json")) as f:
 with open(os.path.join(home, "calls.log"), "a") as f:
     f.write(" ".join(sys.argv[1:]) + "\\n")
 if sys.argv[1:] == ["--version"]:
-    sys.stdout.write(b.get("version", "codex-cli 0.153.2\\n"))
+    sys.stdout.write(b.get("version", "codex-cli 0.169.0\\n"))
     sys.exit(0)
 environ = open("/proc/self/environ", "rb").read().decode().split("\\0")  # as exec'd: the interpreter's own locale coercion is not the probe's
 seen = {{"env": dict(e.split("=", 1) for e in environ if e), "cwd": os.getcwd(), "home_entries": sorted(os.listdir(os.environ["HOME"])),
@@ -94,7 +94,7 @@ sys.exit(b.get("code", 0))
 
 def observation(pid: str, outcome: str, observed: str, *, started: str | None = None, detail: str = "by hand", declared: dict | None = None) -> dict:
     return {"probe_id": "probe_" + pid.ljust(32, "0"), "capability": CAP, "outcome": outcome, "detail": detail, "declared_expiry": declared,
-            "started_at": started or observed, "observed_at": observed, "runner": {"name": "codex", "version": "0.153.2"},
+            "started_at": started or observed, "observed_at": observed, "runner": {"name": "codex", "version": "0.169.0"},
             "affected_lanes": ["station:station-1"], "requested_by": "alice"}
 
 
@@ -324,7 +324,7 @@ class FakeRunnerCase(unittest.TestCase):
 
 class ProbeRunTest(FakeRunnerCase):
     def test_each_answer_of_the_runner_is_classified_by_its_rules(self):
-        cases = [  # (behaviour, outcome, detail) — codex 0.153.2's login status, by hand
+        cases = [  # (behaviour, outcome, detail) — codex 0.153.2's login status, by hand (0.169.0 pending)
             ({"stderr": KEY_LINE}, "usable", "the runner reads a credential (an API key)"),
             ({"stderr": "Logged in using ChatGPT\n"}, "usable", "the runner reads a credential (ChatGPT tokens)"),
             ({"stderr": "Not logged in\n", "code": 1}, "unusable_credential", "the runner finds no credential"),
@@ -350,7 +350,7 @@ class ProbeRunTest(FakeRunnerCase):
         self.assertEqual(set(obs), {"probe_id", "capability", "outcome", "detail", "declared_expiry", "started_at", "observed_at", "runner",
                                     "affected_lanes", "requested_by"})
         self.assertEqual((obs["capability"], obs["runner"], obs["affected_lanes"], obs["requested_by"]),
-                         (CAP, {"name": "codex", "version": "0.153.2"}, ["station:station-1"], "alice"))
+                         (CAP, {"name": "codex", "version": "0.169.0"}, ["station:station-1"], "alice"))
         self.assertLess(utc_instant_ns(obs["started_at"]), utc_instant_ns(obs["observed_at"]))
         text = json.dumps(obs)
         self.assertNotIn("SECRETPART", text)
@@ -359,7 +359,7 @@ class ProbeRunTest(FakeRunnerCase):
     def test_another_runner_version_is_a_runner_error_and_its_status_is_never_run(self):
         self.behave(stderr=KEY_LINE, version="codex-cli 0.154.0\n")
         obs = self.run_probe()
-        self.assertEqual((obs["outcome"], obs["detail"]), ("runner_error", "the runner is not codex 0.153.2: its behaviour is not known here"))
+        self.assertEqual((obs["outcome"], obs["detail"]), ("runner_error", "the runner is not codex 0.169.0: its behaviour is not known here"))
         self.assertEqual(self.calls(), ["--version"])
 
     def test_a_runner_that_cannot_start_is_a_runner_error(self):

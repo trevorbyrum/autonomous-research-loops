@@ -18,7 +18,7 @@ def credential(case):
 
 def response(case, ordinal, request):
     case = "accepted" if case == "hold" else case
-    if request.get("model") != "gpt-5.4" or request.get("stream") is not True:
+    if request.get("model") != "gpt-6.1-terra" or request.get("stream") is not True:
         raise ValueError("model/stream")
     if case == "limited" and ordinal == 1:
         return 429, "application/json", b'{"error":{"type":"usage_limit_reached","resets_at":253402300799}}\n'
@@ -84,7 +84,7 @@ class Handler(BaseHTTPRequestHandler):
                 subscription = isinstance(self.connection, ssl.SSLSocket) and self.path == "/backend-api/codex/responses"
                 if self.command != "POST" or (self.path != "/v1/responses" and not subscription) or not re.fullmatch("[0-9a-f]{32}", rid):
                     raise ValueError("model route/id")
-                expected = {"Authorization": "Bearer e30.eyJleHAiOjI1MzQwMjMwMDc5OX0.c2ln", "ChatGPT-Account-ID": "fixture-session", "originator": "codex_cli_rs", "version": "0.153.2", "Host": "chatgpt.com", "Content-Type": "application/json", "Accept": "text/event-stream"} if subscription else {"Authorization": "Bearer 2e1-fixture-" + credential(self.server.case)}
+                expected = {"Authorization": "Bearer e30.eyJleHAiOjI1MzQwMjMwMDc5OX0.c2ln", "ChatGPT-Account-ID": "fixture-session", "originator": "codex_cli_rs", "version": "0.169.0", "Host": "chatgpt.com", "Content-Type": "application/json", "Accept": "text/event-stream"} if subscription else {"Authorization": "Bearer 2e1-fixture-" + credential(self.server.case)}
                 if any(self.headers.get_all(k) != [v] for k, v in expected.items()):
                     raise ValueError("dummy credential/headers")
                 if subscription and {k.lower() for k in self.headers} - ({k.lower() for k in expected} | {"content-length", "x-request-id"}):

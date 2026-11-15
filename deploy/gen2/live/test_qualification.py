@@ -58,7 +58,7 @@ class Qualification(unittest.TestCase):
                 qualify.relay_response(answer | change)
         request = q_net.model_request(nonce)
         raw = json.dumps(dict(ordinal=1, method="POST", route="/v1/responses", status=200, case="accepted", id="c" * 32, request=request)).encode()
-        independent = json.dumps({"v": 1, "requests": [dict(id="c" * 32, route="/v1/responses", model="gpt-5.4", credential="accepted")]}).encode()
+        independent = json.dumps({"v": 1, "requests": [dict(id="c" * 32, route="/v1/responses", model="gpt-6.1-terra", credential="accepted")]}).encode()
         qualify.relay_record(dict(nonce=nonce), raw, independent)
         for changed in (b'{"v":1,"requests":[]}', independent.replace(b"accepted", b"rejected")):
             with self.subTest(independent=changed), self.assertRaisesRegex(ValueError, "relay_fixture_record"):
@@ -80,7 +80,7 @@ class Qualification(unittest.TestCase):
         probe = dict(nonce=plan["nonce"], docker_socket=2, files=dict.fromkeys(qualify.PROTECTED, "denied"),
                      denials={target + "/" + protocol: dict(nonce=plan["nonce"], address=qualify.TARGETS[target][0],
                               port=qualify.TARGETS[target][1], protocol=protocol, connected=False, answer="") for target, protocol in qualify.DENIALS})
-        rows = [dict(ordinal=i, method="POST", route="/v1/responses", status=200, model="gpt-5.4", id=str(i) * 32) for i in (1, 2)]
+        rows = [dict(ordinal=i, method="POST", route="/v1/responses", status=200, model="gpt-6.1-terra", id=str(i) * 32) for i in (1, 2)]
         independent = {"v": 1, "requests": [dict(id=r["id"], route=r["route"], model=r["model"], credential="accepted") for r in rows]}
         view = dict(plan=plan, probe=probe, network=network, controls=dict(before=control, after=final_control),
                     before=after, after=ended, raw="\n".join(map(json.dumps, rows)), independent=json.dumps(independent))

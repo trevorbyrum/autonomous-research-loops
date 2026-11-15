@@ -9,8 +9,8 @@ import json
 import re
 
 RELAY_SHA = "0688d2355b9e327d66fa3be1f9b5654275ef333bbe47f28a091749b34eddd276"
-CONFIG_SHA = "f14d75f89c958edde311e0cbb5d90e83b68517c0cc720920641bc3ec5fbe6f4e"
-CATALOG_SHA = "62d809889367324c104b13a4881e115286085d5674ffa77ab790b48c63002d10"
+CONFIG_SHA = "28ff186e0f1fd7d677492ce93cc594129750a297ac0c26e0498a26cf038e191d"
+CATALOG_SHA = "c47e8f6c5fdb26d91bf1b99319263015ef468108d5da4f1ecb66c55c6f1fb356"
 
 
 def pinned(data, expected):
@@ -28,7 +28,7 @@ def runner_config(offline):
 def model_catalog(offline):
     """Null disables the independent patch tool; preserve every other catalog value."""
     catalog = json.loads(pinned(offline, CATALOG_SHA))
-    model, = [row for row in catalog["models"] if row["slug"] == "gpt-5.4"]
+    model, = [row for row in catalog["models"] if row["slug"] == "gpt-6.1-terra"]
     model["apply_patch_tool_type"] = None
     return json.dumps(catalog, sort_keys=True, ensure_ascii=False, indent=2).encode() + b"\n"
 
@@ -50,10 +50,10 @@ def relay_config(view):
                         "            proxy_ssl_protocols TLSv1.2 TLSv1.3;")
     return base.replace("proxy_set_header Authorization $http_authorization;",
                         "include /etc/gen2/provider-auth.conf;\n"
-                        # Codex 0.153.2: login/src/auth/default_client.rs DEFAULT_ORIGINATOR;
+                        # Codex 0.169.0: login/src/auth/default_client.rs DEFAULT_ORIGINATOR;
                         # model-provider-info/src/lib.rs create_openai_provider, workspace version.
                         '            proxy_set_header originator "codex_cli_rs";\n'
-                        '            proxy_set_header version "0.153.2";').replace(
+                        '            proxy_set_header version "0.169.0";').replace(
         'proxy_set_header Host "172.31.252.3:8081";', 'proxy_set_header Host "chatgpt.com";').encode()
 
 

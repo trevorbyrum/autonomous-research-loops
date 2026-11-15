@@ -10,7 +10,7 @@ failure is a capability fact); INVARIANTS H-2, RG-3.
 
 A probe runs the provider's pinned runner (RUNNERS: baked, like the runner
 itself) against its auth home, <auth root>/<provider>, in a mode that makes
-no network call and spends no quota — for codex 0.153.2, `codex --version`
+no network call and spends no quota — for codex 0.169.0, `codex --version`
 then `codex login status` — and classifies what it saw by fixed rules:
   usable               the runner reports a credential it can read;
   declared_expired     the runner reports a credential it can read, and
@@ -95,7 +95,7 @@ class Runner:
 
 
 def codex_status(code: int, out: str, err: str) -> tuple[str, str]:
-    """codex 0.153.2 `login status`: one line on stderr, nothing on stdout;
+    """codex `login status` as observed on 0.153.2 (0.169.0 re-characterisation pending, AUTH-DEMO.md (e)): one line on stderr, nothing on stdout;
     exit 0 when it reads a credential, 1 when it finds none or cannot read
     the one it finds."""
     line = err[:-1] if err.endswith("\n") else err
@@ -135,7 +135,7 @@ def jwt_exp(token: object) -> str | None:
 
 
 def codex_declared(credential: object) -> dict:
-    """codex 0.153.2's auth.json. An OPENAI_API_KEY string, empty or not, is
+    """codex's auth.json as observed on 0.153.2 (0.169.0 pending). An OPENAI_API_KEY string, empty or not, is
     the credential it uses, and declares nothing; otherwise its ChatGPT
     tokens, whose access and ID tokens are JWTs (AUTH-DEMO.md (e))."""
     auth = credential if isinstance(credential, dict) else {}
@@ -155,7 +155,7 @@ def declared_verdict(declared: dict | None, observed: str) -> tuple[str, str] | 
                                 + ("present" if declared["refresh_credential"] else "absent"))
 
 
-RUNNERS = {"codex": Runner("codex", "0.153.2", ("codex", "--version"), "codex-cli 0.153.2\n", ("codex", "login", "status"), "CODEX_HOME",
+RUNNERS = {"codex": Runner("codex", "0.169.0", ("codex", "--version"), "codex-cli 0.169.0\n", ("codex", "login", "status"), "CODEX_HOME",
                            codex_status, "auth.json", codex_declared)}
 
 

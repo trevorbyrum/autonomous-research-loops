@@ -19,7 +19,7 @@ ZETA, ALPHA = "provider-auth:zeta", "provider-auth:alpha"   # recorded in this o
 
 def probe(pid: str, capability: str, outcome: str, detail: str, observed: str) -> dict:
     return {"probe_id": "probe_" + pid.ljust(32, "0"), "capability": capability, "outcome": outcome, "detail": detail, "declared_expiry": None, "started_at": observed,
-            "observed_at": observed, "runner": {"name": "codex", "version": "0.153.2"}, "affected_lanes": ["station:station-1"], "requested_by": "alice"}
+            "observed_at": observed, "runner": {"name": "codex", "version": "0.169.0"}, "affected_lanes": ["station:station-1"], "requested_by": "alice"}
 
 
 class StatusOrderTest(rf.RouterTestCase):

@@ -55,7 +55,7 @@ def relay_record(answer, raw, independent):
     require(row["ordinal"] == 1 and row["method"] == "POST" and row["route"] == "/v1/responses"
             and row["status"] == 200 and row["case"] == "accepted" and row["request"] == model_request(answer["nonce"])
             and bool(re.fullmatch("[0-9a-f]{32}", row["id"])) and row["id"] != answer["nonce"], "relay_fixture_request")
-    require(record == {"v": 1, "requests": [dict(id=row["id"], route="/v1/responses", model="gpt-5.4", credential="accepted")]}, "relay_fixture_record")
+    require(record == {"v": 1, "requests": [dict(id=row["id"], route="/v1/responses", model="gpt-6.1-terra", credential="accepted")]}, "relay_fixture_record")
 
 
 def counts(data, nonce, origin):
@@ -107,7 +107,7 @@ def bracket(view):
     raw, independent = [json.loads(line) for line in view["raw"].splitlines()], json.loads(view["independent"])
     require(len(raw) == 2 and len({r["id"] for r in raw}) == 2 and [r["ordinal"] for r in raw] == [1, 2]
             and all(r["method"] == "POST" and r["route"] == "/v1/responses" and r["status"] == 200
-                    and r["model"] == "gpt-5.4" and re.fullmatch("[0-9a-f]{32}", r["id"]) for r in raw), "relay_fixture_request")
+                    and r["model"] == "gpt-6.1-terra" and re.fullmatch("[0-9a-f]{32}", r["id"]) for r in raw), "relay_fixture_request")
     require(independent == {"v": 1, "requests": [dict(id=r["id"], route=r["route"], model=r["model"], credential="accepted") for r in raw]}, "relay_fixture_record")
     delivery_delta(view["before"], view["after"], ["fixture", "fixture"])
     return dict(qualification=None, namespace_review_required=True, probe=probe, network=network, fixture_record=independent)

@@ -21,7 +21,7 @@
     "route": "real",
     "backend": "docker-cli/1",
     "provider_route": "chatgpt-subscription",
-    "runner_version": "0.153.2",
+    "runner_version": "0.169.0",
     "manifest_pin": null,
     "credential_ref": null,
     "deployment_id": null,

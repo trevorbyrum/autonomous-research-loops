@@ -58,15 +58,15 @@ def exchange(case, bodies):
 class DualWitness(unittest.TestCase):
     def classify(self, rows=None, events=FAILED, record=None, code=1, **change):
         rows = [ROW | change] if rows is None else rows
-        return rejection.classify(lines(rows), lines(events), record, code, model="gpt-5.4")["disposition"]
+        return rejection.classify(lines(rows), lines(events), record, code, model="gpt-6.1-terra")["disposition"]
 
     def test_rejected_key_is_one_request_literal_rejection(self):
-        results, record = exchange("rejected", [{"model": "gpt-5.4", "stream": True}])
+        results, record = exchange("rejected", [{"model": "gpt-6.1-terra", "stream": True}])
         self.assertEqual([status for status, _ in results], [401])
         self.assertEqual(self.classify(record=record, id=RID[:-1] + "1"), "credentials_rejected")
 
     def test_accepted_key_drives_tool_and_two_request_completion(self):
-        request = {"model": "gpt-5.4", "stream": True, "tools": TOOLS}
+        request = {"model": "gpt-6.1-terra", "stream": True, "tools": TOOLS}
         results, record = exchange("accepted", [request, request | {"input": [dict(
             type="function_call_output", call_id="call_2e1", output="2e1-tool-ok")]}])
         self.assertEqual([status for status, _ in results], [200, 200])
@@ -74,13 +74,13 @@ class DualWitness(unittest.TestCase):
         self.assertIn(b"2e1 complete", results[1][1])
         self.assertEqual(len(json.loads(record)["requests"]), 2)
         events = [{"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 5}}]
-        usage = rejection.usage_record({}, lines(events), elapsed=1.5, gateway_refs=[], raw_refs=[], observed_model="gpt-5.4", configured_model="gpt-5.4")
+        usage = rejection.usage_record({}, lines(events), elapsed=1.5, gateway_refs=[], raw_refs=[], observed_model="gpt-6.1-terra", configured_model="gpt-6.1-terra")
         self.assertEqual(usage["usage"]["input_tokens"], {"state": "reported", "value": 10})
         self.assertEqual(self.classify(rows=[ROW, ROW | {"id": RID[:-1] + "2", "ordinal": "2"}], events=events, record=record, code=0), "unknown")
 
     def test_refusal_controls_never_become_a_credential_fact(self):
-        _, record = exchange("rejected", [{"model": "gpt-5.4", "stream": True}])
-        genuine = json.dumps({"v": 1, "requests": [{"id": RID[:-1] + "1", "route": "/v1/responses", "model": "gpt-5.4", "credential": "accepted"}]}).encode()
+        _, record = exchange("rejected", [{"model": "gpt-6.1-terra", "stream": True}])
+        genuine = json.dumps({"v": 1, "requests": [{"id": RID[:-1] + "1", "route": "/v1/responses", "model": "gpt-6.1-terra", "credential": "accepted"}]}).encode()
         text401 = FAILED[:2] + [{"type": "error", "message": "401"}] + FAILED[3:]
         for name, kwargs, expected in (
                 ("timeout", dict(upstream_status="504", status="504"), "transport_failed"),
@@ -94,7 +94,7 @@ class DualWitness(unittest.TestCase):
             with self.subTest(name):
                 kwargs = {"record": record, "id": RID[:-1] + "1"} | kwargs
                 if name == "malformed":
-                    got = rejection.classify(lines([ROW])[:-5], lines(FAILED), record, 1, model="gpt-5.4")["disposition"]
+                    got = rejection.classify(lines([ROW])[:-5], lines(FAILED), record, 1, model="gpt-6.1-terra")["disposition"]
                 else:
                     got = self.classify(**kwargs)
                 self.assertEqual(got, expected)
