@@ -645,8 +645,7 @@ class Supervisor:
             result = found["ref"] if not findings else None
         observation = {"process": self._process(view["identity"]), "exit": exit_record, "termination": seen["termination"], "descendants": seen["descendants"],
                        "output": output, "self_report": self._agent_text(job, SELF_REPORT), "findings": findings}
-        journal["observing"] = {**seen, "observation": observation, "result": result, "method": "exit_observed",
-                                "evidence": self._evidence(order, job) if result is not None else []}
+        journal["observing"] = {**seen, "observation": observation, "result": result, "method": "exit_observed"}
         self._save(job, journal)
         self._retain(job, order, journal)
 
@@ -678,7 +677,7 @@ class Supervisor:
                 "original": canonical.bytes_digest(raw["data"])}
 
     def _evidence(self, order: dict, job: jobs.Job) -> list[dict]:
-        """Stage the files a successful job set aside as `evidence-<sha256><ext>` (core.evidence_media): at most MAX_EVIDENCE and
+        """Stage the files a job set aside, at every observed end, as `evidence-<sha256><ext>` (core.evidence_media): at most MAX_EVIDENCE and
         MAX_EVIDENCE_BYTES, each listed only if its bytes hash to the digest in its name. The job names no path and the extension fixes the
         media type; these are the only refs its outcome may add. A mismatched file is staged (collect stages before the comparison) but
         never listed, and so is one whose bytes the topic's spool already holds under another media type (a conflict, not an error)."""
@@ -740,7 +739,7 @@ class Supervisor:
         collected: retained until it is delivered (C-10)."""
         seen = journal["observing"]
         record = self._record(order, seen["method"], seen["observation"])
-        journal["collected"] = {"observation": seen["observation"], "result": seen["result"], "record": record, "evidence": seen.get("evidence", []),
+        journal["collected"] = {"observation": seen["observation"], "result": seen["result"], "record": record, "evidence": self._evidence(order, job),
                                 **({"terminated": seen["terminated"]} if seen.get("terminated") else {})}
         del journal["observing"]
         self._wrote(journal)

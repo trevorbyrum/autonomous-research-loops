@@ -4,7 +4,7 @@ as tests; no container and no provider."""
 import sys
 from pathlib import Path
 
-from gen2.app import child
+from gen2.app import child, live
 from gen2.supervisor import jobs
 from gen2.tests.offline_agent import OfflineAgent
 
@@ -15,5 +15,7 @@ if __name__ == "__main__":
     agent = OfflineAgent({("research_pass", "scope"): lambda work: {}}) if invalid else OfflineAgent()
     code = child.main(sys.argv[1:], agent=agent)
     if job.read("docker-plan.json") is not None and not (directory.parent.parent.parent / "no-end").exists():   # only a live job has a plan
-        job.write("docker-complete.json", {"origin": job.read("docker-plan.json")["origin"], "refs": [], "disposition": {"disposition": "unknown", "reason": "fixture"}})
+        batch = live.ScratchBatch(directory)   # a refused judgment still leaves the backend's own evidence set aside, as DockerCLI.run does
+        refs = [batch.stage(b"2e1 complete", "text/plain"), batch.stage(b'{"usage": "recorded"}', "application/json")] if invalid else []
+        job.write("docker-complete.json", {"origin": job.read("docker-plan.json")["origin"], "refs": refs, "disposition": {"disposition": "unknown", "reason": "fixture"}})
     sys.exit(code)
