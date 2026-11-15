@@ -14,7 +14,7 @@ from gen2.supervisor.isolation import LiveProfileRefused
 ROW = {"v": 3, "id": "rid1", "src": "172.31.254.3", "port": "40000", "conn": "1", "ordinal": "1", "listener": "model",
        "server_port": "8080", "method": "POST", "route": "model", "upstream": "172.31.252.3:8081", "status": "401",
        "upstream_status": "401", "complete": "OK", "at": "1.5"}
-FIXTURE = {"v": 1, "requests": [{"id": "rid1", "route": "/v1/responses", "model": "gpt-5.4", "credential": "rejected"}]}
+FIXTURE = {"v": 1, "requests": [{"id": "rid1", "route": "/v1/responses", "model": "gpt-6.1-terra", "credential": "rejected"}]}
 IDENTITY = {"invocation_id": "inv_trial0001", "kind": "research", "topic": "t", "run_id": "trial-1", "attempt": 1}
 
 
@@ -29,7 +29,7 @@ class Classifier(unittest.TestCase):
     def verdict(self, access=None, events=FAILED, fixture=None, code=1):
         access = jl(ROW) if access is None else access
         fixture = json.dumps(FIXTURE).encode() if fixture is None else fixture
-        return r.classify(access, events, fixture, code, model="gpt-5.4")
+        return r.classify(access, events, fixture, code, model="gpt-6.1-terra")
 
     def test_conjunction_and_each_single_operand_refusal(self):
         self.assertEqual(self.verdict(), {"disposition": "credentials_rejected", "reason": "relay_401"})
@@ -80,7 +80,7 @@ class RealRoute(unittest.TestCase):
     REAL = {**ROW, "upstream": "203.0.113.7:443"}
 
     def verdict(self, route="real", fixture=None, upstream="203.0.113.7:443", access=None):
-        return r.classify(jl(self.REAL) if access is None else access, FAILED, fixture, 1, model="gpt-5.4", route=route, upstream=upstream)
+        return r.classify(jl(self.REAL) if access is None else access, FAILED, fixture, 1, model="gpt-6.1-terra", route=route, upstream=upstream)
 
     def test_a_real_route_row_against_the_plans_upstream_with_no_fixture_is_a_rejection(self):
         self.assertEqual(self.verdict(), {"disposition": "credentials_rejected", "reason": "relay_401"})
@@ -93,19 +93,19 @@ class RealRoute(unittest.TestCase):
                 self.assertEqual(self.verdict(**args)["disposition"], "unknown")
 
     def test_a_real_run_records_the_model_as_unknown_with_the_configured_string_kept_as_configured(self):
-        record = r.usage_record(IDENTITY, b"", elapsed=1, gateway_refs=[], raw_refs=[], observed_model=None, configured_model="gpt-5.4", observed=False)
-        self.assertEqual(record["model"], {"state": "unknown", "configured": "gpt-5.4"})
+        record = r.usage_record(IDENTITY, b"", elapsed=1, gateway_refs=[], raw_refs=[], observed_model=None, configured_model="gpt-6.1-terra", observed=False)
+        self.assertEqual(record["model"], {"state": "unknown", "configured": "gpt-6.1-terra"})
         with self.assertRaisesRegex(LiveProfileRefused, "usage_model_mismatch"):   # a known mismatch still refuses
-            r.usage_record(IDENTITY, b"", elapsed=1, gateway_refs=[], raw_refs=[], observed_model="gpt-5.5", configured_model="gpt-5.4", observed=False)
+            r.usage_record(IDENTITY, b"", elapsed=1, gateway_refs=[], raw_refs=[], observed_model="gpt-5.5", configured_model="gpt-6.1-terra", observed=False)
         with self.assertRaisesRegex(LiveProfileRefused, "usage_model_mismatch"):   # the fixture route still needs the observed model
-            r.usage_record(IDENTITY, b"", elapsed=1, gateway_refs=[], raw_refs=[], observed_model=None, configured_model="gpt-5.4")
+            r.usage_record(IDENTITY, b"", elapsed=1, gateway_refs=[], raw_refs=[], observed_model=None, configured_model="gpt-6.1-terra")
 
 
 class Usage(unittest.TestCase):
     schemas = SchemaSet()
 
     def record(self, events, **kw):
-        args = dict(elapsed=1.5, gateway_refs=["g1"], raw_refs=["sha256:a"], observed_model="gpt-5.4", configured_model="gpt-5.4")
+        args = dict(elapsed=1.5, gateway_refs=["g1"], raw_refs=["sha256:a"], observed_model="gpt-6.1-terra", configured_model="gpt-6.1-terra")
         return r.usage_record(IDENTITY, events, **{**args, **kw})
 
     def test_reported_or_unknown_and_schema(self):

@@ -224,7 +224,7 @@ class DispatchTests(rf.RouterTestCase):
         raw = self.spool.read(execution, topic_id=topic)
         self.authority.evidence.update(evidence_ref=execution, artifacts=[self.artifact(raw, "application/json")],
             rejection={"started_at": "2026-10-31T11:59:59Z", "observed_at": "2026-10-31T12:00:00Z",
-                       "runner": {"name": "codex", "version": "0.153.2"}, "affected_lanes": ["station:station-1"]})
+                       "runner": {"name": "codex", "version": "0.169.0"}, "affected_lanes": ["station:station-1"]})
         return {**req, "evidence_ref": execution}
 
     def test_rejection_fact_hold_and_failed_after_persistence_ack(self):

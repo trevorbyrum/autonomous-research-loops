@@ -229,7 +229,7 @@ class Fixtures(unittest.TestCase):
             self.assertEqual([call.args[1] for call in read.call_args_list], ["prompt.md", "input.json"])
 
     def test_two_sends_and_rejected_branch(self):
-        request = dict(model="gpt-5.4", stream=True, tools=[{"name": n} for n in ("exec_command", "write_stdin", "apply_patch")])
+        request = dict(model="gpt-6.1-terra", stream=True, tools=[{"name": n} for n in ("exec_command", "write_stdin", "apply_patch")])
         status, _, data = fixture.response("accepted", 1, request)
         event = json.loads(data.decode().split("data: ")[1].split("\n")[0])
         self.assertEqual((status, event["item"]["name"], event["item"]["call_id"]), (200, "exec_command", "call_2e1"))

@@ -108,7 +108,7 @@ def generate(prepared_at):
                 "unknown_end": {"finite_upper": None, "rate_per_minute": 1, "action": "Run stops, admission closes, present operator ends relay", "debt": "DEBT-060"},
                 "weekly_used_percent_stop_proposal": 80, "min_token_remaining_seconds_proposal": 7200,
                 "record_template": {"record_version": "qualification-record/1", "state": "unqualified", "route": "real",
-                    "backend": "docker-cli/1", "provider_route": "chatgpt-subscription", "runner_version": "0.153.2",
+                    "backend": "docker-cli/1", "provider_route": "chatgpt-subscription", "runner_version": "0.169.0",
                     "manifest_pin": None, "credential_ref": None, "deployment_id": None, "affected_lanes": [], "witnesses": [], "plan": None,
                     "upper_minor_units": 6,
                     "policy": {"run_id": "PENDING_OPERATOR_RUN_ID", "accounting_owner": "PENDING_OPERATOR_PRINCIPAL", "deadline_at": None,

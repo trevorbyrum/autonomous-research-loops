@@ -465,7 +465,7 @@ class DockerBoundary(unittest.TestCase):
                 network_view = views.get(reason, view)
                 connected = topology.get(reason, created())
                 batch, watch = mock.Mock(), mock.Mock()
-                (fixture_directory / "fixture.json").write_bytes(b'{"v":1,"requests":[{"model":"gpt-5.4"}]}')
+                (fixture_directory / "fixture.json").write_bytes(b'{"v":1,"requests":[{"model":"gpt-6.1-terra"}]}')
                 if reason == "generation_symlink":
                     fixture_directory.rename(fixture_directory.with_name("saved"))
                     fixture_directory.symlink_to(fixture_directory.with_name("saved"), target_is_directory=True)
@@ -502,7 +502,7 @@ class DockerBoundary(unittest.TestCase):
                 stack.enter_context(mock.patch.object(d, "free_space"))
                 stack.enter_context(mock.patch.object(d, "contain_job"))
                 stack.enter_context(mock.patch.object(d.jobs, "members", return_value=[] if reason == "backend_unsupervised" else [os.getpid()]))
-                batch.held = {"access": b"", "events": b"", "fixture": b'{"v":1,"requests":[{"model":"gpt-5.4"}]}'}
+                batch.held = {"access": b"", "events": b"", "fixture": b'{"v":1,"requests":[{"model":"gpt-6.1-terra"}]}'}
                 batch.collect.side_effect = collect
                 batch.stage.return_value = {"content_hash": "sha256:" + CID}
                 actions = {"create_auxiliary": [CID, relay], "start": None, "end": end, "network": [NET], "endpoint": None, "create_runner": CID,

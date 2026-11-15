@@ -433,7 +433,7 @@ rejection, spending or remediation gates.
 
 *Status (task 1f, 2026-09-28, corrected by task 1f-repair, 2026-09-29;
 evidence `docs/gen2/AUTH-DEMO.md`; this note changes no requirement).* With
-the pinned runner codex 0.153.2, (a), (b) and (c) are demonstrated, and (d)
+the then-pinned runner codex 0.153.2 (the pin is now 0.169.0; re-demonstration is pending), (a), (b) and (c) are demonstrated, and (d)
 is demonstrated for a credential the runner rejects on its own and for one
 whose own declared expiry has passed (read offline from the credential;
 not the provider's answer; counted by the operator amendment above). (d) for

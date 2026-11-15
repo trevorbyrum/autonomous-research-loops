@@ -1,4 +1,4 @@
-model = "gpt-5.4"
+model = "gpt-6.1-terra"
 model_provider = "2e1-offline"
 model_catalog_json = "/auth/codex/models.json"
 approval_policy = "never"

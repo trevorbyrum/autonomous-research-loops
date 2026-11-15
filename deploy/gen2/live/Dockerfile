@@ -8,8 +8,8 @@ FROM base AS runner
 COPY --from=approved-inputs --chmod=0555 codex /usr/local/bin/codex
 COPY --chmod=0555 deploy/gen2/live/runner.py /opt/live/runner.py
 COPY --chmod=0555 deploy/gen2/live/q_net.py /opt/live/q_net.py
-RUN echo 'f8786262ebc0fa1337448a2977332beadec66c8d0cda0ce973c7849766d7943c  /usr/local/bin/codex' | sha256sum -c -
-RUN test "$(/usr/local/bin/codex --version)" = 'codex-cli 0.153.2' && test ! -e /work && test ! -e /auth/codex
+RUN echo 'b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b  /usr/local/bin/codex' | sha256sum -c -
+RUN test "$(/usr/local/bin/codex --version)" = 'codex-cli 0.169.0' && test ! -e /work && test ! -e /auth/codex
 USER 10001:10001
 ENTRYPOINT ["python3", "/opt/live/runner.py"]
 
@@ -25,7 +25,7 @@ RUN echo 'adbc67ecdc2cd2d350c01a5964a205bd81470b485aba1fb90c2f559de9e4584f  /usr
 RUN /usr/bin/docker --version && python3 -m gen2.store.compat
 COPY deploy/gen2/live/initialize.py deploy/gen2/live/tool_probe.py deploy/gen2/live/runner-config.toml /opt/live/
 COPY --from=approved-inputs models.json /opt/live/models.json
-RUN echo '62d809889367324c104b13a4881e115286085d5674ffa77ab790b48c63002d10  /opt/live/models.json' | sha256sum -c -
+RUN echo 'c47e8f6c5fdb26d91bf1b99319263015ef468108d5da4f1ecb66c55c6f1fb356  /opt/live/models.json' | sha256sum -c -
 USER 10001:10001
 ENTRYPOINT ["python3", "-m", "gen2.app.engine"]
 

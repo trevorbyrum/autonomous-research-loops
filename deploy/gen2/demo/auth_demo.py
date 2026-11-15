@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The four DEPLOYMENT-CONTRACT.md §4 auth-volume demonstrations (task 1f),
 run against the minimal compose slice (deploy/gen2/compose.yaml) with the
-pinned runner (codex 0.153.2, baked in deploy/gen2/Dockerfile).
+pinned runner (codex 0.169.0, baked in deploy/gen2/Dockerfile).
 
     python deploy/gen2/demo/auth_demo.py [--only a,b,c,c-control,d1,d2a,d2b,e] [--keep]
     make gen2-auth-demo [DEMOS=a,b]
@@ -252,7 +252,7 @@ def api_key() -> bytes:
 @dataclasses.dataclass(frozen=True)
 class Shape:  # characterization (e): one throwaway credential shape
     make: object          # () -> its bytes
-    runner: str           # the outcome the probe's rules give codex 0.153.2's own answer
+    runner: str           # the outcome the probe's rules give codex 0.169.0's own answer
     probe: str            # the probe's outcome: that, then the declared expiry read from the same bytes
     gap: str | None = None  # where the probe's outcome is a false positive, or rests on a claim, said plainly
 

@@ -42,7 +42,7 @@ class LivePolicy(unittest.TestCase):
         original = (ROOT / "fixtures/catalog/models.json").read_bytes()
         data = live.model_catalog(original)
         expected = json.loads(original)
-        next(row for row in expected["models"] if row["slug"] == "gpt-5.4")["apply_patch_tool_type"] = None
+        next(row for row in expected["models"] if row["slug"] == "gpt-6.1-terra")["apply_patch_tool_type"] = None
         self.assertEqual(json.loads(data), expected)
         self.assertIn(hashlib.sha256(data).hexdigest(), runner.PINS["models.json"])
         with self.assertRaisesRegex(ValueError, "stale public"):
@@ -58,7 +58,7 @@ class LivePolicy(unittest.TestCase):
                          b"proxy_ssl_trusted_certificate /etc/gen2/provider-ca.pem;", b"proxy_ssl_protocols TLSv1.2 TLSv1.3;",
                          b"include /etc/gen2/provider-auth.conf;", b'proxy_set_header Host "chatgpt.com";',
                          b'"POST:/v1/responses:HTTP/1.1" model;', b"location / { return 403; }", b"proxy_next_upstream off;",
-                         b"proxy_pass_request_headers off;", b'proxy_set_header originator "codex_cli_rs";', b'proxy_set_header version "0.153.2";'):
+                         b"proxy_pass_request_headers off;", b'proxy_set_header originator "codex_cli_rs";', b'proxy_set_header version "0.169.0";'):
             self.assertIn(required, result)
         for forbidden in (b"$http_", b"ChatGPT-Account-ID", b"User-Agent", b"Cookie", b"Proxy-Authorization", b"burst=", b"untrusted.invalid", b"http://172.31.252.3:8081"):
             self.assertNotIn(forbidden, result)
@@ -91,7 +91,7 @@ class LivePolicy(unittest.TestCase):
                     self.assertNotIn(value.decode(errors="replace") if isinstance(value, bytes) else str(value), diagnostic)
 
     def test_tool_less_fixture_completes_once_and_refuses_tools_or_more_sends(self):
-        request = dict(model="gpt-5.4", stream=True, tools=[], input=[])
+        request = dict(model="gpt-6.1-terra", stream=True, tools=[], input=[])
         self.assertEqual(fixture.credential("tool-less"), "accepted")
         self.assertEqual(fixture.response("limited", 1, request)[0], 429)
         status, media, data = fixture.response("tool-less", 1, request)
@@ -105,7 +105,7 @@ class LivePolicy(unittest.TestCase):
                 fixture.response("tool-less", ordinal, request | change)
 
     def test_hold_uses_the_accepted_tool_sequence(self):
-        request = dict(model="gpt-5.4", stream=True, tools=[{"name": n} for n in ("exec_command", "write_stdin", "apply_patch")])
+        request = dict(model="gpt-6.1-terra", stream=True, tools=[{"name": n} for n in ("exec_command", "write_stdin", "apply_patch")])
         self.assertEqual(fixture.credential("hold"), "accepted")
         self.assertEqual(fixture.response("hold", 1, request), fixture.response("accepted", 1, request))
         request["input"] = [dict(type="function_call_output", call_id="call_2e1", output="2e1-tool-ok")]

@@ -17,14 +17,14 @@
 # its compatibility gate were run on (docs/gen2/ENVIRONMENT.md). By digest.
 ARG BASE=ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3
 
-# -- the pinned runner: the public npm tarball of @openai/codex 0.153.2 for
+# -- the pinned runner: the public npm tarball of @openai/codex 0.169.0 for
 # linux-x64 (Apache-2.0), checked against the registry's published sha512
 # integrity, and its static musl binary against its own SHA-256.
 FROM ${BASE} AS runner
-ARG CODEX_VERSION=0.153.2
-ARG CODEX_TARBALL=https://registry.npmjs.org/@openai/codex/-/codex-0.153.2-linux-x64.tgz
-ARG CODEX_TARBALL_SHA512=08f50f8459b290a45d21c83088e7cabc528704feb674f7da88ffa9cd0d9b54d01f2d35be8b429ab1dee142bca8c595264cfbf0d21f47c8cd8d82c9d0f402654f
-ARG CODEX_BINARY_SHA256=f8786262ebc0fa1337448a2977332beadec66c8d0cda0ce973c7849766d7943c
+ARG CODEX_VERSION=0.169.0
+ARG CODEX_TARBALL=https://registry.npmjs.org/@openai/codex/-/codex-0.169.0-linux-x64.tgz
+ARG CODEX_TARBALL_SHA512=a34e4dc803820f28123d1a35ca29f3c6f91149d9ac672043f44ee66e99a345a9d27ccf25ca9a96b50804a385df364c21b82476685bbc9a518eb101855d56d5c3
+ARG CODEX_BINARY_SHA256=b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl \
  && rm -rf /var/lib/apt/lists/*
@@ -56,8 +56,8 @@ RUN install -d -o "${GEN2_UID}" -g "${GEN2_GID}" -m 0700 /var/lib/gen2/state /au
  && /opt/gen2/venv/bin/python -c "import sqlite3, sys; print('python', sys.version.split()[0], 'sqlite', sqlite3.sqlite_version)"
 ENV PYTHONPATH=/opt/gen2/src PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 GEN2_OPERATOR_LISTEN=0.0.0.0:8770
 LABEL org.opencontainers.image.title="gen2-engine" \
-      org.research-loops.gen2.runner="codex 0.153.2" \
-      org.research-loops.gen2.runner-sha256="f8786262ebc0fa1337448a2977332beadec66c8d0cda0ce973c7849766d7943c"
+      org.research-loops.gen2.runner="codex 0.169.0" \
+      org.research-loops.gen2.runner-sha256="b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b"
 USER ${GEN2_UID}:${GEN2_GID}
 WORKDIR /var/lib/gen2
 EXPOSE 8770

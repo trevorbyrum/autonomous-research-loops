@@ -33,7 +33,7 @@ DRAIN_SECONDS, DRAIN_LIMIT = 8, 10   # the bounded wait after ingress closes (re
 SEAL = "admission-closed.json"
 # The relay's real-route files, plan key -> destination (relay only, read-only): its key include and its CA bundle. Destinations are lane C's D16 contract.
 RELAY_PROVIDER = {"provider_auth": "etc/gen2/provider-auth.conf", "provider_ca": "etc/gen2/provider-ca.pem"}
-MODEL = "gpt-5.4"
+MODEL = "gpt-6.1-terra"
 NETWORKS = {"job": "172.31.254.0/29", "fixture": "172.31.252.0/29"}
 
 
