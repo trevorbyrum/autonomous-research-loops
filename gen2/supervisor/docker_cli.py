@@ -106,6 +106,16 @@ def manifest_gate(manifest, retained, tree):
     return manifest
 
 
+BOOT = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+
+
+def _identity(record):
+    """Whether `record` is a `docker-cli.json` identity this producer writes: positive pid, its own session, a start time, a boot ID of the kernel's form
+    (any boot, an older one included), and a `confirmed` that is absent or exactly True."""
+    return (isinstance(record, dict) and all(type(record.get(k)) is int and record[k] > 0 for k in ("pid", "session", "starttime")) and record["session"] == record["pid"]
+            and isinstance(record.get("boot_id"), str) and bool(BOOT.fullmatch(record["boot_id"])) and record.get("confirmed", True) is True)
+
+
 def capture(job, argv, env, deadline, bounds):
     """Bound both pipes while running; a CLI end never proves container end."""
     require(time.monotonic() < deadline, "cli_deadline")
@@ -113,10 +123,11 @@ def capture(job, argv, env, deadline, bounds):
         previous = job.read("docker-cli.json")
     except (OSError, ValueError):
         previous = {}   # unreadable: unconfirmed, never overwritten
-    if previous is not None and not previous.get("confirmed"):   # a CLI killed with its launcher mid-command: end it by its recorded identity, never an intent-only or malformed record
-        require(all(type(previous.get(k)) is int for k in ("pid", "session", "starttime")) and isinstance(previous.get("boot_id"), str), "cli_previous_unconfirmed")
-        ended = job.terminate(previous, term_grace=0, kill_grace=max(0.001, min(5, deadline - time.monotonic())), reap=lambda: None)
-        require(ended["confirmed"], "cli_previous_unconfirmed")
+    if previous is not None:   # a CLI killed with its launcher mid-command: end it by its recorded identity; any record this producer could not have written stays, unconfirmed
+        require(_identity(previous), "cli_previous_unconfirmed")
+        if previous.get("confirmed") is not True:
+            ended = job.terminate(previous, term_grace=0, kill_grace=max(0.001, min(5, deadline - time.monotonic())), reap=lambda: None)
+            require(ended["confirmed"], "cli_previous_unconfirmed")
     job.write("docker-cli.json", {"intent": list(argv)})
     child = subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, start_new_session=True, close_fds=True)
@@ -163,6 +174,8 @@ class DockerCLI:
         remaining = _deadline(job) - self.clock()   # the pinned order's absolute deadline, as time left now
         require(remaining > RESERVE_S, "backend_deadline_passed")
         self.absolute = now() + remaining
+        if self.job.read("docker.json") is None:
+            self.job.write("docker.json", {})   # intact and empty: from here an absent journal is an unknown, never a clean absence
         self.deadline = self.absolute - RESERVE_S
 
     def _command(self, args, long=False):
@@ -559,7 +572,8 @@ def contain_job(job, *, execute=capture, now=time.monotonic, clock=time.time) ->
     create-only (it cannot replace a normal one), its disposition unknown. Returns the outcomes."""
     start, wall, outcomes = now(), clock(), []
     plan, journal = _read(job, "docker-plan.json"), _read(job, "docker.json")
-    failed = plan is False or journal is False
+    unknown = journal is not None and not _history(journal) or (journal is None and bool(plan))   # unreadable, malformed or (with a plan) absent history proves no absence
+    failed = plan is False or unknown
     for role in ("relay", "runner", "initializer", "fixture"):
         if role == "fixture":
             if not plan or plan.get("route", "fixture") == "real":
@@ -570,7 +584,7 @@ def contain_job(job, *, execute=capture, now=time.monotonic, clock=time.time) ->
         entry = {"role": role, "cid": None, "kill": "not_attempted", "rm": "not_attempted"}
         outcomes.append(entry)
         if found["status"] == "absent":   # a create that was journaled without its cidfile is an unknown end, not a clean absence
-            created = journal is False or any(str(job.dir / (role + ".cid")) in (v.get("intent") or []) for v in (journal or {}).values())
+            created = unknown or any(str(job.dir / (role + ".cid")) in v["intent"] for v in (journal or {}).values())
             entry["kill"] = entry["rm"] = "created_unrecorded" if created else "never_created"
             failed = failed or created
             continue
@@ -595,6 +609,8 @@ def contain_job(job, *, execute=capture, now=time.monotonic, clock=time.time) ->
             entry[step] = "ok" if code == 0 else "gone" if gone else "failed"
             failed = failed or entry[step] == "failed"
         entry["at"] = now()
+    record = _read(job, "docker-cli.json")   # read after the attempts: a recovery inside them may have resolved it
+    failed = failed or (record is not None and not (_identity(record) and record.get("confirmed") is True))   # an unresolved CLI (intent only, malformed, unreadable or unconfirmed) keeps the end unknown even when no original is recorded
     try:   # the monotonic instant LATE_END_S past the order's deadline, from the wall clock read at entry
         limit = start + _deadline(job) - wall + LATE_END_S
     except LiveProfileRefused:
@@ -607,6 +623,12 @@ def contain_job(job, *, execute=capture, now=time.monotonic, clock=time.time) ->
         job.create("docker-complete.json", {"origin": plan["origin"], "refs": [], "usage": "refused",
                                             "disposition": {"disposition": "unknown", "reason": "contained_without_collection"}})
     return outcomes
+
+
+def _history(journal):
+    """Whether a mutation journal is an object whose every entry is an object with a non-empty list of strings as its `intent`."""
+    return isinstance(journal, dict) and all(isinstance(v, dict) and isinstance(v.get("intent"), list) and bool(v["intent"]) and all(isinstance(a, str) for a in v["intent"])
+                                             for v in journal.values())
 
 
 def _read(job, name):

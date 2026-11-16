@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 import tempfile
@@ -219,8 +220,11 @@ class DockerBoundary(unittest.TestCase):
         self.assertIsNone(self.job.read("runner-end.json"))
 
     def test_capture_recovers_only_a_complete_stale_identity_and_never_overwrites_an_ambiguous_record(self):
-        stale = {"pid": 4242, "session": 4242, "starttime": 7, "boot_id": "boot"}
+        stale = {"pid": 4242, "session": 4242, "starttime": 7, "boot_id": "0" * 8 + "-0000-0000-0000-" + "0" * 12}   # a valid identity from an older boot
         for name, record, ended in (("intent only", {"intent": ["/usr/bin/docker", "wait"]}, True), ("malformed", {"pid": "4242", "boot_id": "boot"}, True),
+                                    *((name, {**stale, **change}, True) for name, change in (("empty boot id", {"boot_id": ""}), ("boot id not a boot id", {"boot_id": "boot"}), ("negative pid", {"pid": -1}),
+                                      ("negative session", {"session": -1}), ("zero starttime", {"starttime": 0}), ("session is not the pid", {"session": 1}),
+                                      ("bool field", {"pid": True}), ("truthy confirmation", {"confirmed": "yes"}), ("falsy confirmation", {"confirmed": False}))),
                                     ("not terminable", stale, False)):
             with self.subTest(name), mock.patch.object(d.subprocess, "Popen") as process, \
                     mock.patch.object(self.job, "terminate", return_value={"confirmed": ended}) as end:
@@ -239,6 +243,24 @@ class DockerBoundary(unittest.TestCase):
         first = end.call_args_list[0]   # the later calls are the new command's own end
         self.assertEqual((first.args, first.kwargs["term_grace"]), ((stale,), 0))
         self.assertLessEqual(first.kwargs["kill_grace"], 5)
+
+    def test_capture_leaves_a_live_original_and_its_record_alone_when_the_identity_is_malformed(self):
+        sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)   # a disposable original, in its own session
+        self.addCleanup(lambda: (sleeper.kill(), sleeper.wait()))
+        real = {"pid": sleeper.pid, "session": sleeper.pid, "starttime": jobs.proc_stat(sleeper.pid)[2], "boot_id": jobs.boot_id()}
+        for name, record in (("empty boot id", {**real, "boot_id": ""}), ("all fields -1", {"pid": -1, "session": -1, "starttime": -1, "boot_id": ""}),
+                             ("negative fields, valid boot", {**real, "pid": -1, "session": -1, "starttime": -1}), ("confirmation is not True", {**real, "confirmed": 1}),
+                             ("intent only", {"intent": [sys.executable]})):
+            with self.subTest(name), mock.patch.object(d.subprocess, "Popen") as launch:
+                self.job.write("docker-cli.json", record)
+                self.refused(lambda: d.capture(self.job, (sys.executable, "-c", "pass"), {}, time.monotonic() + 5, (1, 1)), "cli_previous_unconfirmed")
+                launch.assert_not_called()                                                   # no replacement launch
+                self.assertEqual(self.job.read("docker-cli.json"), record)                    # no overwrite
+                self.assertIsNone(sleeper.poll())                                            # the original was neither ended nor promoted
+                self.assertIsNone(self.job.read("docker-complete.json"))
+        self.job.write("docker-cli.json", real)                                              # control: the same process under a valid identity IS ended by the recovery
+        d.capture(self.job, (sys.executable, "-c", "pass"), {}, time.monotonic() + 5, (1, 1))
+        self.assertIsNotNone(sleeper.wait(timeout=5))
 
     def test_the_backend_allowance_is_the_pinned_orders_deadline_minus_the_reserve(self):
         def build(remaining, ticks=None):
@@ -273,6 +295,45 @@ class DockerBoundary(unittest.TestCase):
         self.assertEqual(cli.deadline, cli.absolute)
         cli._command(("wait", "f" * 64))
         self.assertEqual(seen, [("wait", 225.0 + 10)])   # every other wait is short and finite
+
+    def test_every_provider_backed_purpose_of_the_protected_bundle_gets_its_allowance_from_its_pinned_order_across_restart_and_reuse(self):
+        from gen2.core.instants import utc_instant_ns
+        from gen2.tests import first_topic_files
+        orders = first_topic_files.generate("2026-11-13T00:00:00Z")["subscription-proposal"]["orders"]
+        self.assertEqual(sorted(o["env"]["GEN2_PURPOSE"] for o in orders), ["checkpoint/challenge", "checkpoint/review", "research_pass/research", "research_pass/scope", "verification/verify"])
+        def build(job, clock, now=10):
+            return d.DockerCLI(job, self.manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: now, clock=lambda: clock)
+        for number, order in enumerate(orders):
+            with self.subTest(order["env"]["GEN2_PURPOSE"]):
+                deadline = utc_instant_ns(order["deadline_at"]) / 1e9
+                job = jobs.Job(self.root, f"job-purpose{number}")
+                job.prepare({**order})
+                job.write("docker-plan.json", {"origin": {"invocation_id": order["invocation_id"]}, "paths": [str(self.root)]})
+                cli = build(job, deadline - 300)                                   # the order was pinned with 300 s
+                self.assertEqual((cli.absolute, cli.deadline), (310, 220))
+                self.assertGreater(cli.deadline - 10, 120)
+                restarted = build(job, deadline - 200, now=500)                    # a restart 100 s later: the same pinned deadline, never replenished
+                self.assertEqual((restarted.absolute, restarted.deadline), (700, 610))
+                self.assertEqual(restarted.absolute - 500, deadline - (deadline - 200))
+                self.job.write("order.json", job.read("order.json"))               # the same pinned order reused by another job: its own bundle's value, not a recomputed one
+                self.assertEqual(build(self.job, deadline - 300).absolute, 310)
+
+    def test_the_final_inspect_runs_through_the_production_command_after_a_wait_that_ends_past_the_allowance(self):
+        clock, seen = [10.0], []
+        self.job.write("order.json", {"deadline_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(1300))})
+        started = {"Id": CID, "Image": "i", "Config": {}, "HostConfig": {}, "NetworkSettings": {"Networks": {}}, "State": {"StartedAt": "2026-11-13T01:00:00Z"}}
+        ended = {**started, "State": {"StartedAt": "2026-11-13T01:00:00Z", "FinishedAt": "2026-11-13T01:00:01Z", "ExitCode": 143, "Status": "exited", "Pid": 0, "Error": "",
+                                      **{k: False for k in ("Running", "Restarting", "Paused", "OOMKilled")}}}
+        def execute(job, argv, env, deadline, bounds):
+            seen.append((argv[3], deadline))
+            if argv[3] == "wait":
+                clock[0] = 225.0   # the model turn's wait returns after the allowance's cutoff (220), before the order's deadline (310)
+                return 0, b"143", b""
+            return 0, json.dumps([ended]).encode(), b""
+        cli = d.DockerCLI(self.job, self.manifest, lambda pin: b"configuration", "reviewed-tree", now=lambda: clock[0], clock=lambda: 1000.0, execute=execute)
+        self.job.write("runner-start.json", started)
+        self.assertEqual(cli.end(CID)["State"]["ExitCode"], 143)                       # the production `end` and `inspect`, over the transport
+        self.assertEqual(seen, [("wait", 220), ("inspect", 230.0)])                     # the inspect ran, bounded by its own five seconds, past the cutoff
 
     def test_network_exact_create_and_topology_refusals(self):
         view = {"Id": NET, "Internal": True, "EnableIPv6": False, "Driver": "bridge",
@@ -863,6 +924,47 @@ class DockerBoundary(unittest.TestCase):
             (self.job.dir / "docker.json").write_text("not json")
             with self.assertRaises(d.ContainFailed):
                 d.contain_job(self.job, execute=execute, now=lambda: 0, clock=lambda: 1000.0)
+            self.assertIsNone(self.job.read("docker-complete.json"))
+
+    def test_unresolved_mutation_history_or_cli_state_blocks_the_end_fact_even_when_every_original_is_never_created(self):
+        calls = []
+        execute = lambda *a: calls.append(a[1][3:]) or (0, b"", b"")
+        self.job.write("docker-plan.json", {**self.job.read("docker-plan.json"), "route": "real"})
+        create = {"intent": ["/usr/bin/docker", "create", "--cidfile", str(self.job.dir / "relay.cid")]}
+        identity = {"pid": 4242, "session": 4242, "starttime": 7, "boot_id": "0" * 8 + "-0000-0000-0000-" + "0" * 12}
+        def attempt(history=None, cli=None, raw=None):
+            for name in ("docker-complete.json", "docker-cli.json", "containment.json", "docker.json"):
+                (self.job.dir / name).unlink(missing_ok=True)
+            if raw is not None:
+                (self.job.dir / "docker.json").write_text(raw)
+            elif history is not None:
+                self.job.write("docker.json", history)
+            if cli is not None:
+                self.job.write("docker-cli.json", cli)
+            return lambda: d.contain_job(self.job, execute=execute, now=lambda: 0, clock=lambda: 1000.0)
+        with self.contain_world(execute, roles=(), fixture=None):
+            run = attempt({})   # control: an intact, empty history with no CLI record is a genuine early refusal, and still completes
+            self.assertEqual({o["kill"] for o in run()}, {"never_created"})
+            self.assertIsNotNone(self.job.read("docker-complete.json"))
+            attempt({}, cli={**identity, "confirmed": True})()   # control: a resolved (confirmed, well-formed) CLI record does not block it
+            self.assertIsNotNone(self.job.read("docker-complete.json"))
+            with self.assertRaises(d.ContainFailed):
+                attempt({"k": create})()   # control: a well-formed journal that shows the relay create, with no cidfile, is unknown
+            for name, kwargs in (("malformed nested entry", {"history": {"create-relay": {}}}), ("non-object entry", {"history": {"k": "x"}}), ("null entry", {"history": {"k": None}}),
+                                 ("empty intent", {"history": {"k": {"intent": []}}}), ("non-string intent", {"history": {"k": {"intent": [1]}}}),
+                                 ("missing history", {}), ("null history", {"raw": "null"}), ("unreadable history", {"raw": "{"}),
+                                 ("intent-only CLI", {"history": {}, "cli": {"intent": ["/usr/bin/docker", "wait"]}}),
+                                 ("malformed CLI identity", {"history": {}, "cli": {**identity, "boot_id": "", "confirmed": True}}),
+                                 ("unconfirmed CLI identity", {"history": {}, "cli": identity})):
+                with self.subTest(name), self.assertRaises(d.ContainFailed):
+                    attempt(**kwargs)()
+                self.assertIsNone(self.job.read("docker-complete.json"), name)   # held: no fallback end fact
+            self.assertEqual(calls, [])   # nothing was run for an original that has no cidfile
+            run = attempt({"create-relay": {}}, raw=None)
+            (self.job.dir / "runner.cid").write_text("a" * 64)   # an independently identifiable original is still attempted under the global uncertainty
+            with self.assertRaises(d.ContainFailed):
+                run()
+            self.assertEqual(calls, [("kill", "a" * 64), ("rm", "-f", "a" * 64)])
             self.assertIsNone(self.job.read("docker-complete.json"))
 
     def test_the_end_fact_needs_the_relay_gone_within_the_lateness_allowance_and_the_relay_goes_first(self):
