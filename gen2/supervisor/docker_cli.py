@@ -169,13 +169,11 @@ class DockerCLI:
     def __init__(self, job, manifest, retained, tree, *, execute=capture, now=time.monotonic, sleep=time.sleep, clock=time.time):
         self.manifest = manifest_gate(manifest, retained, tree)
         self.job, self.execute, self.now, self.sleep, self.clock = job, execute, now, sleep, clock
-        self.plan = job.read("docker-plan.json")
-        require(isinstance(self.plan, dict) and bool(self.plan.get("origin")), "launch_originals")
+        self.plan = _read(job, "docker-plan.json")
+        require(isinstance(self.plan, dict) and bool(self.plan.get("origin")), "launch_originals")   # absent, null, malformed or origin-less: no launch
         remaining = _deadline(job) - self.clock()   # the pinned order's absolute deadline, as time left now
         require(remaining > RESERVE_S, "backend_deadline_passed")
         self.absolute = now() + remaining
-        if self.job.read("docker.json") is None:
-            self.job.write("docker.json", {})   # intact and empty: from here an absent journal is an unknown, never a clean absence
         self.deadline = self.absolute - RESERVE_S
 
     def _command(self, args, long=False):
@@ -188,7 +186,8 @@ class DockerCLI:
         require(hashlib.sha256(Path(CLI).read_bytes()).hexdigest() == CLI_SHA, "cli_pin")
         argv = (CLI, "--host", "unix://" + SOCKET, *args)
         key = hashlib.sha256(json.dumps(args).encode()).hexdigest()
-        journal = self.job.read("docker.json") or {}
+        journal = _read(self.job, "docker.json")   # absent after the attempt began is unknown, as is anything but an intact history
+        require(journal is not None and journal is not False and _history(journal), "journal_unknown")
         if mutation:
             require(key not in journal, "mutation_already_intended")
             self.job.write("docker.json", {**journal, key: {"intent": list(argv)}})
@@ -350,8 +349,10 @@ class DockerCLI:
         require(self.plan["binds"]["out"] == str(Path(self.plan["slots"]["out"]) / self.plan["generation"]), "backend_output_generation")
         identity = self.job.read("identity.json")
         require(identity is not None and os.getpid() in jobs.members(identity), "backend_unsupervised")
-        with self.job.hold(self.deadline, .01):
-            require(self.job.read("docker-attempt.json") is None, "backend_already_intended")
+        with self.job.hold(self.deadline, .01):   # the one fresh-attempt transition: the intact-empty history and the attempt marker are born together, only if truly absent
+            require(_read(self.job, "docker-attempt.json") is None, "backend_already_intended")   # present (valid or not) is a started attempt, never rewritten
+            if _read(self.job, "docker.json") is None:
+                self.job.create("docker.json", {})
             self.job.write("docker-attempt.json", {"origin": self.plan["origin"]})
         try:
             return self._run(batch, real)
@@ -571,9 +572,12 @@ def contain_job(job, *, execute=capture, now=time.monotonic, clock=time.time) ->
     was never created and the relay's removal came within LATE_END_S of the order's deadline, the end fact `docker-complete.json` is published
     create-only (it cannot replace a normal one), its disposition unknown. Returns the outcomes."""
     start, wall, outcomes = now(), clock(), []
-    plan, journal = _read(job, "docker-plan.json"), _read(job, "docker.json")
-    unknown = journal is not None and not _history(journal) or (journal is None and bool(plan))   # unreadable, malformed or (with a plan) absent history proves no absence
-    failed = plan is False or unknown
+    plan, journal, attempt = _read(job, "docker-plan.json"), _read(job, "docker.json"), _read(job, "docker-attempt.json")
+    # Before the attempt transition (no marker, no history: e.g. a `backend_unsupervised` refusal) nothing could have been created, so the backend roles are
+    # never_created. From the marker on, only an intact history proves an absence: absent, null or malformed history, or an invalid marker, is unknown.
+    unknown = (journal is False or (journal is not None and not _history(journal)) or attempt is False
+               or (attempt is not None and (journal is None or not attempt.get("origin"))))
+    failed = plan is False or unknown or _read(job, "docker-complete.json") is False   # a present-invalid end fact is no end, and is never replaced
     for role in ("relay", "runner", "initializer", "fixture"):
         if role == "fixture":
             if not plan or plan.get("route", "fixture") == "real":
@@ -632,9 +636,8 @@ def _history(journal):
 
 
 def _read(job, name):
-    """A journal file; False when unreadable (an unknown, never an absence)."""
+    """A file's object, None only when truly absent; False when present but unreadable or not an object (an unknown, never an absence)."""
     try:
-        value = job.read(name)
+        return job.read(name)
     except (OSError, ValueError):
         return False
-    return value if value is None or isinstance(value, dict) else False

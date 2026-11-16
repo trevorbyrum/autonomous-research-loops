@@ -525,9 +525,9 @@ class Supervisor:
         """Refuse calls for stalled or settled jobs; only an answered write refunds the outage budget (L-6, RG-3; Astra 1c A5)."""
         if journal.get("incident") or journal.get("settled"):
             raise Held(job.handle, journal.get("settled"))
-        plan = job.read("docker-plan.json")
+        plan = docker_cli._read(job, "docker-plan.json")   # False: present but not an object, an uncertain end, never a non-live job
         ending = method == "commit_outcome" or (method == "record_transition" and request["to_state"] in (*TERMINAL, "result_ready")) or (method == "reconcile" and request["resolution"] != "found_running")
-        if plan and ending and not journal.get("unlaunched") and (job.read("docker-complete.json") or {}).get("origin") != plan["origin"]:
+        if (plan or plan is False) and ending and not journal.get("unlaunched") and (plan is False or (docker_cli._read(job, "docker-complete.json") or {}).get("origin") != plan["origin"]):
             raise Waiting("backend_end_unconfirmed")
         try:
             response = getattr(self.control, method)(request)
@@ -721,7 +721,7 @@ class Supervisor:
         """End the execution group (timeout or cancellation) and record it;
         the termination is kept before its record is staged (A4)."""
         ended = self._end_group(job, view["identity"])
-        if job.read("docker-plan.json") is not None:   # a Docker-managed container is not in the job's process group: kill and remove what the job created
+        if docker_cli._read(job, "docker-plan.json") is not None:   # (present-invalid counts: contain_job then holds) a Docker-managed container is not in the job's process group: kill and remove what the job created
             try:
                 docker_cli.contain_job(job)
             except LiveProfileRefused:

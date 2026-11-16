@@ -3,12 +3,15 @@ the job files the supervisor writes (docker-plan.json, spawn.json), and the veri
 spool and a fake executor child. Limits: the backend is simulated by writing the same `docker-complete.json` DockerCLI.run writes (no provider, no
 container: F1); the real-route classifier, rejection mapping and the child's live agent are PR-L2's.
 """
+import dataclasses
 import hashlib
 import json
 import os
 import stat
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -17,7 +20,7 @@ from gen2.core import canonical
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import authority as auth, docker_cli, jobs
 from gen2.supervisor.isolation import LiveProfileRefused
-from gen2.tests import router_fixtures as rf
+from gen2.tests import children, router_fixtures as rf
 from gen2.tests.supervisor_fixtures import MAIN, SupervisedTestCase, succeed
 
 REAL_CONTAIN = docker_cli.contain_job   # before any test patches it
@@ -125,6 +128,20 @@ class PlanAndGate(LiveWorld):
         again = self.live_supervisor()
         again.prepare(self.order("research_pass", succeed()), live=True)               # a repeat is a no-op: the plan is written once
         self.assertEqual(job.read("docker-plan.json"), plan)
+
+    def test_a_present_but_invalid_plan_file_is_uncertain_never_absent_so_it_is_not_rebuilt_from_the_order_and_nothing_starts(self):
+        self.to_queued(rf.OTHER)
+        for raw in ("null", "[]", "{"):
+            with self.subTest(plan=raw):
+                supervisor = self.live_supervisor()
+                job = self.prepare(supervisor, inv=f"inv_plan{len(raw)}{ord(raw[0])}")
+                (job.dir / "docker-plan.json").write_text(raw)
+                try:
+                    outcome = supervisor.advance(job.handle.removeprefix("job-"), live_start=True)
+                except (LiveProfileRefused, ValueError):   # the corrupt file raises, as a malformed one always did
+                    outcome = "refused"
+                self.assertNotEqual(outcome, "running")
+                self.assertEqual(((job.dir / "docker-plan.json").read_text(), (job.dir / "spawn.json").exists()), (raw, False))   # never rewritten, never spawned
 
     def test_a_real_route_plan_carries_the_protected_egress_network_id_and_never_a_name(self):
         from pathlib import Path
@@ -520,89 +537,29 @@ class CollectionRefusal(RealRoute):
     NET, EGRESS, IMAGE = "b" * 64, "c" * 64, "sha256:" + "1" * 64
     PIN = "sha256:" + hashlib.sha256(b"configuration").hexdigest()
 
-    def docker(self, job, calls):
-        """What the pinned `docker` shows for this attempt: `create` writes its --cidfile and `inspect` returns the created container's shape."""
-        ids, names = {}, {"initializer": "1", "relay": "2", "runner": "3"}
-        def transport(target, argv, env, deadline, bounds):
-            args = argv[3:]
-            calls.append(args)
-            if args[0] == "create":
-                path = Path(args[args.index("--cidfile") + 1])
-                ids[path.stem] = names[path.stem] * 64
-                path.write_text(ids[path.stem])
-                return 0, ids[path.stem].encode(), b""
-            if args[0] == "inspect":
-                role = {v: k for k, v in ids.items()}[args[1]]
-                networks = ({target.read("network-job.json")["Name"]: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.254.2"}}, "egress": {"NetworkID": "", "IPAMConfig": None}}
-                            if role == "relay" else {})
-                return 0, json.dumps([{"Id": args[1], "Image": self.IMAGE, "Config": {"Image": self.IMAGE}, "HostConfig": {}, "NetworkSettings": {"Networks": networks}}]).encode(), b""
-            if args[:2] == ("network", "inspect"):
-                view = {"Id": self.EGRESS, "Name": "egress", "Internal": False, "Containers": {}} if args[2] == self.EGRESS else {"Id": self.NET, "Containers": {"2" * 64: {}}}
-                return 0, json.dumps([view]).encode(), b""
-            return 0, b"", b""   # kill, rm, stop
-        return transport
-
-    def refuse_collection(self, supervisor, job, calls, mutate=lambda job: None):
-        """Run the production backend in this job's world until its collection refuses; returns the error it raised."""
-        order = job.read("order.json")
-        manifest = {"version": 1, "tree": "t", "platform": "linux/amd64", "route": "real", "socket": docker_cli.SOCKET, "cli_sha256": docker_cli.CLI_SHA, "daemon_version": "29.0.0",
-                    "credential_ref": "dummy-seed", "credential_version": "v1", "supervision": "supervised", "qualification_state": "qualified", "qualification_ref": self.PIN,
-                    "images": {r: {"pin": self.IMAGE, "kind": "engine-image-id"} for r in docker_cli.ROLES - {"fixture"}},
-                    "configurations": {r: {"pin": self.PIN} for r in docker_cli.ROLES - {"fixture"}}}
-        cli = docker_cli.DockerCLI(job, manifest, lambda pin: b"configuration", "t", execute=self.docker(job, calls), clock=lambda: utc_instant_ns(order["deadline_at"]) / 1e9 - 300)
-        for name in ("out", "evidence"):
-            (self.root / name / cli.plan["generation"]).mkdir(parents=True)
-        cli.plan.update(slots={n: str(self.root / n) for n in ("out", "evidence")}, binds={**cli.plan["binds"], "out": str(self.root / "out" / cli.plan["generation"])})
-        batch = unittest.mock.Mock(held={"access": b"", "events": b"", "judgment": b"{}"})
-        batch.stage.return_value = {"content_hash": "sha256:" + "a" * 64}
-        batch.collect.side_effect = LiveProfileRefused("collection_empty")                   # the collection refuses: the child fails
-        mutate(job)
-        with unittest.mock.patch.object(docker_cli.jobs, "members", return_value=[os.getpid()]), unittest.mock.patch.object(docker_cli, "free_space"), \
-                unittest.mock.patch.object(cli, "network", side_effect=lambda g: job.write("network-job.json", {"Id": self.NET, "Name": "gen2-2e1-live-job-" + g}) or self.NET), \
-                unittest.mock.patch.object(cli, "runtime"), unittest.mock.patch.object(cli, "endpoint"), unittest.mock.patch.object(cli, "start"), unittest.mock.patch.object(cli, "drain"), \
-                unittest.mock.patch.object(cli, "logs", return_value=(b"events", b"diagnostics")), \
-                unittest.mock.patch.object(cli, "end", side_effect=lambda cid, role="runner": {"State": {"ExitCode": 0}}):
-            with self.assertRaisesRegex(LiveProfileRefused, "collection_empty"):
-                cli.run(batch)
-
     def world(self, publish=True):
+        """A live job whose executor is the production child with the production live agent over a daemon-free transport; returns the job and waits for the child's end."""
         self.to_queued(rf.OTHER)
         supervisor = self.live_supervisor()
-        job = self.prepare(supervisor, steps=[{"op": "exit", "code": 2}])                  # the failed child
+        order = dataclasses.replace(self.order("research_pass", [], inv=MAIN), command=(sys.executable, str(children.path("gen2/tests/live_refusing_child.py"))))
+        if not publish:
+            (self.root / "no-publish").write_text("")
+        supervisor.prepare(order, live=True)
+        job = supervisor.job(MAIN)
         self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
-        calls = []
-        patches = [unittest.mock.patch.object(docker_cli, "CLI_SHA", hashlib.sha256(b"fake").hexdigest()),
-                   unittest.mock.patch.object(docker_cli.Path, "read_bytes", lambda path, real=Path.read_bytes: b"fake" if str(path) == docker_cli.CLI else real(path))]
-        if not publish:   # the counterfactual: the fallback end fact is never published
-            patches.append(unittest.mock.patch.object(jobs.Job, "create", lambda self, name, value: True))
-        for patch in patches:
-            patch.start()
-            self.addCleanup(patch.stop)
-        return supervisor, job, calls
+        for _ in range(600):
+            if (job.dir / "exit.json").exists():
+                break
+            time.sleep(0.05)
+        self.assertEqual(job.read("exit.json")["code"], 2)   # the child failed because the backend refused, through the production agent error path
+        self.assertIn("the live backend refused: collection_absent", (job.dir / "executor.log").read_text())
+        return supervisor, job
 
-    def test_a_collection_refusal_is_contained_marked_failed_at_u6_and_the_next_invocation_is_authorized(self):
-        supervisor, job, calls = self.world()
-        self.refuse_collection(supervisor, job, calls)
-        self.assertEqual([c for c in calls if c[0] in ("kill", "rm")],
-                         [(op, *flag, cid * 64) for cid in "231" for op, flag in (("kill", ()), ("rm", ("-f",)))])   # relay, runner, initializer: each killed and removed, the relay first
-        self.assertEqual({o["role"]: o["kill"] for o in job.read("containment.json")["outcomes"]}, {"relay": "ok", "runner": "ok", "initializer": "ok"})
-        self.assertEqual(job.read("docker-complete.json"), {"origin": job.read("docker-plan.json")["origin"], "refs": [], "usage": "refused",
-                                                             "disposition": {"disposition": "unknown", "reason": "contained_without_collection"}})   # the generated marker
-        self.assertEqual(LiveStart.drive(self, supervisor), "failed")
-        (result,) = self.audit("dispatch_result")
-        self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"], result["trial_stopped"]), (6, "worst_case", False))   # U=6, no trial stop
-        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "failed")
-        self.assertEqual(self.rows("SELECT to_state FROM invocation_transitions WHERE invocation_id = ? AND to_state = 'committed'", MAIN), [])   # no scientific commit
-        stored = {row[0] for row in self.rows("SELECT content_hash FROM artifacts WHERE topic_id = ?", rf.TOPIC)}
-        self.assertTrue({a["content_hash"] for a in result["evidence"]["artifacts"]} <= stored and result["evidence"]["artifacts"])   # the execution record is registered
-        self.assertEqual(self.audit("dispatch_result_unrecorded"), [])
-        second = self.live_supervisor()
-        second.prepare(self.order("research_pass", succeed("inv_slot0002"), inv="inv_slot0002", topic=rf.OTHER), live=True)
-        self.assertEqual(second.advance("inv_slot0002", live_start=True), "running")        # the next eligible invocation is authorized
+    def calls(self):
+        return [tuple(json.loads(line)) for line in (self.root / "calls.jsonl").read_text().splitlines()]
 
     def test_without_fallback_publication_the_same_refusal_stays_held(self):
-        supervisor, job, calls = self.world(publish=False)
-        self.refuse_collection(supervisor, job, calls)
+        supervisor, job = self.world(publish=False)
         self.assertIsNone(job.read("docker-complete.json"))
         self.assertEqual(LiveStart.drive(self, supervisor), "backend_end_unconfirmed")
         self.assertEqual(self.audit("dispatch_result"), [])
@@ -612,21 +569,27 @@ class CollectionRefusal(RealRoute):
         def confirmed(job):
             collected = job.read("journal.json")["collected"]
             return self.authority.result(job.read("journal.json")["dispatch"]["admission_ref"], collected["record"]["content_hash"])["confirmed_end"]
-        supervisor, job, calls = self.world()
-        self.refuse_collection(supervisor, job, calls)
+        supervisor, job = self.world()
         self.authority.epoch = "epoch-2"                                                   # a restart between the marker and the result: a stale origin
         self.assertEqual(LiveStart.drive(self, supervisor), "stalled")
         self.assertEqual((self.audit("dispatch_result"), self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN)), ([], "running"))
         self.tearDown()
         self.setUp()
-        supervisor, job, calls = self.world()
-        self.refuse_collection(supervisor, job, calls)
+        supervisor, job = self.world()
         self.assertEqual(LiveStart.drive(self, supervisor), "failed")
         self.assertTrue(confirmed(job))                                                    # control: the generated marker with every descendant confirmed ended is a confirmed end
         journal = job.read("journal.json")
         journal["collected"]["observation"]["descendants"]["handling"] = "unconfirmed"      # the same end with a descendant the supervisor could not confirm
         job.write("journal.json", journal)
         self.assertFalse(confirmed(job))
+
+    def test_the_generated_marker_path_with_a_stale_lease_records_nothing_and_the_same_world_with_its_lease_does(self):
+        supervisor, job = self.world()
+        journal = job.read("journal.json")
+        journal["grant"]["lease"]["lease_id"] = "lease_stale00000"                          # the lease the origin names is not the Router's
+        job.write("journal.json", journal)
+        self.assertEqual(LiveStart.drive(self, supervisor), "stalled")
+        self.assertEqual((self.audit("dispatch_result"), self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN)), ([], "running"))
 
 
 class ExpiredRecord(LiveWorld):

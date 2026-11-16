@@ -343,10 +343,15 @@ class Job:
         self.scratch = self.dir / "scratch"
 
     def read(self, name: str) -> dict | None:
+        """None only when the file is truly absent (no information yet). Present but not a JSON object (null, a list, a scalar, malformed) is
+        uncertain, never absent: it raises ValueError, so no caller can read a corrupt record as a clean absence."""
         try:
-            return json.loads((self.dir / name).read_text(encoding="utf-8"))
+            value = json.loads((self.dir / name).read_text(encoding="utf-8"))
         except FileNotFoundError:
             return None
+        if not isinstance(value, dict):
+            raise ValueError(f"{name}: not a JSON object")
+        return value
 
     def write(self, name: str, value: dict) -> None:
         atomic_write(self.dir / name, value)

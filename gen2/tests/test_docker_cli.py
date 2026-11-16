@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from gen2.supervisor import docker_cli as d, jobs
+from gen2.tests import children
 from gen2.supervisor.isolation import LiveProfileRefused
 from gen2.supervisor.spool import Spool, SpoolConflict
 
@@ -28,6 +29,7 @@ class DockerBoundary(unittest.TestCase):
         self.job = jobs.Job(self.root, "job-fixture")
         self.job.prepare({"test": "unqualified offline fixture", "deadline_at": "1970-01-01T00:20:10Z"})   # 210 s after the injected clock: the allowance ends at now() + 120
         self.job.write("docker-plan.json", {"origin": {"invocation": "fixture", "invocation_id": "inv_fixture0001"}, "paths": [str(self.root)]})
+        self.job.write("docker.json", {})   # what the fresh-attempt transition in `run` creates; methods driven directly start from an attempt in progress
         self.pin = "sha256:" + hashlib.sha256(b"configuration").hexdigest()
         self.manifest = {"version": 1, "tree": "reviewed-tree", "platform": "linux/amd64", "route": "fixture",
                          "socket": d.SOCKET, "cli_sha256": d.CLI_SHA, "daemon_version": "29.0.0",
@@ -245,7 +247,7 @@ class DockerBoundary(unittest.TestCase):
         self.assertLessEqual(first.kwargs["kill_grace"], 5)
 
     def test_capture_leaves_a_live_original_and_its_record_alone_when_the_identity_is_malformed(self):
-        sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)   # a disposable original, in its own session
+        sleeper = children.popen(["-c", "import time; time.sleep(60)"], start_new_session=True)   # a disposable original, in its own session
         self.addCleanup(lambda: (sleeper.kill(), sleeper.wait()))
         real = {"pid": sleeper.pid, "session": sleeper.pid, "starttime": jobs.proc_stat(sleeper.pid)[2], "boot_id": jobs.boot_id()}
         for name, record in (("empty boot id", {**real, "boot_id": ""}), ("all fields -1", {"pid": -1, "session": -1, "starttime": -1, "boot_id": ""}),
@@ -466,8 +468,8 @@ class DockerBoundary(unittest.TestCase):
             self.cli.plan = {**self.cli.plan, **plan}
             self.execute.reset_mock()
             self.execute.side_effect = lambda *a: ((self.job.dir / (role + ".cid")).write_text(CID), (0, CID.encode() if a[1][3] == "create" else json.dumps([record]).encode(), b""))[1]
-            for name in (role + ".cid", "docker.json"):
-                (self.job.dir / name).unlink(missing_ok=True)
+            (self.job.dir / (role + ".cid")).unlink(missing_ok=True)
+            self.job.write("docker.json", {})
             for r in ("engine", "relay"):
                 self.manifest["images"][r]["kind"] = "repo-digest"
             with mock.patch.object(d.Path, "read_bytes", autospec=True, side_effect=lambda p: b"pinned" if str(p) == d.CLI else self.real_read_bytes(p)), mock.patch.object(d, "CLI_SHA", hashlib.sha256(b"pinned").hexdigest()):
@@ -935,6 +937,7 @@ class DockerBoundary(unittest.TestCase):
         def attempt(history=None, cli=None, raw=None):
             for name in ("docker-complete.json", "docker-cli.json", "containment.json", "docker.json"):
                 (self.job.dir / name).unlink(missing_ok=True)
+            self.job.write("docker-attempt.json", {"origin": self.job.read("docker-plan.json")["origin"]})   # the attempt began: only an intact history proves an absence
             if raw is not None:
                 (self.job.dir / "docker.json").write_text(raw)
             elif history is not None:
