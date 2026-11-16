@@ -18,7 +18,7 @@ from gen2.core.control import ControlUnavailable
 from gen2.core.evidence_media import EVIDENCE, EVIDENCE_MEDIA
 from gen2.supervisor import jobs
 from gen2.supervisor import docker_cli
-from gen2.supervisor.isolation import ABSENT_PROFILE, LiveProfileRefused, refuse_live_profile
+from gen2.supervisor.isolation import LiveProfileRefused, refuse_live_profile
 from gen2.supervisor.spool import Spool, SpoolConflict, SpoolFull, read_scratch
 
 OUTPUT = "outcome.json"          # the executor's one result file; its name is the supervisor's (C-9)
@@ -178,15 +178,15 @@ class Supervisor:
     def job(self, invocation_id: str) -> jobs.Job:
         return jobs.Job(self.jobs_root, "job-" + invocation_id)
 
-    def prepare(self, order: WorkOrder, *, live: bool = False, isolation_profile: object = ABSENT_PROFILE) -> None:
+    def prepare(self, order: WorkOrder, *, live: bool = False) -> None:
         """Make the order durable under its job handle (the claim is sent from
         the stored order, so a restart re-sends the same claim, L-8). An order
         pins a recorded config bundle: one the resolver does not know raises
-        before anything is written. Live preparation is refusal-only (2e1 F1);
-        a supplied profile also requires the gate, regardless of `live`."""
-        if live or isolation_profile is not ABSENT_PROFILE:
-            if self.dispatch is None or not live or isolation_profile is not ABSENT_PROFILE:
-                refuse_live_profile(isolation_profile)   # no authority wired, or a caller-supplied profile: the refusal-only gate, as before
+        before anything is written. Live preparation is refusal-only (2e1 F1)
+        unless an authority is wired."""
+        if live:
+            if self.dispatch is None:
+                refuse_live_profile()   # no authority wired: the refusal-only gate, as before
             plan = self.dispatch.plan(asdict(order))     # raises LiveProfileRefused unless a verified qualification record stands
         key = self._recorder_key(asdict(order))
         if key is not None and key not in self.recorders:
@@ -200,8 +200,8 @@ class Supervisor:
         if live and job.read("docker-plan.json") is None:
             job.write("docker-plan.json", plan)   # the backend's copy; the start gate re-materializes it from the order if a crash lost it
 
-    def submit(self, order: WorkOrder, *, live: bool = False, isolation_profile: object = ABSENT_PROFILE) -> str:
-        self.prepare(order, live=live, isolation_profile=isolation_profile)
+    def submit(self, order: WorkOrder, *, live: bool = False) -> str:
+        self.prepare(order, live=live)
         return self.advance(order.invocation_id, live_start=live)
 
     def recover(self) -> dict[str, str]:
@@ -871,7 +871,7 @@ class Supervisor:
         if view["verdict"] == "not_started":  # launch intent is recorded and no start has happened: start it now
             live = bool(order.get("live")) or job.read("docker-plan.json") is not None   # the order itself says it is live; the plan file alone also does
             if live and self.dispatch is None:
-                refuse_live_profile(ABSENT_PROFILE)   # no authority wired: closed, before anything else is read
+                refuse_live_profile()   # no authority wired: closed, before anything else is read
             refused = status["launch_admission"]  # the router's current launch-admission check, read before every actual start (L-7)
             if status["cancel_requested"] or self._past(order["deadline_at"]) or (refused and refused["reason"] == "deadline_passed"):
                 return self._end_unlaunched(job, order, journal, grant, status)
@@ -907,7 +907,7 @@ class Supervisor:
         slot, the route-wide rejection block, the trial stop, the ceiling and the attempts: the Router's predicates, not a copy). A refusal
         ends the job cancelled, fail closed; a replayed authorization grants no second send. Returns the job's end, or None to go on."""
         if self.dispatch is None:
-            refuse_live_profile(ABSENT_PROFILE)
+            refuse_live_profile()
         if not self._live_start:
             raise Waiting("live_not_authorized")   # recovery and every call without the operator's flag stop here: nothing is written, nothing starts
         if job.read("docker-plan.json") is None:   # a crash lost the backend's copy; the order carries the plan. An order with no plan is incomplete preparation

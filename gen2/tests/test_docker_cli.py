@@ -25,7 +25,7 @@ class DockerBoundary(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.real_read_bytes = Path.read_bytes
         self.job = jobs.Job(self.root, "job-fixture")
-        self.job.prepare({"test": "unqualified offline fixture"})
+        self.job.prepare({"test": "unqualified offline fixture", "deadline_at": "1970-01-01T00:20:10Z"})   # 210 s after the injected clock: the allowance ends at now() + 120
         self.job.write("docker-plan.json", {"origin": {"invocation": "fixture", "invocation_id": "inv_fixture0001"}, "paths": [str(self.root)]})
         self.pin = "sha256:" + hashlib.sha256(b"configuration").hexdigest()
         self.manifest = {"version": 1, "tree": "reviewed-tree", "platform": "linux/amd64", "route": "fixture",
@@ -35,7 +35,7 @@ class DockerBoundary(unittest.TestCase):
                          "images": {r: {"pin": "sha256:" + CID, "kind": "engine-image-id"} for r in d.ROLES},
                          "configurations": {r: {"pin": self.pin} for r in d.ROLES}}
         self.execute = mock.Mock(return_value=(0, b"", b""))
-        self.cli = d.DockerCLI(self.job, self.manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10)
+        self.cli = d.DockerCLI(self.job, self.manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10, clock=lambda: 1000.0)
 
     def files(self):
         return {str(p.relative_to(self.root)): (tuple(getattr(p.lstat(), k) for k in
@@ -217,6 +217,62 @@ class DockerBoundary(unittest.TestCase):
             with self.assertRaisesRegex(LiveProfileRefused, "cli_end_unconfirmed"):
                 d.capture(self.job, argv, {}, time.monotonic() + 5, (3, 3))
         self.assertIsNone(self.job.read("runner-end.json"))
+
+    def test_capture_recovers_only_a_complete_stale_identity_and_never_overwrites_an_ambiguous_record(self):
+        stale = {"pid": 4242, "session": 4242, "starttime": 7, "boot_id": "boot"}
+        for name, record, ended in (("intent only", {"intent": ["/usr/bin/docker", "wait"]}, True), ("malformed", {"pid": "4242", "boot_id": "boot"}, True),
+                                    ("not terminable", stale, False)):
+            with self.subTest(name), mock.patch.object(d.subprocess, "Popen") as process, \
+                    mock.patch.object(self.job, "terminate", return_value={"confirmed": ended}) as end:
+                self.job.write("docker-cli.json", record)
+                self.refused(lambda: d.capture(self.job, ("unused",), {}, time.monotonic() + 5, (1, 1)), "cli_previous_unconfirmed")
+                process.assert_not_called()
+                self.assertEqual(self.job.read("docker-cli.json"), record)   # the unresolved record is kept, never overwritten
+                self.assertEqual(end.call_count, name == "not terminable")
+        (self.job.dir / "docker-cli.json").write_text("{")   # unreadable
+        with mock.patch.object(d.subprocess, "Popen") as process:
+            self.refused(lambda: d.capture(self.job, ("unused",), {}, time.monotonic() + 5, (1, 1)), "cli_previous_unconfirmed")
+            process.assert_not_called()
+        self.job.write("docker-cli.json", stale)   # a complete identity that the existing session mechanism ends: the command proceeds, within its own deadline
+        with mock.patch.object(self.job, "terminate", return_value={"confirmed": True}) as end:
+            self.assertEqual(d.capture(self.job, (sys.executable, "-c", "print()"), {}, time.monotonic() + 5, (3, 3))[0], 0)
+        first = end.call_args_list[0]   # the later calls are the new command's own end
+        self.assertEqual((first.args, first.kwargs["term_grace"]), ((stale,), 0))
+        self.assertLessEqual(first.kwargs["kill_grace"], 5)
+
+    def test_the_backend_allowance_is_the_pinned_orders_deadline_minus_the_reserve(self):
+        def build(remaining, ticks=None):
+            self.job.write("order.json", {"deadline_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(1000 + remaining))})
+            return d.DockerCLI(self.job, self.manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10, clock=lambda: 1000.0)
+        cli = build(300)   # the first-topic bundle's model purposes: deadline_s 300
+        self.assertEqual((cli.absolute, cli.deadline), (310, 220))
+        self.assertGreater(cli.deadline - 10, 120)   # the old 120 s allowance is gone
+        self.assertEqual(build(100).deadline, 20)   # a late construction shrinks the allowance instead of overrunning
+        for remaining in (90, 0, -5):
+            with self.assertRaisesRegex(LiveProfileRefused, "backend_deadline_passed"):
+                build(remaining)
+        for order in ({}, {"deadline_at": "tomorrow"}, {"deadline_at": 5}):
+            self.job.write("order.json", order)
+            with self.assertRaisesRegex(LiveProfileRefused, "backend_deadline_missing"):
+                d.DockerCLI(self.job, self.manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10, clock=lambda: 1000.0)
+
+    def test_only_the_runners_wait_runs_to_the_allowance_and_its_final_inspect_runs_under_the_order_deadline(self):
+        clock, seen = [10.0], []
+        self.job.write("order.json", {"deadline_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(1300))})
+        cli = d.DockerCLI(self.job, self.manifest, lambda pin: b"configuration", "reviewed-tree", now=lambda: clock[0], clock=lambda: 1000.0,
+                          execute=lambda job, argv, env, deadline, bounds: (seen.append((argv[3], deadline)), clock.__setitem__(0, 225.0) if argv[3] == "wait" and len(seen) == 1 else None, (0, b"143", b""))[2])
+        started = {"Id": CID, "Image": "i", "Config": {}, "HostConfig": {}, "NetworkSettings": {"Networks": {}}, "State": {"StartedAt": "2026-11-13T01:00:00Z"}}
+        ended = {**started, "State": {"StartedAt": "2026-11-13T01:00:00Z", "FinishedAt": "2026-11-13T01:00:01Z", "ExitCode": 143, "Status": "exited", "Pid": 0, "Error": "",
+                                      **{k: False for k in ("Running", "Restarting", "Paused", "OOMKilled")}}}
+        self.job.write("runner-start.json", started)
+        with mock.patch.object(cli, "inspect", side_effect=lambda cid: (seen.append(("inspect", cli.deadline)), ended)[1]):
+            cli.end(CID)   # the turn's wait returns at 225 s: after the cutoff (220), before the order's deadline (310)
+        self.assertEqual(seen[0], ("wait", 220))   # the model turn waits to the allowance: 300 s order, 90 s reserve, no 120 s cap
+        self.assertEqual(seen[1], ("inspect", 310))   # the final inspect after a wait that ends at the cutoff still runs, under the order's deadline
+        seen.clear()
+        self.assertEqual(cli.deadline, cli.absolute)
+        cli._command(("wait", "f" * 64))
+        self.assertEqual(seen, [("wait", 225.0 + 10)])   # every other wait is short and finite
 
     def test_network_exact_create_and_topology_refusals(self):
         view = {"Id": NET, "Internal": True, "EnableIPv6": False, "Driver": "bridge",
@@ -496,7 +552,7 @@ class DockerBoundary(unittest.TestCase):
                     self.cli.plan["fixture"] = copy.deepcopy(fixture)
                     final["State"]["StartedAt"] = "2026-11-13T01:00:01Z"
                     shown["State"] = dict(final["State"])  # a restart before admission must not replace the protected start snapshot
-                def command(args):
+                def command(args, long=False):
                     if args[0] == "wait": return b"0" if reason == "end_unconfirmed" else b"143"
                     return json.dumps([network_view if args[2] == upstream else {"Id": NET, "Containers": {relay: {}, **({CID: {}} if reason == "ingress_not_closed" else {})}}]).encode()
                 stack.enter_context(mock.patch.object(d, "free_space"))
@@ -531,7 +587,7 @@ class DockerBoundary(unittest.TestCase):
                     refs = self.cli.run(batch)
                     self.assertEqual(len(refs), 6)
                     self.assertEqual(self.job.read("docker-complete.json")["disposition"]["disposition"], "unknown")
-                    watch.assert_has_calls([mock.call.start(CID), mock.call.close_admission(), mock.call.end(CID), mock.call.endpoint("disconnect", NET, CID), mock.call._command(("network", "inspect", NET)), mock.call.inspect(CID), mock.call.drain(), mock.call.contain(relay, role="relay"), mock.call.end(relay, "relay"), mock.call.contain(fixture_id, role="fixture"), mock.call.end(fixture_id, "fixture"), mock.call._command(("wait", fixture_id)), mock.call.inspect(fixture_id), mock.call.logs(CID)])
+                    watch.assert_has_calls([mock.call.start(CID), mock.call.close_admission(), mock.call.end(CID), mock.call.endpoint("disconnect", NET, CID), mock.call._command(("network", "inspect", NET)), mock.call.inspect(CID), mock.call.drain(), mock.call.contain(relay, role="relay"), mock.call.end(relay, "relay"), mock.call.contain(fixture_id, role="fixture"), mock.call.end(fixture_id, "fixture"), mock.call._command(("wait", fixture_id), long=False), mock.call.inspect(fixture_id), mock.call.logs(CID)])
                     self.assertEqual(batch.collect.call_count, 3)
                     self.assertEqual(self.job.read("fixture-start.json"), fixture)
                     self.assertEqual(self.job.read("fixture-end.json"), final)
@@ -549,7 +605,7 @@ class DockerBoundary(unittest.TestCase):
         """A real-route cli: manifest without the fixture role, the plan's route, egress bridge ID and upstream, output = judgment."""
         manifest = {**self.manifest, "route": "real", "images": {r: v for r, v in self.manifest["images"].items() if r != "fixture"},
                     "configurations": {r: v for r, v in self.manifest["configurations"].items() if r != "fixture"}}
-        cli = d.DockerCLI(self.job, manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10)
+        cli = d.DockerCLI(self.job, manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10, clock=lambda: 1000.0)
         slots = {n: str(self.root / n) for n in ("out", "evidence")}
         for path in slots.values():
             (Path(path) / GENERATION).mkdir(parents=True, exist_ok=True)
@@ -702,7 +758,7 @@ class DockerBoundary(unittest.TestCase):
             with self.assertRaisesRegex(LiveProfileRefused, "runtime_identity"):
                 self.cli.runtime()
         clock, slept = [0.0], []
-        cli = d.DockerCLI(self.job, self.manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: clock[0], sleep=lambda n: (slept.append(n), clock.__setitem__(0, clock[0] + n + 3)))
+        cli = d.DockerCLI(self.job, self.manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: clock[0], clock=lambda: 1000.0, sleep=lambda n: (slept.append(n), clock.__setitem__(0, clock[0] + n + 3)))
         with self.assertRaisesRegex(LiveProfileRefused, "relay_drain"):            # 8 s of grace plus scheduling overhead past the ten-second budget
             cli.drain()
         self.assertEqual(slept, [d.DRAIN_SECONDS])
@@ -712,26 +768,34 @@ class DockerBoundary(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             cli.drain()
 
-    def contain_world(self, execute, roles=(("runner", "a" * 64), ("relay", "b" * 64), ("initializer", "c" * 64))):
+    def contain_world(self, execute, roles=(("runner", "a" * 64), ("relay", "b" * 64), ("initializer", "c" * 64)), fixture="d" * 64):
         for role, cid in roles:
             (self.job.dir / (role + ".cid")).write_text(cid)
+        self.job.write("docker-plan.json", {**self.job.read("docker-plan.json"), **({"fixture": {"Id": fixture}} if fixture else {})})   # the protected plan's fixture: a fixture route owes it
         pin = mock.patch.object(d.hashlib, "sha256")
         digest = pin.start()
         self.addCleanup(pin.stop)
         digest.return_value.hexdigest.return_value = d.CLI_SHA
         return mock.patch.object(d.Path, "read_bytes", self.real_read_bytes)
 
-    def test_contain_job_kills_then_removes_every_journaled_container_and_tolerates_the_gone(self):
+    def test_contain_job_ends_the_relay_first_then_every_original_and_publishes_the_end_fact(self):
         calls = []
         def execute(job, argv, env, deadline, bounds):
             calls.append(argv[3:])
             return (0, b"", b"") if argv[3] != "rm" or argv[-1] != "b" * 64 else (1, b"", b"Error: No such container: " + argv[-1].encode())
         with self.contain_world(execute):
-            outcomes = d.contain_job(self.job, execute=execute, now=lambda: 0)
-        self.assertEqual(calls, [("kill", "a" * 64), ("rm", "-f", "a" * 64), ("kill", "b" * 64), ("rm", "-f", "b" * 64), ("kill", "c" * 64), ("rm", "-f", "c" * 64)])
-        self.assertEqual([(o["role"], o["kill"], o["rm"]) for o in outcomes], [("runner", "ok", "ok"), ("relay", "ok", "gone"), ("initializer", "ok", "ok")])
+            outcomes = d.contain_job(self.job, execute=execute, now=lambda: 0, clock=lambda: 1000.0)
+        self.assertEqual(calls, [(op, *flag, cid * 64) for cid in "bacd" for op, flag in (("kill", ()), ("rm", ("-f",)))])   # relay, runner, initializer, plan fixture
+        self.assertEqual([(o["role"], o["kill"], o["rm"]) for o in outcomes],
+                         [("relay", "ok", "gone"), ("runner", "ok", "ok"), ("initializer", "ok", "ok"), ("fixture", "ok", "ok")])
         self.assertEqual(self.job.read("containment.json")["outcomes"], outcomes)                 # each outcome is journaled
-        self.assertEqual(d.contain_job(jobs.Job(self.root, "job-empty"), execute=execute, now=lambda: 0), [])   # nothing journaled, nothing run
+        self.assertEqual(self.job.read("docker-complete.json"), {"origin": self.cli.plan["origin"], "refs": [], "usage": "refused",
+                         "disposition": {"disposition": "unknown", "reason": "contained_without_collection"}})
+        empty = jobs.Job(self.root, "job-empty")
+        empty.prepare({"test": "no plan"})   # no plan, nothing created: nothing run, nothing completed
+        self.assertEqual([(o["role"], o["kill"]) for o in d.contain_job(empty, execute=execute, now=lambda: 0)], [(r, "never_created") for r in ("relay", "runner", "initializer")])
+        self.assertIsNone(empty.read("docker-complete.json"))
+        self.assertEqual(len(calls), 8)
 
     def test_a_failed_kill_of_the_runner_does_not_stop_the_relay_or_the_initializer_and_the_end_is_unconfirmed(self):
         calls = []
@@ -739,11 +803,12 @@ class DockerBoundary(unittest.TestCase):
             calls.append(argv[3:])
             return (1, b"", b"permission denied") if argv[3:] == ("kill", "a" * 64) else (0, b"", b"")
         with self.contain_world(execute), self.assertRaises(d.ContainFailed) as caught:
-            d.contain_job(self.job, execute=execute, now=lambda: 0)
-        self.assertEqual(len(calls), 6)                                                          # every CID, kill and removal, attempted
+            d.contain_job(self.job, execute=execute, now=lambda: 0, clock=lambda: 1000.0)
+        self.assertEqual(len(calls), 8)                                                          # every CID, kill and removal, attempted
         self.assertEqual([(o["role"], o["kill"], o["rm"]) for o in caught.exception.outcomes],
-                         [("runner", "failed", "ok"), ("relay", "ok", "ok"), ("initializer", "ok", "ok")])
+                         [("relay", "ok", "ok"), ("runner", "failed", "ok"), ("initializer", "ok", "ok"), ("fixture", "ok", "ok")])
         self.assertEqual(self.job.read("containment.json")["outcomes"], caught.exception.outcomes)
+        self.assertIsNone(self.job.read("docker-complete.json"))
 
     def test_an_error_in_one_command_or_an_unreadable_journal_entry_still_attempts_the_rest(self):
         def execute(job, argv, env, deadline, bounds):
@@ -751,9 +816,87 @@ class DockerBoundary(unittest.TestCase):
                 raise OSError("socket gone")
             return (0, b"", b"")
         with self.contain_world(execute, roles=(("runner", "a" * 64), ("relay", "not-a-cid"), ("initializer", "c" * 64))), self.assertRaises(d.ContainFailed) as caught:
-            d.contain_job(self.job, execute=execute, now=lambda: 0)
+            d.contain_job(self.job, execute=execute, now=lambda: 0, clock=lambda: 1000.0)
         self.assertEqual([(o["role"], o["kill"], o["rm"]) for o in caught.exception.outcomes],
-                         [("runner", "error", "ok"), ("relay", "journal_unreadable", "journal_unreadable"), ("initializer", "ok", "ok")])
+                         [("relay", "journal_unreadable", "journal_unreadable"), ("runner", "error", "ok"), ("initializer", "ok", "ok"), ("fixture", "ok", "ok")])
+        self.assertIsNone(self.job.read("docker-complete.json"))
+
+    def test_the_plan_fixture_is_an_original_writer_a_failed_fixture_end_cannot_be_promoted_by_three_removals(self):
+        def execute(job, argv, env, deadline, bounds):
+            return (1, b"", b"daemon error") if argv[-1] == "d" * 64 else (0, b"", b"")
+        with self.contain_world(execute), self.assertRaises(d.ContainFailed):
+            d.contain_job(self.job, execute=execute, now=lambda: 0, clock=lambda: 1000.0)
+        self.assertIsNone(self.job.read("docker-complete.json"))                                 # relay, runner and initializer are gone; the fixture is not
+        self.job.write("docker-plan.json", {k: v for k, v in self.job.read("docker-plan.json").items() if k != "fixture"})
+        with self.assertRaises(d.ContainFailed) as caught:                                       # a fixture route whose plan names no fixture is unknown, not a real route
+            d.contain_job(self.job, execute=lambda *a: (0, b"", b""), now=lambda: 0, clock=lambda: 1000.0)
+        self.assertEqual(caught.exception.outcomes[-1]["kill"], "journal_unreadable")
+        self.job.write("docker-plan.json", {**self.job.read("docker-plan.json"), "route": "real"})   # a real route has no fixture to end
+        self.assertEqual([o["role"] for o in d.contain_job(self.job, execute=lambda *a: (0, b"", b""), now=lambda: 0, clock=lambda: 1000.0)], ["relay", "runner", "initializer"])
+        self.assertIsNotNone(self.job.read("docker-complete.json"))
+
+    def test_an_early_refusal_before_the_fixture_is_journaled_still_ends_the_plan_fixture(self):
+        calls = []
+        self.execute.side_effect = lambda job, argv, *rest: calls.append(argv[3:]) or (0, b"", b"")
+        self.job.write("docker-plan.json", {**self.job.read("docker-plan.json"), "fixture": {"Id": "d" * 64}})
+        self.job.write("identity.json", {"pid": os.getpid()})
+        with self.contain_world(self.execute, roles=(), fixture="d" * 64), mock.patch.object(d.jobs, "members", return_value=[os.getpid()]), \
+                mock.patch.object(self.cli, "runtime", side_effect=LiveProfileRefused("runtime_identity")), self.assertRaisesRegex(LiveProfileRefused, "runtime_identity"):
+            self.cli.plan.update(route="fixture", binds={"out": str(self.root / "o" / GENERATION)}, slots={"out": str(self.root / "o")}, generation=GENERATION)
+            self.cli.run(mock.Mock())
+        self.assertEqual(calls, [("kill", "d" * 64), ("rm", "-f", "d" * 64)])                    # nothing else was ever created
+        self.assertIsNotNone(self.job.read("docker-complete.json"))
+        self.assertEqual([(o["role"], o["kill"]) for o in self.job.read("containment.json")["outcomes"]],
+                         [("relay", "never_created"), ("runner", "never_created"), ("initializer", "never_created"), ("fixture", "ok")])
+
+    def test_a_create_without_its_cidfile_is_unknown_and_an_unreadable_journal_is_never_an_absence(self):
+        ran = []
+        execute = lambda job, argv, *rest: ran.append(argv[-1]) or (0, b"", b"")
+        with self.contain_world(execute, roles=(("relay", "b" * 64),)):
+            self.job.write("docker.json", {"k": {"intent": ["/usr/bin/docker", "create", "--cidfile", str(self.job.dir / "runner.cid")]}})
+            with self.assertRaises(d.ContainFailed) as caught:
+                d.contain_job(self.job, execute=execute, now=lambda: 0, clock=lambda: 1000.0)
+            self.assertEqual([(o["role"], o["kill"]) for o in caught.exception.outcomes],
+                             [("relay", "ok"), ("runner", "created_unrecorded"), ("initializer", "never_created"), ("fixture", "ok")])
+            self.assertEqual(ran, ["b" * 64, "b" * 64, "d" * 64, "d" * 64])                      # the others were still ended
+            self.assertIsNone(self.job.read("docker-complete.json"))
+            (self.job.dir / "docker.json").write_text("not json")
+            with self.assertRaises(d.ContainFailed):
+                d.contain_job(self.job, execute=execute, now=lambda: 0, clock=lambda: 1000.0)
+            self.assertIsNone(self.job.read("docker-complete.json"))
+
+    def test_the_end_fact_needs_the_relay_gone_within_the_lateness_allowance_and_the_relay_goes_first(self):
+        now = [0.0]
+        def execute(job, argv, env, deadline, bounds):
+            now[0] += 30 if argv[-1] == "a" * 64 else 5   # a slow runner; everything else quick
+            return (0, b"", b"")
+        with self.contain_world(execute):
+            # the order's deadline is 10 s away: the relay must be removed by 10 + LATE_END_S = 60 s after entry
+            d.contain_job(self.job, execute=execute, now=lambda: now[0], clock=lambda: 1200.0 + 0.0)
+            self.assertIsNotNone(self.job.read("docker-complete.json"))                          # relay first: removed at 10 s, the slow runner after it
+            self.assertFalse(self.job.read("containment.json")["late"])
+            (self.job.dir / "docker-complete.json").unlink()
+            now[0] = 0.0
+            d.contain_job(self.job, execute=execute, now=lambda: now[0], clock=lambda: 1200.0 + 55)   # entered 55 s after the deadline: the relay's removal lands at 65 > 50
+            self.assertTrue(self.job.read("containment.json")["late"])
+            self.assertIsNone(self.job.read("docker-complete.json"))                             # confirmed ended but outside the qualified window: unknown, held
+
+    def test_the_fallback_end_fact_can_never_replace_a_normal_one_even_when_it_appears_between_absence_and_publication(self):
+        normal = {"origin": self.cli.plan["origin"], "refs": [{"content_hash": "sha256:" + CID}], "usage": "recorded", "disposition": {"disposition": "credentials_rejected"}}
+        raced, link, replace = [], os.link, os.replace
+        def before(real):
+            def publish(source, target, *a, **k):
+                if str(target).endswith("docker-complete.json") and not raced:   # a surviving child's normal marker lands at the last instant
+                    raced.append(1)
+                    (self.job.dir / "normal.tmp").write_text(json.dumps(normal))
+                    replace(self.job.dir / "normal.tmp", target)
+                return real(source, target, *a, **k)
+            return publish
+        with self.contain_world(lambda *a: (0, b"", b"")), mock.patch.object(jobs.os, "link", before(link)), mock.patch.object(jobs.os, "replace", before(replace)):
+            d.contain_job(self.job, execute=lambda *a: (0, b"", b""), now=lambda: 0, clock=lambda: 1000.0)
+        self.assertEqual(raced, [1])
+        self.assertEqual(self.job.read("docker-complete.json"), normal)
+        self.assertFalse(list(self.job.dir.glob("docker-complete.json.*")))                      # no staged file is left behind
 
     def test_a_wrong_cli_pin_stops_containment_it_is_not_relaxed_around(self):
         calls = []
