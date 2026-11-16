@@ -651,44 +651,39 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 ### DEBT-061 - `contain_job` leaves the job network, and held ends leave both job and fixture networks (Phase 3)
 - kind: obligation
 - status: open
-- owner: supervisor lane (Gate S later list, S13 change 12); Gate S decides the slot
-- what: `contain_job` kills and removes the journaled containers but never the job network it journaled, and a held or unsettled live end deliberately preserves state, so both the job network and the fixture network remain. Until fixed, the fresh-roots procedure ends with the operator set removing the archived attempt's two networks by exact ID (the permanent cleanup rule, S13 D5). The production fix is `contain_job` removing the journaled job network after the containers (about +6 production, one Astra round on the containment contract).
-- touch rule: any brief that touches `contain_job` or the job-network journal in the supervisor takes this item or states why not in its PR body; the per-merge summary names it.
+- owner: phase 3
+- what: Supervisor lane (Gate S later list, S13 change 12; Gate S decides the slot). `contain_job` kills and removes the journaled containers but never the job network it journaled, and a held or unsettled live end deliberately preserves state, so both the job network and the fixture network remain. Until fixed, the fresh-roots procedure ends with the operator set removing the archived attempt's two networks by exact ID (the permanent cleanup rule, S13 D5). The production fix is `contain_job` removing the journaled job network after the containers (about +6 production, one Astra round on the containment contract). Touch rule: Any brief that touches `contain_job` or the job-network journal in the supervisor takes this item or states why not in its PR body; the per-merge summary names it.
 - source: Gate S #13 (2026-11-16) §5.1 and change 12; Trevor's S13 D8 ruling.
-- removal: a reviewed change removes the journaled job network after confirmed container removal, with a native witness; the fresh-roots network step is then dropped from the operator procedure.
+- removal: a reviewed change removes the journaled job network after confirmed container removal, with a native witness; only the job-network part of the fresh-roots step is then retired. The fixture-network cleanup obligation (the archived attempt's fixture network, removed by exact ID) stays in the permanent procedure until a separate reviewed change covers it, or both network obligations are shown covered.
 
-### DEBT-062 - fixture lifetime hard-coded at 1800 s (Phase 3)
+### DEBT-062 - fixture lifetime hard-coded at 1800 s (Phase 2)
 - kind: obligation
 - status: open
-- owner: host lane (lane C); lives in the host package
-- what: the fixture's lifetime is a constant 1800 s with no argument, shorter than a typical operator ruling round trip. An expired fixture also leaves exclusive-create evidence files, so it cannot be recreated in place. Procedure now: one attempt identity, one generation, one fixture; create the fixture inside the same locked step as the backend start; never hold a live fixture across a ruling. The fix is a two-line `lifetime` argument, which the host package cap (2,000 for topic 1, S14 D7) now allows.
-- touch rule: any brief that touches the fixture producer takes this item or states why not in its PR body.
+- owner: task 2e1
+- what: Host lane (lane C), in the host package, `deploy/gen2/live/fixture.py`. The fixture's lifetime is a constant 1800 s with no argument, shorter than a typical operator ruling round trip. An expired fixture also leaves exclusive-create evidence files, so it cannot be recreated in place. Procedure now: one attempt identity, one generation, one fixture; create the fixture inside the same locked step as the backend start; never hold a live fixture across a ruling. The fix is a two-line `lifetime` argument, which the host package cap (2,000 for topic 1, S14 D7) now allows. Touch rule: Any brief that touches the fixture producer takes this item or states why not in its PR body.
 - source: Gate S #13 (2026-11-16) §5.2–5.3; Trevor's S13 D8 and D7 rulings; Gate S #14 D7.
 - removal: the lifetime is an argument, the T10 and Q sequences pass it, and the host count stays under the cap.
 
 ### DEBT-063 - the orchestrator's non-application of Gate S #11 section 6 (process finding)
 - kind: obligation
 - status: open
-- owner: orchestrator (BUILD-STATE standing rules; BUILD-CHARTER "Gate S switch conditions")
-- what: Gate S #11 §6 said that if attempt 3 stopped again on a harness fault, the operator set should be cut first rather than patched. Attempt 3 stopped three more times and each was patched; the combined window added more per-window operator code and stopped five more times before the cut. The Nov 15 Gate S that would have ruled on S11 decisions 2–4 was itself deferred to wait for the window it governed. This is a process finding, not a code defect.
-- touch rule: each records PR marks every standing Gate S "if X, then Y" rule applied, superseded or still standing (S14 §6 item 4); a switch condition is written into the next window brief as a hard stop.
+- owner: phase 2
+- what: Orchestrator lane (BUILD-STATE standing rules; BUILD-CHARTER "Gate S switch conditions"). Gate S #11 §6 said that if attempt 3 stopped again on a harness fault, the operator set should be cut first rather than patched. Attempt 3 stopped three more times and each was patched; the combined window added more per-window operator code and stopped five more times before the cut. The Nov 15 Gate S that would have ruled on S11 decisions 2–4 was itself deferred to wait for the window it governed. This is a process finding, not a code defect. Touch rule: Each records PR marks every standing Gate S "if X, then Y" rule applied, superseded or still standing (S14 §6 item 4); a switch condition is written into the next window brief as a hard stop.
 - source: Gate S #13 (2026-11-16) §0 item 1 and change 9; Trevor's S13 D8 ruling; Gate S #14 §6.
 - removal: the charter rule is in force and the next window brief carries its switch conditions as hard stops.
 
 ### DEBT-064 - the private operator set's line count (Phase 2)
 - kind: obligation
 - status: open
-- owner: host lane (lane C); counted by the records PR
-- what: the private operator set (about 1,050 lines, 18 files at the S13 specification) is private through the live start and is not in the public line counter. Its budget is 1,200 lines through the Q re-witness, then 800. The private `wc -l` is printed beside the host count in every window report header and carried into BUILD-STATE by the records PR. A public `operator_tooling` category waits until the set is generic.
-- touch rule: a step the set does not cover is added to the set, read by a fresh Astra session and counted before it runs, never written beside it; a changed SHA in the index is re-read.
+- owner: task 2e1
+- what: Host lane (lane C), counted by the records PR. The private operator set (about 1,050 lines, 18 files at the S13 specification) is private through the live start and is not in the public line counter. Its budget is 1,200 lines through the Q re-witness, then 800. The private `wc -l` is printed beside the host count in every window report header and carried into BUILD-STATE by the records PR. A public `operator_tooling` category waits until the set is generic. Touch rule: A step the set does not cover is added to the set, read by a fresh Astra session and counted before it runs, never written beside it; a changed SHA in the index is re-read.
 - source: Gate S #13 (2026-11-16) §6 and D1–D4; Trevor's ruling of the same date.
 - removal: the set is generic, public and counted by `gen2_linecount.py`, or retired after the live start.
 
 ### DEBT-065 - retire the capability probe and AUTH-DEMO (Phase 2)
 - kind: obligation
 - status: open
-- owner: supervisor lane; sequenced after T10 attempt 4 and before the Claude runner (S14 D4)
-- what: the capability probe runs the pinned runner against the provider auth root in the engine, and the live engine image has no runner binary and no auth home, so on the deployed engine it can only answer `runner_error`. Retire `gen2/supervisor/probe.py`, the `probe_capability` command and its station wiring, with the AUTH-DEMO configuration; the Router's capability facts keep their producer (rejection facts). Amends the BOUNDARIES Station supervisor text, DEP §4 and the INVARIANTS H-2 wording (about −262 production, −731 tests, −833 configuration lines).
-- touch rule: any brief that touches the probe, the Station probe wiring or the demo deployment takes this item; the Claude runner brief drops its probe row.
+- owner: task 2g
+- what: Supervisor lane, sequenced after T10 attempt 4 and before the Claude runner (S14 D4). The capability probe runs the pinned runner against the provider auth root in the engine, and the live engine image has no runner binary and no auth home, so on the deployed engine it can only answer `runner_error`. Retire `gen2/supervisor/probe.py`, the `probe_capability` command and its station wiring, with the AUTH-DEMO configuration; the Router's capability facts keep their producer (rejection facts). Amends the BOUNDARIES Station supervisor text, DEP §4 and the INVARIANTS H-2 wording (about −262 production, −731 tests, −833 configuration lines). Touch rule: Any brief that touches the probe, the Station probe wiring or the demo deployment takes this item; the Claude runner brief drops its probe row.
 - source: Gate S #14 (2026-11-16) §4 item 6 and D4; Trevor's ruling of the same date.
 - removal: the probe and AUTH-DEMO are deleted and the amended text is merged.
