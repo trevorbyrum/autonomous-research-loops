@@ -190,6 +190,27 @@ class Matrix(unittest.TestCase):
         self.assertEqual([c.args[1][3:] for c in self.execute.call_args_list], [("kill", "d" * 64), ("rm", "-f", "d" * 64)])
         self.assertIsNotNone(self.job.read("docker-complete.json"))
 
+    def test_a_published_completion_is_never_replaced_and_no_attempt_begins_over_it(self):
+        for state in ("null", "list", "malformed", "valid"):
+            with self.subTest(complete=state):
+                self.world("docker-attempt.json", "absent")
+                self.put("docker.json", "absent")
+                self.put("docker-complete.json", state)
+                before = self.bytes()
+                self.execute.reset_mock()
+                self.assertEqual(self.enter_run(), "refused")
+                self.assertEqual((self.bytes(), self.execute.called), (before, False))   # bytes unchanged, no history, no attempt marker, nothing launched
+
+    def test_contain_job_publishes_a_pre_attempt_end_and_a_later_run_refuses_leaving_it_byte_for_byte(self):
+        self.world("docker-attempt.json", "absent")
+        self.put("docker.json", "absent")
+        self.put("docker-complete.json", "absent")
+        self.enter_contain()
+        before = self.bytes()
+        self.assertIsNotNone(before["docker-complete.json"])
+        self.assertEqual(self.enter_run(), "refused")
+        self.assertEqual(self.bytes(), before)
+
     def test_the_supervisors_terminate_contains_for_every_plan_that_is_present_whatever_its_state(self):
         for state in STATES:
             with self.subTest(plan=state):

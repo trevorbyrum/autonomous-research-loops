@@ -350,6 +350,7 @@ class DockerCLI:
         identity = self.job.read("identity.json")
         require(identity is not None and os.getpid() in jobs.members(identity), "backend_unsupervised")
         with self.job.hold(self.deadline, .01):   # the one fresh-attempt transition: the intact-empty history and the attempt marker are born together, only if truly absent
+            require(_read(self.job, "docker-complete.json") is None, "backend_already_complete")   # an end fact in ANY state (valid, null, list, malformed) means no further attempt
             require(_read(self.job, "docker-attempt.json") is None, "backend_already_intended")   # present (valid or not) is a started attempt, never rewritten
             if _read(self.job, "docker.json") is None:
                 self.job.create("docker.json", {})
@@ -454,7 +455,7 @@ class DockerCLI:
             usage = "recorded"
         except LiveProfileRefused:
             usage = "refused"
-        self.job.write("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition, "usage": usage})
+        require(self.job.create("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition, "usage": usage}), "backend_already_complete")   # create-only: an existing end fact is retained
         return refs
 
     def remove(self, cid, ack):

@@ -719,6 +719,20 @@ class DockerBoundary(unittest.TestCase):
         self.assertEqual(done["disposition"]["disposition"], "unknown")             # this fake leaves no log row; classification used route=real
         contained.assert_not_called()
 
+    def test_normal_publication_is_create_only_an_end_fact_that_appears_first_is_retained_and_the_run_fails_closed(self):
+        for raw in ("[]", "null", "{", json.dumps({"origin": {"x": 1}, "refs": [], "usage": "refused"})):
+            with self.subTest(raw=raw):
+                for name in ("docker-attempt.json", "docker-complete.json"):
+                    (self.job.dir / name).unlink(missing_ok=True)
+                cli, egress, relay, record = self.real_world()
+                def appears(*a, **k):   # the end fact is published by someone else between classification and our publication
+                    (self.job.dir / "docker-complete.json").write_text(raw)
+                    return {}
+                with mock.patch.object(d.rejection, "usage_record", appears):
+                    error, *_ = self.real_run(cli, egress, relay, record)
+                self.assertIsInstance(error, LiveProfileRefused)
+                self.assertEqual((self.job.dir / "docker-complete.json").read_text(), raw)
+
     def test_a_real_route_with_a_missing_judgment_is_still_classified_but_any_other_collection_refusal_is_not_swallowed(self):
         cli, egress, relay, record = self.real_world()
         def absent(slot_fd, generation, identity, *, writers_ended, kind):
