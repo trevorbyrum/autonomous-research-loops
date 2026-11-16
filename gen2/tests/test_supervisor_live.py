@@ -3,16 +3,27 @@ the job files the supervisor writes (docker-plan.json, spawn.json), and the veri
 spool and a fake executor child. Limits: the backend is simulated by writing the same `docker-complete.json` DockerCLI.run writes (no provider, no
 container: F1); the real-route classifier, rejection mapping and the child's live agent are PR-L2's.
 """
+import dataclasses
+import hashlib
 import json
+import os
+import stat
+import subprocess
+import sys
+import tempfile
+import time
 import unittest
 import unittest.mock
+from pathlib import Path
 
 from gen2.core import canonical
-from gen2.supervisor import authority as auth
-from gen2.supervisor.isolation import ABSENT_PROFILE, LiveProfileRefused
-from gen2.tests import router_fixtures as rf
+from gen2.core.instants import utc_instant_ns
+from gen2.supervisor import authority as auth, docker_cli, jobs
+from gen2.supervisor.isolation import LiveProfileRefused
+from gen2.tests import children, router_fixtures as rf
 from gen2.tests.supervisor_fixtures import MAIN, SupervisedTestCase, succeed
 
+REAL_CONTAIN = docker_cli.contain_job   # before any test patches it
 MANIFEST = b'{"profile": "fixture-only"}'
 SCOPE = ["model", "delegates", "retries", "verification", "gateway", "maintenance"]
 
@@ -102,10 +113,8 @@ class PlanAndGate(LiveWorld):
         order = self.order("research_pass", succeed())
         with self.assertRaises(LiveProfileRefused):
             self.supervisor.prepare(order, live=True)                                   # the default station has no authority
-        with self.assertRaises(LiveProfileRefused):
+        with self.assertRaises(TypeError):
             self.live_supervisor().prepare(order, isolation_profile={"manifest_pin": "x"})   # a profile is never accepted in its place
-        with self.assertRaises(LiveProfileRefused):
-            self.live_supervisor().prepare(order, live=False, isolation_profile={"state": "qualified"})
         self.assertFalse((self.root / "jobs" / f"job-{MAIN}" / "order.json").exists())  # nothing durable
 
     def test_prepare_writes_the_plan_with_host_paths_a_fixed_generation_and_the_origin_the_backend_will_sign(self):
@@ -119,6 +128,20 @@ class PlanAndGate(LiveWorld):
         again = self.live_supervisor()
         again.prepare(self.order("research_pass", succeed()), live=True)               # a repeat is a no-op: the plan is written once
         self.assertEqual(job.read("docker-plan.json"), plan)
+
+    def test_a_present_but_invalid_plan_file_is_uncertain_never_absent_so_it_is_not_rebuilt_from_the_order_and_nothing_starts(self):
+        self.to_queued(rf.OTHER)
+        for raw in ("null", "[]", "{"):
+            with self.subTest(plan=raw):
+                supervisor = self.live_supervisor()
+                job = self.prepare(supervisor, inv=f"inv_plan{len(raw)}{ord(raw[0])}")
+                (job.dir / "docker-plan.json").write_text(raw)
+                try:
+                    outcome = supervisor.advance(job.handle.removeprefix("job-"), live_start=True)
+                except (LiveProfileRefused, ValueError):   # the corrupt file raises, as a malformed one always did
+                    outcome = "refused"
+                self.assertNotEqual(outcome, "running")
+                self.assertEqual(((job.dir / "docker-plan.json").read_text(), (job.dir / "spawn.json").exists()), (raw, False))   # never rewritten, never spawned
 
     def test_a_real_route_plan_carries_the_protected_egress_network_id_and_never_a_name(self):
         from pathlib import Path
@@ -401,6 +424,172 @@ class Containment(LiveWorld):
                 contain.assert_called()
                 handling = job.read("journal.json")["collected"]["observation"]["descendants"]["handling"]
                 self.assertEqual(handling == "unconfirmed", failing)
+
+
+class ContainedEnd(LiveWorld):
+    """The production `contain_job` is the one owner of the end fact for the supervisor's deadline and cancel paths: a fake CLI transport (or a
+    one-line fake `docker` for the production `capture`), no hand-written marker anywhere here."""
+    FIXTURE = "d" * 64
+
+    def hung(self, supervisor=None, inv=MAIN):
+        supervisor = supervisor or self.live_supervisor()
+        job = self.prepare(supervisor, inv=inv, steps=[{"op": "hang"}])
+        job.write("docker-plan.json", {**job.read("docker-plan.json"), "fixture": {"Id": self.FIXTURE}})   # the fixture route's protected plan owes a fixture ID
+        job.write("docker.json", {})   # what `DockerCLI` leaves before its first command: an intact, empty mutation history
+        self.assertEqual(supervisor.advance(inv, live_start=True), "running")
+        return supervisor, job
+
+    def contain(self, job, execute=None, seconds_after_deadline=1, **real):
+        """The supervisor's own `contain_job(job)` call, run for real over a fake transport at an instant after the order's deadline."""
+        calls = []
+        def transport(job, argv, env, deadline, bounds):
+            calls.append(argv[3:])
+            return execute(argv[3:]) if execute else (0, b"", b"")
+        run = REAL_CONTAIN
+        def owner(target):
+            return run(target, **({"execute": transport} if not real else {}), clock=lambda: utc_instant_ns(job.read("order.json")["deadline_at"]) / 1e9 + seconds_after_deadline)
+        for name, value in (("contain_job", owner), ("CLI_SHA", hashlib.sha256(b"fake").hexdigest())):
+            patch = unittest.mock.patch.object(docker_cli, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+        patch = unittest.mock.patch.object(docker_cli.Path, "read_bytes", lambda path: b"fake")
+        patch.start()
+        self.addCleanup(patch.stop)
+        return calls
+
+    def drive(self, supervisor, inv=MAIN):
+        for _ in range(200):
+            try:
+                outcome = supervisor.advance(inv, live_start=True)
+            except LiveProfileRefused:
+                return "held"
+            if outcome in ("committed", "failed", "cancelled"):
+                return outcome
+        return outcome
+
+    def test_a_cancelled_job_is_ended_by_containment_alone_recorded_at_worst_case_and_the_next_admission_is_allowed(self):
+        self.to_queued(rf.OTHER)
+        supervisor, job = self.hung()
+        calls = self.contain(job)
+        self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+        self.assertEqual(self.drive(supervisor), "cancelled")                              # cancellation stays cancelled, not relabelled failed
+        self.assertEqual(calls, [("kill", self.FIXTURE), ("rm", "-f", self.FIXTURE)])      # nothing else was created: only the plan's fixture is an original
+        (result,) = self.audit("dispatch_result")
+        self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"], result["trial_stopped"]), (400, "worst_case", False))
+        self.assertEqual(job.read("docker-complete.json")["disposition"], {"disposition": "unknown", "reason": "contained_without_collection"})
+        self.assertEqual(self.audit("dispatch_result_unrecorded"), [])
+        second = self.live_supervisor()
+        second.prepare(self.order("research_pass", succeed("inv_slot0002"), inv="inv_slot0002", topic=rf.OTHER), live=True)
+        self.assertEqual(second.advance("inv_slot0002", live_start=True), "running")       # the next invocation is authorized
+
+    def test_the_order_deadline_ends_through_the_same_owner_as_failed_timeout_and_a_late_or_failed_end_is_held(self):
+        from gen2.tests.supervisor_fixtures import AFTER_DEADLINE
+        for case, late, rm_fails in (("ended in time", 1, False), ("ended late", 100, False), ("relay will not go", 1, True)):
+            with self.subTest(case):
+                self.tearDown()
+                self.setUp()
+                supervisor, job = self.hung()
+                self.contain(job, execute=lambda argv: (1, b"", b"error") if rm_fails and argv[0] == "rm" else (0, b"", b""), seconds_after_deadline=late)
+                self.clock.set(AFTER_DEADLINE)
+                outcome = self.drive(supervisor)
+                if case == "ended in time":
+                    self.assertEqual(outcome, "failed")
+                    self.assertEqual(job.read("journal.json")["collected"]["observation"]["findings"], ["timeout"])
+                    (result,) = self.audit("dispatch_result")
+                    self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]), (400, "worst_case"))
+                else:
+                    self.assertEqual(outcome, "stalled" if rm_fails else "backend_end_unconfirmed")   # confirmed late, or not confirmed at all: an unknown end, nothing recorded
+                    self.assertIsNone(job.read("docker-complete.json"))
+                    self.assertEqual(self.audit("dispatch_result"), [])
+                    self.assertEqual(job.read("containment.json")["late"], case == "ended late")
+
+    def test_a_cli_the_killed_child_left_mid_wait_is_ended_by_its_recorded_identity_so_containment_can_confirm(self):
+        fake = tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False)
+        fake.write("#!/bin/sh\nexit 0\n")
+        fake.close()
+        os.chmod(fake.name, stat.S_IRWXU)
+        self.addCleanup(os.unlink, fake.name)
+        supervisor, job = self.hung()
+        waiter = subprocess.Popen(["sleep", "60"], start_new_session=True)               # the `docker wait` the supervisor's group kill never reached
+        self.addCleanup(waiter.kill)
+        state = jobs.proc_stat(waiter.pid)
+        job.write("docker-cli.json", {"pid": waiter.pid, "session": waiter.pid, "starttime": state[2], "boot_id": jobs.boot_id()})
+        for name, value in (("CLI", fake.name), ("CLI_SHA", hashlib.sha256(Path(fake.name).read_bytes()).hexdigest())):
+            patch = unittest.mock.patch.object(docker_cli, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+        run = REAL_CONTAIN
+        patch = unittest.mock.patch.object(docker_cli, "contain_job", lambda target: run(target, clock=lambda: utc_instant_ns(target.read("order.json")["deadline_at"]) / 1e9 + 1))
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+        self.assertEqual(self.drive(supervisor), "cancelled")                              # production capture, a real subprocess: the stale CLI no longer blocks the end
+        self.assertIsNotNone(waiter.wait(timeout=5))
+        self.assertIsNotNone(job.read("docker-complete.json"))
+
+
+class CollectionRefusal(RealRoute):
+    """The first topic's accounting (REQ, U=6, seven attempts, ceiling 42) through the production chain: `DockerCLI.run` (the real `_run`, a fake `docker` transport that writes
+    real cidfiles and returns inspect shapes) refuses at collection -> production `contain_job` publishes the generated marker -> the failed child -> the supervisor -> the Router."""
+    CHANGE = {**RealRoute.CHANGE, "upper_minor_units": 6, "plan": {**RealRoute.CHANGE["plan"], "relay_config": "/host/relay/nginx.conf"},
+              "policy": {"run_id": "trial-1", "accounting_owner": "operator", "deadline_at": rf.DEADLINE, "max_attempts": 7, "ceiling_minor_units": 42,
+                         "currency": "REQ", "ceiling_scope": SCOPE, "policy_version": "v1"}}
+    NET, EGRESS, IMAGE = "b" * 64, "c" * 64, "sha256:" + "1" * 64
+    PIN = "sha256:" + hashlib.sha256(b"configuration").hexdigest()
+
+    def world(self, publish=True):
+        """A live job whose executor is the production child with the production live agent over a daemon-free transport; returns the job and waits for the child's end."""
+        self.to_queued(rf.OTHER)
+        supervisor = self.live_supervisor()
+        order = dataclasses.replace(self.order("research_pass", [], inv=MAIN), command=(sys.executable, str(children.path("gen2/tests/live_refusing_child.py"))))
+        if not publish:
+            (self.root / "no-publish").write_text("")
+        supervisor.prepare(order, live=True)
+        job = supervisor.job(MAIN)
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
+        for _ in range(600):
+            if (job.dir / "exit.json").exists():
+                break
+            time.sleep(0.05)
+        self.assertEqual(job.read("exit.json")["code"], 2)   # the child failed because the backend refused, through the production agent error path
+        self.assertIn("the live backend refused: collection_absent", (job.dir / "executor.log").read_text())
+        return supervisor, job
+
+    def calls(self):
+        return [tuple(json.loads(line)) for line in (self.root / "calls.jsonl").read_text().splitlines()]
+
+    def test_without_fallback_publication_the_same_refusal_stays_held(self):
+        supervisor, job = self.world(publish=False)
+        self.assertIsNone(job.read("docker-complete.json"))
+        self.assertEqual(LiveStart.drive(self, supervisor), "backend_end_unconfirmed")
+        self.assertEqual(self.audit("dispatch_result"), [])
+        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "running")
+
+    def test_the_generated_marker_path_keeps_its_fences_a_stale_epoch_records_nothing_and_an_unconfirmed_descendant_is_no_confirmed_end(self):
+        def confirmed(job):
+            collected = job.read("journal.json")["collected"]
+            return self.authority.result(job.read("journal.json")["dispatch"]["admission_ref"], collected["record"]["content_hash"])["confirmed_end"]
+        supervisor, job = self.world()
+        self.authority.epoch = "epoch-2"                                                   # a restart between the marker and the result: a stale origin
+        self.assertEqual(LiveStart.drive(self, supervisor), "stalled")
+        self.assertEqual((self.audit("dispatch_result"), self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN)), ([], "running"))
+        self.tearDown()
+        self.setUp()
+        supervisor, job = self.world()
+        self.assertEqual(LiveStart.drive(self, supervisor), "failed")
+        self.assertTrue(confirmed(job))                                                    # control: the generated marker with every descendant confirmed ended is a confirmed end
+        journal = job.read("journal.json")
+        journal["collected"]["observation"]["descendants"]["handling"] = "unconfirmed"      # the same end with a descendant the supervisor could not confirm
+        job.write("journal.json", journal)
+        self.assertFalse(confirmed(job))
+
+    def test_the_generated_marker_path_with_a_stale_lease_records_nothing_and_the_same_world_with_its_lease_does(self):
+        supervisor, job = self.world()
+        journal = job.read("journal.json")
+        journal["grant"]["lease"]["lease_id"] = "lease_stale00000"                          # the lease the origin names is not the Router's
+        job.write("journal.json", journal)
+        self.assertEqual(LiveStart.drive(self, supervisor), "stalled")
+        self.assertEqual((self.audit("dispatch_result"), self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN)), ([], "running"))
 
 
 class ExpiredRecord(LiveWorld):

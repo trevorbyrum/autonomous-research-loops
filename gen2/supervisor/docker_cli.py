@@ -14,6 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import jobs, rejection
 from gen2.supervisor.isolation import LiveProfileRefused, PIN, PLACEHOLDERS
 from gen2.supervisor.spool import read_scratch
@@ -31,6 +32,7 @@ RUNTIME = {"ServerVersion": "29.9.0", "CgroupVersion": "2", "CgroupDriver": "sys
 RUNTIME_IDS = {"ContainerdCommit": "f2551031d7276a770f65f98c9b52e57e7dad07e8", "RuncCommit": "v1.5.2-0-g29dd3dc2"}
 DRAIN_SECONDS, DRAIN_LIMIT = 8, 10   # the bounded wait after ingress closes (reports waiting, not quiescence); the whole step must finish within the limit
 SEAL = "admission-closed.json"
+RESERVE_S, LATE_END_S = 90, 50   # the runner's allowance ends RESERVE_S before the order's deadline (a normal-path reserve for the tail, not a guarantee); a relay removed later than LATE_END_S past it is outside the qualified send window
 # The relay's real-route files, plan key -> destination (relay only, read-only): its key include and its CA bundle. Destinations are lane C's D16 contract.
 RELAY_PROVIDER = {"provider_auth": "etc/gen2/provider-auth.conf", "provider_ca": "etc/gen2/provider-ca.pem"}
 MODEL = "gpt-6.1-terra"
@@ -104,11 +106,28 @@ def manifest_gate(manifest, retained, tree):
     return manifest
 
 
+BOOT = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+
+
+def _identity(record):
+    """Whether `record` is a `docker-cli.json` identity this producer writes: positive pid, its own session, a start time, a boot ID of the kernel's form
+    (any boot, an older one included), and a `confirmed` that is absent or exactly True."""
+    return (isinstance(record, dict) and all(type(record.get(k)) is int and record[k] > 0 for k in ("pid", "session", "starttime")) and record["session"] == record["pid"]
+            and isinstance(record.get("boot_id"), str) and bool(BOOT.fullmatch(record["boot_id"])) and record.get("confirmed", True) is True)
+
+
 def capture(job, argv, env, deadline, bounds):
     """Bound both pipes while running; a CLI end never proves container end."""
     require(time.monotonic() < deadline, "cli_deadline")
-    previous = job.read("docker-cli.json")
-    require(previous is None or previous.get("confirmed"), "cli_previous_unconfirmed")
+    try:
+        previous = job.read("docker-cli.json")
+    except (OSError, ValueError):
+        previous = {}   # unreadable: unconfirmed, never overwritten
+    if previous is not None:   # a CLI killed with its launcher mid-command: end it by its recorded identity; any record this producer could not have written stays, unconfirmed
+        require(_identity(previous), "cli_previous_unconfirmed")
+        if previous.get("confirmed") is not True:
+            ended = job.terminate(previous, term_grace=0, kill_grace=max(0.001, min(5, deadline - time.monotonic())), reap=lambda: None)
+            require(ended["confirmed"], "cli_previous_unconfirmed")
     job.write("docker-cli.json", {"intent": list(argv)})
     child = subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, start_new_session=True, close_fds=True)
@@ -147,29 +166,33 @@ def capture(job, argv, env, deadline, bounds):
 
 
 class DockerCLI:
-    def __init__(self, job, manifest, retained, tree, *, execute=capture, now=time.monotonic, sleep=time.sleep):
+    def __init__(self, job, manifest, retained, tree, *, execute=capture, now=time.monotonic, sleep=time.sleep, clock=time.time):
         self.manifest = manifest_gate(manifest, retained, tree)
-        self.job, self.execute, self.now, self.sleep = job, execute, now, sleep
-        self.deadline = now() + 120
-        self.plan = job.read("docker-plan.json")
-        require(isinstance(self.plan, dict) and bool(self.plan.get("origin")), "launch_originals")
+        self.job, self.execute, self.now, self.sleep, self.clock = job, execute, now, sleep, clock
+        self.plan = _read(job, "docker-plan.json")
+        require(isinstance(self.plan, dict) and bool(self.plan.get("origin")), "launch_originals")   # absent, null, malformed or origin-less: no launch
+        remaining = _deadline(job) - self.clock()   # the pinned order's absolute deadline, as time left now
+        require(remaining > RESERVE_S, "backend_deadline_passed")
+        self.absolute = now() + remaining
+        self.deadline = self.absolute - RESERVE_S
 
-    def _command(self, args):
+    def _command(self, args, long=False):
         operation = args[1] if args[0] == "network" else args[0]
         require(args[0] in COMMANDS or (args[0] == "network" and operation in {"create", "connect", "disconnect", "inspect", "rm"}), "cli_command")
         mutation, logs = operation not in {"wait", "inspect", "info", "logs"}, args[0] == "logs"
-        seconds = {"wait": 120, "logs": 10, "stop": 10, "kill": 10}.get(operation, 5)
+        seconds = {"wait": 10, "logs": 10, "stop": 10, "kill": 10}.get(operation, 5)
         bound = (4 << 20) if logs else (4096 if operation in {"create", "start", "wait"} else 65536)
         # I/D: rehash at use; never resolve a tag or inherit Docker/proxy config.
         require(hashlib.sha256(Path(CLI).read_bytes()).hexdigest() == CLI_SHA, "cli_pin")
         argv = (CLI, "--host", "unix://" + SOCKET, *args)
         key = hashlib.sha256(json.dumps(args).encode()).hexdigest()
-        journal = self.job.read("docker.json") or {}
+        journal = _read(self.job, "docker.json")   # absent after the attempt began is unknown, as is anything but an intact history
+        require(journal is not None and journal is not False and _history(journal), "journal_unknown")
         if mutation:
             require(key not in journal, "mutation_already_intended")
             self.job.write("docker.json", {**journal, key: {"intent": list(argv)}})
         limit = self.now() + seconds
-        deadline = limit if operation in {"logs", "stop", "kill", "rm"} else min(limit, self.deadline)
+        deadline = self.deadline if long else limit if operation in {"logs", "stop", "kill", "rm"} else min(limit, self.deadline)
         require(deadline > self.now(), "cli_deadline")
         code, out, err = self.execute(self.job, argv, {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
                                                       "DOCKER_CONFIG": str(self.job.dir / "docker-config")}, deadline, (bound, 4 << 20 if logs else 4096))
@@ -255,7 +278,9 @@ class DockerCLI:
 
     def end(self, cid, role="runner"):
         """The one end proof: a bounded wait, then the SAME exact container's inspect must show it exited with no process and no runtime error."""
-        waited = self._command(("wait", cid)).strip()
+        waited = self._command(("wait", cid), long=role == "runner").strip()   # only the model turn waits long, up to the allowance; every other wait is short
+        if role == "runner":
+            self.deadline = self.absolute   # the model turn is over: its final inspect and the whole tail run under the order's deadline
         original, observed = self.job.read(role + "-start.json"), self.inspect(cid)
         require(original is not None, "end_original")
         require(_binding(observed) == _binding(original), "end_binding")
@@ -324,13 +349,16 @@ class DockerCLI:
         require(self.plan["binds"]["out"] == str(Path(self.plan["slots"]["out"]) / self.plan["generation"]), "backend_output_generation")
         identity = self.job.read("identity.json")
         require(identity is not None and os.getpid() in jobs.members(identity), "backend_unsupervised")
-        with self.job.hold(self.deadline, .01):
-            require(self.job.read("docker-attempt.json") is None, "backend_already_intended")
+        with self.job.hold(self.deadline, .01):   # the one fresh-attempt transition: the intact-empty history and the attempt marker are born together, only if truly absent
+            require(_read(self.job, "docker-complete.json") is None, "backend_already_complete")   # an end fact in ANY state (valid, null, list, malformed) means no further attempt
+            require(_read(self.job, "docker-attempt.json") is None, "backend_already_intended")   # present (valid or not) is a started attempt, never rewritten
+            if _read(self.job, "docker.json") is None:
+                self.job.create("docker.json", {})
             self.job.write("docker-attempt.json", {"origin": self.plan["origin"]})
         try:
             return self._run(batch, real)
         except BaseException:
-            contain_job(self.job, execute=self.execute, now=self.now)   # whatever was started is ended before the failure leaves; a failure here refuses louder
+            contain_job(self.job, execute=self.execute, now=self.now, clock=self.clock)   # whatever was started is ended before the failure leaves; a failure here refuses louder
             raise
 
     def _run(self, batch, real):
@@ -427,12 +455,20 @@ class DockerCLI:
             usage = "recorded"
         except LiveProfileRefused:
             usage = "refused"
-        self.job.write("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition, "usage": usage})
+        require(self.job.create("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition, "usage": usage}), "backend_already_complete")   # create-only: an existing end fact is retained
         return refs
 
     def remove(self, cid, ack):
         require(ack and (self.job.read("runner-end.json") or {}).get("Id") == cid, "remove_before_ack")
         return self._command(("rm", cid))
+
+
+def _deadline(job):
+    """The pinned order's absolute deadline, in epoch seconds."""
+    try:
+        return utc_instant_ns((job.read("order.json") or {}).get("deadline_at")) / 1e9
+    except (OSError, ValueError):
+        raise LiveProfileRefused("backend_deadline_missing") from None
 
 
 def _observed_model(fixture):
@@ -527,20 +563,36 @@ class ContainFailed(LiveProfileRefused):
         self.outcomes = outcomes
 
 
-def contain_job(job, *, execute=capture, now=time.monotonic) -> list[dict]:
-    """Kill and remove every container this job created, from its journaled cidfiles (initializer, relay, runner): the containment a failed or
-    cancelled live attempt owes, whatever the process group did (a Docker-managed container is not in the job's group). EVERY journaled container
-    is attempted, kill and removal independently, whatever happened to the others (a runner that will not die must not leave the relay, its provider
-    path, running); each outcome is journaled in `containment.json`. A container already gone is fine. A global trust failure (the CLI pin) stops
-    everything; any other failure, or an unreadable journal entry, is raised AFTER all attempts as `ContainFailed`, so the caller leaves the end
-    unconfirmed. Returns the outcomes."""
-    outcomes, failed = [], False
-    for role in ("runner", "relay", "initializer"):
-        found = read_scratch(job.dir, role + ".cid", 4096)
-        if found["status"] == "absent":
-            continue   # never created
+def contain_job(job, *, execute=capture, now=time.monotonic, clock=time.time) -> list[dict]:
+    """Kill and remove every original this attempt has, from the one place both the failed child and the supervisor's deadline or cancellation
+    end: the relay FIRST (the only sender; a runner that will not die must not leave it running), then the runner, the initializer and, on a
+    fixture route, the protected plan's fixture (its ID from the plan: a route that owes one without it is unknown). EVERY role is attempted, kill and
+    removal independently, whatever happened to the others, and each outcome is journaled in `containment.json`. A container already gone is
+    fine. A role with no cidfile is `never_created` only if the mutation journal shows no create for it, else `created_unrecorded`. A global
+    trust failure (the CLI pin) stops everything; any other failure is raised AFTER all attempts as `ContainFailed`. When every role is ended or
+    was never created and the relay's removal came within LATE_END_S of the order's deadline, the end fact `docker-complete.json` is published
+    create-only (it cannot replace a normal one), its disposition unknown. Returns the outcomes."""
+    start, wall, outcomes = now(), clock(), []
+    plan, journal, attempt = _read(job, "docker-plan.json"), _read(job, "docker.json"), _read(job, "docker-attempt.json")
+    # Before the attempt transition (no marker, no history: e.g. a `backend_unsupervised` refusal) nothing could have been created, so the backend roles are
+    # never_created. From the marker on, only an intact history proves an absence: absent, null or malformed history, or an invalid marker, is unknown.
+    unknown = (journal is False or (journal is not None and not _history(journal)) or attempt is False
+               or (attempt is not None and (journal is None or not attempt.get("origin"))))
+    failed = plan is False or unknown or _read(job, "docker-complete.json") is False   # a present-invalid end fact is no end, and is never replaced
+    for role in ("relay", "runner", "initializer", "fixture"):
+        if role == "fixture":
+            if not plan or plan.get("route", "fixture") == "real":
+                continue   # no plan, or a real route: there is no fixture to end
+            found = {"status": "present", "data": str((plan.get("fixture") or {}).get("Id")).encode()}
+        else:
+            found = read_scratch(job.dir, role + ".cid", 4096)
         entry = {"role": role, "cid": None, "kill": "not_attempted", "rm": "not_attempted"}
         outcomes.append(entry)
+        if found["status"] == "absent":   # a create that was journaled without its cidfile is an unknown end, not a clean absence
+            created = unknown or any(str(job.dir / (role + ".cid")) in v["intent"] for v in (journal or {}).values())
+            entry["kill"] = entry["rm"] = "created_unrecorded" if created else "never_created"
+            failed = failed or created
+            continue
         cid = found["data"].strip().decode("ascii", "replace") if found["status"] == "present" else ""
         if not CID.fullmatch(cid):
             entry["kill"] = entry["rm"] = "journal_unreadable"
@@ -561,8 +613,32 @@ def contain_job(job, *, execute=capture, now=time.monotonic) -> list[dict]:
             gone = b"No such container" in err or b"is not running" in err
             entry[step] = "ok" if code == 0 else "gone" if gone else "failed"
             failed = failed or entry[step] == "failed"
-    if outcomes:
-        job.write("containment.json", {"outcomes": outcomes})
+        entry["at"] = now()
+    record = _read(job, "docker-cli.json")   # read after the attempts: a recovery inside them may have resolved it
+    failed = failed or (record is not None and not (_identity(record) and record.get("confirmed") is True))   # an unresolved CLI (intent only, malformed, unreadable or unconfirmed) keeps the end unknown even when no original is recorded
+    try:   # the monotonic instant LATE_END_S past the order's deadline, from the wall clock read at entry
+        limit = start + _deadline(job) - wall + LATE_END_S
+    except LiveProfileRefused:
+        limit = None
+    late = limit is None or any(e["role"] == "relay" and e.get("at", start) > limit for e in outcomes)
+    job.write("containment.json", {"outcomes": outcomes, "limit": limit, "late": late})
     if failed:
         raise ContainFailed(outcomes)
+    if plan and plan.get("origin") and not late:
+        job.create("docker-complete.json", {"origin": plan["origin"], "refs": [], "usage": "refused",
+                                            "disposition": {"disposition": "unknown", "reason": "contained_without_collection"}})
     return outcomes
+
+
+def _history(journal):
+    """Whether a mutation journal is an object whose every entry is an object with a non-empty list of strings as its `intent`."""
+    return isinstance(journal, dict) and all(isinstance(v, dict) and isinstance(v.get("intent"), list) and bool(v["intent"]) and all(isinstance(a, str) for a in v["intent"])
+                                             for v in journal.values())
+
+
+def _read(job, name):
+    """A file's object, None only when truly absent; False when present but unreadable or not an object (an unknown, never an absence)."""
+    try:
+        return job.read(name)
+    except (OSError, ValueError):
+        return False

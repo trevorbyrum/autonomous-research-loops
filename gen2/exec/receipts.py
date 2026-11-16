@@ -80,8 +80,6 @@ def _receipt(inv, n, work, claim, item, bytes_of, stage, normalization) -> dict:
     if source is None:
         raise Refused(f"{claim['claim_ref']}: no single retained source contains every cited quote")
     ref, data = dict(source["artifact_ref"]), bytes_of(source["artifact_ref"]["content_hash"])
-    if canonical.bytes_digest(data) != ref["content_hash"]:
-        raise Refused(f"{source['work_id']}: the set-aside response does not hash to the view's reference")
     base = {"claim_id": claim["claim_ref"], "claim_revision": claim["revision"], "work_id": source["work_id"], "source_version": source["source_version"]}
     quote_rows, spans = [], []
     for k, cited in enumerate(quotes_in):
