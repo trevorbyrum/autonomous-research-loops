@@ -26,6 +26,11 @@ reported as `other`, never dropped.
                    * production reaching 18,000 lines: the growth-review
                      trigger. The build stops for a review with the operator
                      of what made it grow before building further.
+                   * with --since <sha> (or --since-status <json>, which reads
+                     its `last_gate_s_sha`): more than 2,000 lines of net
+                     growth in production, SQL, tests and build tooling
+                     together since that commit (charter Overwatch trigger 2,
+                     S14 D6a). A missing key, file or commit fails.
                    The gateway service is its own budget (task 2b's split):
                    its production (gateway/research_gateway/) and tests are
                    reported on their own lines and never count toward the
@@ -48,6 +53,9 @@ import sys
 import tomllib
 from pathlib import Path, PurePosixPath
 
+GROWTH_SINCE = 2_000  # net lines (production, SQL, tests, tooling) since the last Overwatch SHA; more than this fails
+GROWTH_SINCE_CATEGORIES = ("production", "sql", "tests", "build_tooling")
+GROWTH_KEY = "last_gate_s_sha"  # key in phase-status.json; the file and key names keep "gate_s" after the Overwatch rename
 GROWTH_REVIEW = 18_000  # production lines: reaching it stops the build for a growth review with the operator
 FILE_LIMIT = 1_500  # physical lines per hand-written file in the gen-2 surface; exactly 1,500 passes
 # The gen-2 surface the per-file limit covers: tracked files under these
@@ -199,11 +207,41 @@ def gen1_report(root: Path, files: list[str]) -> dict[str, int]:
     return result
 
 
+def read_since_sha(path: Path) -> tuple[str | None, str | None]:
+    """(sha, problem) from the GROWTH_KEY of a phase-status JSON file."""
+    try:
+        sha = json.loads(path.read_text(encoding="utf-8")).get(GROWTH_KEY)
+    except (OSError, ValueError, AttributeError) as exc:
+        return None, f"cannot read {path}: {exc}"
+    if not isinstance(sha, str) or not sha.strip():
+        return None, f"{path} has no `{GROWTH_KEY}`"
+    return sha.strip(), None
+
+
+def growth_since(root: Path, sha: str) -> tuple[dict[str, int] | None, str | None]:
+    """Net added-minus-deleted lines per counted category between commit `sha`
+    and the index (what is tracked now), or (None, why it cannot be counted)."""
+    for cmd in (["rev-parse", "--verify", "-q", f"{sha}^{{commit}}"], ["diff", "--cached", "--numstat", "--no-renames", sha]):
+        run = subprocess.run(["git", "-C", str(root), *cmd], capture_output=True, text=True)
+        if run.returncode != 0:
+            return None, f"commit {sha} is not usable here (shallow clone or unknown SHA): {run.stderr.strip() or 'not found'}"
+    net = dict.fromkeys(GROWTH_SINCE_CATEGORIES, 0)
+    for line in run.stdout.splitlines():
+        added, deleted, rel = line.split("\t", 2)
+        if added == "-" or category(rel) not in net:
+            continue
+        net[category(rel)] += int(added) - int(deleted)
+    return net, None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument("--check", action="store_true", help="fail above the hard ceiling")
+    since = parser.add_mutually_exclusive_group()
+    since.add_argument("--since", metavar="SHA", help="count net growth since this commit; --check fails above 2,000")
+    since.add_argument("--since-status", type=Path, metavar="JSON", help=f"like --since, with the commit read from `{GROWTH_KEY}` in this file")
     parser.add_argument("--gen1-baseline", action="store_true", help="also recount gen-1 like-for-like")
     args = parser.parse_args(argv)
     root = args.root.resolve()
@@ -232,6 +270,17 @@ def main(argv: list[str] | None = None) -> int:
                 expected = DR_BASELINE[prefix]
                 note = "matches" if n == expected else f"differs from {expected:,}"
                 print(f"  gen-1 {prefix:25} {n:>7,} (design review §10 baseline: {note})")
+    growth_problem = None
+    if args.since or args.since_status:
+        sha, growth_problem = (args.since, None) if args.since else read_since_sha(root / args.since_status)
+        net, why = growth_since(root, sha) if sha else (None, None)
+        growth_problem = growth_problem or why
+        if net is not None:
+            print(f"  growth since {sha[:12]}: {sum(net.values()):+,} net lines ({', '.join(f'{k} {v:+,}' for k, v in net.items())}); "
+                  f"Overwatch trigger above {GROWTH_SINCE:,}")
+            if sum(net.values()) > GROWTH_SINCE:
+                growth_problem = (f"{sum(net.values()):,} net lines since {sha[:12]} pass the {GROWTH_SINCE:,}-line trigger: "
+                                  f"an Overwatch run is due (charter Overwatch trigger 2)")
     if report["categories"]["other"]["files"]:
         print(f"note: {report['categories']['other']['files']} tracked gen2 file(s) fit no category and are listed as other", file=sys.stderr)
     if args.check:
@@ -243,7 +292,9 @@ def main(argv: list[str] | None = None) -> int:
         if production >= GROWTH_REVIEW:
             print(f"GROWTH REVIEW REQUIRED: {production:,} production lines reach the {GROWTH_REVIEW:,}-line trigger — stop and review with "
                   f"the operator what made it grow before building further (charter \"Size rules\")", file=sys.stderr)
-        if over or bad or production >= GROWTH_REVIEW:
+        if growth_problem:
+            print(f"OVERWATCH GROWTH TRIGGER: {growth_problem}", file=sys.stderr)
+        if over or bad or growth_problem or production >= GROWTH_REVIEW:
             return 1
     return 0
 

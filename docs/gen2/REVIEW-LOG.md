@@ -4237,3 +4237,17 @@ Transcribed from `gen2-sprint-records-pending-20261107.md` (entries after the #1
   | Weekly mutation campaign | 0 completed (paused 11-10 after 46 h on the lock; no ledger row) | 0 | — |
   | `gen2-size`, complexity, locators, boundaries | 19 (inside the verifier) | 0 | 0 |
   | Gate S / Fable reviews | 6 (#8–#13) + runner design + process map v2, about 1,930 lines | the live-path design; the harness class; seam A | — |
+- **2026-11-16, Overwatch #15 (Fable, fresh session; `gen2-gate-s15-loop-standards-fable-20261116.md`): this loop against the sister loop's standard.** Read-only comparison; 15 changes, 8 "do now". Overwatch is the new name of Gate S (D7). Trevor's rulings (about 03:08Z):
+  - D1: the private review folder and operator set go under version control in a private repository, evidence excluded (done the same day).
+  - D2: escalation ladder with a direction review at the second failure; the third-BLOCK stop applies as written.
+  - D3: decision classes with class-2 auto-apply after 24 h and every ask labelled.
+  - D4: CI as the verifier of record after topic 1 (Trevor and the ci-cd session).
+  - D5: an independent test author for High-tier PRs, starting with the Claude runner.
+  - D6: the risk-tier test budget replaces the flat ratio rules for PRs designed from now.
+  - D7: Gate S renamed Overwatch, in docs only.
+  - D8: a daily archive timer as a backstop, `keep=true` exempt.
+  - D9: one Fable version in both loops.
+  - D10: a per-merge REVIEW-LOG line replaces the PR-body block.
+
+  Records PR `records/s15-standards` carries the do-now items #2 (`BRIEF-STANDING.md`), #3 (one `VERIFIER.md`), #4 (`last_gate_s_sha` in `phase-status.json`, `gen2_linecount.py --since`, wired into `gen2-size`), and the charter text for #5, #7, #11, #12 and #13. It is Low tier: docs plus about 120 lines of tooling and tests. Escalation-ladder failure counts start from this entry. The Overwatch SHA stays `90948eb` (this was not a six-question run; the S14 run is the last one).
+- **2026-11-16, merge #189 (per-merge line, new format):** PR #189; ticket records/2026-11-16; tier Low; head `244b8d8`, merged-tree `b43fd38`; verifier exit 0, 995 s; Astra `gen2-records-189-astra-r2-20261116.md`, PASS after a BLOCK in round 1 (`gen2-records-189-astra-20261116.md`), 2 rounds; net lines docs +123, config 0, production 0, tests 0, tooling 0; catches: Astra round 1 (chronology and an omitted S14 design BLOCK, process findings), verifier (debt-entry format, process finding); DEBT items touched: the 40 added register lines, none declined.
