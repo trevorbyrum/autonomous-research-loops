@@ -29,6 +29,16 @@ class Fixtures(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    def test_fixture_operands(self):
+        self.assertEqual(fixture.operands(["f", "hold", "300"]), ("hold", 300, 1800))
+        self.assertEqual(fixture.operands(["f", "hold", "181"])[1], 181)
+        self.assertEqual(fixture.operands(["f", "accepted"]), ("accepted", 0, 1800))
+        self.assertEqual(fixture.operands(["f", "hold", "30", "600"]), ("hold", 30, 600))
+        self.assertEqual(fixture.operands(["f", "accepted", "5"]), ("accepted", 0, 5))
+        for argv in (["f", "hold", "0"], ["f", "hold", "301"], ["f", "hold", "30", "89"], ["f", "hold", "30", "1801"], ["f", "accepted", "0"]):
+            with self.assertRaises(ValueError):
+                fixture.operands(argv)
+
     def test_all_compiled_nginx_temp_paths_use_the_existing_tmpfs(self):
         """Retained binary flags and startup refusal pin every temp directory; no daemon."""
         flags = (CAPTURE / "nginx-version.stderr").read_text()
