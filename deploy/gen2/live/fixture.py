@@ -123,11 +123,19 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
 
 
-if __name__ == "__main__":
-    case = sys.argv[1]
-    hold_seconds = int(sys.argv[2]) if case == "hold" else 0
-    if case == "hold" and not 1 <= hold_seconds <= 180:
+def operands(argv):
+    case = argv[1]
+    hold_seconds = int(argv[2]) if case == "hold" else 0
+    if case == "hold" and not 1 <= hold_seconds <= 300:
         raise ValueError("finite hold required")
+    lifetime = int(argv[3 if case == "hold" else 2]) if len(argv) > (3 if case == "hold" else 2) else 1800
+    if not (hold_seconds + 60 if case == "hold" else 1) <= lifetime <= 1800:
+        raise ValueError("fixture lifetime")
+    return case, hold_seconds, lifetime
+
+
+if __name__ == "__main__":
+    case, hold_seconds, lifetime = operands(sys.argv)
     tls = Path("/certs").is_dir()
     address = ("172.31.251.3", 18081) if case == "source" else ("172.31.252.3", 443 if tls else 8081)
     if case not in {"source", "accepted", "rejected", "tool-less", "hold", "limited"}:
@@ -141,6 +149,6 @@ if __name__ == "__main__":
         server.case, server.record, server.count = case, record, 0
         server.hold_seconds = hold_seconds
         server.raw, server.requests = raw, []
-        server.deadline, server.timeout = time.monotonic() + 1800, 1
+        server.deadline, server.timeout = time.monotonic() + lifetime, 1
         while time.monotonic() < server.deadline and server.count < 64:
             server.handle_request()
