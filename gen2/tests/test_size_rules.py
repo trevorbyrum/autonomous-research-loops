@@ -15,6 +15,7 @@ service's production is its own budget (task 2b's split) and never counts toward
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -118,6 +119,70 @@ class SizeRuleTest(unittest.TestCase):
         result = self.check(files)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertNotIn("GROWTH REVIEW", result.stderr)
+
+
+class GrowthSinceTest(unittest.TestCase):
+    """Overwatch trigger 2 (S14 D6a): `--check --since-status` fails above 2,000
+    net lines in production, SQL, tests and tooling since `last_gate_s_sha`.
+    Oracle: line counts built here against the charter's 2,000."""
+
+    def run_tool(self, added: dict[str, str], status: dict | None = None, sha_override: str | None = None) -> subprocess.CompletedProcess:
+        def git(root: Path, *args: str) -> str:
+            return subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],
+                                  check=True, capture_output=True, text=True, timeout=60).stdout.strip()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "gen2/core").mkdir(parents=True)
+            base_tree = {"gen2/core/base.py": lines(10)} | {rel: "{}\n" for rel in GENERATED} | {t: f'OUT = "{r}"\n' for r, t in GENERATED.items()}
+            for rel, text in base_tree.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text, encoding="utf-8")
+            git(root, "init", "-q")
+            git(root, "add", "-A")
+            git(root, "commit", "-q", "-m", "base")
+            base = git(root, "rev-parse", "HEAD")
+            for rel, text in added.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text, encoding="utf-8")
+            git(root, "add", "-A")
+            doc = {"last_gate_s_sha": sha_override or base} if status is None else status
+            (root / "status.json").write_text(json.dumps(doc), encoding="utf-8")
+            return subprocess.run([sys.executable, str(TOOL), "--root", str(root), "--check", "--since-status", "status.json"],
+                                  capture_output=True, text=True, timeout=60)
+
+    def grown(self, n: int) -> dict[str, str]:
+        """n net lines across production, tests, SQL and tooling (each file well under the file limit)."""
+        parts = [n // 4 + (1 if i < n % 4 else 0) for i in range(4)]
+        return {"gen2/core/a.py": lines(parts[0]), "gen2/tests/test_a.py": lines(parts[1]),
+                "gen2/store/schema/a.sql": lines(parts[2]), "tools/gen2_a.py": lines(parts[3])}
+
+    def test_under_the_trigger_passes(self) -> None:
+        result = self.run_tool(self.grown(1999))
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("growth since", result.stdout)
+
+    def test_exactly_the_trigger_passes(self) -> None:
+        result = self.run_tool(self.grown(2000))
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+
+    def test_over_the_trigger_fails(self) -> None:
+        result = self.run_tool(self.grown(2001))
+        self.assertEqual(result.returncode, 1, msg=result.stderr)
+        self.assertIn("OVERWATCH GROWTH TRIGGER: 2,001 net lines", result.stderr)
+
+    def test_docs_growth_is_not_counted(self) -> None:
+        result = self.run_tool(self.grown(1999) | {"docs/gen2/big.md": lines(5000)})
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+
+    def test_a_missing_key_fails(self) -> None:
+        result = self.run_tool(self.grown(1), status={"phases": {}})
+        self.assertEqual(result.returncode, 1, msg=result.stderr)
+        self.assertIn("has no `last_gate_s_sha`", result.stderr)
+
+    def test_an_unknown_commit_fails(self) -> None:
+        result = self.run_tool(self.grown(1), sha_override="0" * 40)
+        self.assertEqual(result.returncode, 1, msg=result.stderr)
+        self.assertIn("is not usable here", result.stderr)
 
 
 if __name__ == "__main__":

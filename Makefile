@@ -159,9 +159,10 @@ gen2-mutation-report: gen2-venv
 # Size rules (charter "Size rules"; task 2r): fails on a hand-written gen-2
 # file over 1,500 lines (generated files are exempt only by the reasoned list
 # in tools/gen2_linecount.py) and when production reaches the 18,000-line
-# growth-review trigger.
+# growth-review trigger, and when net growth since `last_gate_s_sha` in
+# docs/gen2/phase-status.json passes 2,000 lines (Overwatch trigger 2).
 gen2-size: gen2-venv
-	$(PYTHON) tools/gen2_linecount.py --check
+	$(PYTHON) tools/gen2_linecount.py --check --since-status docs/gen2/phase-status.json
 
 # Full report, including the like-for-like gen-1 recount.
 gen2-linecount: gen2-venv

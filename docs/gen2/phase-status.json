@@ -1,5 +1,6 @@
 {
   "about": "Machine-readable phase and task status for tools/check_gen2_debt.py (make gen2-debt, run by gen2-check): a task or phase marked closed that still owns an open entry in docs/gen2/DEBT-REGISTER.md fails the build. Set a task or phase to closed here in the same commit that records its acceptance in BUILD-STATE.md. States: pending (not started), open (in progress), closed (accepted).",
+  "last_gate_s_sha": "90948eb55b4a4f5082a3e3bc9c103d4ebf90317d",
   "phases": {"0": "closed", "1": "closed", "2": "open", "3": "pending", "4": "pending"},
   "tasks": {
     "0a": {"phase": "0", "state": "closed"},
