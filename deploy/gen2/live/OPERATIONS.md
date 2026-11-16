@@ -9,7 +9,7 @@ Keep local logging at `max-size=4m`, `max-file=1`, `compress=false` per containe
 
 ## One native qualification window
 
-1. Reuse the frozen T9 harness file set and package checks. Change operands and step sequencing there without duplicating a package predicate. Keep the shared heavy lock, load below 8, the bounded user unit, and the script's own exit receipt.
+1. Reuse the reviewed operator set and package checks. Change operands and step sequencing there without duplicating a package predicate. Keep the shared heavy lock, load below 8, the bounded user unit, and the script's own exit receipt.
 2. Retain the Compose plugin as the single BUILD-INPUTS row. Invoke A07–A09 through build.compose_command with the reviewed compose.yaml and compose.live.yaml. Use original IDs, approved bindings and the corrected control/journal source.
 3. Pass the explicit affected image target names after the builder to build.py; its existing preflight applies to that exact Bake invocation. Rebuild affected image targets and retain each image's own built-from source. Retain the old CID and receipt history. Re-pin the manifest and invalidate dependent witnesses.
 4. Provision D16's finite config-bundle/1 with no registered questions and provider-disabled policy. Validate it through the existing schema path. Publish bundle.json at the exact engine bind with owner 110000:110000 and mode 0400.
