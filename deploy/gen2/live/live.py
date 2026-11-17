@@ -9,7 +9,7 @@ import json
 import re
 
 RELAY_SHA = "0688d2355b9e327d66fa3be1f9b5654275ef333bbe47f28a091749b34eddd276"
-CONFIG_SHA = "28ff186e0f1fd7d677492ce93cc594129750a297ac0c26e0498a26cf038e191d"
+CONFIG_SHA = "dcb6af6dce43e75b918cf33bd57dede1ca8f202849a3f0a9affd814b64259cb1"
 CATALOG_SHA = "c47e8f6c5fdb26d91bf1b99319263015ef468108d5da4f1ecb66c55c6f1fb356"
 
 
@@ -22,14 +22,17 @@ def pinned(data, expected):
 def runner_config(offline):
     """The reviewed live seed disables tools; configuration is not model observation."""
     return pinned(offline, CONFIG_SHA).replace("shell_tool = true", "shell_tool = false").replace(
-        "unified_exec = true", "unified_exec = false").encode()
+        "unified_exec = true", "unified_exec = false").replace(
+        "[features]", "[features]\ncurrent_time_reminder = false").encode()
 
 
 def model_catalog(offline):
-    """Null disables the independent patch tool; preserve every other catalog value."""
+    """Restricted research derivative: no patch, code-mode wrappers or clock."""
     catalog = json.loads(pinned(offline, CATALOG_SHA))
     model, = [row for row in catalog["models"] if row["slug"] == "gpt-6.1-terra"]
     model["apply_patch_tool_type"] = None
+    model["tool_mode"] = "direct"
+    model["experimental_supported_tools"].remove("clock")
     return json.dumps(catalog, sort_keys=True, ensure_ascii=False, indent=2).encode() + b"\n"
 
 

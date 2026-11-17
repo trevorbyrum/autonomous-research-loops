@@ -10,7 +10,11 @@ from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
-from deploy.gen2.live import build, fixture, initialize, qualify, runner
+from deploy.gen2.live import build, fixture, initialize, qualify, runner, q_net
+
+CONTINUATION = dict(type="custom_tool_call_output", call_id="call_2e1", output=[
+    dict(type="input_text", text="Script completed\nWall time 1.0 seconds\nOutput:\n"),
+    dict(type="input_text", text=json.dumps(dict(exit_code=0, output="2e1-tool-ok")))])
 
 CAPTURE = Path(__file__).with_name("fixtures") / "cli"
 RECEIPTS = {r["step"]: r for r in map(json.loads, (CAPTURE / "receipts.jsonl").read_text().splitlines())}
@@ -58,6 +62,18 @@ class Fixtures(unittest.TestCase):
         engine = recipe.split("FROM base AS engine\n", 1)[1].split("\nFROM base AS gateway\n", 1)[0]
         writes = re.findall(r"^RUN (.+\.pth)$", engine, re.MULTILINE)
         self.assertEqual(writes, ["printf '%s\\n' /opt/gen2 > /usr/local/lib/python3.12/site-packages/gen2.pth"])
+
+    def test_helper_is_pinned_executable_and_beside_codex_in_both_images(self):
+        recipe = Path(__file__).with_name("Dockerfile").read_text()
+        generic = Path(__file__).parents[1].joinpath("Dockerfile").read_text()
+        helper = "e9f2ef68671b2b6ac68902d19e8dafda3f5928e678ecf3f30c74b203a2c403ed"
+        self.assertIn("--chmod=0755 codex-code-mode-host /usr/local/bin/codex-code-mode-host", recipe)
+        self.assertIn(helper + "  /usr/local/bin/codex-code-mode-host", recipe)
+        self.assertIn("COPY --from=runner /usr/local/bin/codex /usr/local/bin/codex-code-mode-host /usr/local/bin/", recipe)
+        self.assertIn("COPY --from=approved-inputs npm.tgz", generic)
+        self.assertIn(helper, generic)
+        self.assertIn("install -m 0755 /tmp/package/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host", generic)
+        self.assertIn("COPY --from=runner /codex /codex-code-mode-host /usr/local/bin/", generic)
 
     def test_compose_uses_the_pinned_plugin_and_dedicated_selector(self):
         with patch.object(Path, "read_bytes", return_value=b"retained plugin"), patch.object(build.hashlib, "sha256") as digest:
@@ -239,17 +255,38 @@ class Fixtures(unittest.TestCase):
             self.assertEqual([call.args[1] for call in read.call_args_list], ["prompt.md", "input.json"])
 
     def test_two_sends_and_rejected_branch(self):
-        request = dict(model="gpt-6.1-terra", stream=True, tools=[{"name": n} for n in ("exec_command", "write_stdin", "apply_patch")])
+        request = q_net.model_request("a" * 32)
         status, _, data = fixture.response("accepted", 1, request)
         event = json.loads(data.decode().split("data: ")[1].split("\n")[0])
-        self.assertEqual((status, event["item"]["name"], event["item"]["call_id"]), (200, "exec_command", "call_2e1"))
-        request["input"] = [dict(type="function_call_output", call_id="call_2e1", output="2e1-tool-ok")]
+        self.assertEqual((status, event["item"]["name"], event["item"]["call_id"]), (200, "exec", "call_2e1"))
+        self.assertEqual(event["item"]["type"], "custom_tool_call")
+        self.assertIn("tools.exec_command", event["item"]["input"])
+        self.assertNotEqual({t.get("name") for t in request.get("tools", [])}, {"exec_command", "write_stdin", "apply_patch"})
+        request["input"].append(CONTINUATION)
         self.assertIn(b"2e1 complete", fixture.response("accepted", 2, request)[2])
         self.assertEqual(fixture.response("rejected", 1, request)[0], 401)
         for case, ordinal, change in (("accepted", 3, {}), ("rejected", 2, {}), ("accepted", 1, {"tools": []}),
                                       ("accepted", 2, {"input": []}), ("accepted", 1, {"model": "other"})):
             with self.subTest(case=case, ordinal=ordinal, change=change), self.assertRaises(ValueError):
                 fixture.response(case, ordinal, request | change)
+
+    def test_retained_lite_schema_and_continuation_refusals(self):
+        request = q_net.model_request("a" * 32)
+        native = json.loads((CAPTURE.parent / "catalog/tools.json").read_bytes())
+        for old, new in (("exec", "wrong"), ("custom", "function"), ("grammar", "text"),
+                         ("apply_patch", "missing_patch"), ("exec_command", "missing_shell"), ("write_stdin", "missing_stdin")):
+            changed = json.loads(json.dumps(request).replace(old, new))
+            with self.subTest(wrapper_or_operation=old), self.assertRaises(ValueError):
+                fixture.response("accepted", 1, changed)
+        schema = request["input"][0]
+        for inputs in ([native], [schema, schema], [schema | {"tools": schema["tools"] * 2}], [schema | {"role": "user"}], [schema | {"tools": []}], [schema | {"tools": [schema["tools"][0] | {"tools": schema["tools"][0]["tools"][:1]}]}], [None], None):
+            with self.subTest(inputs=inputs), self.assertRaises(ValueError):
+                fixture.response("accepted", 1, request | dict(input=inputs))
+        for output in (CONTINUATION | dict(type="function_call_output"), CONTINUATION | dict(call_id="wrong"), CONTINUATION | dict(output=None),
+                       CONTINUATION | dict(output=[dict(type="input_text", text="Script running with cell ID 1\n"), CONTINUATION["output"][1]]),
+                       CONTINUATION | dict(output=[CONTINUATION["output"][0], dict(type="input_text", text=json.dumps(dict(exit_code=1, output="2e1-tool-ok")))])):
+            with self.subTest(output=output), self.assertRaises(ValueError):
+                fixture.response("accepted", 2, request | dict(input=[schema, output]))
 
     def test_seed_read_refuses_link_and_bound(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -10,16 +10,32 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SOURCE = b'{"records":[{"id":"q1","title":"2e1 fixture"}],"total":1}\n'
 COMMAND = "python3 /inputs/tool_probe.py"
+TOOLS_SHA = "b7bde2c6481df2ab8cb4b3fec1abff18b48630540c05840137d643568560aadb"
+
+
+def tool_schema(request, enabled=False):
+    inputs = request.get("input", [])
+    if "tools" in request or not isinstance(inputs, list) or any(not isinstance(x, dict) for x in inputs):
+        raise ValueError("tool envelope")
+    schemas = [x for x in inputs if x.get("type") == "additional_tools"]
+    if not enabled:
+        if schemas:
+            raise ValueError("tool-less request required")
+    elif len(schemas) != 1 or schemas[0].get("role") != "developer" or hashlib.sha256(
+            json.dumps(schemas[0].get("tools"), sort_keys=True, separators=(",", ":")).encode()).hexdigest() != TOOLS_SHA:
+        raise ValueError("advertised tools differ")
 
 
 def credential(case):
     return "accepted" if case in {"tool-less", "hold"} else case
 
 
-def response(case, ordinal, request):
+def response(case, ordinal, request, *, subscription=False):
     case = "accepted" if case == "hold" else case
-    if request.get("model") != "gpt-6.1-terra" or request.get("stream") is not True:
-        raise ValueError("model/stream")
+    if request.get("model") != "gpt-6.1-terra" or request.get("stream") is not True or (subscription and case == "accepted"):
+        raise ValueError("model/stream/subscription policy")
+    if subscription or case in {"accepted", "tool-less"}:
+        tool_schema(request, case == "accepted")
     if case == "limited" and ordinal == 1:
         return 429, "application/json", b'{"error":{"type":"usage_limit_reached","resets_at":253402300799}}\n'
     if case == "rejected" and ordinal == 1:
@@ -27,17 +43,23 @@ def response(case, ordinal, request):
     if case not in {"accepted", "tool-less"} or ordinal not in ((1, 2) if case == "accepted" else (1,)):
         raise ValueError("extra send")
     if ordinal == 1 and case == "accepted":
-        if {t.get("name") for t in request.get("tools", [])} != {"exec_command", "write_stdin", "apply_patch"}:
-            raise ValueError("advertised tools differ")
-        item = dict(type="function_call", id="fc_2e1", call_id="call_2e1", name="exec_command",
-                    arguments=json.dumps({"cmd": COMMAND, "max_output_tokens": 8000}))
+        item = dict(type="custom_tool_call", id="fc_2e1", call_id="call_2e1", name="exec",
+                    input='// @exec: {"yield_time_ms": 30000, "max_output_tokens": 10000}\n'
+                    f'text(await tools.exec_command({json.dumps(dict(cmd=COMMAND, yield_time_ms=30000, max_output_tokens=8000))}));')
     else:
         if case == "accepted":
-            outputs = [x for x in request.get("input", []) if x.get("type") == "function_call_output"]
-            if len(outputs) != 1 or outputs[0].get("call_id") != "call_2e1" or "2e1-tool-ok" not in str(outputs[0].get("output")):
+            outputs = [x for x in request.get("input", []) if x.get("type", "").endswith("_call_output")]
+            if len(outputs) != 1 or outputs[0].get("type") != "custom_tool_call_output" or outputs[0].get("call_id") != "call_2e1":
                 raise ValueError("tool continuation")
-        elif request.get("tools", []) != []:
-            raise ValueError("tool-less request required")
+            content = outputs[0].get("output")
+            if not isinstance(content, list) or len(content) != 2 or any(not isinstance(x, dict) for x in content):
+                raise ValueError("tool output envelope")
+            header, result = content
+            if any(x.get("type") != "input_text" for x in (header, result)) or not re.fullmatch(r"Script completed\nWall time \d+\.\d seconds\nOutput:\n", header.get("text", "")):
+                raise ValueError("incomplete code cell")
+            result = json.loads(result["text"])
+            if not isinstance(result, dict) or not isinstance(result.get("output"), str) or type(result.get("exit_code")) is not int or result["exit_code"] != 0 or "session_id" in result or "2e1-tool-ok" not in result.get("output", ""):
+                raise ValueError("probe execution")
         item = dict(type="message", id="msg_2e1", role="assistant", status="completed",
                     content=[{"type": "output_text", "text": "2e1 complete", "annotations": []}])
     events = [{"type": "response.output_item.done", "output_index": 0, "item": item},
@@ -89,10 +111,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("dummy credential/headers")
                 if subscription and {k.lower() for k in self.headers} - ({k.lower() for k in expected} | {"content-length", "x-request-id"}):
                     raise ValueError("unexpected subscription header")
-                if subscription and json.loads(raw).get("tools", []) != []:
-                    raise ValueError("tool-less request required")
                 request = json.loads(raw) if raw.lstrip().startswith(b"{") else {}
-                status, media, data = response(self.server.case, self.server.count, request)
+                status, media, data = response(self.server.case, self.server.count, request, subscription=subscription)
         finally:
             record = dict(ordinal=self.server.count, id=rid, method=self.command, route=self.path[:128],
                           model=request.get("model"), status=status, case=self.server.case,
