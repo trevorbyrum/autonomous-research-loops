@@ -26,13 +26,15 @@ supports_standalone_web_search = false
 request_max_retries = 0
 stream_max_retries = 0
 stream_idle_timeout_ms = 35000
+[agents]
+enabled = false
 [features]
 apps = false
 auth_elicitation = false
 browser_use = false
 browser_use_external = false
 browser_use_full_cdp_access = false
-code_mode_host = false
+code_mode_host = true
 compaction_image_budget = false
 computer_use = false
 content_item_kinds = false
@@ -48,7 +50,7 @@ in_app_dictation = false
 in_app_local_automation = false
 in_app_updates = false
 mentions_v2 = false
-multi_agent = false
+multi_agent_v2 = false
 personality = false
 plugin_sharing = false
 plugins = false

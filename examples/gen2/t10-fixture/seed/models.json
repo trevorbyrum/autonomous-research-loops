@@ -46,8 +46,7 @@
       "description": "GPT-6.1 Terra Codex model.",
       "display_name": "GPT-6.1 Terra",
       "experimental_supported_tools": [
-        "send_user_message_async",
-        "clock"
+        "send_user_message_async"
       ],
       "guardian": null,
       "include_apps_usage_instructions": false,
@@ -166,7 +165,7 @@
       "supports_reasoning_summaries": true,
       "supports_reasoning_summary_parameter": true,
       "supports_search_tool": true,
-      "tool_mode": "code_mode_only",
+      "tool_mode": "direct",
       "truncation_policy": {
         "limit": 10000,
         "mode": "tokens"

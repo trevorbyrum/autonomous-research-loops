@@ -10,7 +10,8 @@
 # service user with a stable uid/gid, 0700). docs/gen2/AUTH-DEMO.md records
 # why codex and this version.
 #
-# Build from the repository root: docker build -f deploy/gen2/Dockerfile .
+# Build from the repository root with the approved npm.tgz as a named input:
+# docker build --build-context approved-inputs="$GEN2_DATA_ROOT/storage/build-inputs" -f deploy/gen2/Dockerfile .
 # (deploy/gen2/Dockerfile.dockerignore admits only gen2/, without its tests.)
 
 # ubuntu 24.04: Python 3.12.3 and SQLite 3.45.1, the pair the gen-2 suite and
@@ -25,15 +26,15 @@ ARG CODEX_VERSION=0.169.0
 ARG CODEX_TARBALL=https://registry.npmjs.org/@openai/codex/-/codex-0.169.0-linux-x64.tgz
 ARG CODEX_TARBALL_SHA512=a34e4dc803820f28123d1a35ca29f3c6f91149d9ac672043f44ee66e99a345a9d27ccf25ca9a96b50804a385df364c21b82476685bbc9a518eb101855d56d5c3
 ARG CODEX_BINARY_SHA256=b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl \
- && rm -rf /var/lib/apt/lists/*
+ARG CODEX_HOST_SHA256=e9f2ef68671b2b6ac68902d19e8dafda3f5928e678ecf3f30c74b203a2c403ed
+COPY --from=approved-inputs npm.tgz /tmp/codex.tgz
 RUN set -eu; \
-    curl -fsSL -o /tmp/codex.tgz "${CODEX_TARBALL}"; \
     echo "${CODEX_TARBALL_SHA512}  /tmp/codex.tgz" | sha512sum -c -; \
-    tar -xzf /tmp/codex.tgz -C /tmp package/vendor/x86_64-unknown-linux-musl/bin/codex; \
+    tar -xzf /tmp/codex.tgz -C /tmp package/vendor/x86_64-unknown-linux-musl/bin/codex package/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host; \
     install -m 0755 /tmp/package/vendor/x86_64-unknown-linux-musl/bin/codex /codex; \
+    install -m 0755 /tmp/package/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host /codex-code-mode-host; \
     echo "${CODEX_BINARY_SHA256}  /codex" | sha256sum -c -; \
+    echo "${CODEX_HOST_SHA256}  /codex-code-mode-host" | sha256sum -c -; \
     test "$(/codex --version)" = "codex-cli ${CODEX_VERSION}"
 
 # -- the engine
@@ -49,7 +50,7 @@ COPY gen2/requirements.txt /opt/gen2/requirements.txt
 RUN python3 -m venv /opt/gen2/venv \
  && /opt/gen2/venv/bin/python -m pip install --no-input --disable-pip-version-check --no-cache-dir --require-hashes --no-deps -r /opt/gen2/requirements.txt \
  && /opt/gen2/venv/bin/python -c "import rfc8785"
-COPY --from=runner /codex /usr/local/bin/codex
+COPY --from=runner /codex /codex-code-mode-host /usr/local/bin/
 COPY gen2/ /opt/gen2/src/gen2/
 # the mount points, owned by the service user, 0700: a fresh named volume takes them over (§4, §5)
 RUN install -d -o "${GEN2_UID}" -g "${GEN2_GID}" -m 0700 /var/lib/gen2/state /auth/codex \

@@ -6,14 +6,18 @@ HEALTHCHECK NONE
 
 FROM base AS runner
 COPY --from=approved-inputs --chmod=0555 codex /usr/local/bin/codex
+COPY --from=approved-inputs --chmod=0755 codex-code-mode-host /usr/local/bin/codex-code-mode-host
 COPY --chmod=0555 deploy/gen2/live/runner.py /opt/live/runner.py
 COPY --chmod=0555 deploy/gen2/live/q_net.py /opt/live/q_net.py
+COPY deploy/gen2/live/fixtures/catalog/tools.json /opt/live/fixtures/catalog/tools.json
 RUN echo 'b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b  /usr/local/bin/codex' | sha256sum -c -
+RUN echo 'e9f2ef68671b2b6ac68902d19e8dafda3f5928e678ecf3f30c74b203a2c403ed  /usr/local/bin/codex-code-mode-host' | sha256sum -c -
 RUN test "$(/usr/local/bin/codex --version)" = 'codex-cli 0.169.0' && test ! -e /work && test ! -e /auth/codex
 USER 10001:10001
 ENTRYPOINT ["python3", "/opt/live/runner.py"]
 
 FROM base AS engine
+COPY --from=runner /usr/local/bin/codex /usr/local/bin/codex-code-mode-host /usr/local/bin/
 COPY gen2/ /opt/gen2/gen2/
 RUN printf '%s\n' /opt/gen2 > /usr/local/lib/python3.12/site-packages/gen2.pth
 COPY --from=approved-inputs --chmod=0555 docker /usr/bin/docker
@@ -46,5 +50,6 @@ ENTRYPOINT ["python3", "-m", "research_gateway.api.http"]
 
 FROM base AS fixture
 COPY deploy/gen2/live/fixture.py deploy/gen2/live/q_net.py /opt/live/
+COPY deploy/gen2/live/fixtures/catalog/tools.json /opt/live/fixtures/catalog/tools.json
 USER 10001:10001
 ENTRYPOINT ["python3", "/opt/live/fixture.py"]

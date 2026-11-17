@@ -28,7 +28,7 @@ class T10Apparatus(unittest.TestCase):
             self.assertIn(digest, runner.PINS[name])
             self.assertEqual(apparatus["seed_pins"][name], "sha256:" + digest)
         self.assertEqual(apparatus["fixture_command"], ["/opt/live/fixture.py", "tool-less"])
-        status, _, stream = fixture.response(apparatus["fixture_case"], 1, {"model": "gpt-6.1-terra", "stream": True, "tools": []})
+        status, _, stream = fixture.response(apparatus["fixture_case"], 1, {"model": "gpt-6.1-terra", "stream": True})
         self.assertEqual(status, 200)
         self.assertIn(b'"text": "2e1 complete"', stream)
         self.assertNotIn(b'"function_call"', stream)

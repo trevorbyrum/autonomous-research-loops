@@ -28,7 +28,8 @@ ROW = {"v": 3, "id": RID, "src": "172.31.254.3", "port": "40000", "conn": "1", "
        "server_port": "8080", "method": "POST", "route": "model", "upstream": "172.31.252.3:8081", "status": "401",
        "upstream_status": "401", "complete": "OK", "at": "1.0"}
 FAILED = [{"type": t} for t in ("thread.started", "turn.started", "error", "turn.failed")]
-TOOLS = [{"name": n} for n in ("exec_command", "write_stdin", "apply_patch")]
+TOOLS = json.loads((Path(fixture.__file__).parent / "fixtures/catalog/tools.json").read_bytes())
+TOOLS["tools"] = [ns for ns in TOOLS["tools"] if ns["name"] == "functions"]
 
 
 def lines(rows):
@@ -66,11 +67,13 @@ class DualWitness(unittest.TestCase):
         self.assertEqual(self.classify(record=record, id=RID[:-1] + "1"), "credentials_rejected")
 
     def test_accepted_key_drives_tool_and_two_request_completion(self):
-        request = {"model": "gpt-6.1-terra", "stream": True, "tools": TOOLS}
-        results, record = exchange("accepted", [request, request | {"input": [dict(
-            type="function_call_output", call_id="call_2e1", output="2e1-tool-ok")]}])
+        request = {"model": "gpt-6.1-terra", "stream": True, "input": [TOOLS]}
+        results, record = exchange("accepted", [request, request | {"input": [TOOLS, dict(
+            type="custom_tool_call_output", call_id="call_2e1", output=[
+                dict(type="input_text", text="Script completed\nWall time 1.0 seconds\nOutput:\n"),
+                dict(type="input_text", text=json.dumps(dict(exit_code=0, output="2e1-tool-ok")))])]}])
         self.assertEqual([status for status, _ in results], [200, 200])
-        self.assertIn(b'"name": "exec_command"', results[0][1])
+        self.assertIn(b'"name": "exec"', results[0][1])
         self.assertIn(b"2e1 complete", results[1][1])
         self.assertEqual(len(json.loads(record)["requests"]), 2)
         events = [{"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 5}}]

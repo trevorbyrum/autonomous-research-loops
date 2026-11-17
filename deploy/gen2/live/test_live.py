@@ -13,7 +13,8 @@ import traceback
 from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 
-from deploy.gen2.live import fixture, live, runner
+from deploy.gen2.live import fixture, live, runner, q_net
+from deploy.gen2.live.test_fixtures import CONTINUATION
 
 ROOT = Path(__file__).parent
 
@@ -28,21 +29,28 @@ class LivePolicy(unittest.TestCase):
         self.assertNotIn("provider-auth.conf", document)
         self.assertNotIn("retained-configurations", (ROOT / "compose.yaml").read_text())
 
-    def test_live_seed_changes_only_the_two_tool_features(self):
+    def test_live_seed_restricts_tools_and_agents(self):
         original = (ROOT / "runner-config.toml").read_bytes()
         data = live.runner_config(original)
         expected = tomllib.loads(original.decode())
-        expected["features"].update(shell_tool=False, unified_exec=False)
+        expected["features"].update(shell_tool=False, unified_exec=False, current_time_reminder=False)
+        self.assertEqual(expected["agents"], {"enabled": False})
+        self.assertFalse(expected["features"]["multi_agent_v2"])
+        self.assertTrue(expected["features"]["code_mode_host"])
+        self.assertNotIn("multi_agent", expected["features"])
         self.assertEqual(tomllib.loads(data.decode()), expected)
         self.assertIn(hashlib.sha256(data).hexdigest(), runner.PINS["config.toml"])
         with self.assertRaisesRegex(ValueError, "stale public"):
             live.runner_config(original + b"\n")
 
-    def test_live_catalog_changes_only_the_patch_tool(self):
+    def test_live_catalog_restricts_patch_wrappers_and_clock(self):
         original = (ROOT / "fixtures/catalog/models.json").read_bytes()
         data = live.model_catalog(original)
         expected = json.loads(original)
-        next(row for row in expected["models"] if row["slug"] == "gpt-6.1-terra")["apply_patch_tool_type"] = None
+        model, = expected["models"]
+        model.update(apply_patch_tool_type=None, tool_mode="direct")
+        model["experimental_supported_tools"].remove("clock")
+        self.assertTrue(model["use_responses_lite"])
         self.assertEqual(json.loads(data), expected)
         self.assertIn(hashlib.sha256(data).hexdigest(), runner.PINS["models.json"])
         with self.assertRaisesRegex(ValueError, "stale public"):
@@ -91,7 +99,7 @@ class LivePolicy(unittest.TestCase):
                     self.assertNotIn(value.decode(errors="replace") if isinstance(value, bytes) else str(value), diagnostic)
 
     def test_tool_less_fixture_completes_once_and_refuses_tools_or_more_sends(self):
-        request = dict(model="gpt-6.1-terra", stream=True, tools=[], input=[])
+        request = dict(model="gpt-6.1-terra", stream=True, input=[])
         self.assertEqual(fixture.credential("tool-less"), "accepted")
         self.assertEqual(fixture.response("limited", 1, request)[0], 429)
         status, media, data = fixture.response("tool-less", 1, request)
@@ -99,16 +107,20 @@ class LivePolicy(unittest.TestCase):
         self.assertEqual((status, media), (200, "text/event-stream"))
         self.assertEqual(events[0]["item"]["type"], "message")
         self.assertEqual(events[1]["response"]["status"], "completed")
-        self.assertEqual(fixture.response("tool-less", 1, {k: v for k, v in request.items() if k != "tools"})[0], 200)
-        for ordinal, change in ((2, {}), (1, {"tools": None}), (1, {"tools": [{"name": "exec_command"}]}), (1, {"model": "other"})):
+        self.assertEqual(fixture.response("tool-less", 1, request)[0], 200)
+        for case in ("accepted", "tool-less", "rejected", "limited"):
+            with self.subTest(subscription=case), self.assertRaises(ValueError):
+                fixture.response(case, 1, request if case == "accepted" else q_net.model_request("a" * 32), subscription=True)
+        for ordinal, change in ((2, {}), (1, {"tools": None}), (1, {"tools": []}), (1, {"input": q_net.model_request("a" * 32)["input"]}),
+                                (1, {"input": [{"role": "user", "content": "prefix"}, {"type": "additional_tools", "tools": []}]}), (1, {"tools": [{"name": "exec_command"}]}), (1, {"model": "other"})):
             with self.subTest(ordinal=ordinal, change=change), self.assertRaises(ValueError):
                 fixture.response("tool-less", ordinal, request | change)
 
     def test_hold_uses_the_accepted_tool_sequence(self):
-        request = dict(model="gpt-6.1-terra", stream=True, tools=[{"name": n} for n in ("exec_command", "write_stdin", "apply_patch")])
+        request = q_net.model_request("a" * 32)
         self.assertEqual(fixture.credential("hold"), "accepted")
         self.assertEqual(fixture.response("hold", 1, request), fixture.response("accepted", 1, request))
-        request["input"] = [dict(type="function_call_output", call_id="call_2e1", output="2e1-tool-ok")]
+        request["input"].append(CONTINUATION)
         self.assertEqual(fixture.response("hold", 2, request), fixture.response("accepted", 2, request))
         with self.assertRaisesRegex(ValueError, "extra send"):
             fixture.response("hold", 3, request)
