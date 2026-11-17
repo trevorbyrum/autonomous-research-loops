@@ -692,7 +692,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: task 2e1
-- what: The option-C after-controls took at least 13.6 s in the first native accepted-hold on the new images, beyond the 10 s drain limit, so the refusal was correct. Record-only: if it recurs, stop and route to a redesign under the S13 D6 ruling.
+- what: The option-C after-controls took at least 13.6 s in the first native accepted-hold on the new images, beyond the 10 s drain limit, so the refusal was correct. Record-only: if it recurs, stop and route to a redesign under the S13 D6 ruling. Touch rule: any brief touching the operator set's option-C after-controls (the primitive after-phase) takes this item or explains why not.
 - source: native run `native-7609c3b5-release-20261117T035330Z` (2026-11-17), finding B; Trevor's S13 D6 option-C amendment of 2026-11-16.
 - removal: a native window completes the after-controls inside the drain limit, or the redesign is ruled and merged.
 
@@ -700,7 +700,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: task 2e1
-- what: The private operator set's apparatus compares the full `proc_stat`, including the mutable R/S state field, so a healthy process can read as changed. Record-only until it recurs.
+- what: The private operator set's apparatus compares the full `proc_stat`, including the mutable R/S state field, so a healthy process can read as changed. Record-only until it recurs. Touch rule: any brief touching the apparatus process-identity (`proc_stat`) comparison takes this item.
 - source: native run `native-7609c3b5-release-20261117T035330Z` (2026-11-17), finding C.
 - removal: the comparison excludes the mutable state field and a witness shows the exclusion.
 
@@ -708,6 +708,6 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: task 2e1
-- what: A runner CLI upgrade needs a native tool-call witness before dependent windows are planned. The #188 upgrade (Codex 0.153.2 to 0.169.0) merged with its native witnesses pending, and the first native accepted-hold then failed on a changed tool protocol (#193 repaired it).
+- what: A runner CLI upgrade needs a native tool-call witness before dependent windows are planned. The #188 upgrade (Codex 0.153.2 to 0.169.0) merged with its native witnesses pending, and the first native accepted-hold then failed on a changed tool protocol (#193 repaired it). Touch rule: every runner CLI upgrade brief must require a native tool-call witness before dependent windows are planned.
 - source: Codex 0.169 tools diagnosis (2026-11-17), process lesson.
 - removal: the brief template for a runner CLI upgrade requires the witness before dependent windows are planned, and the next upgrade follows it.
