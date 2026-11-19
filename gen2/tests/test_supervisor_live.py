@@ -21,6 +21,7 @@ from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import authority as auth, docker_cli, jobs
 from gen2.supervisor.isolation import LiveProfileRefused
 from gen2.tests import children, router_fixtures as rf
+from gen2.tests import test_docker_cli
 from gen2.tests.supervisor_fixtures import MAIN, SupervisedTestCase, succeed
 
 REAL_CONTAIN = docker_cli.contain_job   # before any test patches it
@@ -347,6 +348,36 @@ class RealRoute(LiveWorld):
         job.write("runner-start.json", {"State": {}})
         job.write("docker-complete.json", {"origin": job.read("docker-plan.json")["origin"], "refs": [], "disposition": {"disposition": "credentials_rejected"}})
         self.assertIsNone(self.authority.result("adm", record["content_hash"]))               # an unassemblable rejection is no result: fixed U
+
+
+    def test_an_empty_judgment_rejected_run_reaches_the_typed_fact_the_hold_and_the_route_wide_block(self):
+        """The backend's own completion for a 0.169-shaped failed turn (empty judgment, exit 1; real scratch files and collection, test_docker_cli) crosses
+        the supervisor, authority and Router: failed end at U, typed fact, operator-owned hold, replay-safe, and every later dispatch on the route refused."""
+        backend = test_docker_cli.DockerBoundary("test_an_empty_judgment_on_a_failed_exit_is_classified_keeps_the_empty_observation_and_commits_nothing_scientific")
+        backend.setUp()
+        self.addCleanup(backend.tearDown)
+        _, _, made = backend.retained(judgment=b"")
+        self.assertEqual((made["disposition"]["disposition"], made["output_observation"]), ("credentials_rejected", {"kind": "judgment", "status": "empty"}))
+        supervisor = self.live_supervisor()
+        job = self.prepare(supervisor, steps=[{"op": "exit", "code": 1}])
+        job.write("docker-complete.json", {**made, "origin": job.read("docker-plan.json")["origin"], "refs": []})   # the real completion; its refs are that harness's spool
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")      # the launch intent is recorded first
+        job.write("runner-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10.123456789Z"}})   # the runner started after the intent
+        self.clock.set("2026-09-27T10:00:30Z")
+        self.assertEqual(LiveStart.drive(self, supervisor), "failed")
+        (result,) = self.audit("dispatch_result")
+        self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]),
+                         (self.audit("dispatch_authorized")[0]["upper_minor_units"], "worst_case"))   # no scientific outcome; cost unknown charges the intent's U
+        (fact,) = self.rows("SELECT state FROM capability_facts WHERE capability = ?", "provider-auth:codex")
+        self.assertEqual(fact[0], "failing")
+        (hold,) = self.rows("SELECT hold_class, owner FROM holds WHERE hold_class = ?", "capability")
+        self.assertEqual(tuple(hold), ("capability", "operator"))
+        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "failed")
+        self.to_queued(rf.OTHER)
+        again = self.live_supervisor()
+        again.prepare(self.order("research_pass", succeed("inv_slot0002"), inv="inv_slot0002", topic=rf.OTHER), live=True)
+        self.assertEqual(again.advance("inv_slot0002", live_start=True), "cancelled")   # route-wide: another topic's dispatch is refused, nothing started
+        self.assertFalse((again.job("inv_slot0002").dir / "spawn.json").exists())
 
 
 class FailedEnd(LiveWorld):
