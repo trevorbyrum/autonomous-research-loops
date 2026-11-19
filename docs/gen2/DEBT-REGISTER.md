@@ -768,3 +768,35 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: Overwatch S16 #17 (class 2, charter catch-record rule): after the retirement patch, demote the private test_set to its real seams (the supervision guard, the index and pure functions). The review estimates about −60 to −100 further lines. File: test_set.py in the private operator set. Owner lane: not recorded. Touch rule: any brief that adds mock tests to test_set takes this item (S16 §7 "not recommended: more mock tests in test_set").
 - source: Overwatch S16 (2026-11-19) §7 item 17; the ten first-native-contact faults, none of which test_set caught.
 - removal: the retirement patch is applied, test_set is demoted and Astra reads the result.
+
+### DEBT-076 - a live engine cannot restart in place after a reboot once its bootstrap bundle is superseded (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: Found 2026-11-19 (host reboot restore): the T10 epoch engine restarted and exited 1 with `bundle_superseded`, because its original command mounts bootstrap bundle v1, which the store has superseded. That is correct fail-closed behaviour, but after a host reboot a live engine cannot restart in place; recovery needs a new epoch. A live topic needs a supported reboot-recovery path, which goes to the next design review and Overwatch. File: not recorded. Owner lane: not recorded.
+- source: rulings log 2026-11-19T22:20Z (the reboot restore); the standing reboot-restore rule covers the DB and gateway but not this engine case.
+- removal: a supported reboot-recovery path for a live engine is designed, reviewed and merged, or Trevor rules it out for topic 1.
+
+### DEBT-077 - gateway and relay images have no recorded built-from provenance (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: The independent fixture-rebuild verifier (2026-11-19, gen2-fixture-rebuild-verifier-20261119.md) notes that the gateway and relay images are carried, not rebuilt, and their built-from provenance is still unrecorded (the same fact as the S14-era UNKNOWN for carried images). File: not recorded. Owner lane: not recorded.
+- source: the verifier's notes on the 2026-11-19 fixture rebuild attestation (YES with C1-C5; 22 PASS, 0 FAIL, 4 UNKNOWN).
+- removal: the built-from source of each image is recorded, or the images are rebuilt from recorded sources and attested.
+
+### DEBT-078 - the fixture tools-catalog layer differs with identical source, unexplained (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: In the 2026-11-19 fixture rebuild the tools-catalog layer differs between the old and new fixture images although its source is identical; the cause is not explained. The verifier found no behaviour change outside hold-first (a 210-comparison differential). File: not recorded. Owner lane: not recorded.
+- source: gen2-fixture-rebuild-verifier-20261119.md (note on the tools-catalog layer).
+- removal: the difference is explained (for example a build-input or layer-ordering cause) and recorded, or ruled harmless by Astra.
+
+### DEBT-079 - no rollback image for the previous fixture 488b76e1… (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: The previous fixture image `488b76e1…` is no longer in the daemon after the 2026-11-19 fixture rebuild, so there is no rollback image; the accepted witnesses rest on their receipts. File: not recorded. Owner lane: not recorded.
+- source: gen2-fixture-rebuild-verifier-20261119.md (note that the old fixture image is gone).
+- removal: a rollback image is rebuilt from the recorded sources or retained, or Trevor or the host operator rules it unnecessary.
