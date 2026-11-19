@@ -90,7 +90,7 @@ class Handler(BaseHTTPRequestHandler):
         raw, request, status, media, data = b"", {}, 400, "application/json", b'{}\n'
         rid = self.headers.get("X-Request-ID", "")
         try:
-            if time.monotonic() >= self.server.deadline or self.server.count > 64:
+            if time.monotonic() + (self.server.hold_seconds if self.server.case == "hold-first" else 0) >= self.server.deadline or self.server.count > 64:
                 raise ValueError("fixture window/count")
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 <= length <= 1 << 20 or self.headers.get("Transfer-Encoding"):

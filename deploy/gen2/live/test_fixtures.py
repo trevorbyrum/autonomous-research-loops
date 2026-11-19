@@ -1,5 +1,7 @@
 """V7 §§4–5: pure protocol and file refusals; no daemon, listeners or Q PASS."""
 import ast
+import contextlib
+import io
 import json
 import os
 import re
@@ -8,6 +10,7 @@ import tempfile
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from deploy.gen2.live import build, fixture, initialize, qualify, runner, q_net
@@ -44,6 +47,33 @@ class Fixtures(unittest.TestCase):
                      ["f", "hold-first", "0"], ["f", "hold-first", "301"], ["f", "hold-first", "30", "89"], ["f", "hold-first", "30", "1801"]):
             with self.assertRaises(ValueError):
                 fixture.operands(argv)
+
+    def exchange(self, case, ordinal, request, now=0, lifetime=600, hold=30):
+        """Drive the real handler offline: simulated clock, in-memory sockets; returns (status, ticks, receipts)."""
+        clock, ticks, sent = [now], [], []
+        body = json.dumps(request).encode()
+        headers = {"Authorization": "Bearer 2e1-fixture-accepted", "X-Request-ID": "a" * 32, "Content-Length": str(len(body))}
+        server = SimpleNamespace(case=case, count=ordinal - 1, deadline=lifetime, hold_seconds=hold, raw=io.StringIO(), record=io.StringIO(), requests=[])
+        handler = object.__new__(fixture.Handler)
+        handler.headers = SimpleNamespace(get=headers.get, get_all=lambda k: [headers[k]] if k in headers else None, __iter__=lambda s: iter(headers))
+        handler.__dict__.update(server=server, command="POST", path="/v1/responses", connection=None, rfile=io.BytesIO(body), wfile=io.BytesIO())
+        with patch.object(fixture, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda s: (clock.__setitem__(0, clock[0] + s), ticks.append(s)))), \
+                patch.multiple(fixture.Handler, send_response=lambda s, c: sent.append(c), send_header=lambda *a: 0, end_headers=lambda s: 0):
+            with contextlib.suppress(ValueError):  # a refusal raises after recording; nothing is sent
+                handler.exchange()
+        return (sent or [0])[0], len(ticks), server.raw.getvalue()
+
+    def test_hold_first_holds_only_its_first_accepted_request(self):
+        bare, tooled = dict(model="gpt-6.1-terra", stream=True, input=[]), q_net.model_request("a" * 32)
+        status, ticks, raw = self.exchange("hold-first", 1, bare)
+        self.assertEqual((status, ticks, json.loads(raw)["case"]), (200, 30, "hold-first"))
+        for case, ordinal, request, held in (("hold-first", 2, bare, None), ("hold", 1, tooled, 0), ("hold", 2, tooled | dict(input=tooled["input"] + [CONTINUATION]), 30), ("tool-less", 1, bare, 0)):
+            self.assertEqual(self.exchange(case, ordinal, request)[:2], (200, held) if held is not None else (0, 0), (case, ordinal))
+        for case, ordinal, request in (("hold-first", 1, bare | dict(model="x")), ("hold", 2, tooled | dict(model="x"))):
+            self.assertEqual(self.exchange(case, ordinal, request)[:2], (0, 0), (case, ordinal))
+        self.assertEqual(self.exchange("hold-first", 1, bare, now=569)[:2], (200, 30))
+        self.assertEqual(self.exchange("hold-first", 1, bare, now=571)[:2], (0, 0))
+        self.assertEqual(self.exchange("hold", 1, tooled, now=599)[:2], (200, 0))
 
     def test_all_compiled_nginx_temp_paths_use_the_existing_tmpfs(self):
         """Retained binary flags and startup refusal pin every temp directory; no daemon."""
