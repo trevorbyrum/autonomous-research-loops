@@ -27,11 +27,11 @@ def tool_schema(request, enabled=False):
 
 
 def credential(case):
-    return "accepted" if case in {"tool-less", "hold"} else case
+    return "accepted" if case in {"tool-less", "hold", "hold-first"} else case
 
 
 def response(case, ordinal, request, *, subscription=False):
-    case = "accepted" if case == "hold" else case
+    case = {"hold": "accepted", "hold-first": "tool-less"}.get(case, case)
     if request.get("model") != "gpt-6.1-terra" or request.get("stream") is not True or (subscription and case == "accepted"):
         raise ValueError("model/stream/subscription policy")
     if subscription or case in {"accepted", "tool-less"}:
@@ -90,7 +90,7 @@ class Handler(BaseHTTPRequestHandler):
         raw, request, status, media, data = b"", {}, 400, "application/json", b'{}\n'
         rid = self.headers.get("X-Request-ID", "")
         try:
-            if time.monotonic() >= self.server.deadline or self.server.count > 64:
+            if time.monotonic() + (self.server.hold_seconds if self.server.case == "hold-first" else 0) >= self.server.deadline or self.server.count > 64:
                 raise ValueError("fixture window/count")
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 <= length <= 1 << 20 or self.headers.get("Transfer-Encoding"):
@@ -128,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
             json.dump({"v": 1, "requests": self.server.requests}, self.server.record)
             self.server.record.truncate()
             self.server.record.flush()
-        ticks = self.server.hold_seconds if self.server.case == "hold" and self.server.count == 2 and status == 200 else 0
+        ticks = self.server.hold_seconds if status == 200 and (self.server.case, self.server.count) in {("hold", 2), ("hold-first", 1)} else 0
         keepalive = b'event: response.in_progress\ndata: {"type":"response.in_progress"}\n\n'
         self.send_response(status)
         self.send_header("Content-Type", media)
@@ -145,11 +145,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def operands(argv):
     case = argv[1]
-    hold_seconds = int(argv[2]) if case == "hold" else 0
-    if case == "hold" and not 1 <= hold_seconds <= 300:
+    hold_seconds = int(argv[2]) if case in {"hold", "hold-first"} else 0
+    if case in {"hold", "hold-first"} and not 1 <= hold_seconds <= 300:
         raise ValueError("finite hold required")
-    lifetime = int(argv[3 if case == "hold" else 2]) if len(argv) > (3 if case == "hold" else 2) else 1800
-    if not (hold_seconds + 60 if case == "hold" else 1) <= lifetime <= 1800:
+    lifetime = int(argv[3 if hold_seconds else 2]) if len(argv) > (3 if hold_seconds else 2) else 1800
+    if not (hold_seconds + 60 if hold_seconds else 1) <= lifetime <= 1800:
         raise ValueError("fixture lifetime")
     return case, hold_seconds, lifetime
 
@@ -158,7 +158,7 @@ if __name__ == "__main__":
     case, hold_seconds, lifetime = operands(sys.argv)
     tls = Path("/certs").is_dir()
     address = ("172.31.251.3", 18081) if case == "source" else ("172.31.252.3", 443 if tls else 8081)
-    if case not in {"source", "accepted", "rejected", "tool-less", "hold", "limited"}:
+    if case not in {"source", "accepted", "rejected", "tool-less", "hold", "hold-first", "limited"}:
         raise ValueError("fixture case")
     with HTTPServer(address, Handler) as server, open("/evidence/fixture.json", "x+") as record, open("/evidence/raw.jsonl", "x") as raw:
         if tls:

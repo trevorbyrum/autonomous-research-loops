@@ -1,5 +1,7 @@
 """V7 §§4–5: pure protocol and file refusals; no daemon, listeners or Q PASS."""
 import ast
+import contextlib
+import io
 import json
 import os
 import re
@@ -8,6 +10,7 @@ import tempfile
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from deploy.gen2.live import build, fixture, initialize, qualify, runner, q_net
@@ -15,6 +18,8 @@ from deploy.gen2.live import build, fixture, initialize, qualify, runner, q_net
 CONTINUATION = dict(type="custom_tool_call_output", call_id="call_2e1", output=[
     dict(type="input_text", text="Script completed\nWall time 1.0 seconds\nOutput:\n"),
     dict(type="input_text", text=json.dumps(dict(exit_code=0, output="2e1-tool-ok")))])
+
+KEEPALIVE = b'event: response.in_progress\ndata: {"type":"response.in_progress"}\n\n'
 
 CAPTURE = Path(__file__).with_name("fixtures") / "cli"
 RECEIPTS = {r["step"]: r for r in map(json.loads, (CAPTURE / "receipts.jsonl").read_text().splitlines())}
@@ -38,10 +43,82 @@ class Fixtures(unittest.TestCase):
         self.assertEqual(fixture.operands(["f", "hold", "181"])[1], 181)
         self.assertEqual(fixture.operands(["f", "accepted"]), ("accepted", 0, 1800))
         self.assertEqual(fixture.operands(["f", "hold", "30", "600"]), ("hold", 30, 600))
+        self.assertEqual(fixture.operands(["f", "hold-first", "30", "600"]), ("hold-first", 30, 600))
         self.assertEqual(fixture.operands(["f", "accepted", "5"]), ("accepted", 0, 5))
-        for argv in (["f", "hold", "0"], ["f", "hold", "301"], ["f", "hold", "30", "89"], ["f", "hold", "30", "1801"], ["f", "accepted", "0"]):
+        for argv in (["f", "hold", "0"], ["f", "hold", "301"], ["f", "hold", "30", "89"], ["f", "hold", "30", "1801"], ["f", "accepted", "0"],
+                     ["f", "hold-first", "0"], ["f", "hold-first", "301"], ["f", "hold-first", "30", "89"], ["f", "hold-first", "30", "1801"]):
             with self.assertRaises(ValueError):
                 fixture.operands(argv)
+
+    def exchange(self, case, ordinal, request, now=0, reply=None):
+        """Run the real handler with an in-memory HTTP writer and a simulated clock."""
+        writes, flushed = [], []
+        body = json.dumps(request).encode()
+        headers = {"Authorization": "Bearer 2e1-fixture-accepted", "X-Request-ID": "a" * 32, "Content-Length": str(len(body))}
+        server = SimpleNamespace(case=case, count=ordinal - 1, deadline=600, hold_seconds=30, raw=io.StringIO(), record=io.StringIO(), requests=[])
+
+        def write(data):
+            writes.append((data, flushed[-1] if flushed else None))
+            return len(data)
+
+        def flush_receipt():
+            flushed.append(json.loads(server.raw.getvalue()))
+
+        def sleep(seconds):
+            nonlocal now
+            now += seconds
+
+        handler = object.__new__(fixture.Handler)
+        handler.headers = SimpleNamespace(get=headers.get, get_all=lambda k: [headers[k]] if k in headers else None)
+        handler.__dict__.update(server=server, command="POST", path="/v1/responses", connection=None,
+                                requestline="POST /v1/responses HTTP/1.1", request_version="HTTP/1.1",
+                                rfile=io.BytesIO(body), wfile=SimpleNamespace(write=write, flush=lambda: None))
+        response = patch.object(fixture, "response", return_value=reply) if reply is not None else nullcontext()
+        with (
+            patch.object(fixture, "time", SimpleNamespace(monotonic=lambda: now, sleep=sleep)),
+            patch.object(server.raw, "flush", side_effect=flush_receipt),
+            response,
+            contextlib.suppress(ValueError),  # refusals are recorded before the HTTP response
+        ):
+            handler.exchange()
+        (http_head, _), *body_writes = writes or [(b"", None)]
+        status = int(http_head.split()[1]) if http_head else None
+        first_body_receipt = body_writes[0][1] if body_writes else None
+        return status, [data for data, _ in body_writes], flushed[-1], first_body_receipt
+
+    def test_hold_first_holds_only_its_first_accepted_request(self):
+        bare, tooled = dict(model="gpt-6.1-terra", stream=True, input=[]), q_net.model_request("a" * 32)
+        continued = tooled | dict(input=tooled["input"] + [CONTINUATION])
+        for case, ordinal, request, now, held in (
+            ("hold-first", 1, bare, 0, 30),
+            ("hold-first", 1, bare, 569, 30),
+            ("hold", 1, tooled, 0, 0),
+            ("hold", 1, tooled, 599, 0),
+            ("hold", 2, continued, 0, 30),
+            ("tool-less", 1, bare, 0, 0),
+        ):
+            with self.subTest(case=case, ordinal=ordinal, now=now):
+                status, writes, receipt, first_body_receipt = self.exchange(case, ordinal, request, now)
+                self.assertEqual(status, 200)
+                self.assertEqual(writes[:-1], [KEEPALIVE] * held)
+                self.assertEqual(writes[-1:], [fixture.response(case, ordinal, request)[2]])
+                if case == "hold-first":
+                    self.assertEqual(first_body_receipt, receipt)
+                    self.assertEqual((receipt["case"], receipt["ordinal"], receipt["status"]), ("hold-first", 1, 200))
+
+        limited = fixture.response("limited", 1, bare)
+        for case, ordinal, request in (("hold-first", 1, bare), ("hold", 2, continued)):
+            with self.subTest(case=case, ordinal=ordinal, status=429):
+                status, writes, _, _ = self.exchange(case, ordinal, request, reply=limited)
+                self.assertEqual(status, 429)
+                self.assertEqual(writes, [limited[2]])
+
+        for ordinal, now, recorded_request in ((2, 0, bare), (1, 570, {}), (1, 571, {})):
+            with self.subTest(ordinal=ordinal, now=now, refused=True):
+                status, writes, receipt, _ = self.exchange("hold-first", ordinal, bare, now)
+                self.assertEqual((status, writes), (None, []))
+                self.assertEqual((receipt["case"], receipt["ordinal"], receipt["status"], receipt["request"]),
+                                 ("hold-first", ordinal, 400, recorded_request))
 
     def test_all_compiled_nginx_temp_paths_use_the_existing_tmpfs(self):
         """Retained binary flags and startup refusal pin every temp directory; no daemon."""
