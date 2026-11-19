@@ -716,7 +716,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: task 2e1
-- what: Overwatch S16 #12 (class 3): the private operator set carries no judging code for the real route; the independent verifier judges from the retained job bytes (S16 §5 item 3). The log estimates this avoids about 15–30 set lines. File: the private operator set's real-route window path (host operator lane; private, not a locator). Touch rule: any brief that adds checking code to the operator set for a real-route window takes this item or explains why not.
+- what: Overwatch S16 #12 (class 3): the private operator set carries no judging code for the real route; the independent verifier judges from the retained job bytes (S16 §5 item 3). The log estimates this avoids about 15–30 set lines. File: not recorded (the source names no file; owner lane: host operator). Touch rule: any brief that adds checking code to the operator set for a real-route window takes this item or explains why not.
 - source: Overwatch S16 (2026-11-19), gen2-overwatch-s16-first-contact-fable-20261119.md §7 item 12; rules file §Overwatch S16.
 - removal: the real-route window runs with no set-side judging code and the verifier's judgment from the retained bytes is accepted.
 
@@ -724,7 +724,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: task 2e1
-- what: Overwatch S16 #13 (a pending class-2 ask, default 2026-11-20T04:00Z): build the real-route manifest by the template path and add no packer for topic 1, which avoids about +20–25 host lines, +15 test lines and a host cap raise. The review's condition is to check first that no ruling made the packer mandatory (the review did not verify this). File: the host package's manifest assembly (host operator lane). Touch rule: any brief that adds a manifest packer or raises the host cap for one takes this item.
+- what: Overwatch S16 #13 (a pending class-2 ask, default 2026-11-20T04:00Z): build the real-route manifest by the template path and add no packer for topic 1, which avoids about +20–25 host lines, +15 test lines and a host cap raise. The review's condition is to check first that no ruling made the packer mandatory (the review did not verify this). File: not recorded (the source names no file; owner lane: host operator). Touch rule: any brief that adds a manifest packer or raises the host cap for one takes this item.
 - source: Overwatch S16 (2026-11-19), gen2-overwatch-s16-first-contact-fable-20261119.md §7 item 13.
 - removal: Trevor's class-2 answer or the default applies, and the real-route record is built by the template path or a packer is separately ruled.
 
@@ -757,7 +757,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: task 2e1
-- what: Overwatch S16 #16: the operator-set budget text says plainly that the ruled 800 is reached only when the fixture route retires. The review rates it class 2 if the 800 ruling needs a date, otherwise a note to Trevor. Related facts from the log: the retirement patch reaches 832 and a temporary 960 cap is pending. File: the private operator set's budget metadata (INDEX.json budget section; private).
+- what: Overwatch S16 #16: the operator-set budget text says plainly that the ruled 800 is reached only when the fixture route retires. The review rates it class 2 if the 800 ruling needs a date, otherwise a note to Trevor. Related facts from the log: the retirement patch reaches 832 and a temporary 960 cap is pending. File: the private operator set's budget metadata (INDEX.json budget section; private). Owner lane: not recorded.
 - source: Overwatch S16 (2026-11-19) §7 item 16; rulings log 2026-11-19T04:32Z–04:53Z.
 - removal: the budget text states it and Trevor's ruling or the default applies.
 
@@ -765,6 +765,6 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: task 2e1
-- what: Overwatch S16 #17 (class 2, charter catch-record rule): after the retirement patch, demote the private test_set to its real seams (the supervision guard, the index and pure functions). The review estimates about −60 to −100 further lines. File: test_set.py in the private operator set. Touch rule: any brief that adds mock tests to test_set takes this item (S16 §7 "not recommended: more mock tests in test_set").
+- what: Overwatch S16 #17 (class 2, charter catch-record rule): after the retirement patch, demote the private test_set to its real seams (the supervision guard, the index and pure functions). The review estimates about −60 to −100 further lines. File: test_set.py in the private operator set. Owner lane: not recorded. Touch rule: any brief that adds mock tests to test_set takes this item (S16 §7 "not recommended: more mock tests in test_set").
 - source: Overwatch S16 (2026-11-19) §7 item 17; the ten first-native-contact faults, none of which test_set caught.
 - removal: the retirement patch is applied, test_set is demoted and Astra reads the result.
