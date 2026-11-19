@@ -586,8 +586,11 @@ def render_env_example(sources: list[dict]) -> str:
             field = f" field `{s.field}`" if s.field else ""
             out += _wrap_comment(f"{names} [{', '.join(s.source_ids)}]{field} — "
                                  f"{'required' if s.required else 'OPTIONAL (higher limits)'}. {s.key_instructions}")
-            out.append(f"{'' if s.required else '# '}{s.var}=example-{s.secret_ref.replace('_', '-')}"
-                       f"{'-' + s.field.replace('_', '-') if s.field else '-key'}")
+            if s.var == "RESEARCH_GATEWAY_SECRET_SEMANTIC_SCHOLAR":
+                out.append(f"# {s.var}")
+            else:
+                out.append(f"{'' if s.required else '# '}{s.var}=example-{s.secret_ref.replace('_', '-')}"
+                           f"{'-' + s.field.replace('_', '-') if s.field else '-key'}")
     return "\n".join(out).rstrip() + "\n"
 
 

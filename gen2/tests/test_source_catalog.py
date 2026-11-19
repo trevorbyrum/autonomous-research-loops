@@ -48,11 +48,11 @@ REAL_ENV = REPO / "deploy" / "gen2.env.example"
 #   auth = "username_key"                -> _USERNAME and _KEY             (adapters/kaggle.py)
 #   auth = "none" / "email" / "account"  -> no variable
 # Required means the source cannot be called without it; optional means the
-# credential only raises the documented limits.
+# credential only raises the documented limits. The Semantic Scholar entry is
+# listed by name and has no assignment.
 EXPECTED_SECRET_VARIABLES: dict[str, bool] = {
     "RESEARCH_GATEWAY_SECRET_OPENAIRE_CLIENT_ID": True,
     "RESEARCH_GATEWAY_SECRET_OPENAIRE_CLIENT_SECRET": True,
-    "RESEARCH_GATEWAY_SECRET_SEMANTIC_SCHOLAR": True,
     "RESEARCH_GATEWAY_SECRET_API_DATA_GOV": True,
     "RESEARCH_GATEWAY_SECRET_HARVARD_DATAVERSE": False,
     "RESEARCH_GATEWAY_SECRET_SOCRATA": False,
@@ -380,13 +380,12 @@ class CatalogToolTest(unittest.TestCase):
                 found[stripped.split("=", 1)[0]] = not line.startswith("# ")
         self.assertEqual(found, EXPECTED_SECRET_VARIABLES)
 
-    def test_semantic_scholar_needs_a_key_and_has_one_here(self):
-        """The named gap: `semantic_scholar` requires a key
-        (registry `auth = "key"`, read by adapters/semanticscholar.py as the
-        x-api-key header) and was absent from gen-1's
-        gateway/deploy/gateway.env.example. It is present here by construction."""
-        self.assertIn("RESEARCH_GATEWAY_SECRET_SEMANTIC_SCHOLAR=", REAL_ENV.read_text(encoding="utf-8"))
-        self.assertIn("RESEARCH_GATEWAY_SECRET_SEMANTIC_SCHOLAR", REAL_CATALOG.read_text(encoding="utf-8"))
+    def test_semantic_scholar_key_is_listed_by_name_only(self):
+        name = "RESEARCH_GATEWAY_SECRET_SEMANTIC_SCHOLAR"
+        env = REAL_ENV.read_text(encoding="utf-8")
+        self.assertIn(f"# {name}", env.splitlines())
+        self.assertNotIn(f"{name}=", env)
+        self.assertIn(name, REAL_CATALOG.read_text(encoding="utf-8"))
 
     def test_no_example_value_in_the_committed_env_example_looks_like_a_real_secret(self):
         """A generated file that is committed must never carry a credential."""
