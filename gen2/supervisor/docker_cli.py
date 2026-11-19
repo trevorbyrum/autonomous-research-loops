@@ -426,7 +426,7 @@ class DockerCLI:
         self.drain()
         self.contain(relay, role="relay")
         require(self.end(relay, "relay")["State"]["ExitCode"] == 0, "relay_stop_failed")
-        refs = []
+        refs, observation = [], {}
         if not real:
             self.contain(fixture["Id"], role="fixture")
             self.end(fixture["Id"], "fixture")
@@ -439,7 +439,12 @@ class DockerCLI:
         for kind, name in ((output, "out"), ("access", "evidence")):
             fd = slot(self.plan["slots"][name])
             try:
-                refs.append(batch.collect(fd, self.plan["generation"], originals[kind], writers_ended=True, kind=kind))
+                ref = batch.collect(fd, self.plan["generation"], originals[kind], writers_ended=True, kind=kind,
+                                    empty_ok=kind == "judgment" and ended["State"]["ExitCode"] == 1)   # exit 1 only: a failed turn leaves the CLI's pre-created empty file
+                if ref is None:
+                    observation = {"output_observation": {"kind": kind, "status": "empty"}}   # kept in the completion: present, unusable, never "absent"
+                else:
+                    refs.append(ref)
             except LiveProfileRefused as missing:
                 if not (kind == "judgment" and str(missing) == "collection_absent"):   # a runner that failed (a rejected credential) writes no judgment; it is still classified
                     raise
@@ -455,7 +460,7 @@ class DockerCLI:
             usage = "recorded"
         except LiveProfileRefused:
             usage = "refused"
-        require(self.job.create("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition, "usage": usage}), "backend_already_complete")   # create-only: an existing end fact is retained
+        require(self.job.create("docker-complete.json", {"origin": self.plan["origin"], "refs": refs, "disposition": disposition, "usage": usage, **observation}), "backend_already_complete")   # create-only: an existing end fact is retained
         return refs
 
     def remove(self, cid, ack):
@@ -517,7 +522,8 @@ class EvidenceBatch:
             self.held[kind] = data  # bytes the classifier reads; the same bytes that were published
         return ref
 
-    def collect(self, slot_fd, generation, identity, *, writers_ended, kind="outcome"):
+    def collect(self, slot_fd, generation, identity, *, writers_ended, kind="outcome", empty_ok=False):
+        """`empty_ok` (the live judgment on runner exit 1 only) lets a safely observed zero-byte leaf return None, unstaged; every other state refuses."""
         require(writers_ended, "collection_writers_live")
         require(re.fullmatch(r"[0-9a-f]{32}", generation), "collection_generation")
         name, bound, media = {"outcome": ("outcome.json", 16 << 20, "application/json"),
@@ -529,9 +535,11 @@ class EvidenceBatch:
             info = os.fstat(fd)
             require((info.st_dev, info.st_ino) == identity, "collection_identity")
             found = read_scratch(fd, name, bound)
-            require(found["status"] == "present", "collection_" + found["status"])
             after = os.stat(generation, dir_fd=slot_fd, follow_symlinks=False)
-            require((after.st_dev, after.st_ino) == identity, "collection_replaced")
+            require((after.st_dev, after.st_ino) == identity, "collection_replaced")   # before the status: an empty observation is only tolerated in the original generation
+            if found["status"] == "empty" and empty_ok:
+                return None
+            require(found["status"] == "present", "collection_" + found["status"])
             return self.stage(found["data"], media, kind)
         finally:
             os.close(fd)
