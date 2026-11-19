@@ -716,7 +716,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: task 2e1
-- what: Overwatch S16 #12 (class 3): the private operator set carries no judging code for the real route; the independent verifier judges from the retained job bytes (S16 §5 item 3). The log estimates this avoids about 15–30 set lines. File: not recorded (the source names no file; owner lane: host operator). Touch rule: any brief that adds checking code to the operator set for a real-route window takes this item or explains why not.
+- what: Overwatch S16 #12 (class 3): the private operator set carries no judging code for the real route; the independent verifier judges from the retained job bytes (S16 §5 item 3). The log estimates this avoids about 15–30 set lines. File: not recorded (the source names no file). Owner lane: not recorded. Touch rule: any brief that adds checking code to the operator set for a real-route window takes this item or explains why not.
 - source: Overwatch S16 (2026-11-19), gen2-overwatch-s16-first-contact-fable-20261119.md §7 item 12; rules file §Overwatch S16.
 - removal: the real-route window runs with no set-side judging code and the verifier's judgment from the retained bytes is accepted.
 
@@ -724,7 +724,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - kind: obligation
 - status: open
 - owner: task 2e1
-- what: Overwatch S16 #13 (a pending class-2 ask, default 2026-11-20T04:00Z): build the real-route manifest by the template path and add no packer for topic 1, which avoids about +20–25 host lines, +15 test lines and a host cap raise. The review's condition is to check first that no ruling made the packer mandatory (the review did not verify this). File: not recorded (the source names no file; owner lane: host operator). Touch rule: any brief that adds a manifest packer or raises the host cap for one takes this item.
+- what: Overwatch S16 #13 (a pending class-2 ask, default 2026-11-20T04:00Z): build the real-route manifest by the template path and add no packer for topic 1, which avoids about +20–25 host lines, +15 test lines and a host cap raise. The review's condition is to check first that no ruling made the packer mandatory (the review did not verify this). File: not recorded (the source names no file). Owner lane: not recorded. Touch rule: any brief that adds a manifest packer or raises the host cap for one takes this item.
 - source: Overwatch S16 (2026-11-19), gen2-overwatch-s16-first-contact-fable-20261119.md §7 item 13.
 - removal: Trevor's class-2 answer or the default applies, and the real-route record is built by the template path or a packer is separately ruled.
 
