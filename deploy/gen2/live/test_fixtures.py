@@ -19,6 +19,8 @@ CONTINUATION = dict(type="custom_tool_call_output", call_id="call_2e1", output=[
     dict(type="input_text", text="Script completed\nWall time 1.0 seconds\nOutput:\n"),
     dict(type="input_text", text=json.dumps(dict(exit_code=0, output="2e1-tool-ok")))])
 
+KEEPALIVE = b'event: response.in_progress\ndata: {"type":"response.in_progress"}\n\n'
+
 CAPTURE = Path(__file__).with_name("fixtures") / "cli"
 RECEIPTS = {r["step"]: r for r in map(json.loads, (CAPTURE / "receipts.jsonl").read_text().splitlines())}
 CONTEXT = json.loads((CAPTURE / "context.json").read_bytes())[0]
@@ -48,32 +50,75 @@ class Fixtures(unittest.TestCase):
             with self.assertRaises(ValueError):
                 fixture.operands(argv)
 
-    def exchange(self, case, ordinal, request, now=0, lifetime=600, hold=30):
-        """Drive the real handler offline: simulated clock, in-memory sockets; returns (status, ticks, receipts)."""
-        clock, ticks, sent = [now], [], []
+    def exchange(self, case, ordinal, request, now=0, reply=None):
+        """Run the real handler with an in-memory HTTP writer and a simulated clock."""
+        writes, flushed = [], []
         body = json.dumps(request).encode()
         headers = {"Authorization": "Bearer 2e1-fixture-accepted", "X-Request-ID": "a" * 32, "Content-Length": str(len(body))}
-        server = SimpleNamespace(case=case, count=ordinal - 1, deadline=lifetime, hold_seconds=hold, raw=io.StringIO(), record=io.StringIO(), requests=[])
+        server = SimpleNamespace(case=case, count=ordinal - 1, deadline=600, hold_seconds=30, raw=io.StringIO(), record=io.StringIO(), requests=[])
+
+        def write(data):
+            writes.append((data, flushed[-1] if flushed else None))
+            return len(data)
+
+        def flush_receipt():
+            flushed.append(json.loads(server.raw.getvalue()))
+
+        def sleep(seconds):
+            nonlocal now
+            now += seconds
+
         handler = object.__new__(fixture.Handler)
-        handler.headers = SimpleNamespace(get=headers.get, get_all=lambda k: [headers[k]] if k in headers else None, __iter__=lambda s: iter(headers))
-        handler.__dict__.update(server=server, command="POST", path="/v1/responses", connection=None, rfile=io.BytesIO(body), wfile=io.BytesIO())
-        with patch.object(fixture, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda s: (clock.__setitem__(0, clock[0] + s), ticks.append(s)))), \
-                patch.multiple(fixture.Handler, send_response=lambda s, c: sent.append(c), send_header=lambda *a: 0, end_headers=lambda s: 0):
-            with contextlib.suppress(ValueError):  # a refusal raises after recording; nothing is sent
-                handler.exchange()
-        return (sent or [0])[0], len(ticks), server.raw.getvalue()
+        handler.headers = SimpleNamespace(get=headers.get, get_all=lambda k: [headers[k]] if k in headers else None)
+        handler.__dict__.update(server=server, command="POST", path="/v1/responses", connection=None,
+                                requestline="POST /v1/responses HTTP/1.1", request_version="HTTP/1.1",
+                                rfile=io.BytesIO(body), wfile=SimpleNamespace(write=write, flush=lambda: None))
+        response = patch.object(fixture, "response", return_value=reply) if reply is not None else nullcontext()
+        with (
+            patch.object(fixture, "time", SimpleNamespace(monotonic=lambda: now, sleep=sleep)),
+            patch.object(server.raw, "flush", side_effect=flush_receipt),
+            response,
+            contextlib.suppress(ValueError),  # refusals are recorded before the HTTP response
+        ):
+            handler.exchange()
+        (http_head, _), *body_writes = writes or [(b"", None)]
+        status = int(http_head.split()[1]) if http_head else None
+        first_body_receipt = body_writes[0][1] if body_writes else None
+        return status, [data for data, _ in body_writes], flushed[-1], first_body_receipt
 
     def test_hold_first_holds_only_its_first_accepted_request(self):
         bare, tooled = dict(model="gpt-6.1-terra", stream=True, input=[]), q_net.model_request("a" * 32)
-        status, ticks, raw = self.exchange("hold-first", 1, bare)
-        self.assertEqual((status, ticks, json.loads(raw)["case"]), (200, 30, "hold-first"))
-        for case, ordinal, request, held in (("hold-first", 2, bare, None), ("hold", 1, tooled, 0), ("hold", 2, tooled | dict(input=tooled["input"] + [CONTINUATION]), 30), ("tool-less", 1, bare, 0)):
-            self.assertEqual(self.exchange(case, ordinal, request)[:2], (200, held) if held is not None else (0, 0), (case, ordinal))
-        for case, ordinal, request in (("hold-first", 1, bare | dict(model="x")), ("hold", 2, tooled | dict(model="x"))):
-            self.assertEqual(self.exchange(case, ordinal, request)[:2], (0, 0), (case, ordinal))
-        self.assertEqual(self.exchange("hold-first", 1, bare, now=569)[:2], (200, 30))
-        self.assertEqual(self.exchange("hold-first", 1, bare, now=571)[:2], (0, 0))
-        self.assertEqual(self.exchange("hold", 1, tooled, now=599)[:2], (200, 0))
+        continued = tooled | dict(input=tooled["input"] + [CONTINUATION])
+        for case, ordinal, request, now, held in (
+            ("hold-first", 1, bare, 0, 30),
+            ("hold-first", 1, bare, 569, 30),
+            ("hold", 1, tooled, 0, 0),
+            ("hold", 1, tooled, 599, 0),
+            ("hold", 2, continued, 0, 30),
+            ("tool-less", 1, bare, 0, 0),
+        ):
+            with self.subTest(case=case, ordinal=ordinal, now=now):
+                status, writes, receipt, first_body_receipt = self.exchange(case, ordinal, request, now)
+                self.assertEqual(status, 200)
+                self.assertEqual(writes[:-1], [KEEPALIVE] * held)
+                self.assertEqual(writes[-1:], [fixture.response(case, ordinal, request)[2]])
+                if case == "hold-first":
+                    self.assertEqual(first_body_receipt, receipt)
+                    self.assertEqual((receipt["case"], receipt["ordinal"], receipt["status"]), ("hold-first", 1, 200))
+
+        limited = fixture.response("limited", 1, bare)
+        for case, ordinal, request in (("hold-first", 1, bare), ("hold", 2, continued)):
+            with self.subTest(case=case, ordinal=ordinal, status=429):
+                status, writes, _, _ = self.exchange(case, ordinal, request, reply=limited)
+                self.assertEqual(status, 429)
+                self.assertEqual(writes, [limited[2]])
+
+        for ordinal, now, recorded_request in ((2, 0, bare), (1, 570, {}), (1, 571, {})):
+            with self.subTest(ordinal=ordinal, now=now, refused=True):
+                status, writes, receipt, _ = self.exchange("hold-first", ordinal, bare, now)
+                self.assertEqual((status, writes), (None, []))
+                self.assertEqual((receipt["case"], receipt["ordinal"], receipt["status"], receipt["request"]),
+                                 ("hold-first", ordinal, 400, recorded_request))
 
     def test_all_compiled_nginx_temp_paths_use_the_existing_tmpfs(self):
         """Retained binary flags and startup refusal pin every temp directory; no daemon."""
