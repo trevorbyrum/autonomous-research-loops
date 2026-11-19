@@ -711,3 +711,60 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: A runner CLI upgrade needs a native tool-call witness before dependent windows are planned. The #188 upgrade (Codex 0.153.2 to 0.169.0) merged with its native witnesses pending, and the first native accepted-hold then failed on a changed tool protocol (#193 repaired it). Touch rule: every runner CLI upgrade brief must require a native tool-call witness before dependent windows are planned.
 - source: Codex 0.169 tools diagnosis (2026-11-17), process lesson.
 - removal: the brief template for a runner CLI upgrade requires the witness before dependent windows are planned, and the next upgrade follows it.
+
+### DEBT-069 - no in-set judging code for the real route (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: Overwatch S16 #12 (class 3): the private operator set carries no judging code for the real route; the independent verifier judges from the retained job bytes (S16 §5 item 3). The log estimates this avoids about 15–30 set lines. File: not recorded (the source names no file). Owner lane: not recorded. Touch rule: any brief that adds checking code to the operator set for a real-route window takes this item or explains why not.
+- source: Overwatch S16 (2026-11-19), gen2-overwatch-s16-first-contact-fable-20261119.md §7 item 12; rules file §Overwatch S16.
+- removal: the real-route window runs with no set-side judging code and the verifier's judgment from the retained bytes is accepted.
+
+### DEBT-070 - the real-route manifest by the template path, no packer for topic 1 (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: Overwatch S16 #13 (a pending class-2 ask, default 2026-11-20T04:00Z): build the real-route manifest by the template path and add no packer for topic 1, which avoids about +20–25 host lines, +15 test lines and a host cap raise. The review's condition is to check first that no ruling made the packer mandatory (the review did not verify this). File: not recorded (the source names no file). Owner lane: not recorded. Touch rule: any brief that adds a manifest packer or raises the host cap for one takes this item.
+- source: Overwatch S16 (2026-11-19), gen2-overwatch-s16-first-contact-fable-20261119.md §7 item 13.
+- removal: Trevor's class-2 answer or the default applies, and the real-route record is built by the template path or a packer is separately ruled.
+
+### DEBT-071 - the never-started validator 044eedbf… (Phase 2)
+- kind: obligation
+- status: closed
+- owner: task 2e1
+- what: Overwatch S16 #14 (class 3): remove the never-started publication validator by a one-off reviewed exact-ID script (the A08 pattern), not a new set mode. File: the private operator-run directory validator-removal-20261119T050249Z (script sha de6c0b34…; private, not a locator).
+- source: Overwatch S16 (2026-11-19) §7 item 14; Astra's ruling in gen2-operator-set-astra-validator-log-20261119.md that the container does not block the retry.
+- removal: the container is removed by exact ID and strict absence is read back.
+- closed by: the host operator's validator removal attempt 2, 2026-11-19T06:17Z (exit 0; the non-force exact-ID rm returned the CID; the after-inspect shows "no such object"); script read by Astra in gen2-validator-removal-astra-20261119.md.
+
+### DEBT-072 - validator primary-error masking at publish.py:72 (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: The publication step's `finally` masks the primary error of a never-started validator as cleanup-unknown (observed 2026-11-19 at 03:47Z). Astra gave a zero-statement replacement (gen2-operator-set-astra-validator-log-20261119.md), and S16 #15 (class 3) adopted taking it when that line is next touched. File: publish.py line 72 in the private operator set (host operator owns it). Touch rule: any change to that line applies Astra's replacement in the same change.
+- source: native T10 retry stop of 2026-11-19 (REPORT `d2f18a30…`); Overwatch S16 #15.
+- removal: the replacement is applied and the set's test_set shows the primary error is not masked.
+
+### DEBT-073 - validator resource limits (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: The publication validator container runs without resource limits (optional, 0-line change per Astra's read in gen2-operator-set-astra-validator-log-20261119.md; owner: the host operator). File: the private operator set's publish module. Touch rule: any brief that touches the validator's start arguments takes this item or explains why not.
+- source: Astra validator log fix read (2026-11-19), debt note.
+- removal: the validator is started with resource limits, or Trevor or the host operator rules them out.
+
+### DEBT-074 - state plainly that 800 is reached only when the fixture route retires (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: Overwatch S16 #16: the operator-set budget text says plainly that the ruled 800 is reached only when the fixture route retires. The review rates it class 2 if the 800 ruling needs a date, otherwise a note to Trevor. Related facts from the log: the retirement patch reaches 832 and a temporary 960 cap is pending. File: the private operator set's budget metadata (INDEX.json budget section; private). Owner lane: not recorded.
+- source: Overwatch S16 (2026-11-19) §7 item 16; rulings log 2026-11-19T04:32Z–04:53Z.
+- removal: the budget text states it and Trevor's ruling or the default applies.
+
+### DEBT-075 - demote test_set to its real seams (Phase 2)
+- kind: obligation
+- status: open
+- owner: task 2e1
+- what: Overwatch S16 #17 (class 2, charter catch-record rule): after the retirement patch, demote the private test_set to its real seams (the supervision guard, the index and pure functions). The review estimates about −60 to −100 further lines. File: test_set.py in the private operator set. Owner lane: not recorded. Touch rule: any brief that adds mock tests to test_set takes this item (S16 §7 "not recommended: more mock tests in test_set").
+- source: Overwatch S16 (2026-11-19) §7 item 17; the ten first-native-contact faults, none of which test_set caught.
+- removal: the retirement patch is applied, test_set is demoted and Astra reads the result.
