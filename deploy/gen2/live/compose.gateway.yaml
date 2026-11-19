@@ -1,7 +1,7 @@
 # S14 D3(a): gateway-only egress overlay. Apply after compose.yaml. Reachability is the host's routes; only the registry seed limits dispatch.
 services:
   gateway:
-    entrypoint: [/bin/bash, -ceu, "python3 -m research_gateway.registry.load --load --seed-operational && exec python3 -m research_gateway.api.http"]
+    entrypoint: [/bin/bash, -ceu, "trap 'echo gateway registry load failed >&2' ERR; python3 -m research_gateway.registry.load --load --seed-operational >/dev/null 2>&1; trap - ERR; exec python3 -m research_gateway.api.http"]
     dns: ["${GEN2_EGRESS_DNS:?approved resolver}"]
     sysctls: {net.ipv4.ip_forward: "0", net.ipv6.conf.all.forwarding: "0"}
     volumes: ["${GEN2_REGISTRY_SEED:?verified seed from gateway_registry.py}:/opt/gateway/research_gateway/registry/seed/sources.toml:ro"]
