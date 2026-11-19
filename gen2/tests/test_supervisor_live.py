@@ -21,7 +21,7 @@ from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import authority as auth, docker_cli, jobs
 from gen2.supervisor.isolation import LiveProfileRefused
 from gen2.tests import children, router_fixtures as rf
-from gen2.tests import test_docker_cli
+from gen2.tests.test_rejection import FAILED, ROW, jl
 from gen2.tests.supervisor_fixtures import MAIN, SupervisedTestCase, succeed
 
 REAL_CONTAIN = docker_cli.contain_job   # before any test patches it
@@ -350,36 +350,6 @@ class RealRoute(LiveWorld):
         self.assertIsNone(self.authority.result("adm", record["content_hash"]))               # an unassemblable rejection is no result: fixed U
 
 
-    def test_an_empty_judgment_rejected_run_reaches_the_typed_fact_the_hold_and_the_route_wide_block(self):
-        """The backend's own completion for a 0.169-shaped failed turn (empty judgment, exit 1; real scratch files and collection, test_docker_cli) crosses
-        the supervisor, authority and Router: failed end at U, typed fact, operator-owned hold, replay-safe, and every later dispatch on the route refused."""
-        backend = test_docker_cli.DockerBoundary("test_an_empty_judgment_on_a_failed_exit_is_classified_keeps_the_empty_observation_and_commits_nothing_scientific")
-        backend.setUp()
-        self.addCleanup(backend.tearDown)
-        _, _, made = backend.retained(judgment=b"")
-        self.assertEqual((made["disposition"]["disposition"], made["output_observation"]), ("credentials_rejected", {"kind": "judgment", "status": "empty"}))
-        supervisor = self.live_supervisor()
-        job = self.prepare(supervisor, steps=[{"op": "exit", "code": 1}])
-        job.write("docker-complete.json", {**made, "origin": job.read("docker-plan.json")["origin"], "refs": []})   # the real completion; its refs are that harness's spool
-        self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")      # the launch intent is recorded first
-        job.write("runner-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10.123456789Z"}})   # the runner started after the intent
-        self.clock.set("2026-09-27T10:00:30Z")
-        self.assertEqual(LiveStart.drive(self, supervisor), "failed")
-        (result,) = self.audit("dispatch_result")
-        self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]),
-                         (self.audit("dispatch_authorized")[0]["upper_minor_units"], "worst_case"))   # no scientific outcome; cost unknown charges the intent's U
-        (fact,) = self.rows("SELECT state FROM capability_facts WHERE capability = ?", "provider-auth:codex")
-        self.assertEqual(fact[0], "failing")
-        (hold,) = self.rows("SELECT hold_class, owner FROM holds WHERE hold_class = ?", "capability")
-        self.assertEqual(tuple(hold), ("capability", "operator"))
-        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "failed")
-        self.to_queued(rf.OTHER)
-        again = self.live_supervisor()
-        again.prepare(self.order("research_pass", succeed("inv_slot0002"), inv="inv_slot0002", topic=rf.OTHER), live=True)
-        self.assertEqual(again.advance("inv_slot0002", live_start=True), "cancelled")   # route-wide: another topic's dispatch is refused, nothing started
-        self.assertFalse((again.job("inv_slot0002").dir / "spawn.json").exists())
-
-
 class FailedEnd(LiveWorld):
     """Evidence the backend set aside is staged at every observed end, so a failed end's result records (Gate S #12 change 1)."""
     JUDGMENT, USAGE = b"2e1 complete", b'{"usage": "recorded"}'
@@ -568,13 +538,15 @@ class CollectionRefusal(RealRoute):
     NET, EGRESS, IMAGE = "b" * 64, "c" * 64, "sha256:" + "1" * 64
     PIN = "sha256:" + hashlib.sha256(b"configuration").hexdigest()
 
-    def world(self, publish=True):
+    def world(self, publish=True, rejected=False):
         """A live job whose executor is the production child with the production live agent over a daemon-free transport; returns the job and waits for the child's end."""
         self.to_queued(rf.OTHER)
         supervisor = self.live_supervisor()
         order = dataclasses.replace(self.order("research_pass", [], inv=MAIN), command=(sys.executable, str(children.path("gen2/tests/live_refusing_child.py"))))
         if not publish:
             (self.root / "no-publish").write_text("")
+        if rejected:
+            (self.root / "rejected").write_text("")
         supervisor.prepare(order, live=True)
         job = supervisor.job(MAIN)
         self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
@@ -582,12 +554,52 @@ class CollectionRefusal(RealRoute):
             if (job.dir / "exit.json").exists():
                 break
             time.sleep(0.05)
+        if rejected:   # the production agent's own mapping of the backend's classified rejection, not a scripted exit
+            self.assertEqual(job.read("exit.json")["code"], 1)
+            self.assertIn("CredentialsRejected", (job.dir / "executor.log").read_text())
+            return supervisor, job
         self.assertEqual(job.read("exit.json")["code"], 2)   # the child failed because the backend refused, through the production agent error path
         self.assertIn("the live backend refused: collection_absent", (job.dir / "executor.log").read_text())
         return supervisor, job
 
     def calls(self):
         return [tuple(json.loads(line)) for line in (self.root / "calls.jsonl").read_text().splitlines()]
+
+    def test_an_empty_judgment_rejected_run_reaches_the_typed_fact_the_hold_the_retained_evidence_and_the_route_wide_block(self):
+        """The 0.169-shaped rejected failed turn (runner exit 1, EMPTY judgment leaf, one 401 relay row) through the production child end to end: the real
+        scratch collection and classifier, `ScratchBatch`, `agent_for` and `child.main` produce the evidence, the completion and exit 1; the supervisor
+        stages every raw ref; the Router records the failed end at U, the typed fact and the operator hold, retains the evidence, and blocks the route."""
+        supervisor, job = self.world(rejected=True)
+        complete = job.read("docker-complete.json")
+        self.assertEqual((complete["disposition"], complete["output_observation"]), ({"disposition": "credentials_rejected", "reason": "relay_401"}, {"kind": "judgment", "status": "empty"}))
+        refs = complete["refs"]
+        self.assertEqual(len(refs), 4)                                                     # events, diagnostics, access, usage: every nonempty ref is kept
+        row = jl({**ROW, "upstream": "203.0.113.7:443"})
+        wanted = {canonical.bytes_digest(b): b for b in (FAILED, b"diagnostics", row)}
+        self.assertTrue(set(wanted) <= {r["content_hash"] for r in refs})
+        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "running")
+        job.write("runner-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10.123456789Z"}})   # the runner started after the intent
+        self.clock.set("2026-09-27T10:00:30Z")
+        self.assertEqual(LiveStart.drive(self, supervisor), "failed")
+        hashes = {r["content_hash"] for r in refs}
+        self.assertEqual(hashes - {r["content_hash"] for r in job.read("journal.json")["collected"]["evidence"]}, set())   # the supervisor's retained evidence
+        (result,) = self.audit("dispatch_result")
+        self.assertEqual(hashes - {a["content_hash"] for a in result["evidence"]["artifacts"]}, set())   # the dispatch result
+        self.assertEqual(hashes - {row[0] for row in self.rows("SELECT content_hash FROM artifacts WHERE topic_id = ?", rf.TOPIC)}, set())   # the registered Router artifacts
+        for digest, data in wanted.items():
+            self.assertEqual(self.spool.read(digest, topic_id=rf.TOPIC), data)             # the bytes, not only the names
+        self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]), (self.audit("dispatch_authorized")[0]["upper_minor_units"], "worst_case"))   # no scientific outcome: full U
+        (fact,) = self.rows("SELECT state FROM capability_facts WHERE capability = ?", "provider-auth:codex")
+        self.assertEqual(fact[0], "failing")
+        (hold,) = self.rows("SELECT hold_class, owner FROM holds WHERE hold_class = ?", "capability")
+        self.assertEqual(tuple(hold), ("capability", "operator"))
+        self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "failed")
+        again = self.live_supervisor()
+        again.prepare(self.order("research_pass", succeed("inv_slot0002"), inv="inv_slot0002", topic=rf.OTHER), live=True)
+        self.assertEqual(again.advance("inv_slot0002", live_start=True), "cancelled")   # route-wide: another topic's dispatch is refused, nothing started
+        self.assertFalse((again.job("inv_slot0002").dir / "spawn.json").exists())
+        (cancel,) = [json.loads(r[0]) for r in self.rows("SELECT detail FROM audit_events WHERE kind = 'cancel_requested' AND invocation_id = ?", "inv_slot0002")]
+        self.assertEqual(cancel["reason"], "dispatch refused: provider_rejection_stopped")   # the retained route history, not the capability hold alone
 
     def test_without_fallback_publication_the_same_refusal_stays_held(self):
         supervisor, job = self.world(publish=False)

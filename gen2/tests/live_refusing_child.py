@@ -1,6 +1,8 @@
 """The live-order executor child for the collection-refusal composition test: the PRODUCTION child (`gen2.app.child.main`) with the PRODUCTION live agent
 (`live.agent_for`), whose `DockerCLI.run` talks to a daemon-free transport that writes real cidfiles and returns inspect shapes and then refuses at collection
-(nothing was written to the out directory). The refusal leaves through `live.agent_for` -> `child.main` as the child's own exit status; the generated end
+(nothing was written to the out directory). With the station's `rejected` marker the run is instead the 0.169-shaped rejected failed turn: the runner exits 1, the
+CLI's pre-created judgment leaf is EMPTY, and the relay left one independent 401 row; the production collection, classifier, `ScratchBatch`, `agent_for` and
+`child.main` then derive the end, the evidence and the exit status. The refusal leaves through `live.agent_for` -> `child.main` as the child's own exit status; the generated end
 fact comes from the production `contain_job` that `run` calls. Run by path in the job's scratch directory; not collected as tests; no Docker, no provider."""
 import hashlib
 import json
@@ -14,6 +16,7 @@ from gen2.app import child, live   # noqa: E402
 from gen2.core import canonical   # noqa: E402
 from gen2.core.instants import utc_instant_ns   # noqa: E402
 from gen2.supervisor import docker_cli, jobs   # noqa: E402
+from gen2.tests.test_rejection import FAILED, ROW, jl   # noqa: E402
 
 NET, EGRESS, IMAGE = "b" * 64, "c" * 64, "sha256:" + "1" * 64
 FAKE_SHA = hashlib.sha256(b"fake").hexdigest()
@@ -71,10 +74,14 @@ def main(argv):
         cli = real(*args, **kwargs, clock=lambda: utc_instant_ns(job.read("order.json")["deadline_at"]) / 1e9 - 300)
         for name in ("out", "evidence"):
             (root / name / cli.plan["generation"]).mkdir(parents=True, exist_ok=True)
+        if rejected:   # what the backend leaves: the bound-but-unwritten judgment leaf, and the relay's own access row
+            (root / "out" / cli.plan["generation"] / "judgment.json").touch(mode=0o600)
+            (root / "evidence" / cli.plan["generation"] / "access.jsonl").write_bytes(jl({**ROW, "upstream": "203.0.113.7:443"}))
         cli.plan.update(slots={n: str(root / n) for n in ("out", "evidence")}, binds={**cli.plan["binds"], "out": str(root / "out" / cli.plan["generation"])})
         return cli
     table = {"research_pass/scope": lambda stage, bytes_of: (lambda work, judgment: {})}
     create = jobs.Job.create
+    rejected = (root / "rejected").exists()
     withhold = (root / "no-publish").exists()   # the counterfactual: the fallback end fact is never published
     with mock.patch.object(jobs.Job, "create", lambda self, name, value: True if withhold and name == "docker-complete.json" else create(self, name, value)), \
             mock.patch.object(docker_cli, "CLI_SHA", FAKE_SHA), \
@@ -82,8 +89,8 @@ def main(argv):
             mock.patch.object(docker_cli, "free_space"), mock.patch.object(docker_cli, "DockerCLI", build), \
             mock.patch.object(real, "network", lambda self, g: job.write("network-job.json", {"Id": NET, "Name": "gen2-2e1-live-job-" + g}) or NET), \
             mock.patch.object(real, "runtime"), mock.patch.object(real, "endpoint"), mock.patch.object(real, "start"), mock.patch.object(real, "drain"), \
-            mock.patch.object(real, "logs", lambda self, *a, **k: (b"events", b"diagnostics")), \
-            mock.patch.object(real, "end", lambda self, cid, role="runner": {"State": {"ExitCode": 0}}):
+            mock.patch.object(real, "logs", lambda self, *a, **k: (FAILED if rejected else b"events", b"diagnostics")), \
+            mock.patch.object(real, "end", lambda self, cid, role="runner": {"State": {"ExitCode": int(rejected and role == "runner")}}):
         agent = live.agent_for(directory, env, execute=transport(root))   # the production live agent; collection refuses because the out directory holds no judgment
         return child.main([str(directory)], env=env, table=table, agent=agent)
 
