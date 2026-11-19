@@ -17,6 +17,7 @@ import unittest.mock
 from pathlib import Path
 
 from gen2.core import canonical
+from gen2.core.evidence_media import evidence_name
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import authority as auth, docker_cli, jobs
 from gen2.supervisor.isolation import LiveProfileRefused
@@ -577,6 +578,9 @@ class CollectionRefusal(RealRoute):
         row = jl({**ROW, "upstream": "203.0.113.7:443"})
         wanted = {canonical.bytes_digest(b): b for b in (FAILED, b"diagnostics", row)}
         self.assertTrue(set(wanted) <= {r["content_hash"] for r in refs})
+        snapshot = {r["content_hash"]: (job.scratch / evidence_name(r["content_hash"], r["media_type"])).read_bytes() for r in refs}   # every ref's set-aside bytes, usage included, before collection
+        for ref in refs:
+            self.assertEqual((canonical.bytes_digest(snapshot[ref["content_hash"]]), len(snapshot[ref["content_hash"]])), (ref["content_hash"], ref["size_bytes"]))
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "running")
         job.write("runner-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10.123456789Z"}})   # the runner started after the intent
         self.clock.set("2026-09-27T10:00:30Z")
@@ -588,6 +592,8 @@ class CollectionRefusal(RealRoute):
         self.assertEqual(hashes - {row[0] for row in self.rows("SELECT content_hash FROM artifacts WHERE topic_id = ?", rf.TOPIC)}, set())   # the registered Router artifacts
         for digest, data in wanted.items():
             self.assertEqual(self.spool.read(digest, topic_id=rf.TOPIC), data)             # the bytes, not only the names
+        for digest, data in snapshot.items():
+            self.assertEqual(self.spool.read(digest, topic_id=rf.TOPIC), data)             # every retained ref, usage included, is the bytes the child set aside
         self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]), (self.audit("dispatch_authorized")[0]["upper_minor_units"], "worst_case"))   # no scientific outcome: full U
         (fact,) = self.rows("SELECT state FROM capability_facts WHERE capability = ?", "provider-auth:codex")
         self.assertEqual(fact[0], "failing")
