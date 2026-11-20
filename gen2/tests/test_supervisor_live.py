@@ -623,11 +623,12 @@ class CollectionRefusal(RealRoute):
             ("mismatched marker", (0, missing, None), (0, missing, None)),
             ("already terminal", (0, missing, None), (1, None, "failed")),
             ("unconfirmed group", (0, unknown, None), (1, None, "failed")),
+            ("vanished launcher", (0, unknown, None), None),
         ):
             with self.subTest(case):
                 self.tearDown()
                 self.setUp()
-                supervisor, job = self.world(publish=case in ("restart", "unconfirmed group"))
+                supervisor, job = self.world(publish=case in ("restart", "unconfirmed group", "vanished launcher"))
                 origin = self.audit("dispatch_authorized")[0]["origin"]
                 plan_origin = job.read("docker-plan.json")["origin"]
                 if case == "restart":
@@ -645,8 +646,27 @@ class CollectionRefusal(RealRoute):
                     with unittest.mock.patch.object(supervisor, "_descendants", return_value=(
                             {"handling": "unconfirmed", "count": 1}, {"reason": "descendants_after_exit"})):
                         self.assertEqual(supervisor.advance(MAIN), "unknown_unresolved")
+                if case == "vanished launcher":
+                    self.assertEqual(job.read("docker-complete.json")["origin"], plan_origin)
+                    (job.dir / "exit.json").unlink()  # reproduce the on-disk state if the launcher never published its exit
+                    for _ in range(200):
+                        view = job.lookup()
+                        if view["verdict"] == "vanished" and not view["members"]:
+                            break
+                        time.sleep(0.01)
+                    self.assertEqual((view["verdict"], view["members"]), ("vanished", []))
                 LiveStart.drive(self, supervisor)
+                if case == "vanished launcher":
+                    lease = job.read("journal.json")["grant"]["lease"]["lease_id"]
+                    self.assertEqual(self.rows("SELECT released_at FROM leases WHERE lease_id = ?", lease), [(None,)])
+                    self.assertEqual(self.rows("SELECT state, unknown_episode FROM invocations WHERE invocation_id = ?", MAIN), [("outcome_unknown", 1)])
+                    self.assertEqual(self.rows("SELECT cleared_at FROM holds WHERE subject_ref = ?", f"invocation:{MAIN}#unknown:1"), [(None,)])
                 self.assertEqual(self.end_state(job), before)
+                if case == "vanished launcher":
+                    (incident,) = supervisor.incidents()
+                    self.assertEqual(incident["unknown_episode"], 1)
+                    recovery = self.recover_end(supervisor, job)
+                    self.assertEqual((recovery["status"], recovery["outcome"], self.end_state(job)), ("resumed", "stalled", before))
                 if after:
                     if case == "already terminal":
                         self.assertTrue(job.create("docker-complete.json", {"origin": plan_origin, "refs": [],

@@ -1148,8 +1148,7 @@ class Supervisor:
             if collected.get("rehandled") and observation["descendants"]["handling"] == "unconfirmed":
                 observation = {**observation, "descendants": collected["rehandled"]["descendants"]}
             if (live and not authenticated_end(job, plan, collected)) or observation["descendants"]["handling"] == "unconfirmed":
-                self._unresolved(job, journal, status, "the collected backend end is not authenticated" if live else
-                                 "the collected end's descendants are not confirmed ended")
+                self._unresolved(job, journal, status, "backend end not authenticated" if live else "the collected end's descendants are not confirmed ended")
             if cancel and observation["termination"] is None:
                 # a cancellation of work that already ended: the owned group is confirmed empty by the same idempotent
                 # operation that ends a live one — an empty group is signalled nothing (descendants none_found) — and the
@@ -1183,6 +1182,8 @@ class Supervisor:
             observation = {**self._unrun(None, "running"), "process": self._process(view["identity"])}
             return self._reconcile(job, order, journal, grant, status, "found_running", "job_handle_lookup", observation, identity=observation["process"])
         if view["verdict"] == "vanished" and not view["members"] and not cancel:  # the launcher is gone, and nothing of its group is left
+            if journal.get("dispatch") and not authenticated_end(job, docker_cli._read(job, "docker-plan.json"), collected):
+                self._unresolved(job, journal, status, "backend end not authenticated")
             observation = {**self._unrun("no_exit_record", "the launcher is gone without an exit record"), "process": self._process(view["identity"])}
             return self._reconcile(job, order, journal, grant, status, "confirmed_failed", "job_handle_lookup", observation)
         # running under cancellation or past its deadline, or vanished leaving members: end the group, then reconcile by termination

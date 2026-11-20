@@ -38,16 +38,15 @@ def matching_completion(job: jobs.Job, plan: dict | None) -> dict | None:
                         and isinstance(complete.get("refs", []), list) and isinstance(complete.get("disposition", {}), dict)) else None
 
 
-def authenticated_end(job: jobs.Job, plan: dict | None, collected: dict) -> dict | None:
+def authenticated_end(job: jobs.Job, plan: dict | None, collected: dict | None) -> dict | None:
     """The create-only end marker, with original or bound recovery proof of descendant handling."""
-    original = collected["observation"]["descendants"]
-    recovery = collected.get("rehandled") or {}
-    complete = matching_completion(job, plan)
-    if complete and (original["handling"] != "unconfirmed" or
-                     (recovery.get("evidence_ref") == collected["record"]["content_hash"] and recovery.get("origin") == complete["origin"]
-                      and recovery["descendants"]["handling"] != "unconfirmed")):
+    if collected is None or not (complete := matching_completion(job, plan)):
+        return None
+    if collected["observation"]["descendants"]["handling"] != "unconfirmed":
         return complete
-    return None
+    recovery = collected.get("rehandled") or {}
+    return complete if (recovery.get("evidence_ref") == collected["record"]["content_hash"] and recovery.get("origin") == complete["origin"]
+                        and recovery["descendants"]["handling"] != "unconfirmed") else None
 
 
 def verify_record(record: bytes, pin: str, manifest: bytes) -> Mapping | None:
