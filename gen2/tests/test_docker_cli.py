@@ -1153,12 +1153,15 @@ class DockerBoundary(unittest.TestCase):
         from gen2.supervisor.supervisor import Supervisor, Waiting
         control = mock.Mock()
         supervisor = Supervisor(control, None, self.root, station_id="fixture", host_id="fixture", clock=lambda: "2026-11-04T00:00:00Z")
-        for method, request in (("record_transition", {"to_state": "failed"}), ("reconcile", {"resolution": "confirmed_failed"}), ("commit_outcome", {})):
-            before = self.files()
-            with self.assertRaisesRegex(Waiting, "backend_end_unconfirmed"):
-                supervisor._call(self.job, {}, method, request)
-            self.assertEqual(self.files(), before)
-            self.assertEqual(control.mock_calls, [])
+        journal = {"budgets": {}}
+        attempts = supervisor.policy.unknown_attempts
+        requests = (("record_transition", {"to_state": "failed"}), ("reconcile", {"resolution": "confirmed_failed"}), ("commit_outcome", {}))
+        for attempt in range(attempts + 1):
+            method, request = requests[attempt % len(requests)]
+            with self.assertRaisesRegex(Waiting, "backend_end_unconfirmed" if attempt < attempts else "stalled"):
+                supervisor._call(self.job, journal, method, request)
+        self.assertEqual((journal["budgets"]["unknown"], journal["incident"]["kind"]), (attempts, "backend_end_unconfirmed"))
+        self.assertEqual(control.mock_calls, [])
         self.job.write("docker-complete.json", {"origin": self.cli.plan["origin"]})
         supervisor._call(self.job, {"budgets": {}}, "record_transition", {"to_state": "failed"})
         control.record_transition.assert_called_once_with({"to_state": "failed"})

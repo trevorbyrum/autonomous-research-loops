@@ -254,10 +254,15 @@ class DispatchTests(rf.RouterTestCase):
         """One invalid date/end/identity per row and failed hold insertion leave the whole store equal; no runtime."""
         self.clock.set("2026-10-31T12:00:00Z")
         ref = self.authorize()
-        for overrides, reason in (({"job_handle": "wrong"}, "evidence_refused"), ({"handling": "unconfirmed"}, "evidence_refused"),
+        for overrides, reason in (({"job_handle": "wrong"}, "evidence_refused"),
                                   ({"findings": []}, "evidence_refused"), ({"exit": {"code": 0, "signal": None}}, "dispatch_origin_invalid")):
             req = self.rejection(ref, **overrides)
             self.refused("record_dispatch_result", req, reason)
+        unconfirmed = self.rejection(ref, handling="unconfirmed")
+        with patch.dict(self.authority.evidence, {"confirmed_end": False}):
+            self.refused("record_dispatch_result", unconfirmed, "dispatch_origin_invalid")
+        self.refused("record_transition", {**{k: unconfirmed[k] for k in ("capability_id", "invocation_id")},
+            "to_state": "failed", "failure_class": "exit_nonzero", "end_evidence_ref": unconfirmed["evidence_ref"]}, "evidence_refused")
         req = self.rejection(ref)
         for field, bad in (("observed_at", "bad"), ("started_at", "2026-11-01T00:00:00Z"), ("observed_at", "2027-01-01T00:00:00Z")):
             with patch.dict(self.authority.evidence["rejection"], {field: bad}):

@@ -14,6 +14,7 @@ import tempfile
 import time
 import unittest
 import unittest.mock
+from itertools import product
 from pathlib import Path
 
 from gen2.core import canonical
@@ -23,7 +24,7 @@ from gen2.supervisor import authority as auth, docker_cli, jobs
 from gen2.supervisor.isolation import LiveProfileRefused
 from gen2.tests import children, router_fixtures as rf
 from gen2.tests.test_rejection import FAILED, ROW, jl
-from gen2.tests.supervisor_fixtures import MAIN, SupervisedTestCase, succeed
+from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, MAIN, SupervisedTestCase, Unconfirmed, succeed
 
 REAL_CONTAIN = docker_cli.contain_job   # before any test patches it
 MANIFEST = b'{"profile": "fixture-only"}'
@@ -214,7 +215,7 @@ class LiveStart(LiveWorld):
     def drive(self, supervisor):
         for _ in range(200):
             outcome = supervisor.advance(MAIN, live_start=True)
-            if outcome in ("committed", "failed", "cancelled"):
+            if outcome in ("committed", "failed", "cancelled", "stalled"):
                 return outcome
         return outcome
 
@@ -230,19 +231,36 @@ class LiveStart(LiveWorld):
         self.assertFalse((two.dir / "spawn.json").exists())
         self.assertEqual(len(self.audit("dispatch_authorized")), 1)
 
-    def test_with_no_confirmed_end_no_result_is_recorded_and_the_router_keeps_the_intent(self):
-        supervisor = self.live_supervisor()
-        job = self.prepare(supervisor)                                                    # the backend never wrote docker-complete.json
-        self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
-        for _ in range(60):
-            if supervisor.advance(MAIN, live_start=True) == "backend_end_unconfirmed":
-                break
-        self.assertEqual(self.audit("dispatch_result"), [])
-        self.assertEqual(len(self.audit("dispatch_authorized")), 1)
-
-
 class CrashBoundaries(LiveWorld):
     """Every durable intermediate state of a live start has a defined safe recovery: no spawn, no second intent, no conversion into a non-live job."""
+
+    def cancel_after_crash(self, point, verdict):
+        def crash(boundary):
+            if boundary == point:
+                raise KeyboardInterrupt(boundary)
+        first = self.live_supervisor(fault=crash)
+        job = self.prepare(first, steps=[{"op": "hang"}])
+        with self.assertRaisesRegex(KeyboardInterrupt, point):
+            first.advance(MAIN, live_start=True)
+        self.assertEqual(first._await_identity(job, 2)["verdict"], verdict)
+        cancel = self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+        self.assertEqual(cancel["status"], "recorded")
+        return job
+
+    def test_cancel_after_pre_spawn_crash_releases_a_proven_unlaunched_job(self):
+        job = self.cancel_after_crash("spawning", "unstarted")
+        dispatch = job.read("journal.json")["dispatch"]
+        intents = self.audit("dispatch_authorized")
+        restarted = self.live_supervisor()
+        self.assertEqual(restarted.recover()[MAIN], "cancelled")
+        journal = job.read("journal.json")
+        lease = journal["grant"]["lease"]["lease_id"]
+        self.assertEqual(self.rows("SELECT release_reason FROM leases WHERE lease_id = ? AND released_at IS NOT NULL", lease), [("cancelled",)])
+        self.assertTrue((job.dir / "abandoned").exists())
+        self.assertTrue(journal["unlaunched"])
+        self.assertEqual((journal["settled"], restarted.incidents(), self.audit("dispatch_result")), ("cancelled", [], []))
+        self.assertEqual((journal["dispatch"], self.audit("dispatch_authorized")), (dispatch, intents))
+        self.assertEqual(self.audit("dispatch_stopped"), [{"admission_ref": dispatch["admission_ref"], "charge_minor_units": 400}])
 
     def spawned(self, job):
         return (job.dir / "spawn.json").exists()
@@ -407,27 +425,6 @@ class FailedEnd(LiveWorld):
         self.assertEqual([r["content_hash"] for r in collected["evidence"]], [canonical.bytes_digest(data)])
 
 
-class Containment(LiveWorld):
-    def test_a_deadline_or_cancel_termination_of_a_live_job_kills_and_removes_its_containers_and_an_unendable_one_leaves_the_end_unconfirmed(self):
-        for failing in (False, True):
-            with self.subTest(failing=failing):
-                self.tearDown()
-                self.setUp()
-                supervisor = self.live_supervisor()
-                job = self.prepare(supervisor, steps=[{"op": "hang"}])
-                self.finish_backend(job)
-                self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
-                with unittest.mock.patch("gen2.supervisor.docker_cli.contain_job", side_effect=LiveProfileRefused("contain_failed") if failing else None) as contain:
-                    self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
-                    for _ in range(200):
-                        supervisor.advance(MAIN, live_start=True)
-                        if job.read("journal.json").get("collected"):
-                            break
-                contain.assert_called()
-                handling = job.read("journal.json")["collected"]["observation"]["descendants"]["handling"]
-                self.assertEqual(handling == "unconfirmed", failing)
-
-
 class ContainedEnd(LiveWorld):
     """The production `contain_job` is the one owner of the end fact for the supervisor's deadline and cancel paths: a fake CLI transport (or a
     one-line fake `docker` for the production `capture`), no hand-written marker anywhere here."""
@@ -435,10 +432,11 @@ class ContainedEnd(LiveWorld):
 
     def hung(self, supervisor=None, inv=MAIN):
         supervisor = supervisor or self.live_supervisor()
-        job = self.prepare(supervisor, inv=inv, steps=[{"op": "hang"}])
+        job = self.prepare(supervisor, inv=inv, steps=[{"op": "write", "name": "ready", "text": ""}, {"op": "hang"}])
         job.write("docker-plan.json", {**job.read("docker-plan.json"), "fixture": {"Id": self.FIXTURE}})   # the fixture route's protected plan owes a fixture ID
         job.write("docker.json", {})   # what `DockerCLI` leaves before its first command: an intact, empty mutation history
         self.assertEqual(supervisor.advance(inv, live_start=True), "running")
+        self.wait_for_file("scratch/ready", inv)
         return supervisor, job
 
     def contain(self, job, execute=None, seconds_after_deadline=1, **real):
@@ -459,22 +457,12 @@ class ContainedEnd(LiveWorld):
         self.addCleanup(patch.stop)
         return calls
 
-    def drive(self, supervisor, inv=MAIN):
-        for _ in range(200):
-            try:
-                outcome = supervisor.advance(inv, live_start=True)
-            except LiveProfileRefused:
-                return "held"
-            if outcome in ("committed", "failed", "cancelled"):
-                return outcome
-        return outcome
-
     def test_a_cancelled_job_is_ended_by_containment_alone_recorded_at_worst_case_and_the_next_admission_is_allowed(self):
         self.to_queued(rf.OTHER)
         supervisor, job = self.hung()
         calls = self.contain(job)
         self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
-        self.assertEqual(self.drive(supervisor), "cancelled")                              # cancellation stays cancelled, not relabelled failed
+        self.assertEqual(LiveStart.drive(self, supervisor), "cancelled")                              # cancellation stays cancelled, not relabelled failed
         self.assertEqual(calls, [("kill", self.FIXTURE), ("rm", "-f", self.FIXTURE)])      # nothing else was created: only the plan's fixture is an original
         (result,) = self.audit("dispatch_result")
         self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"], result["trial_stopped"]), (400, "worst_case", False))
@@ -484,26 +472,151 @@ class ContainedEnd(LiveWorld):
         second.prepare(self.order("research_pass", succeed("inv_slot0002"), inv="inv_slot0002", topic=rf.OTHER), live=True)
         self.assertEqual(second.advance("inv_slot0002", live_start=True), "running")       # the next invocation is authorized
 
-    def test_the_order_deadline_ends_through_the_same_owner_as_failed_timeout_and_a_late_or_failed_end_is_held(self):
-        from gen2.tests.supervisor_fixtures import AFTER_DEADLINE
-        for case, late, rm_fails in (("ended in time", 1, False), ("ended late", 100, False), ("relay will not go", 1, True)):
-            with self.subTest(case):
+    def enter_unknown(self):
+        grant = self.journal()["grant"]
+        reply = self.router.record_transition({"invocation_id": MAIN, "capability_id": grant["capability_id"],
+            "to_state": "outcome_unknown", "unknown_episode": 1, "unknown_cause": "contact_lost"})
+        self.assertEqual(reply["status"], "recorded")
+        self.authority.epoch = "restarted"
+        return self.live_supervisor()
+
+    def assert_end(self, terminal, incident):
+        self.assertEqual((self.journal().get("settled"), [i["kind"] for i in self.live_supervisor().incidents()]),
+                         (terminal, [incident] if incident else []))
+        self.assertEqual(self.ended()["lease_release"], terminal)
+        results = self.audit("dispatch_result")
+        self.assertEqual(len(results), int(terminal is not None))
+        return results
+
+    def test_forced_end_combination(self):
+        causes = ("cancellation", "timeout", "vanished with members", "vanished empty")
+        outcomes = ("confirmed", "failed", "late")
+        for restarted, cause, outcome in product((False, True), causes, outcomes):
+            with self.subTest(restarted=restarted, cause=cause, containment=outcome):
+                self.tearDown()
+                self.setUp()
+                first, job = self.hung()
+                supervisor = self.enter_unknown() if restarted else first
+                vanished = cause.startswith("vanished")
+                if vanished:
+                    child = first._children[job.handle]
+                    child.kill()
+                    child.wait(timeout=5)
+                    if cause == "vanished empty":
+                        self.assertEqual(self.end_every_process(), [])
+                    self.assertEqual(job.lookup()["verdict"], "vanished")
+                    self.assertEqual(bool(job.lookup()["members"]), cause == "vanished with members")
+                if cause == "cancellation":
+                    self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+                def status_at_deadline(*args):
+                    self.clock.set(AFTER_DEADLINE)
+                    return status(*args)
+
+                status = supervisor._status
+                crossing = restarted and cause == "timeout"
+                if cause == "timeout" and not crossing:
+                    self.clock.set(AFTER_DEADLINE)
+                calls = self.contain(job, execute=lambda argv: (1, b"", b"error") if outcome == "failed" and argv[0] == "rm" else (0, b"", b""),
+                                     seconds_after_deadline=100 if outcome == "late" else 1)
+                with unittest.mock.patch.object(supervisor, "_status", side_effect=status_at_deadline if crossing else status):
+                    LiveStart.drive(self, supervisor)
+                self.assertEqual(calls, [("kill", self.FIXTURE), ("rm", "-f", self.FIXTURE)])
+                saved = self.journal()["collected"]
+                self.assertEqual(saved["observation"]["termination"]["reason"], "reconciliation" if vanished else cause)
+                self.assertEqual(saved["observation"]["descendants"]["handling"],
+                                 "unconfirmed" if outcome == "failed" else ("none_found" if cause == "vanished empty" else "terminated"))
+                self.assertEqual(job.read("containment.json")["late"], outcome == "late")
+                self.assertEqual(job.read("docker-complete.json") is not None, outcome == "confirmed")
+                terminal = ("cancelled" if cause == "cancellation" else "failed") if outcome == "confirmed" else None
+                unknown = restarted or vanished or outcome == "failed"
+                incident = None if terminal else ("outcome_unknown_unresolved" if unknown else "backend_end_unconfirmed")
+                results = self.assert_end(terminal, incident)
+                if terminal:
+                    (result,) = results
+                    (intent,) = self.audit("dispatch_authorized")
+                    self.assertEqual((result["evidence"]["origin"], result["charge_minor_units"]), (intent["origin"], intent["upper_minor_units"]))
+                    self.assertEqual(self.ended()["reconciliations"], ["terminated_group"] if unknown else [])
+                    if unknown:
+                        self.assertTrue(result["trial_stopped"])
+                        self.assertEqual(self.rows("SELECT kind FROM audit_events WHERE invocation_id = ? AND kind IN ('dispatch_result', 'reconciled') ORDER BY audit_event_id", MAIN),
+                                         [("dispatch_result",), ("reconciled",)])
+
+    def test_termination_obligation_survives_interruption_and_a_racing_exit(self):
+        for boundary in ("before_group", "before_backend", "before_save"):
+            with self.subTest(boundary):
+                self.tearDown()
+                self.setUp()
+                _, job = self.hung()
+                supervisor = self.enter_unknown()
+                self.finish_backend(job)
+                self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+                save = supervisor._save
+
+                def interrupted_save(target, journal):
+                    if "observation" in journal.get("observing", {}):
+                        raise KeyboardInterrupt
+                    save(target, journal)
+
+                with unittest.mock.patch.object(supervisor, "_save", side_effect=interrupted_save if boundary == "before_save" else save), \
+                        unittest.mock.patch.object(supervisor, "_end_group", side_effect=KeyboardInterrupt if boundary == "before_group" else supervisor._end_group), \
+                        unittest.mock.patch.object(docker_cli, "contain_job", side_effect=LiveProfileRefused("contain_failed") if boundary == "before_save" else KeyboardInterrupt):
+                    with self.assertRaises(KeyboardInterrupt):
+                        supervisor.advance(MAIN)
+                job.write("exit.json", {"code": 0, "signal": None})
+                with unittest.mock.patch.object(docker_cli, "contain_job", side_effect=LiveProfileRefused("contain_failed")) as contain:
+                    restarted = self.live_supervisor()
+                    LiveStart.drive(self, restarted)
+                    saved = self.journal()["collected"]
+                    self.assertEqual(restarted.recover()[MAIN], "stalled")
+                    self.assertEqual(contain.call_count, 1)
+                self.assertEqual(self.journal()["collected"], saved)
+                self.assertEqual(saved["observation"]["descendants"]["handling"], "unconfirmed")
+                self.assert_end(None, "outcome_unknown_unresolved")
+
+    def test_local_deadline_contains_a_vanished_empty_live_job_during_router_outage(self):
+        supervisor, job = self.hung()
+        self.end_every_process()
+        self.assertEqual((job.lookup()["verdict"], job.lookup()["members"]), ("vanished", []))
+        calls = self.contain(job)
+        self.control.down = True
+        self.clock.set(AFTER_DEADLINE)
+        self.assertEqual(supervisor.advance(MAIN), "router_unavailable")
+        self.assertEqual(calls, [("kill", self.FIXTURE), ("rm", "-f", self.FIXTURE)])
+        self.assert_end(None, None)
+        self.control.down = False
+        self.assertEqual(supervisor.advance(MAIN), "failed")
+
+    def test_recovery_requires_both_ends_and_the_matching_marker(self):
+        for marker, after in ((None, "outcome_unknown_unresolved"), ("mismatch", "outcome_unknown_unresolved"), ("matching", None)):
+            with self.subTest(marker=marker):
                 self.tearDown()
                 self.setUp()
                 supervisor, job = self.hung()
-                self.contain(job, execute=lambda argv: (1, b"", b"error") if rm_fails and argv[0] == "rm" else (0, b"", b""), seconds_after_deadline=late)
-                self.clock.set(AFTER_DEADLINE)
-                outcome = self.drive(supervisor)
-                if case == "ended in time":
-                    self.assertEqual(outcome, "failed")
-                    self.assertEqual(job.read("journal.json")["collected"]["observation"]["findings"], ["timeout"])
-                    (result,) = self.audit("dispatch_result")
-                    self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]), (400, "worst_case"))
-                else:
-                    self.assertEqual(outcome, "stalled" if rm_fails else "backend_end_unconfirmed")   # confirmed late, or not confirmed at all: an unknown end, nothing recorded
-                    self.assertIsNone(job.read("docker-complete.json"))
-                    self.assertEqual(self.audit("dispatch_result"), [])
-                    self.assertEqual(job.read("containment.json")["late"], case == "ended late")
+                plan = job.read("docker-plan.json")
+                self.contain(job, seconds_after_deadline=100)
+                if marker == "matching":
+                    self.finish_backend(job)
+                elif marker == "mismatch":
+                    job.create("docker-complete.json", {"origin": {**plan["origin"], "job_handle": "other"}})
+                self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+                with Unconfirmed().patched():
+                    self.assertEqual(LiveStart.drive(self, supervisor), "stalled")
+                saved = self.journal()["collected"]
+                self.assertEqual(saved["observation"]["descendants"]["handling"], "unconfirmed")
+                self.assert_end(None, "outcome_unknown_unresolved")
+                (incident,) = supervisor.incidents()
+                request = {"invocation_id": MAIN, "incident_since": incident["since"], "requested_by": "operator", "reason": "confirm both ends"}
+                (job.dir / "docker-plan.json").unlink()
+                self.assertEqual(supervisor.recover_incident(request)["reason"], "termination_unconfirmed")
+                job.write("docker-plan.json", plan)
+                with unittest.mock.patch.object(docker_cli, "contain_job", side_effect=LiveProfileRefused("contain_failed")):
+                    self.assertEqual(supervisor.recover_incident(request)["reason"], "termination_unconfirmed")
+                self.assertEqual(self.journal()["collected"], saved)
+                self.assert_end(None, "outcome_unknown_unresolved")
+                self.assertEqual(supervisor.recover_incident(request)["outcome"], "stalled" if after else "cancelled")
+                recovery = self.journal()["collected"]["rehandled"]
+                self.assertEqual((recovery["origin"], recovery["evidence_ref"]), (plan["origin"], saved["record"]["content_hash"]))
+                self.assert_end(None if after else "cancelled", after)
 
     def test_a_cli_the_killed_child_left_mid_wait_is_ended_by_its_recorded_identity_so_containment_can_confirm(self):
         fake = tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False)
@@ -525,7 +638,7 @@ class ContainedEnd(LiveWorld):
         patch.start()
         self.addCleanup(patch.stop)
         self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
-        self.assertEqual(self.drive(supervisor), "cancelled")                              # production capture, a real subprocess: the stale CLI no longer blocks the end
+        self.assertEqual(LiveStart.drive(self, supervisor), "cancelled")                              # production capture, a real subprocess: the stale CLI no longer blocks the end
         self.assertIsNotNone(waiter.wait(timeout=5))
         self.assertIsNotNone(job.read("docker-complete.json"))
 
@@ -539,11 +652,16 @@ class CollectionRefusal(RealRoute):
     NET, EGRESS, IMAGE = "b" * 64, "c" * 64, "sha256:" + "1" * 64
     PIN = "sha256:" + hashlib.sha256(b"configuration").hexdigest()
 
-    def world(self, publish=True, rejected=False):
+    def world(self, publish=True, rejected=False, leave_member=False):
         """A live job whose executor is the production child with the production live agent over a daemon-free transport; returns the job and waits for the child's end."""
         self.to_queued(rf.OTHER)
         supervisor = self.live_supervisor()
-        order = dataclasses.replace(self.order("research_pass", [], inv=MAIN), command=(sys.executable, str(children.path("gen2/tests/live_refusing_child.py"))))
+        command = (sys.executable, str(children.path("gen2/tests/live_refusing_child.py")))
+        if leave_member:
+            command = (sys.executable, "-c", "import os, subprocess, sys\n"
+                       "subprocess.Popen(['sleep', '60'])\n"
+                       "os.execv(sys.argv[1], sys.argv[1:])", *command)
+        order = dataclasses.replace(self.order("research_pass", [], inv=MAIN), command=command)
         if not publish:
             (self.root / "no-publish").write_text("")
         if rejected:
@@ -607,30 +725,120 @@ class CollectionRefusal(RealRoute):
         (cancel,) = [json.loads(r[0]) for r in self.rows("SELECT detail FROM audit_events WHERE kind = 'cancel_requested' AND invocation_id = ?", "inv_slot0002")]
         self.assertEqual(cancel["reason"], "dispatch refused: provider_rejection_stopped")   # the retained route history, not the capability hold alone
 
-    def test_without_fallback_publication_the_same_refusal_stays_held(self):
+    def end_state(self, job):
+        journal = job.read("journal.json")
+        return len(self.audit("dispatch_result")), (journal.get("incident") or {}).get("kind"), journal.get("settled")
+
+    def recover_end(self, supervisor, job):
+        self.clock.set("2026-09-27T10:01:00Z")
+        (incident,) = supervisor.incidents()
+        self.assertTrue(incident["blocking"])
+        return supervisor.recover_incident({"invocation_id": MAIN, "incident_since": incident["since"],
+                                            "requested_by": "operator", "reason": "confirm the original end"})
+
+    def test_live_end_authentication(self):
+        missing, unknown = "backend_end_unconfirmed", "outcome_unknown_unresolved"
+        for case, before, after in (
+            ("restart", (1, None, "failed"), None),
+            ("mismatched marker", (0, missing, None), (0, missing, None)),
+            ("already terminal", (0, missing, None), (1, None, "failed")),
+            ("unconfirmed group", (0, unknown, None), (1, None, "failed")),
+        ):
+            with self.subTest(case):
+                self.tearDown()
+                self.setUp()
+                supervisor, job = self.world(publish=case in ("restart", "unconfirmed group"))
+                origin = self.audit("dispatch_authorized")[0]["origin"]
+                plan_origin = job.read("docker-plan.json")["origin"]
+                if case == "restart":
+                    self.authority.epoch = "restarted"
+                    supervisor = self.live_supervisor()
+                if case == "mismatched marker":
+                    self.assertTrue(job.create("docker-complete.json", {"origin": {**plan_origin, "job_handle": "other"}}))
+                if case == "already terminal":
+                    self.assertEqual(supervisor.advance(MAIN), missing)
+                    journal = job.read("journal.json")
+                    reply = self.router.record_transition({"invocation_id": MAIN, "capability_id": journal["grant"]["capability_id"],
+                        "to_state": "failed", "failure_class": "exit_nonzero", "end_evidence_ref": journal["collected"]["record"]["content_hash"]})
+                    self.assertEqual(reply["status"], "recorded")
+                if case == "unconfirmed group":
+                    with unittest.mock.patch.object(supervisor, "_descendants", return_value=(
+                            {"handling": "unconfirmed", "count": 1}, {"reason": "descendants_after_exit"})):
+                        self.assertEqual(supervisor.advance(MAIN), "unknown_unresolved")
+                LiveStart.drive(self, supervisor)
+                self.assertEqual(self.end_state(job), before)
+                if after:
+                    if case == "already terminal":
+                        self.assertTrue(job.create("docker-complete.json", {"origin": plan_origin, "refs": [],
+                            "disposition": {"disposition": "unknown", "reason": "contained_without_collection"}}))
+                    self.assertEqual(supervisor.recover()[MAIN], "stalled")
+                    self.assertEqual(self.end_state(job), before)
+                    collected = job.read("journal.json")["collected"]
+                    self.assertEqual(self.recover_end(supervisor, job)["status"], "resumed")
+                    self.assertEqual(self.end_state(job), after)
+                    self.assertEqual(job.read("journal.json")["collected"]["observation"], collected["observation"])
+                if (after or before)[0]:
+                    self.assertEqual(supervisor.advance(MAIN), "failed")
+                    (result,) = self.audit("dispatch_result")
+                    self.assertEqual((result["evidence"]["origin"], result["trial_stopped"]), (origin, True))
+
+    def test_vanished_launcher_cannot_turn_a_typed_rejection_into_a_result(self):
+        for racing_exit in (False, True):
+            with self.subTest(racing_exit=racing_exit):
+                self.tearDown()
+                self.setUp()
+                supervisor, job = self.world(rejected=True)
+                supervisor._children[job.handle].wait(timeout=5)
+                (job.dir / "exit.json").unlink()
+                self.clock.set("2026-09-27T10:00:30Z")
+                job.write("runner-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10.123456789Z"}})
+
+                def contain_end(target):
+                    if racing_exit and target.read("exit.json") is None:
+                        target.write("exit.json", {"code": 1, "signal": None})
+                        raise LiveProfileRefused("contain_failed")
+
+                with unittest.mock.patch.object(docker_cli, "contain_job", side_effect=contain_end) as contain:
+                    self.assertEqual(LiveStart.drive(self, supervisor), "stalled")
+                    if racing_exit:
+                        self.assertEqual(self.end_state(job), (0, "outcome_unknown_unresolved", None))
+                        self.assertEqual(self.recover_end(supervisor, job)["outcome"], "stalled")
+                    self.assertEqual(contain.call_count, 2 if racing_exit else 1)
+                self.assertEqual(self.end_state(job), (0, "dispatch_result_unrecorded", None))
+                end = self.ended()
+                self.assertEqual((end["lease_release"], end["open_holds"], end["state"]), (None, 1, "outcome_unknown"))
+                self.assertEqual(self.rows("SELECT fact_id FROM capability_facts WHERE state = 'failing'"), [])
+
+    def test_a_collected_end_without_a_backend_marker_spends_a_bounded_budget(self):
         supervisor, job = self.world(publish=False)
-        self.assertIsNone(job.read("docker-complete.json"))
-        self.assertEqual(LiveStart.drive(self, supervisor), "backend_end_unconfirmed")
-        self.assertEqual(self.audit("dispatch_result"), [])
+        attempts = supervisor.policy.unknown_attempts
+        self.assertEqual([supervisor.advance(MAIN) for _ in range(attempts + 2)],
+                         ["backend_end_unconfirmed"] * attempts + ["stalled", "stalled"])
+        self.assertEqual(self.end_state(job), (0, "backend_end_unconfirmed", None))
+        self.assertEqual(job.read("journal.json")["budgets"]["unknown"], attempts)
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "running")
 
-    def test_the_generated_marker_path_keeps_its_fences_a_stale_epoch_records_nothing_and_an_unconfirmed_descendant_is_no_confirmed_end(self):
-        def confirmed(job):
-            collected = job.read("journal.json")["collected"]
-            return self.authority.result(job.read("journal.json")["dispatch"]["admission_ref"], collected["record"]["content_hash"])["confirmed_end"]
-        supervisor, job = self.world()
-        self.authority.epoch = "epoch-2"                                                   # a restart between the marker and the result: a stale origin
-        self.assertEqual(LiveStart.drive(self, supervisor), "stalled")
-        self.assertEqual((self.audit("dispatch_result"), self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN)), ([], "running"))
-        self.tearDown()
-        self.setUp()
-        supervisor, job = self.world()
-        self.assertEqual(LiveStart.drive(self, supervisor), "failed")
-        self.assertTrue(confirmed(job))                                                    # control: the generated marker with every descendant confirmed ended is a confirmed end
-        journal = job.read("journal.json")
-        journal["collected"]["observation"]["descendants"]["handling"] = "unconfirmed"      # the same end with a descendant the supervisor could not confirm
-        job.write("journal.json", journal)
-        self.assertFalse(confirmed(job))
+    def test_recovery_retains_a_late_typed_rejection_and_its_dated_fact_and_hold(self):
+        supervisor, job = self.world(rejected=True)
+        job.write("runner-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10.123456789Z"}})
+        self.clock.set("2026-09-27T10:00:30Z")
+        with unittest.mock.patch.object(supervisor, "_descendants", return_value=(
+                {"handling": "unconfirmed", "count": 1}, {"reason": "descendants_after_exit"})):
+            self.assertEqual(supervisor.advance(MAIN), "unknown_unresolved")
+        LiveStart.drive(self, supervisor)
+        self.assertEqual(self.end_state(job), (0, "outcome_unknown_unresolved", None))
+        record = job.read("journal.json")["collected"]["record"]["content_hash"]
+        self.assertEqual(self.recover_end(supervisor, job)["outcome"], "failed")
+        self.assertEqual(self.end_state(job), (1, None, "failed"))
+        (result,) = self.audit("dispatch_result")
+        self.assertEqual((result["evidence"]["evidence_ref"], result["trial_stopped"]), (record, True))
+        self.assertEqual(self.rows("SELECT kind FROM audit_events WHERE invocation_id = ? AND kind IN ('dispatch_result', 'reconciled') ORDER BY audit_event_id", MAIN),
+                         [("dispatch_result",), ("reconciled",)])
+        fact, hold = result["response"]["fact_id"], result["response"]["hold_id"]
+        observed_at = json.loads(self.spool.read(record, topic_id=rf.TOPIC))["observed_at"]
+        self.assertEqual(tuple(self.rows("SELECT state, since FROM capability_facts WHERE fact_id = ?", fact)[0]), ("failing", observed_at))
+        self.assertEqual(tuple(self.rows("SELECT hold_class, owner, cleared_at FROM holds WHERE hold_id = ?", hold)[0]),
+                         ("capability", "operator", None))
 
     def test_the_generated_marker_path_with_a_stale_lease_records_nothing_and_the_same_world_with_its_lease_does(self):
         supervisor, job = self.world()

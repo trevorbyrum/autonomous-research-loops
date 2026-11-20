@@ -310,7 +310,7 @@ class Dispatch:
                 if rejection is not None:
                     observation, evidence = rejection
                     require(instant(observation["observed_at"]) <= instant(now), "dispatch_origin_invalid")
-                    self._core._lifecycle._bind_evidence(current, evidence, failure_class="exit_nonzero")
+                    self._core._lifecycle._bind_evidence(current, evidence, failure_class="exit_nonzero", terminal=False)
                     projection = self._core._capabilities._probe_in_transaction(observation, now)
                     response.update(fact_id=projection["fact"]["fact_id"],
                                     hold_id=projection["hold"]["hold_id"] if projection["hold"] else None)
