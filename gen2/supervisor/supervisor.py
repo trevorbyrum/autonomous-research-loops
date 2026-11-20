@@ -637,10 +637,10 @@ class Supervisor:
             findings.append("empty_output")
         elif found["status"] == "refused":
             findings.append("output_refused")
-        elif declared is not None and declared != found.get("original", found["ref"]["content_hash"]):
-            output.update(status="digest_mismatch", detail=f"the executor declared {declared[:80]}; the bytes hash to {found.get('original', found['ref']['content_hash'])}")
-            findings.append("output_digest_mismatch")
-        else:
+        else:   # the station's hash decides; a declaration that disagrees is recorded beside the authoritative reference, never a finding (operator ruling 2026-11-19)
+            station = found.get("original", found["ref"]["content_hash"])
+            if declared is not None and declared != station:
+                output["detail"] = f"the executor declared {declared[:80]}; the station hashed the bytes to {station}"
             output.update(content_hash=found["ref"]["content_hash"], size_bytes=found["ref"]["size_bytes"])
             result = found["ref"] if not findings else None
         observation = {"process": self._process(view["identity"]), "exit": exit_record, "termination": seen["termination"], "descendants": seen["descendants"],
@@ -798,6 +798,7 @@ class Supervisor:
         status = self._status(job, journal, grant)
         state = status["state"]
         if state in TERMINAL:
+            self._record_owed_dispatch(job, journal, grant)
             return self._settle(job, journal, state)
         step = {"admitted": self._admitted, "launching": self._launching, "running": self._running,
                 "result_ready": self._result_ready, "outcome_unknown": self._unknown}[state]
@@ -942,6 +943,12 @@ class Supervisor:
         dispatch["recorded"] = True
         self._save(job, journal)
 
+    def _record_owed_dispatch(self, job, journal, grant) -> None:
+        """A collected live end owes its dispatch result on the original authorization, whichever path reaches the Router next (running, a
+        reconciliation, an invocation already terminal): late retention grants no transition, so nothing else is sent on its strength (F-3; SUP-35)."""
+        if journal.get("dispatch") and not journal["dispatch"].get("recorded") and journal.get("collected") and job.read("docker-complete.json") is not None:
+            self._record_dispatch(job, journal, grant, journal["collected"])
+
     def _await_identity(self, job: jobs.Job, grace: float) -> dict:
         """Wait, within `grace`, for a launcher to record its identity. Before
         it takes the lock a launcher looks unstarted, so that is final only
@@ -1016,8 +1023,7 @@ class Supervisor:
         observation = collected["observation"]
         if observation["descendants"]["handling"] == "unconfirmed":  # capacity is not released on an unconfirmed group (L-7)
             return self._enter_unknown(job, order, journal, grant, status, "termination_unconfirmed")
-        if journal.get("dispatch") and not journal["dispatch"].get("recorded") and job.read("docker-complete.json") is not None:
-            self._record_dispatch(job, journal, grant, collected)
+        self._record_owed_dispatch(job, journal, grant)
         facts = {"end_evidence_ref": collected["record"]["content_hash"]}
         if status["cancel_requested"] or observation["findings"]:
             self._settle_delegates(order)
@@ -1179,6 +1185,7 @@ class Supervisor:
         if (kept or {"resolution": resolution})["resolution"] in ("confirmed_failed", "terminated_group"):
             self._settle_delegates(order)
         pending = self._pending(job, order, journal, purpose, resolution=resolution, method=method, observation=observation, identity=identity, digest=digest)
+        self._record_owed_dispatch(job, journal, grant)   # the authenticated result is acknowledged before the reconciliation that releases the job
         request = {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "unknown_episode": status["unknown_episode"],
                    "resolution": pending["resolution"], "method": pending["method"], "evidence_ref": pending["record"]["content_hash"]}
         if pending["identity"] is not None:

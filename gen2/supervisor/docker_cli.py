@@ -4,6 +4,8 @@ The productive supervisor entrance remains closed by isolation.py. The later
 finite qualification lane supplies protected manifest bytes and original end
 end proof (the daemon's own final inspect, Gate S #7c); none of these primitives grants Router dispatch authority.
 """
+import contextlib
+import errno
 import hashlib
 import json
 import os
@@ -385,7 +387,9 @@ class DockerCLI:
             _when(fixture["State"].get("StartedAt"), "fixture_original")
             self.job.write("fixture.json", fixture)
             self.job.write("fixture-start.json", fixture)
-            require(_binding(self.inspect(fixture["Id"])) == _binding(fixture), "fixture_original")
+            live = self.inspect(fixture["Id"])
+            require(_binding(live) == _binding(fixture), "fixture_original")
+            require([(m.get("Type"), m.get("Source")) for m in live.get("Mounts", []) if m.get("Destination") == "/evidence"] == [("bind", str(fixture_directory))], "fixture_evidence_mount")   # the daemon's effective mount, not only the plan's two representations
             members = list(fixture["NetworkSettings"]["Networks"].values())
             require(len(members) == 1 and (members[0].get("IPAMConfig") or {}).get("IPv4Address") == "172.31.252.3" and CID.fullmatch(str(members[0].get("NetworkID"))), "fixture_network")
             upstream = members[0]["NetworkID"]
@@ -395,7 +399,8 @@ class DockerCLI:
         originals = {}
         for kind, directory in {output: Path(self.plan["binds"]["out"]), "access": Path(self.plan["slots"]["evidence"]) / self.plan["generation"],
                                 **({"fixture": fixture_directory} if not real else {})}.items():
-            fd = slot(str(directory))
+            with _generation_open():
+                fd = slot(str(directory))
             try:
                 info = os.fstat(fd)
                 originals[kind] = (info.st_dev, info.st_ino)
@@ -487,6 +492,17 @@ def free_space(paths, floor):
         require(info.f_bavail * info.f_frsize >= floor, "free_space_floor")
 
 
+@contextlib.contextmanager
+def _generation_open():
+    """A generation directory that is a link or no directory is not the original: the collection refusal, before anything is staged. Any other OS error is infrastructure and escapes."""
+    try:
+        yield
+    except OSError as error:
+        if error.errno in (errno.ENOTDIR, errno.ELOOP):
+            raise LiveProfileRefused("collection_generation") from None
+        raise
+
+
 def slot(path):
     """Pin every fixed ancestor without following links; caller retains the fd."""
     require(Path(path).is_absolute(), "slot_absolute")
@@ -524,7 +540,8 @@ class EvidenceBatch:
                               "access": ("access.jsonl", 16 << 20, "application/x-ndjson"),
                               "fixture": ("fixture.json", 1 << 20, "application/json"),
                               "judgment": ("judgment.json", 1 << 20, "application/json")}[kind]   # the live agent's one output; the plan chooses, the caller names no file
-        fd = os.open(generation, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=slot_fd)
+        with _generation_open():
+            fd = os.open(generation, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=slot_fd)
         try:
             info = os.fstat(fd)
             require((info.st_dev, info.st_ino) == identity, "collection_identity")

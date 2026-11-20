@@ -40,9 +40,8 @@ Then it drives the router one step:
 - a non-zero exit (`exit_nonzero`) or a signal (`killed`);
 - a missing or empty file (`empty_output`), whatever `status.json` says;
 - a symlink, hard link, special file, oversized file, or a file that changed while it was read (`output_refused`; A10);
-- a declared digest the bytes do not have (`output_digest_mismatch`).
 
-The agent's self-report is recorded as data and decides nothing. The declared digest is checked data that cannot establish success: one that disagrees with the bytes refuses the output, and one that agrees adds nothing — the supervisor's own hash of the bytes is what is recorded. Empty output is written to the store as the failed transition itself, with its class, its execution record (an artifact) and its audit event, never as a bare return code.
+The agent's self-report is recorded as data and decides nothing. The declared digest is checked data that cannot establish success: the supervisor's own hash of the bytes is authoritative, and a declaration that disagrees is recorded in the execution record's output detail, never failed (operator ruling 2026-11-19). Empty output is written to the store as the failed transition itself, with its class, its execution record (an artifact) and its audit event, never as a bare return code.
 
 **Capacity (L-7, L-8).** A failure or cancellation releases the lease only when its execution record confirms the descendants were handled; the router refuses the end otherwise. A parent's lease is also its delegates', and a delegate runs in its own session, which the parent's descendant check cannot see: before anything that releases a parent's capacity (a failure, a cancellation, a terminal reconciliation, an unlaunched end, the final commit), the supervisor ends every delegate job it holds for the parent — cancellation requested, group terminated, or an already staged result delivered — and the parent waits until the router confirms each ended. The router refuses the parent's release while a delegate is live (A3).
 

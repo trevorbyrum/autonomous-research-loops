@@ -211,6 +211,32 @@ class LiveStart(LiveWorld):
         self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]), (400, "worst_case"))   # an unknown cost charges U (whether the trial then stops is the Router's rule: DEBT-052 amendment)
         self.assertEqual(result["admission_ref"], job.read("journal.json")["dispatch"]["admission_ref"])
 
+    def test_a_live_end_recovered_through_outcome_unknown_delivers_its_dispatch_result_once_before_the_reconciliation(self):
+        """SUP-35's reconciliation variant (F-3): the start was recorded, the supervisor lost the `running` write, the job ended on its own."""
+        supervisor = self.live_supervisor()
+        job = self.prepare(supervisor)
+        self.finish_backend(job)
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
+        for _ in range(600):
+            if (job.dir / "exit.json").exists():
+                break
+            time.sleep(0.05)
+        grant = job.read("journal.json")["grant"]
+        self.assertEqual(self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": MAIN, "to_state": "outcome_unknown",
+                                                        "unknown_episode": 1, "unknown_cause": "contact_lost"})["status"], "recorded")
+        self.assertEqual(self.audit("dispatch_result"), [])
+        self.assertEqual(self.drive(supervisor), "committed")
+        (result,) = self.audit("dispatch_result")                                          # exactly once, on the original authorization
+        self.assertEqual(result["admission_ref"], job.read("journal.json")["dispatch"]["admission_ref"])
+        order = [row[0] for row in self.rows("SELECT kind FROM audit_events WHERE kind IN ('dispatch_result', 'reconciled') ORDER BY rowid")]
+        self.assertEqual(order, ["dispatch_result", "reconciled"])                         # acknowledged before the reconciliation that releases the job
+        journal = job.read("journal.json")                                                 # an invocation the Router already shows terminal still retains the result, with no further transition
+        journal.pop("settled")
+        journal["dispatch"].pop("recorded")
+        job.write("journal.json", journal)
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "committed")
+        self.assertEqual((len(self.audit("dispatch_result")), job.read("journal.json")["dispatch"].get("recorded")), (1, True))
+
     def drive(self, supervisor):
         for _ in range(200):
             outcome = supervisor.advance(MAIN, live_start=True)
