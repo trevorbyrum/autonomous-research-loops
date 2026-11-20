@@ -537,11 +537,16 @@ class CollectionRefusal(RealRoute):
     NET, EGRESS, IMAGE = "b" * 64, "c" * 64, "sha256:" + "1" * 64
     PIN = "sha256:" + hashlib.sha256(b"configuration").hexdigest()
 
-    def world(self, publish=True, rejected=False):
+    def world(self, publish=True, rejected=False, leave_member=False):
         """A live job whose executor is the production child with the production live agent over a daemon-free transport; returns the job and waits for the child's end."""
         self.to_queued(rf.OTHER)
         supervisor = self.live_supervisor()
-        order = dataclasses.replace(self.order("research_pass", [], inv=MAIN), command=(sys.executable, str(children.path("gen2/tests/live_refusing_child.py"))))
+        command = (sys.executable, str(children.path("gen2/tests/live_refusing_child.py")))
+        if leave_member:
+            command = (sys.executable, "-c", "import os, subprocess, sys\n"
+                       "subprocess.Popen(['sleep', '60'])\n"
+                       "os.execv(sys.argv[1], sys.argv[1:])", *command)
+        order = dataclasses.replace(self.order("research_pass", [], inv=MAIN), command=command)
         if not publish:
             (self.root / "no-publish").write_text("")
         if rejected:
@@ -624,11 +629,15 @@ class CollectionRefusal(RealRoute):
             ("already terminal", (0, missing, None), (1, None, "failed")),
             ("unconfirmed group", (0, unknown, None), (1, None, "failed")),
             ("vanished launcher", (0, unknown, None), None),
+            ("vanished launcher then cancelled", (0, unknown, None), None),
+            ("vanished launcher with members", (0, unknown, None), None),
         ):
             with self.subTest(case):
                 self.tearDown()
                 self.setUp()
-                supervisor, job = self.world(publish=case in ("restart", "unconfirmed group", "vanished launcher"))
+                vanished = case.startswith("vanished launcher")
+                leave_member = case == "vanished launcher with members"
+                supervisor, job = self.world(publish=vanished or case in ("restart", "unconfirmed group"), leave_member=leave_member)
                 origin = self.audit("dispatch_authorized")[0]["origin"]
                 plan_origin = job.read("docker-plan.json")["origin"]
                 if case == "restart":
@@ -646,23 +655,28 @@ class CollectionRefusal(RealRoute):
                     with unittest.mock.patch.object(supervisor, "_descendants", return_value=(
                             {"handling": "unconfirmed", "count": 1}, {"reason": "descendants_after_exit"})):
                         self.assertEqual(supervisor.advance(MAIN), "unknown_unresolved")
-                if case == "vanished launcher":
+                if vanished:
                     self.assertEqual(job.read("docker-complete.json")["origin"], plan_origin)
                     (job.dir / "exit.json").unlink()  # reproduce the on-disk state if the launcher never published its exit
                     for _ in range(200):
                         view = job.lookup()
-                        if view["verdict"] == "vanished" and not view["members"]:
+                        if view["verdict"] == "vanished":
                             break
                         time.sleep(0.01)
-                    self.assertEqual((view["verdict"], view["members"]), ("vanished", []))
+                    self.assertEqual((view["verdict"], len(view["members"])), ("vanished", int(leave_member)))
+                    if case == "vanished launcher then cancelled":
+                        self.assertEqual(supervisor.advance(MAIN), "unknown_unresolved")
+                        cancel = self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+                        self.assertEqual(cancel["status"], "recorded")
                 LiveStart.drive(self, supervisor)
-                if case == "vanished launcher":
+                if vanished:
+                    self.assertEqual(job.lookup()["members"], [])
                     lease = job.read("journal.json")["grant"]["lease"]["lease_id"]
                     self.assertEqual(self.rows("SELECT released_at FROM leases WHERE lease_id = ?", lease), [(None,)])
                     self.assertEqual(self.rows("SELECT state, unknown_episode FROM invocations WHERE invocation_id = ?", MAIN), [("outcome_unknown", 1)])
                     self.assertEqual(self.rows("SELECT cleared_at FROM holds WHERE subject_ref = ?", f"invocation:{MAIN}#unknown:1"), [(None,)])
                 self.assertEqual(self.end_state(job), before)
-                if case == "vanished launcher":
+                if vanished:
                     (incident,) = supervisor.incidents()
                     self.assertEqual(incident["unknown_episode"], 1)
                     recovery = self.recover_end(supervisor, job)
