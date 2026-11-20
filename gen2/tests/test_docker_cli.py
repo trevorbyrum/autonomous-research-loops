@@ -820,8 +820,7 @@ class DockerBoundary(unittest.TestCase):
                     if case == "ipv6":
                         self.assertIs(self.job.read("network-upstream.json")["EnableIPv6"], True)
                         self.assertIs(receipt["before"]["bridge"]["EnableIPv6"], True)
-                        self.assertIsNotNone(self.job.read(d.SEAL))
-                    if case in mismatches:
+                    if case in ("ipv6", *mismatches):
                         self.assertEqual(str(result.__context__), "egress_bridge_properties")
                         self.assertIsNotNone(self.job.read(d.SEAL))
                     if case == "foreign":
