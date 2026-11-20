@@ -80,6 +80,7 @@ class ProbeRecordTest(rf.RouterTestCase):
             "created_at": created, "cleared_at": None})
         self.assertEqual(utc_instant_ns(hold["deadline_at"]) - utc_instant_ns(created), 3600 * 10**9)  # the router's shipped hold window
         self.assertIn("hold_clearance", hold["clears_when"])
+        self.assertNotIn("probe", hold["clears_when"])  # the probe is retired; old holds keep their stored text
 
     def test_a_long_detail_is_cut_to_500_characters_in_the_hold_cause(self):
         self.record(observation("c3", "unusable_credential", "2026-09-27T10:00:05Z", detail="x" * 500))
