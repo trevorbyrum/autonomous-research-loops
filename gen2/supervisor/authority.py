@@ -20,7 +20,7 @@ from typing import Callable, Mapping
 
 from gen2.core import canonical
 from gen2.supervisor import jobs
-from gen2.supervisor.docker_cli import RELAY_PROVIDER
+from gen2.supervisor.docker_cli import RELAY_PROVIDER, _read
 from gen2.supervisor.isolation import LiveProfileRefused
 
 RECORD = "qualification-record/1"
@@ -30,6 +30,24 @@ Stage = Callable[[str, bytes, str], Mapping]
 PIN = re.compile(r"sha256:[0-9a-f]{64}")
 UPSTREAM = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}:443")   # the relay's one fixed IP:443 (name verification is the relay's)
 CID = re.compile(r"[0-9a-f]{64}")   # a Docker network ID: the persistent relay-only bridge is consumed by ID, never created or adopted by name
+
+
+def matching_completion(job: jobs.Job, plan: dict | None) -> dict | None:
+    complete, origin = _read(job, "docker-complete.json"), (plan or {}).get("origin")
+    return complete if (isinstance(origin, dict) and origin and complete and complete.get("origin") == origin
+                        and isinstance(complete.get("refs", []), list) and isinstance(complete.get("disposition", {}), dict)) else None
+
+
+def authenticated_end(job: jobs.Job, plan: dict | None, collected: dict) -> dict | None:
+    """The create-only end marker, with original or bound recovery proof of descendant handling."""
+    original = collected["observation"]["descendants"]
+    recovery = collected.get("rehandled") or {}
+    complete = matching_completion(job, plan)
+    if complete and (original["handling"] != "unconfirmed" or
+                     (recovery.get("evidence_ref") == collected["record"]["content_hash"] and recovery.get("origin") == complete["origin"]
+                      and recovery["descendants"]["handling"] != "unconfirmed")):
+        return complete
+    return None
 
 
 def verify_record(record: bytes, pin: str, manifest: bytes) -> Mapping | None:
@@ -103,11 +121,11 @@ class QualifiedAuthority:
                 **({"fixture": template["fixture"]} if "fixture" in template else {}),
                 **({"egress": {"network_id": egress}, "upstream": doc["plan"]["upstream"], **{k: template[k] for k in RELAY_PROVIDER}} if egress else {})}
 
-    def _origin(self, job: jobs.Job) -> dict | None:
-        plan, grant = job.read("docker-plan.json"), (job.read("journal.json") or {}).get("grant")
-        if plan is None or not grant:
+    def _origin(self, job: jobs.Job, *, epoch: str | None = None) -> dict | None:
+        plan, grant = _read(job, "docker-plan.json"), (job.read("journal.json") or {}).get("grant")
+        if not plan or not grant:
             return None
-        return {**plan["origin"], "lease_id": grant["lease"]["lease_id"], "generation": grant["lease"]["generation"], "epoch": self.epoch}
+        return {**plan["origin"], "lease_id": grant["lease"]["lease_id"], "generation": grant["lease"]["generation"], "epoch": epoch or self.epoch}
 
     def admission(self, invocation_id: str, run_id: str, attempt: int) -> Mapping | None:
         job = self._job("job-" + invocation_id)
@@ -128,17 +146,19 @@ class QualifiedAuthority:
         """The authenticated end of the job whose retained execution record is `evidence_ref`: the backend's own complete file, no estimate."""
         for path in sorted(self._jobs.iterdir()) if self._jobs.is_dir() else ():
             job = self._job(path.name)
-            collected = (job.read("journal.json") or {}).get("collected") or {}
+            journal = job.read("journal.json") or {}
+            collected = journal.get("collected") or {}
             record = collected.get("record") or {}
             if record.get("content_hash") != evidence_ref:
                 continue
-            origin, plan, complete = self._origin(job), job.read("docker-plan.json"), job.read("docker-complete.json") or {}
-            if origin is None or plan is None:
+            plan = _read(job, "docker-plan.json")
+            complete = authenticated_end(job, plan, collected)
+            origin = self._origin(job, epoch=journal.get("dispatch", {}).get("epoch")) if complete else None
+            if origin is None:
                 return None
-            ended = complete.get("origin") == plan["origin"] and collected["observation"]["descendants"]["handling"] != "unconfirmed"
-            doc = {"origin": origin, "admission_ref": admission_ref, "evidence_ref": evidence_ref, "confirmed_end": bool(ended),
+            doc = {"origin": origin, "admission_ref": admission_ref, "evidence_ref": evidence_ref, "confirmed_end": True,
                    "actual_minor_units": None, "artifacts": [*complete.get("refs", []), record]}
-            if ended and (complete.get("disposition") or {}).get("disposition") == "credentials_rejected":
+            if complete.get("disposition", {}).get("disposition") == "credentials_rejected":
                 rejection = self._rejection(job, plan, record, order_topic=plan["origin"]["topic_id"])
                 if rejection is None:
                     return None   # the evidence for a rejection cannot be assembled: no result at all, so the Router keeps the intent (fixed U, stop)
