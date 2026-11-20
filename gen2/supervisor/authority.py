@@ -20,7 +20,7 @@ from typing import Callable, Mapping
 
 from gen2.core import canonical
 from gen2.supervisor import jobs
-from gen2.supervisor.docker_cli import RELAY_PROVIDER, _read
+from gen2.supervisor.docker_cli import EGRESS_FIELDS, RELAY_PROVIDER, _read, validate_egress
 from gen2.supervisor.isolation import LiveProfileRefused
 
 RECORD = "qualification-record/1"
@@ -29,7 +29,6 @@ REAL_WITNESSES = (*WITNESSES, "DEBT-004", "Q8")   # Q8: the daemon end proof qua
 Stage = Callable[[str, bytes, str], Mapping]
 PIN = re.compile(r"sha256:[0-9a-f]{64}")
 UPSTREAM = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}:443")   # the relay's one fixed IP:443 (name verification is the relay's)
-CID = re.compile(r"[0-9a-f]{64}")   # a Docker network ID: the persistent relay-only bridge is consumed by ID, never created or adopted by name
 
 
 def matching_completion(job: jobs.Job, plan: dict | None) -> dict | None:
@@ -110,15 +109,18 @@ class QualifiedAuthority:
         prefix = Path(template["engine_jobs"])
         if prefix not in (inputs, *inputs.parents) or ".." in inputs.parts:
             raise LiveProfileRefused("profile_unmapped_path")
-        slots, egress = template["slots"], template.get("egress_network_id")
-        if (doc["route"] == "real") != (egress is not None) or (egress is not None and not CID.fullmatch(str(egress))):
-            raise LiveProfileRefused("profile_egress_network")   # a real route names its protected, pre-existing bridge by ID; a fixture route has none
+        slots = template["slots"]
+        egress = {key: template["egress_" + key] for key in EGRESS_FIELDS if "egress_" + key in template}
+        if doc["route"] == "real":
+            validate_egress(egress)
+        elif egress:
+            raise LiveProfileRefused("profile_egress_network")
         return {"origin": origin, "generation": generation, "route": doc["route"], "output": "judgment", "slots": slots, "paths": template.get("paths", []),
                 "binds": {"inputs": str(Path(template["host_jobs"]) / inputs.relative_to(prefix)), "out": str(Path(slots["out"]) / generation),
                           "seed": template["seed"]},
                 "expected": template.get("expected", {}), "relay_config": template.get("relay_config"),
                 **({"fixture": template["fixture"]} if "fixture" in template else {}),
-                **({"egress": {"network_id": egress}, "upstream": doc["plan"]["upstream"], **{k: template[k] for k in RELAY_PROVIDER}} if egress else {})}
+                **({"egress": egress, "upstream": doc["plan"]["upstream"], **{k: template[k] for k in RELAY_PROVIDER}} if egress else {})}
 
     def _origin(self, job: jobs.Job, *, epoch: str | None = None) -> dict | None:
         plan, grant = _read(job, "docker-plan.json"), (job.read("journal.json") or {}).get("grant")

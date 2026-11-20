@@ -14,7 +14,7 @@ import selectors
 import subprocess
 import time
 from datetime import datetime
-from ipaddress import IPv4Network
+from ipaddress import IPv4Address, IPv4Network
 from pathlib import Path
 
 from gen2.core.instants import utc_instant_ns
@@ -40,11 +40,25 @@ RESERVE_S, LATE_END_S = 90, 50   # the runner's allowance ends RESERVE_S before 
 RELAY_PROVIDER = {"provider_auth": "etc/gen2/provider-auth.conf", "provider_ca": "etc/gen2/provider-ca.pem"}
 MODEL = "gpt-6.1-terra"
 NETWORKS = {"job": "172.31.254.0/29", "fixture": "172.31.252.0/29"}
+EGRESS_FIELDS = ("network_id", "name", "subnet", "gateway")
 
 
 def require(ok, reason):
     if not ok:
         raise LiveProfileRefused(reason)
+
+
+def validate_egress(egress):
+    """Refuse an incomplete or inconsistent approved bridge before any Docker action."""
+    reason = "profile_egress_network"
+    require(isinstance(egress, dict) and all(isinstance(egress.get(k), str) for k in EGRESS_FIELDS), reason)
+    require(CID.fullmatch(egress["network_id"]) and re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", egress["name"]), reason)
+    try:
+        subnet, gateway = IPv4Network(egress["subnet"]), IPv4Address(egress["gateway"])
+    except ValueError:
+        raise LiveProfileRefused(reason) from None
+    require(str(subnet) == egress["subnet"] and subnet.prefixlen <= 30
+            and subnet.network_address < gateway < subnet.broadcast_address and gateway != subnet[2], reason)
 
 
 def _binding(record):
@@ -299,9 +313,9 @@ class DockerCLI:
         """Prove the original pair is clear before publishing any reusable end."""
         with self.job.hold(self.deadline, .01):
             original = self.job.read("network-upstream.json")
-            name = original["Name"]
-            # N10 Revision 2 (OPERATIONS row 27) supplies the properties absent from the protected ID operand.
-            ipam = {"Subnet": "172.31.244.0/29", "Gateway": "172.31.244.1"}
+            approval = self.plan["egress"]
+            name = approval["name"]
+            ipam = {"Subnet": approval["subnet"], "Gateway": approval["gateway"]}
             subnet = IPv4Network(ipam["Subnet"])
             relay_ip = str(subnet[2])
             expected = _binding(ended)
@@ -319,7 +333,7 @@ class DockerCLI:
                     binding[1].pop(name, None)
                     require(binding == expected and relay["State"] == ended["State"], "egress_relay_changed")
                     members, endpoint = bridge.get("Containers"), networks.get(name)
-                    require(bridge["Id"] == network and bridge["Name"] == "gen2-2e1-live-provider-a6c5f6513f18415d294eeea44e652b69"
+                    require(bridge["Id"] == network and bridge["Name"] == name
                             and bridge["Driver"] == "bridge" and bridge["Scope"] == "local" and bridge["Internal"] is False
                             and bridge["EnableIPv4"] is True and bridge["EnableIPv6"] is False and bridge["IPAM"]["Config"] == [ipam]
                             and bridge["Options"].get("com.docker.network.bridge.gateway_mode_ipv4") == "nat", "egress_bridge_properties")
@@ -394,6 +408,8 @@ class DockerCLI:
         route = self.plan.get("route", "fixture")
         real = route == "real"
         require(route == self.manifest["route"], "plan_route")
+        if real:
+            validate_egress(self.plan.get("egress"))
         require(self.plan["binds"]["out"] == str(Path(self.plan["slots"]["out"]) / self.plan["generation"]), "backend_output_generation")
         identity = self.job.read("identity.json")
         require(identity is not None and os.getpid() in jobs.members(identity), "backend_unsupervised")
@@ -418,7 +434,6 @@ class DockerCLI:
         network = self.network(self.plan["generation"])
         if real:
             upstream = self.plan["egress"]["network_id"]
-            require(CID.fullmatch(upstream), "egress_identity")
             view = json.loads(self._command(("network", "inspect", upstream)))[0]
             require(view["Id"] == upstream and not view["Internal"] and not view["Containers"], "egress_original")   # the persistent bridge, empty between jobs
         else:   # the fixture's network is lane C's, per attempt: the fixture was created ON it at .3 (a `none`-mode container can join nothing), and only the relay joins

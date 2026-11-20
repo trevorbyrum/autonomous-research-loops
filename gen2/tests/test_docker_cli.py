@@ -19,7 +19,7 @@ from gen2.supervisor.isolation import LiveProfileRefused
 from gen2.supervisor.spool import Spool, SpoolConflict
 
 CID, NET, GENERATION = "a" * 64, "b" * 64, "c" * 32
-N10_NAME = "gen2-2e1-live-provider-a6c5f6513f18415d294eeea44e652b69"
+EGRESS = {"name": "example-egress", "subnet": "192.0.2.0/29", "gateway": "192.0.2.1"}
 
 
 class DockerBoundary(unittest.TestCase):
@@ -691,7 +691,7 @@ class DockerBoundary(unittest.TestCase):
                 self.job.write("relay.json", record)
 
     def real_world(self):
-        """A real-route cli: manifest without the fixture role, the plan's route, egress bridge ID and upstream, output = judgment."""
+        """A real-route cli: manifest without the fixture role, the plan's route, approved egress bridge and upstream, output = judgment."""
         manifest = {**self.manifest, "route": "real", "images": {r: v for r, v in self.manifest["images"].items() if r != "fixture"},
                     "configurations": {r: v for r, v in self.manifest["configurations"].items() if r != "fixture"}}
         cli = d.DockerCLI(self.job, manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10, clock=lambda: 1000.0)
@@ -700,7 +700,7 @@ class DockerBoundary(unittest.TestCase):
             (Path(path) / GENERATION).mkdir(parents=True, exist_ok=True)
         egress = "9" * 64
         cli.plan.update(generation=GENERATION, slots=slots, binds={"out": str(Path(slots["out"]) / GENERATION)}, route="real", output="judgment",
-                        egress={"network_id": egress}, upstream="203.0.113.7:443")
+                        egress={"network_id": egress, **EGRESS}, upstream="203.0.113.7:443")
         self.job.write("identity.json", {"pid": os.getpid()})
         self.job.write("docker-plan.json", cli.plan)
         self.job.write("docker.json", {})
@@ -713,18 +713,18 @@ class DockerBoundary(unittest.TestCase):
         job_name = "gen2-2e1-live-job-" + GENERATION
         self.job.write("network-job.json", {"Id": NET, "Name": job_name})
         connected = {**record, "NetworkSettings": {"Networks": {job_name: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.254.2"}},
-                                                               N10_NAME: {"NetworkID": "", "IPAMConfig": None}}}}
+                                                               EGRESS["name"]: {"NetworkID": "", "IPAMConfig": None}}}}
         # Project the N10 handoff inspect and the retained Docker start/end probe onto this attempt's IDs.
-        bridge = {"Id": egress, "Name": N10_NAME, "Internal": False, "Scope": "local", "Driver": "bridge",
-                  "EnableIPv4": True, "EnableIPv6": egress_case == "ipv6", "IPAM": {"Config": [{"Subnet": "172.31.244.0/29", "Gateway": "172.31.244.1"}]},
+        bridge = {"Id": egress, "Name": EGRESS["name"], "Internal": False, "Scope": "local", "Driver": "bridge",
+                  "EnableIPv4": True, "EnableIPv6": egress_case == "ipv6", "IPAM": {"Config": [{"Subnet": "192.0.2.0/29", "Gateway": "192.0.2.1"}]},
                   "Options": {"com.docker.network.bridge.gateway_mode_ipv4": "nat"}, "Containers": {}}
         states = json.loads((Path(__file__).parent / "fixtures/docker_inspect/log-probe-20261110.json").read_bytes())
-        endpoint = {"NetworkID": egress, "IPAMConfig": None, "EndpointID": "7" * 64, "IPAddress": "172.31.244.2", "GlobalIPv6Address": ""}
+        endpoint = {"NetworkID": egress, "IPAMConfig": None, "EndpointID": "7" * 64, "IPAddress": "192.0.2.2", "GlobalIPv6Address": ""}
         started = {**record, "State": states["started"]["State"], "NetworkSettings": {"Networks": {
-            job_name: {**connected["NetworkSettings"]["Networks"][job_name], "NetworkID": NET}, N10_NAME: endpoint}}}
+            job_name: {**connected["NetworkSettings"]["Networks"][job_name], "NetworkID": NET}, EGRESS["name"]: endpoint}}}
         self.job.write("relay-start.json", started)
         (self.job.dir / "relay.cid").write_text(relay)
-        member = {"EndpointID": endpoint["EndpointID"], "IPv4Address": "172.31.244.2/29"}
+        member = {"EndpointID": endpoint["EndpointID"], "IPv4Address": "192.0.2.2/29"}
         foreign = "8" * 64
         stopped = disconnected = False
         relay_reads = 0
@@ -749,9 +749,9 @@ class DockerBoundary(unittest.TestCase):
                         return 1, b"", b"inspect failed"
                     networks = dict(started["NetworkSettings"]["Networks"])
                     if disconnected and egress_case != "stale":
-                        del networks[N10_NAME]
-                    elif egress_case in (None, "already empty", "foreign") or (egress_case == "empty then stale" and relay_reads < 3):
-                        networks[N10_NAME] = {**endpoint, "EndpointID": "", "IPAddress": ""}
+                        del networks[EGRESS["name"]]
+                    elif egress_case in (None, "already empty", "foreign", "name", "ipam") or (egress_case == "empty then stale" and relay_reads < 3):
+                        networks[EGRESS["name"]] = {**endpoint, "EndpointID": "", "IPAddress": ""}
                     shown = {**started, "State": states["ended"]["State"], "NetworkSettings": {"Networks": networks}}
             if args[:2] == ("network", "inspect"):
                 shown = bridge if args[-1] == egress else {"Id": NET, "Containers": {relay: {}}}
@@ -787,16 +787,18 @@ class DockerBoundary(unittest.TestCase):
             return refs, batch, watch, contained
 
     def test_real_route_reuse_requires_the_original_bridge_and_relay_readbacks(self):
-        for case in ("clean", "already empty", "ipv6", "stale", "empty then stale", "failed", "foreign"):
+        mismatches = {"name": {"name": "approved-egress"}, "ipam": {"subnet": "192.0.2.8/29", "gateway": "192.0.2.9"}}
+        for case in ("clean", "already empty", "ipv6", "stale", "empty then stale", "failed", "foreign", *mismatches):
             with self.subTest(case=case):
                 self.fresh()
                 cli, egress, relay, record = self.real_world()
+                cli.plan["egress"].update(mismatches.get(case, {}))
                 result, batch, _, contained = self.real_run(cli, egress, relay, record, egress_case=case)
                 calls = [call.args[1][3:] for call in self.execute.call_args_list]
                 disconnect = ("network", "disconnect", egress, relay)
                 pair = [("network", "inspect", egress), ("inspect", relay)]
                 mutation = [disconnect] if case in ("clean", "stale", "failed") else []
-                expected = pair + mutation + ([] if case in ("foreign", "ipv6") else pair)
+                expected = pair + mutation + ([] if case in ("foreign", "ipv6", *mismatches) else pair)
                 tail = calls[calls.index(("wait", relay)) + 2:]
                 self.assertEqual(tail[:len(expected)], expected)
                 self.assertEqual(calls.count(disconnect), len(mutation))
@@ -808,7 +810,7 @@ class DockerBoundary(unittest.TestCase):
                     self.assertEqual("relay_networks" in receipt["after"], case != "failed")
                 if receipt["confirmed"]:
                     self.assertEqual(receipt["after"]["bridge"]["Containers"], {})
-                    self.assertFalse(receipt["after"]["relay_networks"].get(N10_NAME, {}).get("EndpointID"))
+                    self.assertFalse(receipt["after"]["relay_networks"].get(EGRESS["name"], {}).get("EndpointID"))
                     self.assertEqual(self.job.read("docker-complete.json")["refs"], result)
                     contained.assert_not_called()
                 else:
@@ -819,9 +821,25 @@ class DockerBoundary(unittest.TestCase):
                         self.assertIs(self.job.read("network-upstream.json")["EnableIPv6"], True)
                         self.assertIs(receipt["before"]["bridge"]["EnableIPv6"], True)
                         self.assertIsNotNone(self.job.read(d.SEAL))
+                    if case in mismatches:
+                        self.assertEqual(str(result.__context__), "egress_bridge_properties")
+                        self.assertIsNotNone(self.job.read(d.SEAL))
                     if case == "foreign":
                         self.assertEqual(set(receipt["before"]["bridge"]["Containers"]), {"8" * 64})
                         self.assertFalse(any("8" * 64 in args for args in calls))
+
+    def test_invalid_egress_approval_refuses_before_network_actions(self):
+        for change in ({"gateway": None}, {"subnet": "192.0.2.1/29"}, {"gateway": "192.0.2.2"}):
+            with self.subTest(change=change):
+                self.fresh()
+                cli, egress, relay, record = self.real_world()
+                cli.plan["egress"] = {k: v for k, v in (cli.plan["egress"] | change).items() if v is not None}
+                error, _, watch, _ = self.real_run(cli, egress, relay, record)
+                self.assertIsInstance(error, LiveProfileRefused)
+                self.assertEqual(str(error), "profile_egress_network")
+                self.assertEqual(watch.mock_calls, [])
+                self.execute.assert_not_called()
+                self.assertIsNone(self.job.read("docker-attempt.json"))
 
     def test_a_real_route_run_has_no_fixture_joins_the_egress_bridge_by_id_and_collects_the_judgment(self):
         cli, egress, relay, record = self.real_world()
