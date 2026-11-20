@@ -925,7 +925,7 @@ class Supervisor:
             if reply.get("status") not in ("authorized", "replayed"):
                 journal["unlaunched"] = True
                 return self._cancel_self(job, journal, grant, f"dispatch refused: {reply.get('reason')}")
-            journal["dispatch"] = {"admission_ref": reply["admission_ref"], "run_id": request["run_id"], "attempt": 1}
+            journal["dispatch"] = {"admission_ref": reply["admission_ref"], "run_id": request["run_id"], "attempt": 1, "epoch": self.dispatch.epoch}
             self._save(job, journal)
             self._fault("dispatch_authorized")   # the Router holds the intent; the start has not happened
         return None
@@ -945,9 +945,11 @@ class Supervisor:
 
     def _record_owed_dispatch(self, job, journal, grant) -> None:
         """A collected live end owes its dispatch result on the original authorization, whichever path reaches the Router next (running, a
-        reconciliation, an invocation already terminal): late retention grants no transition, so nothing else is sent on its strength (F-3; SUP-35)."""
-        if journal.get("dispatch") and not journal["dispatch"].get("recorded") and journal.get("collected") and job.read("docker-complete.json") is not None:
-            self._record_dispatch(job, journal, grant, journal["collected"])
+        reconciliation, an invocation already terminal): late retention grants no transition, so nothing else is sent on its strength (F-3; SUP-35). Only an authenticated end owes it."""
+        collected, plan, complete = journal.get("collected"), job.read("docker-plan.json"), job.read("docker-complete.json")
+        if (journal.get("dispatch") and not journal["dispatch"].get("recorded") and collected and plan and complete is not None
+                and complete.get("origin") == plan["origin"] and collected["observation"]["descendants"]["handling"] != "unconfirmed"):   # an authenticated end only: the first result is immutable
+            self._record_dispatch(job, journal, grant, collected)
 
     def _await_identity(self, job: jobs.Job, grace: float) -> dict:
         """Wait, within `grace`, for a launcher to record its identity. Before

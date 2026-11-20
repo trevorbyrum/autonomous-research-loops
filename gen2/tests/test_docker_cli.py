@@ -597,7 +597,9 @@ class DockerBoundary(unittest.TestCase):
         self.job.write("identity.json", {"pid": os.getpid()})
         self.job.write("relay.json", record)
         live_wrong = {"fixture_live_mount_source": {"Mounts": [{"Type": "bind", "Source": "/other", "Destination": "/evidence"}]},   # DCK-03: only the daemon's own top-level mounts contradict the plan
-                      "fixture_live_mount_missing": {"Mounts": []}}
+                      "fixture_live_mount_missing": {"Mounts": []},
+                      "fixture_live_mount_type": {"Mounts": [{**fixture["Mounts"][0], "Type": "volume"}]},
+                      "fixture_live_mount_destination": {"Mounts": [{**fixture["Mounts"][0], "Destination": "/elsewhere"}]}}
         for reason in (None, "backend_unsupervised", "initializer_failed", "ingress_not_closed", "relay_drain", "relay_stop_failed", "fixture_stop_failed", "end_binding", "end_state", "end_unconfirmed", "collection_absent", "collection_identity", "generation_symlink", *wrong, *views, *topology, *live_wrong):
             with self.subTest(reason=reason), contextlib.ExitStack() as stack:
                 shown = copy.deepcopy({**fixture, **wrong.get(reason, {})})

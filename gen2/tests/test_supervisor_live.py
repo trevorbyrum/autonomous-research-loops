@@ -640,16 +640,10 @@ class CollectionRefusal(RealRoute):
         self.assertEqual(self.audit("dispatch_result"), [])
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "running")
 
-    def test_the_generated_marker_path_keeps_its_fences_a_stale_epoch_records_nothing_and_an_unconfirmed_descendant_is_no_confirmed_end(self):
+    def test_the_generated_marker_path_keeps_its_fences_an_unconfirmed_descendant_is_no_confirmed_end(self):
         def confirmed(job):
             collected = job.read("journal.json")["collected"]
             return self.authority.result(job.read("journal.json")["dispatch"]["admission_ref"], collected["record"]["content_hash"])["confirmed_end"]
-        supervisor, job = self.world()
-        self.authority.epoch = "epoch-2"                                                   # a restart between the marker and the result: a stale origin
-        self.assertEqual(LiveStart.drive(self, supervisor), "stalled")
-        self.assertEqual((self.audit("dispatch_result"), self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN)), ([], "running"))
-        self.tearDown()
-        self.setUp()
         supervisor, job = self.world()
         self.assertEqual(LiveStart.drive(self, supervisor), "failed")
         self.assertTrue(confirmed(job))                                                    # control: the generated marker with every descendant confirmed ended is a confirmed end
@@ -657,6 +651,31 @@ class CollectionRefusal(RealRoute):
         journal["collected"]["observation"]["descendants"]["handling"] = "unconfirmed"      # the same end with a descendant the supervisor could not confirm
         job.write("journal.json", journal)
         self.assertFalse(confirmed(job))
+
+    def test_a_restart_keeps_the_admission_epoch_so_the_first_rejection_is_delivered_on_the_original_authorization(self):
+        """F-3 / BOUNDARIES 187: the result is bound to the epoch retained at admission; only the current-authority test uses the new epoch."""
+        supervisor, job = self.world(rejected=True)
+        job.write("runner-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10.123456789Z"}})
+        self.clock.set("2026-09-27T10:00:30Z")
+        retained = job.read("journal.json")["dispatch"]["epoch"]
+        self.authority.epoch = "epoch-2"                                                   # the authority restarted after the admission
+        self.assertEqual(LiveStart.drive(self, supervisor), "failed")
+        (result,) = self.audit("dispatch_result")
+        self.assertEqual((result["evidence"]["origin"]["epoch"], result["response"]["trial_stopped"]), (retained, True))   # the changed epoch is no current authority: U, stopped
+        (fact,) = self.rows("SELECT state, since FROM capability_facts WHERE capability = ?", "provider-auth:codex")
+        self.assertEqual(tuple(fact), ("failing", result["evidence"]["rejection"]["observed_at"]))   # the dated fact
+        self.assertEqual(len(self.rows("SELECT 1 FROM holds WHERE hold_class = 'capability'")), 1)
+
+    def test_an_end_whose_completion_origin_does_not_match_leaves_the_intent_unresolved_and_corrected_evidence_still_delivers(self):
+        supervisor, job = self.world()
+        complete = job.read("docker-complete.json")
+        job.write("docker-complete.json", {**complete, "origin": {**complete["origin"], "job_handle": "job-other"}})
+        self.assertEqual(LiveStart.drive(self, supervisor), "backend_end_unconfirmed")
+        self.assertEqual(self.audit("dispatch_result"), [])                                # no fixed-U result persisted
+        self.assertFalse(job.read("journal.json")["dispatch"].get("recorded"))
+        job.write("docker-complete.json", complete)
+        self.assertEqual(LiveStart.drive(self, supervisor), "failed")
+        self.assertEqual(len(self.audit("dispatch_result")), 1)
 
     def test_the_generated_marker_path_with_a_stale_lease_records_nothing_and_the_same_world_with_its_lease_does(self):
         supervisor, job = self.world()

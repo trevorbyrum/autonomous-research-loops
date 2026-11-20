@@ -104,10 +104,12 @@ class QualifiedAuthority:
                 **({"egress": {"network_id": egress}, "upstream": doc["plan"]["upstream"], **{k: template[k] for k in RELAY_PROVIDER}} if egress else {})}
 
     def _origin(self, job: jobs.Job) -> dict | None:
-        plan, grant = job.read("docker-plan.json"), (job.read("journal.json") or {}).get("grant")
+        plan, journal = job.read("docker-plan.json"), job.read("journal.json") or {}
+        grant = journal.get("grant")
         if plan is None or not grant:
             return None
-        return {**plan["origin"], "lease_id": grant["lease"]["lease_id"], "generation": grant["lease"]["generation"], "epoch": self.epoch}
+        epoch = (journal.get("dispatch") or {}).get("epoch", self.epoch)   # the epoch retained at admission: a restart does not change who was authorized (current authority is is_current's test)
+        return {**plan["origin"], "lease_id": grant["lease"]["lease_id"], "generation": grant["lease"]["generation"], "epoch": epoch}
 
     def admission(self, invocation_id: str, run_id: str, attempt: int) -> Mapping | None:
         job = self._job("job-" + invocation_id)

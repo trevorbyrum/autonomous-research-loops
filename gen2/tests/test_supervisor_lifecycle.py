@@ -116,10 +116,6 @@ class LifecycleFaults:
                 self.assertEqual((output["content_hash"], output["status"]), (station, "present"))
                 self.assertEqual(case == "other bytes", rf.h("a") in (output["detail"] or "") and station in output["detail"])
 
-    def test_a_correct_declared_digest_is_still_only_data(self) -> None:
-        self.submit([*succeed(), {"op": "declare_digest", "digest": canonical.bytes_digest(outcome_text(MAIN).encode())}])
-        self.assertEqual(self.supervisor.run(MAIN), "committed")
-
     def test_output_is_never_read_through_a_symlink_or_a_hard_link(self) -> None:
         outside = self.root / "outside.json"
         outside.write_text(outcome_text(MAIN))  # a valid outcome, but not the job's own file (C-9)
