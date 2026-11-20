@@ -100,15 +100,21 @@ class LifecycleFaults:
                 self.assertEqual((record["output"]["status"] in ("absent", "empty"), record["self_report"], record["findings"]), (True, self_report, ["empty_output"]))
                 self.assertEqual(self.rows("SELECT count(*) FROM audit_events WHERE invocation_id = ? AND kind = 'transition' AND detail LIKE '%failed%'", MAIN), [(1,)])
 
-    def test_a_wrong_declared_digest_fails(self) -> None:
-        self.submit([*succeed(), {"op": "declare_digest", "digest": rf.h("a")}])
-        self.assertEqual(self.supervisor.run(MAIN), "failed")
-        self.assertEqual(self.ended(), self.failed("output_digest_mismatch"))
-        self.assertEqual(self.evidence_record()["output"]["declared_digest"], rf.h("a"))
-
-    def test_a_correct_declared_digest_is_still_only_data(self) -> None:
-        self.submit([*succeed(), {"op": "declare_digest", "digest": canonical.bytes_digest(outcome_text(MAIN).encode())}])
-        self.assertEqual(self.supervisor.run(MAIN), "committed")
+    def test_a_wrong_declared_digest_is_recorded_and_the_station_hash_commits(self) -> None:
+        """SUP-40 (operator ruling 2026-11-19): every declaration over the same output ends the same way, and a disagreeing one is readable evidence."""
+        station = canonical.bytes_digest(outcome_text(MAIN).encode())
+        for case, steps in (("absent", []), ("equal", [{"op": "declare_digest", "digest": station}]), ("other bytes", [{"op": "declare_digest", "digest": rf.h("a")}])):
+            with self.subTest(case):
+                self.tearDown()
+                self.setUp()
+                self.submit([*succeed(), *steps])
+                self.assertEqual(self.supervisor.run(MAIN), "committed")
+                digest = self.value("SELECT result_payload_digest FROM invocations WHERE invocation_id = ?", MAIN)
+                self.assertEqual(digest, station)
+                refs = json.loads(self.value("SELECT receipt FROM operation_receipts WHERE invocation_id = ?", MAIN))["validation"]["validated_hashes"]
+                output = json.loads(self.spool.read(refs[1], topic_id=rf.TOPIC))["output"]   # the committed execution record, read back from the spool
+                self.assertEqual((output["content_hash"], output["status"]), (station, "present"))
+                self.assertEqual(case == "other bytes", rf.h("a") in (output["detail"] or "") and station in output["detail"])
 
     def test_output_is_never_read_through_a_symlink_or_a_hard_link(self) -> None:
         outside = self.root / "outside.json"

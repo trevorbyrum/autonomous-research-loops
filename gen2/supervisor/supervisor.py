@@ -637,10 +637,10 @@ class Supervisor:
             findings.append("empty_output")
         elif found["status"] == "refused":
             findings.append("output_refused")
-        elif declared is not None and declared != found.get("original", found["ref"]["content_hash"]):
-            output.update(status="digest_mismatch", detail=f"the executor declared {declared[:80]}; the bytes hash to {found.get('original', found['ref']['content_hash'])}")
-            findings.append("output_digest_mismatch")
-        else:
+        else:   # the station's hash decides; a declaration that disagrees is recorded beside the authoritative reference, never a finding (operator ruling 2026-11-19)
+            station = found.get("original", found["ref"]["content_hash"])
+            if declared is not None and declared != station:
+                output["detail"] = f"the executor declared {declared[:80]}; the station hashed the bytes to {station}"
             output.update(content_hash=found["ref"]["content_hash"], size_bytes=found["ref"]["size_bytes"])
             result = found["ref"] if not findings else None
         observation = {"process": self._process(view["identity"]), "exit": exit_record, "termination": seen["termination"], "descendants": seen["descendants"],

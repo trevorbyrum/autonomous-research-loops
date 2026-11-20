@@ -175,6 +175,24 @@ class DockerBoundary(unittest.TestCase):
             with self.assertRaisesRegex(SpoolConflict, "differs from retained bytes"):
                 batch.collect(slot_fd, GENERATION, identity, writers_ended=True)
 
+    def test_a_linked_or_non_directory_generation_is_a_collection_refusal_that_stages_nothing_in_every_mode(self):
+        """DCK-14: the descriptor-relative open's own OS errors are the documented refusal; other infrastructure errors still escape."""
+        (self.root / "elsewhere").mkdir()
+        (self.root / "elsewhere" / "outcome.json").write_bytes(b"x")
+        (self.root / GENERATION).symlink_to(self.root / "elsewhere", target_is_directory=True)
+        (self.root / ("5" * 32)).write_bytes(b"not a directory")
+        slot_fd = d.slot(str(self.root))
+        self.addCleanup(os.close, slot_fd)
+        for kind in ("outcome", "judgment"):
+            for name in (GENERATION, "5" * 32):
+                with self.subTest(kind=kind, generation=name):
+                    batch = d.EvidenceBatch(Spool(self.root / "spool", quota_bytes=64 << 20), "fleet:fixture")
+                    with mock.patch.object(d, "free_space"):
+                        self.refused(lambda: batch.collect(slot_fd, name, (0, 0), writers_ended=True, kind=kind), "collection_generation")
+                    self.assertEqual((batch.used, batch.held), (0, {}))
+        with mock.patch.object(d.os, "open", side_effect=PermissionError(13, "denied")), self.assertRaises(PermissionError):
+            d.EvidenceBatch(Spool(self.root / "spool", quota_bytes=64 << 20), "fleet:fixture").collect(slot_fd, "6" * 32, (0, 0), writers_ended=True)
+
     def test_collection_refuses_links_empty_missing_and_batch_overflow(self):
         generation = self.root / GENERATION
         generation.mkdir()
@@ -578,10 +596,15 @@ class DockerBoundary(unittest.TestCase):
         self.cli.plan.update(generation=GENERATION, slots=slots, binds={"out": str(Path(slots["out"]) / GENERATION)}, fixture=fixture)
         self.job.write("identity.json", {"pid": os.getpid()})
         self.job.write("relay.json", record)
-        for reason in (None, "backend_unsupervised", "initializer_failed", "ingress_not_closed", "relay_drain", "relay_stop_failed", "fixture_stop_failed", "end_binding", "end_state", "end_unconfirmed", "collection_absent", "collection_identity", "generation_symlink", *wrong, *views, *topology):
+        live_wrong = {"fixture_live_mount_source": {"Mounts": [{"Type": "bind", "Source": "/other", "Destination": "/evidence"}]},   # DCK-03: only the daemon's own top-level mounts contradict the plan
+                      "fixture_live_mount_missing": {"Mounts": []},
+                      "fixture_live_mount_type": {"Mounts": [{**fixture["Mounts"][0], "Type": "volume"}]},
+                      "fixture_live_mount_destination": {"Mounts": [{**fixture["Mounts"][0], "Destination": "/elsewhere"}]}}
+        for reason in (None, "backend_unsupervised", "initializer_failed", "ingress_not_closed", "relay_drain", "relay_stop_failed", "fixture_stop_failed", "end_binding", "end_state", "end_unconfirmed", "collection_absent", "collection_identity", "generation_symlink", *wrong, *views, *topology, *live_wrong):
             with self.subTest(reason=reason), contextlib.ExitStack() as stack:
                 shown = copy.deepcopy({**fixture, **wrong.get(reason, {})})
                 self.cli.plan["fixture"] = shown
+                live = copy.deepcopy({**shown, **live_wrong[reason]}) if reason in live_wrong else shown
                 network_view = views.get(reason, view)
                 connected = topology.get(reason, created())
                 batch, watch = mock.Mock(), mock.Mock()
@@ -626,7 +649,7 @@ class DockerBoundary(unittest.TestCase):
                 batch.collect.side_effect = collect
                 batch.stage.return_value = {"content_hash": "sha256:" + CID}
                 actions = {"create_auxiliary": [CID, relay], "start": None, "end": end, "network": [NET], "endpoint": None, "create_runner": CID,
-                           "inspect": [shown, connected, {"NetworkSettings": {"Networks": {}}}, final], "contain": contain, "runtime": None, "close_admission": None,
+                           "inspect": [live, connected, {"NetworkSettings": {"Networks": {}}}, final], "contain": contain, "runtime": None, "close_admission": None,
                            "drain": None if reason != "relay_drain" else LiveProfileRefused("relay_drain"), "logs": (b"events", b"diagnostics"), "_command": command}
                 for name, result in actions.items():
                     patched = stack.enter_context(mock.patch.object(self.cli, name, **({"side_effect": result} if isinstance(result, (list, BaseException)) or callable(result) else {"return_value": result})))
@@ -634,11 +657,11 @@ class DockerBoundary(unittest.TestCase):
                 if reason == "backend_unsupervised":
                     self.refused(lambda: self.cli.run(batch), reason)
                 elif reason == "generation_symlink":
-                    with self.assertRaises(OSError):
+                    with self.assertRaisesRegex(LiveProfileRefused, "^collection_generation$"):
                         self.cli.run(batch)
                     self.assertIsNone(self.job.read("docker-complete.json"))
                 elif reason:
-                    expected = "fixture_evidence_mount" if reason.startswith("fixture_mount_") or reason in ("fixture_host_mount_source", "fixture_host_multiple") else "fixture_runtime" if reason.startswith("fixture_host_") else "fixture_network" if reason in wrong else "fixture_network_members" if reason in views else "relay_topology" if reason in topology else reason
+                    expected = "fixture_evidence_mount" if reason.startswith("fixture_mount_") or reason in live_wrong or reason in ("fixture_host_mount_source", "fixture_host_multiple") else "fixture_runtime" if reason.startswith("fixture_host_") else "fixture_network" if reason in wrong else "fixture_network_members" if reason in views else "relay_topology" if reason in topology else reason
                     with self.assertRaisesRegex(LiveProfileRefused, "^" + expected + "$"):
                         self.cli.run(batch)
                     self.assertNotIn(mock.call.endpoint("connect", mock.ANY, mock.ANY, mock.ANY), watch.mock_calls) if reason in (*wrong, *views) else None
