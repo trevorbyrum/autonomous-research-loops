@@ -21,7 +21,8 @@ IDENTITY = {"pid": 4242, "session": 4242, "starttime": 7, "boot_id": "0" * 8 + "
 FILES = ("docker-plan.json", "docker-attempt.json", "docker.json", "docker-cli.json", "docker-complete.json")
 STATES = ("absent", "null", "list", "malformed", "valid")
 RAW = {"null": "null", "list": "[]", "malformed": "{"}
-VALID = {"docker-plan.json": {"origin": ORIGIN, "route": "real", "binds": {"out": "/s/out/" + "c" * 32}, "slots": {"out": "/s/out"}, "generation": "c" * 32},
+VALID = {"docker-plan.json": {"origin": ORIGIN, "route": "real", "binds": {"out": "/s/out/" + "c" * 32}, "slots": {"out": "/s/out"}, "generation": "c" * 32,
+                               "egress": {"network_id": "d" * 64, "name": "example-egress", "subnet": "192.0.2.0/29", "gateway": "192.0.2.1"}},
          "docker-attempt.json": {"origin": ORIGIN}, "docker.json": {}, "docker-cli.json": IDENTITY,
          "docker-complete.json": {"origin": ORIGIN, "refs": [], "usage": "refused", "disposition": {"disposition": "unknown", "reason": "x"}}}
 QUIET = {"docker-plan.json": "valid", "docker-attempt.json": "valid", "docker.json": "valid", "docker-cli.json": "absent", "docker-complete.json": "absent"}   # a started, empty attempt

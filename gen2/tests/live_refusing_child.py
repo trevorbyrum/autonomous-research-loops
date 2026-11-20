@@ -38,11 +38,14 @@ def transport(root):
             return 0, ids[path.stem].encode(), b""
         if args[0] == "inspect":
             role = {v: k for k, v in ids.items()}[args[1]]
-            networks = ({target.read("network-job.json")["Name"]: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.254.2"}}, "egress": {"NetworkID": "", "IPAMConfig": None}}
-                        if role == "relay" else {})
-            return 0, json.dumps([{"Id": args[1], "Image": IMAGE, "Config": {"Image": IMAGE}, "HostConfig": {}, "NetworkSettings": {"Networks": networks}}]).encode(), b""
+            networks = ({target.read("network-job.json")["Name"]: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.254.2"}},
+                         "example-egress": {"NetworkID": EGRESS, "EndpointID": "", "IPAddress": "", "GlobalIPv6Address": ""}} if role == "relay" else {})
+            return 0, json.dumps([{"Id": args[1], "Image": IMAGE, "Config": {"Image": IMAGE}, "HostConfig": {},
+                                  "State": {"ExitCode": 0}, "NetworkSettings": {"Networks": networks}}]).encode(), b""
         if args[:2] == ("network", "inspect") or list(args[:2]) == ["network", "inspect"]:
-            view = {"Id": EGRESS, "Name": "egress", "Internal": False, "Containers": {}} if args[2] == EGRESS else {"Id": NET, "Containers": {"2" * 64: {}}}
+            view = ({"Id": EGRESS, "Name": "example-egress", "Internal": False, "Containers": {}, "Driver": "bridge", "Scope": "local",
+                     "EnableIPv4": True, "EnableIPv6": False, "IPAM": {"Config": [{"Subnet": "192.0.2.0/29", "Gateway": "192.0.2.1"}]},
+                     "Options": {"com.docker.network.bridge.gateway_mode_ipv4": "nat"}} if args[2] == EGRESS else {"Id": NET, "Containers": {"2" * 64: {}}})
             return 0, json.dumps([view]).encode(), b""
         return 0, b"", b""   # kill, rm, stop
     return run
@@ -90,7 +93,7 @@ def main(argv):
             mock.patch.object(real, "network", lambda self, g: job.write("network-job.json", {"Id": NET, "Name": "gen2-2e1-live-job-" + g}) or NET), \
             mock.patch.object(real, "runtime"), mock.patch.object(real, "endpoint"), mock.patch.object(real, "start"), mock.patch.object(real, "drain"), \
             mock.patch.object(real, "logs", lambda self, *a, **k: (FAILED if rejected else b"events", b"diagnostics")), \
-            mock.patch.object(real, "end", lambda self, cid, role="runner": {"State": {"ExitCode": int(rejected and role == "runner")}}):
+            mock.patch.object(real, "end", lambda self, cid, role="runner": self.inspect(cid) if role == "relay" else {"State": {"ExitCode": int(rejected and role == "runner")}}):
         agent = live.agent_for(directory, env, execute=transport(root))   # the production live agent; collection refuses because the out directory holds no judgment
         return child.main([str(directory)], env=env, table=table, agent=agent)
 
