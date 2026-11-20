@@ -22,14 +22,14 @@ def jl(*rows):
     return b"".join(json.dumps(row).encode() + b"\n" for row in rows)
 
 
-FAILED = jl({"type": "thread.started"}, {"type": "turn.started"}, {"type": "turn.failed", "error": {"message": "401"}})
+FAILED = jl({"type": "thread.started"}, {"type": "turn.started"}, {"type": "turn.failed", "error": {"message": "401"}})   # retained runner events: kept, never classified
 
 
 class Classifier(unittest.TestCase):
-    def verdict(self, access=None, events=FAILED, fixture=None, code=1):
+    def verdict(self, access=None, fixture=None, code=1):
         access = jl(ROW) if access is None else access
         fixture = json.dumps(FIXTURE).encode() if fixture is None else fixture
-        return r.classify(access, events, fixture, code, model="gpt-6.1-terra")
+        return r.classify(access, fixture, code, model="gpt-6.1-terra")
 
     def test_conjunction_and_each_single_operand_refusal(self):
         self.assertEqual(self.verdict(), {"disposition": "credentials_rejected", "reason": "relay_401"})
@@ -50,10 +50,9 @@ class Classifier(unittest.TestCase):
             "non-string field": dict(access=jl({**ROW, "status": 401})),
             "wrong version": dict(access=jl({**ROW, "v": 2})),
             "duplicate id": dict(access=jl(ROW, ROW)),
-            "completed turn": dict(events=jl({"type": "turn.completed", "usage": {}})),
-            "prior tool": dict(events=jl({"type": "item.completed", "item": {}}, {"type": "turn.failed"})),
-            "no failed turn": dict(events=jl({"type": "turn.started"})),
+            "no 401 row": dict(access=jl({**ROW, "status": "200", "upstream_status": "200"})),
             "exit 0": dict(code=0),
+            "exit not an int": dict(code=True),
             "fixture other id": dict(fixture=bad_fixture(id="rid9")),
             "fixture accepted": dict(fixture=bad_fixture(credential="accepted")),
             "fixture other model": dict(fixture=bad_fixture(model="gpt-5.5")),
@@ -64,14 +63,17 @@ class Classifier(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(self.verdict(**operands)["disposition"], "unknown")
 
+    def test_any_non_zero_exit_with_the_one_upstream_401_row_is_the_rejection(self):
+        for code in (1, 2, 137):   # the CLI's exit table is not part of the rule
+            with self.subTest(code):
+                self.assertEqual(self.verdict(code=code), {"disposition": "credentials_rejected", "reason": "relay_401"})
+
     def test_known_transport_failures_are_never_credential_facts(self):
         for status in ("429", "504"):
             with self.subTest(status):
                 self.assertEqual(self.verdict(access=jl({**ROW, "status": status, "upstream_status": status}))["disposition"], "transport_failed")
 
     def test_bounds(self):
-        big = jl({"type": "turn.failed", "pad": "x" * (64 << 10)})
-        self.assertEqual(self.verdict(events=big)["reason"], "events_bound")
         self.assertEqual(self.verdict(access=jl(*[{**ROW, "id": str(i)} for i in range(1025)]))["reason"], "access_bound")
 
 
@@ -80,7 +82,7 @@ class RealRoute(unittest.TestCase):
     REAL = {**ROW, "upstream": "203.0.113.7:443"}
 
     def verdict(self, route="real", fixture=None, upstream="203.0.113.7:443", access=None):
-        return r.classify(jl(self.REAL) if access is None else access, FAILED, fixture, 1, model="gpt-6.1-terra", route=route, upstream=upstream)
+        return r.classify(jl(self.REAL) if access is None else access, fixture, 1, model="gpt-6.1-terra", route=route, upstream=upstream)
 
     def test_a_real_route_row_against_the_plans_upstream_with_no_fixture_is_a_rejection(self):
         self.assertEqual(self.verdict(), {"disposition": "credentials_rejected", "reason": "relay_401"})
@@ -125,6 +127,13 @@ class Usage(unittest.TestCase):
             with self.subTest(name):
                 usage = self.record(events, elapsed=None)["usage"]
                 self.assertEqual(self.schemas.errors(usage, "live-vocabulary.schema.json#/$defs/usage"), [])
+                self.assertTrue(all(usage[k]["state"] == "unknown" for k in usage), usage)
+
+    def test_an_odd_event_type_is_unknown_usage_never_an_exception(self):
+        counts = {"input_tokens": 11, "output_tokens": 7}
+        for odd in (["turn.completed"], {"a": 1}, None, 3):   # F-1: a list-valued type once raised TypeError in the classifier's set()
+            with self.subTest(odd=odd):
+                usage = self.record(jl({"type": odd, "usage": counts}), elapsed=None)["usage"]
                 self.assertTrue(all(usage[k]["state"] == "unknown" for k in usage), usage)
 
     def test_model_mismatch_refuses(self):

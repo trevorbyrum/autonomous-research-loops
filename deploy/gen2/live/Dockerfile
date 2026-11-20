@@ -50,6 +50,5 @@ ENTRYPOINT ["python3", "-m", "research_gateway.api.http"]
 
 FROM base AS fixture
 COPY deploy/gen2/live/fixture.py deploy/gen2/live/q_net.py /opt/live/
-COPY deploy/gen2/live/fixtures/catalog/tools.json /opt/live/fixtures/catalog/tools.json
 USER 10001:10001
 ENTRYPOINT ["python3", "/opt/live/fixture.py"]

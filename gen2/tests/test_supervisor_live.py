@@ -380,7 +380,7 @@ class FailedEnd(LiveWorld):
         self.assertEqual(self.audit("dispatch_result_unrecorded"), [])
 
     def test_a_refused_judgment_after_a_confirmed_end_records_a_failed_result_with_its_set_aside_evidence(self):
-        self.assert_recorded(*self.failed_end({"disposition": "unknown", "reason": "runner_not_failed_turn"}))
+        self.assert_recorded(*self.failed_end({"disposition": "unknown", "reason": "runner_not_failed"}))
 
     def test_a_credential_rejection_shaped_end_with_no_outcome_also_records(self):
         self.assert_recorded(*self.failed_end({"disposition": "unknown", "reason": "relay_401"}, code=1))
@@ -567,12 +567,12 @@ class CollectionRefusal(RealRoute):
         return [tuple(json.loads(line)) for line in (self.root / "calls.jsonl").read_text().splitlines()]
 
     def test_an_empty_judgment_rejected_run_reaches_the_typed_fact_the_hold_the_retained_evidence_and_the_route_wide_block(self):
-        """The 0.169-shaped rejected failed turn (runner exit 1, EMPTY judgment leaf, one 401 relay row) through the production child end to end: the real
+        """The 0.169-shaped rejected failed turn (runner exit 1, EMPTY judgment leaf that a failed exit never opens, one 401 relay row) through the production child end to end: the real
         scratch collection and classifier, `ScratchBatch`, `agent_for` and `child.main` produce the evidence, the completion and exit 1; the supervisor
         stages every raw ref; the Router records the failed end at U, the typed fact and the operator hold, retains the evidence, and blocks the route."""
         supervisor, job = self.world(rejected=True)
         complete = job.read("docker-complete.json")
-        self.assertEqual((complete["disposition"], complete["output_observation"]), ({"disposition": "credentials_rejected", "reason": "relay_401"}, {"kind": "judgment", "status": "empty"}))
+        self.assertEqual(complete["disposition"], {"disposition": "credentials_rejected", "reason": "relay_401"})
         refs = complete["refs"]
         self.assertEqual(len(refs), 4)                                                     # events, diagnostics, access, usage: every nonempty ref is kept
         row = jl({**ROW, "upstream": "203.0.113.7:443"})

@@ -27,9 +27,6 @@ RID = "a" * 32
 ROW = {"v": 3, "id": RID, "src": "172.31.254.3", "port": "40000", "conn": "1", "ordinal": "1", "listener": "model",
        "server_port": "8080", "method": "POST", "route": "model", "upstream": "172.31.252.3:8081", "status": "401",
        "upstream_status": "401", "complete": "OK", "at": "1.0"}
-FAILED = [{"type": t} for t in ("thread.started", "turn.started", "error", "turn.failed")]
-TOOLS = json.loads((Path(fixture.__file__).parent / "fixtures/catalog/tools.json").read_bytes())
-TOOLS["tools"] = [ns for ns in TOOLS["tools"] if ns["name"] == "functions"]
 
 
 def lines(rows):
@@ -47,7 +44,7 @@ def exchange(case, bodies):
             thread = threading.Thread(target=server.handle_request)
             thread.start()
             connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
-            headers = {"Authorization": "Bearer 2e1-fixture-" + case, "X-Request-ID": RID[:-1] + str(index), "Content-Type": "application/json"}
+            headers = {"Authorization": "Bearer 2e1-fixture-" + fixture.credential(case), "X-Request-ID": RID[:-1] + str(index), "Content-Type": "application/json"}
             connection.request("POST", "/v1/responses", json.dumps(body), headers)
             reply = connection.getresponse()
             results.append((reply.status, reply.read()))
@@ -57,47 +54,46 @@ def exchange(case, bodies):
 
 
 class DualWitness(unittest.TestCase):
-    def classify(self, rows=None, events=FAILED, record=None, code=1, **change):
+    def classify(self, rows=None, record=None, code=1, **change):
         rows = [ROW | change] if rows is None else rows
-        return rejection.classify(lines(rows), lines(events), record, code, model="gpt-6.1-terra")["disposition"]
+        return rejection.classify(lines(rows), record, code, model="gpt-6.1-terra")["disposition"]
 
     def test_rejected_key_is_one_request_literal_rejection(self):
         results, record = exchange("rejected", [{"model": "gpt-6.1-terra", "stream": True}])
         self.assertEqual([status for status, _ in results], [401])
         self.assertEqual(self.classify(record=record, id=RID[:-1] + "1"), "credentials_rejected")
 
-    def test_accepted_key_drives_tool_and_two_request_completion(self):
-        request = {"model": "gpt-6.1-terra", "stream": True, "input": [TOOLS]}
-        results, record = exchange("accepted", [request, request | {"input": [TOOLS, dict(
-            type="custom_tool_call_output", call_id="call_2e1", output=[
-                dict(type="input_text", text="Script completed\nWall time 1.0 seconds\nOutput:\n"),
-                dict(type="input_text", text=json.dumps(dict(exit_code=0, output="2e1-tool-ok")))])]}])
-        self.assertEqual([status for status, _ in results], [200, 200])
-        self.assertIn(b'"name": "exec"', results[0][1])
-        self.assertIn(b"2e1 complete", results[1][1])
-        self.assertEqual(len(json.loads(record)["requests"]), 2)
+    def test_tool_less_answers_any_well_formed_request_by_case_and_a_malformed_one_is_refused(self):
+        request = {"model": "gpt-6.1-terra", "stream": True, "tools": [{"name": "anything"}], "input": [{"type": "additional_tools", "tools": "junk"}]}
+        results, record = exchange("tool-less", [request])
+        self.assertEqual(results[0][0], 200)
+        self.assertIn(b"2e1 complete", results[0][1])
+        self.assertEqual(len(json.loads(record)["requests"]), 1)
         events = [{"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 5}}]
         usage = rejection.usage_record({}, lines(events), elapsed=1.5, gateway_refs=[], raw_refs=[], observed_model="gpt-6.1-terra", configured_model="gpt-6.1-terra")
         self.assertEqual(usage["usage"]["input_tokens"], {"state": "reported", "value": 10})
-        self.assertEqual(self.classify(rows=[ROW, ROW | {"id": RID[:-1] + "2", "ordinal": "2"}], events=events, record=record, code=0), "unknown")
+        self.assertEqual(self.classify(rows=[ROW, ROW | {"id": RID[:-1] + "2", "ordinal": "2"}], record=record, code=0), "unknown")
+        for bad in ({"model": "other", "stream": True}, {"model": "gpt-6.1-terra"}, {"model": "gpt-6.1-terra", "stream": "true"}):
+            with self.subTest(bad=bad):
+                with patch("socketserver.BaseServer.handle_error"), self.assertRaises(http.client.RemoteDisconnected):   # refused: the connection closes with no answer
+                    exchange("tool-less", [bad])
 
     def test_refusal_controls_never_become_a_credential_fact(self):
         _, record = exchange("rejected", [{"model": "gpt-6.1-terra", "stream": True}])
         genuine = json.dumps({"v": 1, "requests": [{"id": RID[:-1] + "1", "route": "/v1/responses", "model": "gpt-6.1-terra", "credential": "accepted"}]}).encode()
-        text401 = FAILED[:2] + [{"type": "error", "message": "401"}] + FAILED[3:]
         for name, kwargs, expected in (
                 ("timeout", dict(upstream_status="504", status="504"), "transport_failed"),
                 ("429", dict(upstream_status="429", status="429"), "transport_failed"),
                 ("malformed", dict(rows=[]) | dict(record=record), "unknown"),
-                ("model text 401", dict(status="200", upstream_status="200", events=text401), "unknown"),
-                ("bogus success", dict(status="200", upstream_status="200", events=[{"type": "turn.completed"}], code=0), "unknown"),
+                ("model text 401", dict(status="200", upstream_status="200"), "unknown"),
+                ("bogus success", dict(status="200", upstream_status="200", code=0), "unknown"),
                 ("missing log", dict(rows=[]), "unknown"),
                 ("extra request", dict(rows=[ROW, ROW | {"id": "b" * 32}]), "unknown"),
                 ("fixture as genuine", dict(record=genuine), "unknown")):
             with self.subTest(name):
                 kwargs = {"record": record, "id": RID[:-1] + "1"} | kwargs
                 if name == "malformed":
-                    got = rejection.classify(lines([ROW])[:-5], lines(FAILED), record, 1, model="gpt-6.1-terra")["disposition"]
+                    got = rejection.classify(lines([ROW])[:-5], record, 1, model="gpt-6.1-terra")["disposition"]
                 else:
                     got = self.classify(**kwargs)
                 self.assertEqual(got, expected)

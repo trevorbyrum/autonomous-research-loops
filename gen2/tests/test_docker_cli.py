@@ -14,7 +14,7 @@ from unittest import mock
 
 from gen2.supervisor import docker_cli as d, jobs
 from gen2.tests import children
-from gen2.tests.test_rejection import FAILED, ROW, jl
+from gen2.tests.test_rejection import ROW, jl
 from gen2.supervisor.isolation import LiveProfileRefused
 from gen2.supervisor.spool import Spool, SpoolConflict
 
@@ -712,7 +712,7 @@ class DockerBoundary(unittest.TestCase):
 
     def test_a_real_route_run_has_no_fixture_joins_the_egress_bridge_by_id_and_collects_the_judgment(self):
         cli, egress, relay, record = self.real_world()
-        refs, batch, watch, contained = self.real_run(cli, egress, relay, record)
+        refs, batch, watch, contained = self.real_run(cli, egress, relay, record, code=0)
         self.assertEqual(len(refs), 5)                                              # events, diagnostics, judgment, access, usage: no fixture file
         self.assertEqual([c.kwargs["kind"] for c in batch.collect.call_args_list], ["judgment", "access"])
         self.assertIn(mock.call.endpoint("connect", egress, relay, None), watch.mock_calls)   # joined by the plan's ID, no fixed address
@@ -735,22 +735,21 @@ class DockerBoundary(unittest.TestCase):
                 self.assertIsInstance(error, LiveProfileRefused)
                 self.assertEqual((self.job.dir / "docker-complete.json").read_text(), raw)
 
-    def test_a_real_route_with_a_missing_judgment_is_still_classified_but_any_other_collection_refusal_is_not_swallowed(self):
+    def test_a_failed_exit_never_opens_the_answer_file_and_a_success_without_one_is_refused(self):
         cli, egress, relay, record = self.real_world()
-        def absent(slot_fd, generation, identity, *, writers_ended, kind, empty_ok=False):
-            if kind == "judgment":
-                raise LiveProfileRefused("collection_absent")
-            return {"content_hash": "sha256:" + CID}
-        refs, *_ = self.real_run(cli, egress, relay, record, collect=absent)
-        self.assertEqual(len(refs), 4)                                              # no judgment ref, and the run still completed
-        (self.job.dir / "docker-attempt.json").unlink()
-        (self.job.dir / "docker-complete.json").unlink()
-        def empty(slot_fd, generation, identity, *, writers_ended, kind, empty_ok=False):
-            raise LiveProfileRefused("collection_empty")
-        error, *_ = self.real_run(*self.real_world(), collect=empty)
-        self.assertIsInstance(error, LiveProfileRefused)
+        refs, batch, *_ = self.real_run(cli, egress, relay, record, code=2)
+        self.assertEqual(len(refs), 4)                                              # events, diagnostics, access, usage: no judgment ref
+        self.assertEqual([c.kwargs["kind"] for c in batch.collect.call_args_list], ["access"])
+        for reason in ("collection_absent", "collection_empty"):                    # exit 0 is success only with a non-empty answer: anything else refuses
+            self.fresh()
+            def refuse(slot_fd, generation, identity, *, writers_ended, kind, reason=reason):
+                if kind == "judgment":
+                    raise LiveProfileRefused(reason)
+                return {"content_hash": "sha256:" + CID}
+            error, *_ = self.real_run(*self.real_world(), collect=refuse, code=0)
+            self.assertRegex(str(error), "^" + reason + "$")
 
-    def retained(self, *, judgment, code=1, access=None, events=FAILED, kind="out"):
+    def retained(self, *, judgment, code=1, access=None, events=b"", kind="out"):
         """A real route run over real scratch files and the real EvidenceBatch: `judgment` None = no leaf, b"" = the 0.169 convention (its destination is
         bound, created empty, before the turn and a failed turn never writes it: exec/src/lib.rs:1086, event_processor_with_jsonl_output.rs:541). Operands are the retained
         failed-turn events and one 401 relay row, authored independently of the classifier."""
@@ -769,35 +768,42 @@ class DockerBoundary(unittest.TestCase):
             result, *_ = self.real_run(cli, egress, relay, record, batch=batch, logs=(events, b"diagnostics"), code=code)
         return result, batch, self.job.read("docker-complete.json")
 
-    def test_an_empty_judgment_on_a_failed_exit_is_classified_keeps_the_empty_observation_and_commits_nothing_scientific(self):
-        refs, batch, done = self.retained(judgment=b"")
-        self.assertIsInstance(refs, list)                                           # a run, not a refusal
-        self.assertEqual(done["disposition"], {"disposition": "credentials_rejected", "reason": "relay_401"})
-        self.assertEqual(done["output_observation"], {"kind": "judgment", "status": "empty"})   # present and unusable: never rewritten as absent
-        self.assertEqual(len(refs), 4)                                              # events, diagnostics, access, usage: no judgment leaf staged
-        self.assertNotIn("judgment", batch.held)
-        self.assertEqual(done["refs"], refs)
+    def fresh(self):
+        for name in ("docker-attempt.json", "docker-complete.json", "docker-generations.json"):
+            (self.job.dir / name).unlink(missing_ok=True)
+        for leaf in (self.root / "out" / GENERATION / "judgment.json", self.root / "evidence" / GENERATION / "access.jsonl"):
+            leaf.unlink(missing_ok=True)
 
-    def test_the_same_failed_run_with_no_judgment_or_a_nonempty_one_keeps_its_prior_shape(self):
-        for label, judgment in (("absent", None), ("whitespace", b" "), ("null", b"null"), ("valid", b'{"judgment_version": "x"}')):
+    def test_a_failed_exit_is_classified_and_leaves_the_answer_file_uncollected_whatever_it_holds_or_says(self):
+        for code in (1, 2, 137):
+            for label, judgment in (("absent", None), ("empty", b""), ("whitespace", b" "), ("valid", b'{"judgment_version": "x"}')):
+                with self.subTest(code=code, judgment=label):
+                    self.fresh()
+                    refs, batch, done = self.retained(judgment=judgment, code=code)
+                    self.assertEqual(done["disposition"], {"disposition": "credentials_rejected", "reason": "relay_401"})
+                    self.assertEqual(len(refs), 4)                                  # events, diagnostics, access, usage
+                    self.assertNotIn("judgment", batch.held)
+                    self.assertEqual(done["refs"], refs)
+
+    def test_the_rejection_does_not_depend_on_what_the_cli_printed(self):
+        for label, events in (("none", b""), ("unfamiliar", jl({"type": "warning"}, {"type": "turn.failed"}, {"type": "turn.failed"})),
+                              ("list type", jl({"type": ["turn.failed"]}, {"type": {"a": 1}})), ("not json", b"{not json")):   # F-1: a list-valued type once raised TypeError
             with self.subTest(label):
-                for name in ("docker-attempt.json", "docker-complete.json", "docker-generations.json"):
-                    (self.job.dir / name).unlink(missing_ok=True)
-                for leaf in (self.root / "out" / GENERATION / "judgment.json", self.root / "evidence" / GENERATION / "access.jsonl"):
-                    leaf.unlink(missing_ok=True)
-                refs, batch, done = self.retained(judgment=judgment)
-                self.assertNotIn("output_observation", done)                        # only a measured empty leaf is recorded
+                self.fresh()
+                _, _, done = self.retained(judgment=None, code=2, events=events)
                 self.assertEqual(done["disposition"]["disposition"], "credentials_rejected")
-                self.assertEqual("judgment" in batch.held, judgment is not None)    # a nonempty judgment is still collected and still needs strict JSON downstream
+                self.assertEqual(done["usage"], "recorded")                         # unknown usage, never an exception
 
-    def test_an_empty_judgment_still_refuses_unless_the_runner_exited_one(self):
-        for code in (0, 2, 137):
-            with self.subTest(code):
-                for name in ("docker-attempt.json", "docker-complete.json", "docker-generations.json"):
-                    (self.job.dir / name).unlink(missing_ok=True)
-                (self.root / "evidence" / GENERATION / "access.jsonl").unlink(missing_ok=True)
-                error, _, done = self.retained(judgment=b"", code=code)
-                self.assertRegex(str(error), "^collection_empty$")
+    def test_a_successful_exit_collects_a_nonempty_answer_and_refuses_an_empty_or_missing_one(self):
+        self.fresh()
+        refs, batch, done = self.retained(judgment=b'{"judgment_version": "x"}', code=0)
+        self.assertIn("judgment", batch.held)
+        self.assertEqual(done["disposition"]["disposition"], "unknown")             # exit 0 is never a rejection
+        for label, judgment, reason in (("empty", b"", "collection_empty"), ("missing", None, "collection_absent")):
+            with self.subTest(label):
+                self.fresh()
+                error, _, done = self.retained(judgment=judgment, code=0)
+                self.assertRegex(str(error), "^" + reason + "$")
                 self.assertIsNone(done)                                             # no completion: containment's fallback is the only end fact
 
     def test_empty_or_missing_access_and_an_unsafe_judgment_are_never_swallowed_on_the_failed_exit(self):
@@ -815,29 +821,27 @@ class DockerBoundary(unittest.TestCase):
         self.addCleanup(os.close, slot_fd)
         info = generation.stat()
         batch = d.EvidenceBatch(spool, "fleet:real")
-        collect = lambda **k: batch.collect(slot_fd, GENERATION, (info.st_dev, info.st_ino), writers_ended=True, kind="judgment", **k)
+        collect = lambda: batch.collect(slot_fd, GENERATION, (info.st_dev, info.st_ino), writers_ended=True, kind="judgment")
         leaf = generation / "judgment.json"
         for leaf_name in ("judgment.json",):
             (generation / leaf_name).unlink(missing_ok=True)
         leaf.symlink_to("missing")
-        self.refused(lambda: collect(empty_ok=True), "collection_refused")
+        self.refused(collect, "collection_refused")
         leaf.unlink()
         leaf.touch()
         os.link(leaf, generation / "extra-link")
-        self.refused(lambda: collect(empty_ok=True), "collection_refused")
+        self.refused(collect, "collection_refused")
         (generation / "extra-link").unlink()
-        self.assertIsNone(collect(empty_ok=True))                                   # the safe empty leaf is the only thing tolerated
-        self.refused(lambda: collect(), "collection_empty")                         # and only when the caller asks
+        self.refused(collect, "collection_empty")                                   # a safe empty leaf is never an answer
         with mock.patch.object(d.os, "stat", return_value=os.stat_result((0,) * 10)):
-            self.refused(lambda: collect(empty_ok=True), "collection_replaced")     # the generation recheck precedes the empty exemption
-        self.refused(lambda: batch.collect(slot_fd, GENERATION, (info.st_dev, info.st_ino + 1), writers_ended=True, kind="judgment", empty_ok=True), "collection_identity")
+            self.refused(collect, "collection_replaced")
+        self.refused(lambda: batch.collect(slot_fd, GENERATION, (info.st_dev, info.st_ino + 1), writers_ended=True, kind="judgment"), "collection_identity")
 
-    def test_valid_transport_failure_operands_with_an_empty_judgment_stay_a_transport_disposition(self):
+    def test_valid_transport_failure_operands_stay_a_transport_disposition_on_a_failed_exit(self):
         row = {**ROW, "upstream": "203.0.113.7:443", "status": "504", "upstream_status": "504"}
         refs, batch, done = self.retained(judgment=b"", access=jl(row))
         self.assertIsInstance(refs, list)
         self.assertEqual(done["disposition"]["disposition"], "transport_failed")
-        self.assertEqual(done["output_observation"], {"kind": "judgment", "status": "empty"})
 
     def test_a_real_route_needs_an_empty_egress_bridge_a_manifest_and_plan_that_agree_and_contains_a_partial_start(self):
         cli, egress, relay, record = self.real_world()
@@ -1120,7 +1124,7 @@ class DockerBoundary(unittest.TestCase):
         with mock.patch.object(d.rejection, "usage_record", side_effect=LiveProfileRefused("usage_model_mismatch")):
             refs, *_ = self.real_run(cli, egress, relay, record)
         done = self.job.read("docker-complete.json")
-        self.assertEqual((done["usage"], len(done["refs"]), len(refs)), ("refused", 4, 4))     # the classified disposition and every raw reference are still there
+        self.assertEqual((done["usage"], len(done["refs"]), len(refs)), ("refused", 3, 3))     # the classified disposition and every raw reference (no answer file on a failed exit) are still there
 
     def test_supervisor_holds_uncertain_backend_rows(self):
         """L: no capacity release before backend end; direct control-call boundary only."""

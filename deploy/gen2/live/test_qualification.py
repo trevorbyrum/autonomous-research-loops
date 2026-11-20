@@ -36,7 +36,7 @@ class Qualification(unittest.TestCase):
         connection = MagicMock()
         connection.getresponse.return_value.status = 200
         connection.getresponse.return_value.getheader.return_value = "text/event-stream"
-        connection.getresponse.return_value.read.return_value = fixture.response("accepted", 1, q_net.model_request(nonce))[2]
+        connection.getresponse.return_value.read.return_value = fixture.response("tool-less", 1, q_net.model_request(nonce))[2]
         output = io.StringIO()
         with patch.object(q_net.http.client, "HTTPConnection", return_value=connection), contextlib.redirect_stdout(output):
             q_net.relay(nonce)
@@ -57,7 +57,7 @@ class Qualification(unittest.TestCase):
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, "relay_ingress"):
                 qualify.relay_response(answer | change)
         request = q_net.model_request(nonce)
-        raw = json.dumps(dict(ordinal=1, method="POST", route="/v1/responses", status=200, case="accepted", id="c" * 32, request=request)).encode()
+        raw = json.dumps(dict(ordinal=1, method="POST", route="/v1/responses", status=200, case="tool-less", id="c" * 32, request=request)).encode()
         independent = json.dumps({"v": 1, "requests": [dict(id="c" * 32, route="/v1/responses", model="gpt-6.1-terra", credential="accepted")]}).encode()
         qualify.relay_record(dict(nonce=nonce), raw, independent)
         for changed in (b'{"v":1,"requests":[]}', independent.replace(b"accepted", b"rejected")):
@@ -75,12 +75,12 @@ class Qualification(unittest.TestCase):
         delivered = ["outside" if a["target"] == "alternate_dns" else a["target"] for a in answers]
         after = {role: counts[role] + delivered.count(role) for role in counts}
         control = dict(before=counts, after=after, answers=answers)
-        ended = after | {"fixture": after["fixture"] + 2}
+        ended = after | {"fixture": after["fixture"] + 1}
         final_control = dict(before=ended, after={role: ended[role] + delivered.count(role) for role in counts}, answers=answers)
         probe = dict(nonce=plan["nonce"], docker_socket=2, files=dict.fromkeys(qualify.PROTECTED, "denied"),
                      denials={target + "/" + protocol: dict(nonce=plan["nonce"], address=qualify.TARGETS[target][0],
                               port=qualify.TARGETS[target][1], protocol=protocol, connected=False, answer="") for target, protocol in qualify.DENIALS})
-        rows = [dict(ordinal=i, method="POST", route="/v1/responses", status=200, model="gpt-6.1-terra", id=str(i) * 32) for i in (1, 2)]
+        rows = [dict(ordinal=i, method="POST", route="/v1/responses", status=200, model="gpt-6.1-terra", id=str(i) * 32) for i in (1,)]
         independent = {"v": 1, "requests": [dict(id=r["id"], route=r["route"], model=r["model"], credential="accepted") for r in rows]}
         view = dict(plan=plan, probe=probe, network=network, controls=dict(before=control, after=final_control),
                     before=after, after=ended, raw="\n".join(map(json.dumps, rows)), independent=json.dumps(independent))
@@ -89,7 +89,8 @@ class Qualification(unittest.TestCase):
         dead = [answer | {"connected": False} for answer in answers]
         for changed in (view | {"after": {}}, view | {"controls": dict(before=control | {"answers": []}, after=final_control)},
                         view | {"probe": probe | {"files": {}}}, view | {"probe": probe | {"docker_socket": 0}},
-                        view | {"independent": '{"v":1,"requests":[]}'}, view | {"probe": probe | {"denials": reachable}},
+                        view | {"independent": '{"v":1,"requests":[]}'}, view | {"raw": "\n".join(map(json.dumps, rows * 2))},
+                        view | {"after": ended | {"fixture": after["fixture"] + 2}}, view | {"probe": probe | {"denials": reachable}},
                         view | {"controls": dict(before=control | {"answers": dead}, after=final_control)}):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
                 qualify.bracket(changed)

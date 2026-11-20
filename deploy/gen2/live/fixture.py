@@ -9,59 +9,24 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SOURCE = b'{"records":[{"id":"q1","title":"2e1 fixture"}],"total":1}\n'
-COMMAND = "python3 /inputs/tool_probe.py"
-TOOLS_SHA = "b7bde2c6481df2ab8cb4b3fec1abff18b48630540c05840137d643568560aadb"
-
-
-def tool_schema(request, enabled=False):
-    inputs = request.get("input", [])
-    if "tools" in request or not isinstance(inputs, list) or any(not isinstance(x, dict) for x in inputs):
-        raise ValueError("tool envelope")
-    schemas = [x for x in inputs if x.get("type") == "additional_tools"]
-    if not enabled:
-        if schemas:
-            raise ValueError("tool-less request required")
-    elif len(schemas) != 1 or schemas[0].get("role") != "developer" or hashlib.sha256(
-            json.dumps(schemas[0].get("tools"), sort_keys=True, separators=(",", ":")).encode()).hexdigest() != TOOLS_SHA:
-        raise ValueError("advertised tools differ")
 
 
 def credential(case):
-    return "accepted" if case in {"tool-less", "hold", "hold-first"} else case
+    return "accepted" if case in {"tool-less", "hold-first"} else case
 
 
-def response(case, ordinal, request, *, subscription=False):
-    case = {"hold": "accepted", "hold-first": "tool-less"}.get(case, case)
-    if request.get("model") != "gpt-6.1-terra" or request.get("stream") is not True or (subscription and case == "accepted"):
-        raise ValueError("model/stream/subscription policy")
-    if subscription or case in {"accepted", "tool-less"}:
-        tool_schema(request, case == "accepted")
+def response(case, ordinal, request):
+    """The reply is chosen by case alone; any request with the expected model and `stream: true` is answered, and its tool content is never read."""
+    if request.get("model") != "gpt-6.1-terra" or request.get("stream") is not True:
+        raise ValueError("model/stream policy")
     if case == "limited" and ordinal == 1:
         return 429, "application/json", b'{"error":{"type":"usage_limit_reached","resets_at":253402300799}}\n'
     if case == "rejected" and ordinal == 1:
         return 401, "application/json", b'{"error":{"message":"fixture credential rejected","type":"invalid_api_key"}}\n'
-    if case not in {"accepted", "tool-less"} or ordinal not in ((1, 2) if case == "accepted" else (1,)):
+    if case not in {"tool-less", "hold-first"} or ordinal != 1:
         raise ValueError("extra send")
-    if ordinal == 1 and case == "accepted":
-        item = dict(type="custom_tool_call", id="fc_2e1", call_id="call_2e1", name="exec",
-                    input='// @exec: {"yield_time_ms": 30000, "max_output_tokens": 10000}\n'
-                    f'text(await tools.exec_command({json.dumps(dict(cmd=COMMAND, yield_time_ms=30000, max_output_tokens=8000))}));')
-    else:
-        if case == "accepted":
-            outputs = [x for x in request.get("input", []) if x.get("type", "").endswith("_call_output")]
-            if len(outputs) != 1 or outputs[0].get("type") != "custom_tool_call_output" or outputs[0].get("call_id") != "call_2e1":
-                raise ValueError("tool continuation")
-            content = outputs[0].get("output")
-            if not isinstance(content, list) or len(content) != 2 or any(not isinstance(x, dict) for x in content):
-                raise ValueError("tool output envelope")
-            header, result = content
-            if any(x.get("type") != "input_text" for x in (header, result)) or not re.fullmatch(r"Script completed\nWall time \d+\.\d seconds\nOutput:\n", header.get("text", "")):
-                raise ValueError("incomplete code cell")
-            result = json.loads(result["text"])
-            if not isinstance(result, dict) or not isinstance(result.get("output"), str) or type(result.get("exit_code")) is not int or result["exit_code"] != 0 or "session_id" in result or "2e1-tool-ok" not in result.get("output", ""):
-                raise ValueError("probe execution")
-        item = dict(type="message", id="msg_2e1", role="assistant", status="completed",
-                    content=[{"type": "output_text", "text": "2e1 complete", "annotations": []}])
+    item = dict(type="message", id="msg_2e1", role="assistant", status="completed",
+                content=[{"type": "output_text", "text": "2e1 complete", "annotations": []}])
     events = [{"type": "response.output_item.done", "output_index": 0, "item": item},
               {"type": "response.completed", "response": {"id": f"resp_2e1_{ordinal}", "status": "completed",
                "output": [item], "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}}]
@@ -112,7 +77,7 @@ class Handler(BaseHTTPRequestHandler):
                 if subscription and {k.lower() for k in self.headers} - ({k.lower() for k in expected} | {"content-length", "x-request-id"}):
                     raise ValueError("unexpected subscription header")
                 request = json.loads(raw) if raw.lstrip().startswith(b"{") else {}
-                status, media, data = response(self.server.case, self.server.count, request, subscription=subscription)
+                status, media, data = response(self.server.case, self.server.count, request)
         finally:
             record = dict(ordinal=self.server.count, id=rid, method=self.command, route=self.path[:128],
                           model=request.get("model"), status=status, case=self.server.case,
@@ -128,7 +93,7 @@ class Handler(BaseHTTPRequestHandler):
             json.dump({"v": 1, "requests": self.server.requests}, self.server.record)
             self.server.record.truncate()
             self.server.record.flush()
-        ticks = self.server.hold_seconds if status == 200 and (self.server.case, self.server.count) in {("hold", 2), ("hold-first", 1)} else 0
+        ticks = self.server.hold_seconds if status == 200 and (self.server.case, self.server.count) == ("hold-first", 1) else 0
         keepalive = b'event: response.in_progress\ndata: {"type":"response.in_progress"}\n\n'
         self.send_response(status)
         self.send_header("Content-Type", media)
@@ -145,8 +110,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def operands(argv):
     case = argv[1]
-    hold_seconds = int(argv[2]) if case in {"hold", "hold-first"} else 0
-    if case in {"hold", "hold-first"} and not 1 <= hold_seconds <= 300:
+    hold_seconds = int(argv[2]) if case == "hold-first" else 0
+    if case == "hold-first" and not 1 <= hold_seconds <= 300:
         raise ValueError("finite hold required")
     lifetime = int(argv[3 if hold_seconds else 2]) if len(argv) > (3 if hold_seconds else 2) else 1800
     if not (hold_seconds + 60 if hold_seconds else 1) <= lifetime <= 1800:
@@ -158,7 +123,7 @@ if __name__ == "__main__":
     case, hold_seconds, lifetime = operands(sys.argv)
     tls = Path("/certs").is_dir()
     address = ("172.31.251.3", 18081) if case == "source" else ("172.31.252.3", 443 if tls else 8081)
-    if case not in {"source", "accepted", "rejected", "tool-less", "hold", "hold-first", "limited"}:
+    if case not in {"source", "rejected", "tool-less", "hold-first", "limited"}:
         raise ValueError("fixture case")
     with HTTPServer(address, Handler) as server, open("/evidence/fixture.json", "x+") as record, open("/evidence/raw.jsonl", "x") as raw:
         if tls:
