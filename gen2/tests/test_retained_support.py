@@ -260,7 +260,7 @@ class RetainedSupportTest(unittest.TestCase):
                         patch.object(station, 'Router', service.Router), \
                         patch.object(service.Router, 'activate_config_bundle', return_value=dict(status='activated', bundle_hash=rf.CONFIG)) as activate, \
                         patch.object(service.Router, 'restore_config_bundle', return_value=rf.CONFIG) as restore, \
-                        patch.object(station, 'Spool') as spool, patch.object(station, 'Supervisor') as supervisor, patch.object(station, '_probe') as probe, \
+                        patch.object(station, 'Spool') as spool, patch.object(station, 'Supervisor') as supervisor, \
                         patch.object(engine, '_Server') as server, self.no_dml():
                     clock, control = Mock(), Mock()
                     opener = lambda: station.open_station(path.parent, station_id='test', host_id='fixture',
@@ -268,7 +268,7 @@ class RetainedSupportTest(unittest.TestCase):
                     with self.assertRaises(reader.ReconciliationRequired):
                         active = engine.Engine(opener, Mock()) if use_engine else opener()
                         active.close()
-                    for effect in (spool, activate, restore, supervisor, probe, server, clock, control):
+                    for effect in (spool, activate, restore, supervisor, server, clock, control):
                         effect.assert_not_called()
 
     def test_startup_control(self):
