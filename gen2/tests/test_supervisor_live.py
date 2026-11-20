@@ -677,6 +677,20 @@ class CollectionRefusal(RealRoute):
         self.assertEqual(LiveStart.drive(self, supervisor), "failed")
         self.assertEqual(len(self.audit("dispatch_result")), 1)
 
+    def test_an_already_terminal_invocation_keeps_its_owed_result_retryable_until_the_marker_is_corrected(self):
+        supervisor, job = self.world()
+        complete = job.read("docker-complete.json")
+        job.write("docker-complete.json", {**complete, "origin": {**complete["origin"], "job_handle": "job-other"}})
+        self.assertEqual(LiveStart.drive(self, supervisor), "backend_end_unconfirmed")
+        journal = job.read("journal.json")
+        reply = self.router.record_transition({"capability_id": journal["grant"]["capability_id"], "invocation_id": MAIN, "to_state": "failed",
+                                                        "failure_class": "exit_nonzero", "end_evidence_ref": journal["collected"]["record"]["content_hash"]}); self.assertEqual(reply["status"], "recorded", reply)
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "failed")
+        self.assertEqual((self.audit("dispatch_result"), job.read("journal.json").get("settled")), ([], None))   # owed: no result, and not settled
+        job.write("docker-complete.json", complete)
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "failed")
+        self.assertEqual((len(self.audit("dispatch_result")), job.read("journal.json").get("settled")), (1, "failed"))   # once, then settled
+
     def test_the_generated_marker_path_with_a_stale_lease_records_nothing_and_the_same_world_with_its_lease_does(self):
         supervisor, job = self.world()
         journal = job.read("journal.json")
