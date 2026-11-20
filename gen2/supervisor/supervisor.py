@@ -798,8 +798,6 @@ class Supervisor:
         status = self._status(job, journal, grant)
         state = status["state"]
         if state in TERMINAL:
-            if self._record_owed_dispatch(job, journal, grant):
-                return state  # still owed: unsettled, so a corrected marker is delivered on the next advance, then settled
             return self._settle(job, journal, state)
         step = {"admitted": self._admitted, "launching": self._launching, "running": self._running,
                 "result_ready": self._result_ready, "outcome_unknown": self._unknown}[state]
@@ -926,7 +924,7 @@ class Supervisor:
             if reply.get("status") not in ("authorized", "replayed"):
                 journal["unlaunched"] = True
                 return self._cancel_self(job, journal, grant, f"dispatch refused: {reply.get('reason')}")
-            journal["dispatch"] = {"admission_ref": reply["admission_ref"], "run_id": request["run_id"], "attempt": 1, "epoch": self.dispatch.epoch}
+            journal["dispatch"] = {"admission_ref": reply["admission_ref"], "run_id": request["run_id"], "attempt": 1}
             self._save(job, journal)
             self._fault("dispatch_authorized")   # the Router holds the intent; the start has not happened
         return None
@@ -943,16 +941,6 @@ class Supervisor:
             raise Waiting("stalled")
         dispatch["recorded"] = True
         self._save(job, journal)
-
-    def _record_owed_dispatch(self, job, journal, grant) -> bool:
-        """A collected live end owes its dispatch result on the original authorization, whichever path reaches the Router next (running, a
-        reconciliation, an invocation already terminal): late retention grants no transition, so nothing else is sent on its strength (F-3; SUP-35). Only an authenticated end owes it."""
-        collected, plan, complete = journal.get("collected"), job.read("docker-plan.json"), job.read("docker-complete.json")
-        if (journal.get("dispatch") and not journal["dispatch"].get("recorded") and collected and plan and complete is not None
-                and complete.get("origin") == plan["origin"] and collected["observation"]["descendants"]["handling"] != "unconfirmed"):   # an authenticated end only: the first result is immutable
-            self._record_dispatch(job, journal, grant, collected)
-        dispatch = journal.get("dispatch")
-        return bool(dispatch and not dispatch.get("recorded") and collected)   # True: a collected result is still unacknowledged
 
     def _await_identity(self, job: jobs.Job, grace: float) -> dict:
         """Wait, within `grace`, for a launcher to record its identity. Before
@@ -1028,7 +1016,8 @@ class Supervisor:
         observation = collected["observation"]
         if observation["descendants"]["handling"] == "unconfirmed":  # capacity is not released on an unconfirmed group (L-7)
             return self._enter_unknown(job, order, journal, grant, status, "termination_unconfirmed")
-        self._record_owed_dispatch(job, journal, grant)
+        if journal.get("dispatch") and not journal["dispatch"].get("recorded") and job.read("docker-complete.json") is not None:
+            self._record_dispatch(job, journal, grant, collected)
         facts = {"end_evidence_ref": collected["record"]["content_hash"]}
         if status["cancel_requested"] or observation["findings"]:
             self._settle_delegates(order)
@@ -1190,7 +1179,6 @@ class Supervisor:
         if (kept or {"resolution": resolution})["resolution"] in ("confirmed_failed", "terminated_group"):
             self._settle_delegates(order)
         pending = self._pending(job, order, journal, purpose, resolution=resolution, method=method, observation=observation, identity=identity, digest=digest)
-        self._record_owed_dispatch(job, journal, grant)   # the authenticated result is acknowledged before the reconciliation that releases the job
         request = {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "unknown_episode": status["unknown_episode"],
                    "resolution": pending["resolution"], "method": pending["method"], "evidence_ref": pending["record"]["content_hash"]}
         if pending["identity"] is not None:

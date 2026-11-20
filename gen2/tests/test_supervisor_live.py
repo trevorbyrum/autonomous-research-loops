@@ -211,32 +211,6 @@ class LiveStart(LiveWorld):
         self.assertEqual((result["charge_minor_units"], result["response"]["charge_state"]), (400, "worst_case"))   # an unknown cost charges U (whether the trial then stops is the Router's rule: DEBT-052 amendment)
         self.assertEqual(result["admission_ref"], job.read("journal.json")["dispatch"]["admission_ref"])
 
-    def test_a_live_end_recovered_through_outcome_unknown_delivers_its_dispatch_result_once_before_the_reconciliation(self):
-        """SUP-35's reconciliation variant (F-3): the start was recorded, the supervisor lost the `running` write, the job ended on its own."""
-        supervisor = self.live_supervisor()
-        job = self.prepare(supervisor)
-        self.finish_backend(job)
-        self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
-        for _ in range(600):
-            if (job.dir / "exit.json").exists():
-                break
-            time.sleep(0.05)
-        grant = job.read("journal.json")["grant"]
-        self.assertEqual(self.router.record_transition({"capability_id": grant["capability_id"], "invocation_id": MAIN, "to_state": "outcome_unknown",
-                                                        "unknown_episode": 1, "unknown_cause": "contact_lost"})["status"], "recorded")
-        self.assertEqual(self.audit("dispatch_result"), [])
-        self.assertEqual(self.drive(supervisor), "committed")
-        (result,) = self.audit("dispatch_result")                                          # exactly once, on the original authorization
-        self.assertEqual(result["admission_ref"], job.read("journal.json")["dispatch"]["admission_ref"])
-        order = [row[0] for row in self.rows("SELECT kind FROM audit_events WHERE kind IN ('dispatch_result', 'reconciled') ORDER BY rowid")]
-        self.assertEqual(order, ["dispatch_result", "reconciled"])                         # acknowledged before the reconciliation that releases the job
-        journal = job.read("journal.json")                                                 # an invocation the Router already shows terminal still retains the result, with no further transition
-        journal.pop("settled")
-        journal["dispatch"].pop("recorded")
-        job.write("journal.json", journal)
-        self.assertEqual(supervisor.advance(MAIN, live_start=True), "committed")
-        self.assertEqual((len(self.audit("dispatch_result")), job.read("journal.json")["dispatch"].get("recorded")), (1, True))
-
     def drive(self, supervisor):
         for _ in range(200):
             outcome = supervisor.advance(MAIN, live_start=True)
@@ -640,10 +614,16 @@ class CollectionRefusal(RealRoute):
         self.assertEqual(self.audit("dispatch_result"), [])
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "running")
 
-    def test_the_generated_marker_path_keeps_its_fences_an_unconfirmed_descendant_is_no_confirmed_end(self):
+    def test_the_generated_marker_path_keeps_its_fences_a_stale_epoch_records_nothing_and_an_unconfirmed_descendant_is_no_confirmed_end(self):
         def confirmed(job):
             collected = job.read("journal.json")["collected"]
             return self.authority.result(job.read("journal.json")["dispatch"]["admission_ref"], collected["record"]["content_hash"])["confirmed_end"]
+        supervisor, job = self.world()
+        self.authority.epoch = "epoch-2"                                                   # a restart between the marker and the result: a stale origin
+        self.assertEqual(LiveStart.drive(self, supervisor), "stalled")
+        self.assertEqual((self.audit("dispatch_result"), self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN)), ([], "running"))
+        self.tearDown()
+        self.setUp()
         supervisor, job = self.world()
         self.assertEqual(LiveStart.drive(self, supervisor), "failed")
         self.assertTrue(confirmed(job))                                                    # control: the generated marker with every descendant confirmed ended is a confirmed end
@@ -651,45 +631,6 @@ class CollectionRefusal(RealRoute):
         journal["collected"]["observation"]["descendants"]["handling"] = "unconfirmed"      # the same end with a descendant the supervisor could not confirm
         job.write("journal.json", journal)
         self.assertFalse(confirmed(job))
-
-    def test_a_restart_keeps_the_admission_epoch_so_the_first_rejection_is_delivered_on_the_original_authorization(self):
-        """F-3 / BOUNDARIES 187: the result is bound to the epoch retained at admission; only the current-authority test uses the new epoch."""
-        supervisor, job = self.world(rejected=True)
-        job.write("runner-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10.123456789Z"}})
-        self.clock.set("2026-09-27T10:00:30Z")
-        retained = job.read("journal.json")["dispatch"]["epoch"]
-        self.authority.epoch = "epoch-2"                                                   # the authority restarted after the admission
-        self.assertEqual(LiveStart.drive(self, supervisor), "failed")
-        (result,) = self.audit("dispatch_result")
-        self.assertEqual((result["evidence"]["origin"]["epoch"], result["response"]["trial_stopped"]), (retained, True))   # the changed epoch is no current authority: U, stopped
-        (fact,) = self.rows("SELECT state, since FROM capability_facts WHERE capability = ?", "provider-auth:codex")
-        self.assertEqual(tuple(fact), ("failing", result["evidence"]["rejection"]["observed_at"]))   # the dated fact
-        self.assertEqual(len(self.rows("SELECT 1 FROM holds WHERE hold_class = 'capability'")), 1)
-
-    def test_an_end_whose_completion_origin_does_not_match_leaves_the_intent_unresolved_and_corrected_evidence_still_delivers(self):
-        supervisor, job = self.world()
-        complete = job.read("docker-complete.json")
-        job.write("docker-complete.json", {**complete, "origin": {**complete["origin"], "job_handle": "job-other"}})
-        self.assertEqual(LiveStart.drive(self, supervisor), "backend_end_unconfirmed")
-        self.assertEqual(self.audit("dispatch_result"), [])                                # no fixed-U result persisted
-        self.assertFalse(job.read("journal.json")["dispatch"].get("recorded"))
-        job.write("docker-complete.json", complete)
-        self.assertEqual(LiveStart.drive(self, supervisor), "failed")
-        self.assertEqual(len(self.audit("dispatch_result")), 1)
-
-    def test_an_already_terminal_invocation_keeps_its_owed_result_retryable_until_the_marker_is_corrected(self):
-        supervisor, job = self.world()
-        complete = job.read("docker-complete.json")
-        job.write("docker-complete.json", {**complete, "origin": {**complete["origin"], "job_handle": "job-other"}})
-        self.assertEqual(LiveStart.drive(self, supervisor), "backend_end_unconfirmed")
-        journal = job.read("journal.json")
-        reply = self.router.record_transition({"capability_id": journal["grant"]["capability_id"], "invocation_id": MAIN, "to_state": "failed",
-                                                        "failure_class": "exit_nonzero", "end_evidence_ref": journal["collected"]["record"]["content_hash"]}); self.assertEqual(reply["status"], "recorded", reply)
-        self.assertEqual(supervisor.advance(MAIN, live_start=True), "failed")
-        self.assertEqual((self.audit("dispatch_result"), job.read("journal.json").get("settled")), ([], None))   # owed: no result, and not settled
-        job.write("docker-complete.json", complete)
-        self.assertEqual(supervisor.advance(MAIN, live_start=True), "failed")
-        self.assertEqual((len(self.audit("dispatch_result")), job.read("journal.json").get("settled")), (1, "failed"))   # once, then settled
 
     def test_the_generated_marker_path_with_a_stale_lease_records_nothing_and_the_same_world_with_its_lease_does(self):
         supervisor, job = self.world()
