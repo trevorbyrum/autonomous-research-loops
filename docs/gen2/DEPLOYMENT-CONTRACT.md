@@ -381,7 +381,7 @@ property of a reviewed release.
 
 **Auth homes are persistent per-provider volumes.** Each provider gets one
 named, access-controlled directory volume holding that provider's credential
-state and runner-adjacent files (AUTH-DEMO F2/F4),
+state and runner-adjacent files (AUTH-DEMO F2/F4; history pointer below),
 mounted at a fixed path, owned by the service user with stable uid/gid, `0700`.
 They survive restart and container replacement (design review §6: "persistent,
 access-controlled provider-auth volumes use stable ownership and survive
@@ -432,7 +432,7 @@ Offline seeds are dummy keys, cannot enable real egress, and do not discharge ge
 rejection, spending or remediation gates.
 
 *Status (task 1f, 2026-09-28, corrected by task 1f-repair, 2026-09-29;
-evidence `docs/gen2/AUTH-DEMO.md`; this note changes no requirement).* With
+evidence: AUTH-DEMO history, below; this note changes no requirement).* With
 the then-pinned runner codex 0.153.2 (the pin is now 0.169.0; re-demonstration is pending), (a), (b) and (c) are demonstrated, and (d)
 is demonstrated for a credential the runner rejects on its own and for one
 whose own declared expiry has passed (read offline from the credential;
@@ -442,6 +442,14 @@ without declaring it, is outside the offline scope: neither changes a local byte
 probe that makes no network call cannot be sure to see it (AUTH-DEMO.md F1;
 resolved by the operator amendment above). AUTH-DEMO.md F2–F4 name the places where this
 section's and §3.1's wording and the slice differ.
+
+*AUTH-DEMO history (retired 2026-11-20; S14 D4, DEBT-065).* The local
+login-status capability probe, its operator command and the AUTH-DEMO manual
+and driver are retired. The manual's last text is `docs/gen2/AUTH-DEMO.md`
+at commit `ac161391` (`git show ac161391:docs/gen2/AUTH-DEMO.md`). The Router
+keeps the capability projection, the gateway fact path and the replay of old
+`capability_probe` audits; capability facts now come from the gateway and from
+rejection evidence.
 
 ### 4.1 Live preflight contract amendment (2e1 PR 1; Astra round 2)
 
@@ -597,8 +605,9 @@ surveillance.
 - **No compose file, image or volume is committed by task 0c.** This is the
   specification they are built against. Task 1f added the minimal `engine`
   slice only: the engine image with its pinned runner (`deploy/gen2/Dockerfile`)
-  and a compose file for the engine, its control-store volume and one auth
-  volume (`deploy/gen2/compose.yaml`; `docs/gen2/AUTH-DEMO.md`). The `exporter`
+  and a compose file for the engine and its control-store volume
+  (`deploy/gen2/compose.yaml`; the auth volume went with the probe, see the
+  AUTH-DEMO history note in §4). The `exporter`
   and `tier0` images do not exist yet, and the gateway is not in that slice.
   The gen-2 `gateway` runs the existing gateway image in the `env` secrets mode
   only.

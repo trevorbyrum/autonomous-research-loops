@@ -103,7 +103,6 @@ enforced_at = [
   "module: gen2/operator/auth.py",
   "router: gen2/router/status.py",
   "module: gen2/operator/status.py",
-  "doc: docs/gen2/AUTH-DEMO.md",
   "doc: docs/gen2/DEBT-REGISTER.md",
 ]
 tests = [

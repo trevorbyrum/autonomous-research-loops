@@ -7,8 +7,9 @@
 # healthcheck: GET /v1/health from inside), §2 (baked: engine code, the DDL,
 # the schemas, pinned provider CLIs; mounted: config, secrets, auth homes),
 # §4 (pinned CLIs baked; each auth home a volume at a fixed path, owned by the
-# service user with a stable uid/gid, 0700). docs/gen2/AUTH-DEMO.md records
-# why codex and this version.
+# service user with a stable uid/gid, 0700). The retired
+# AUTH-DEMO manual (history: DEPLOYMENT-CONTRACT.md §4) recorded why codex and
+# this version.
 #
 # Build from the repository root with the approved npm.tgz as a named input:
 # docker build --build-context approved-inputs="$GEN2_DATA_ROOT/storage/build-inputs" -f deploy/gen2/Dockerfile .
