@@ -153,7 +153,9 @@ gen2-test: gen2-venv
 HEAD ?= HEAD
 gen2-affected: gen2-venv
 	@sel="$$($(PYTHON) tools/gen2_affected.py $(or $(BASE),$(GEN2_BASE)) $(HEAD))" || exit 1; echo "$$sel"; \
-	case "$$sel" in FULL*) $(MAKE) gen2-accept;; NONE*) ;; *) $(MAKE) gen2-test GEN2_TEST_ARGS="--modules $$sel";; esac
+	[ "$$(git rev-parse '$(HEAD)^{commit}')" = "$$(git rev-parse HEAD)" ] || { echo "gen2-affected: the checkout is not $(HEAD)"; exit 1; }; \
+	case "$$sel" in FULL*) $(MAKE) gen2-accept GEN2_BASE=$(or $(BASE),$(GEN2_BASE));; NONE*) ;; \
+	*) $(PYTHON) tools/gen2_test.py $(GEN2_TEST_ARGS) --modules $$sel;; esac
 
 # Acceptance mutates changed production lines against the explicit merge-base.
 gen2-mutation: gen2-venv

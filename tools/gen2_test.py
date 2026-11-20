@@ -69,7 +69,7 @@ def main() -> int:
             baseline.start()
             baseline.coverage.stop()
         print(f"gen2-test: {args.workers} shards; logs in {out}", flush=True)
-        runs = parallel([[sys.executable, __file__, "--worker", "--shard", f"{i}/{args.workers}"]
+        runs = parallel([[sys.executable, __file__, "--worker", "--shard", f"{i}/{args.workers}", *(["--modules", *args.modules] if args.modules else [])]
                          for i in range(1, args.workers + 1)], out)
         if log := os.environ.get("GEN2_TEST_LOG"):
             Path(log).parent.mkdir(parents=True, exist_ok=True)
@@ -106,9 +106,9 @@ def main() -> int:
             print(f"gen2-test: the whole verbose output is kept in {log}")
             if baseline:
                 baseline.start()
-            suite = unittest.defaultTestLoader.discover(str(ROOT / "gen2" / "tests"), pattern="test_*.py")
-            if args.modules:
-                suite = unittest.TestSuite(t for t in tests(suite) if t.__class__.__module__ in args.modules)
+            # Named modules load as discovery loads them; one that fails to import stays in the suite as a failing test.
+            suite = (unittest.defaultTestLoader.loadTestsFromNames(args.modules) if args.modules else
+                     unittest.defaultTestLoader.discover(str(ROOT / "gen2" / "tests"), pattern="test_*.py"))
             expected = [test.id() for test in tests(suite)]
             # Existing discovery includes re-exported TestCase classes. Keep
             # every occurrence, as the original runner does; comparison uses
