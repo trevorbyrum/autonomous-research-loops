@@ -233,6 +233,47 @@ class LiveStart(LiveWorld):
 class CrashBoundaries(LiveWorld):
     """Every durable intermediate state of a live start has a defined safe recovery: no spawn, no second intent, no conversion into a non-live job."""
 
+    def cancel_after_crash(self, point, verdict):
+        def crash(boundary):
+            if boundary == point:
+                raise KeyboardInterrupt(boundary)
+        first = self.live_supervisor(fault=crash)
+        job = self.prepare(first, steps=[{"op": "hang"}])
+        with self.assertRaisesRegex(KeyboardInterrupt, point):
+            first.advance(MAIN, live_start=True)
+        self.assertEqual(first._await_identity(job, 2)["verdict"], verdict)
+        cancel = self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
+        self.assertEqual(cancel["status"], "recorded")
+        return job
+
+    def test_cancel_after_spawn_crash_contains_the_backend_and_holds_on_failure(self):
+        job = self.cancel_after_crash("spawned", "running")
+        restarted = self.live_supervisor()
+        with unittest.mock.patch.object(docker_cli, "contain_job", side_effect=LiveProfileRefused("contain_failed")) as contain:
+            self.assertEqual(LiveStart.drive(self, restarted), "stalled")
+        contain.assert_called()
+        (incident,) = restarted.incidents()
+        self.assertEqual(incident["last_finding"], "backend containment after cancellation is not confirmed")
+        journal = job.read("journal.json")
+        lease = journal["grant"]["lease"]["lease_id"]
+        self.assertEqual(self.rows("SELECT released_at FROM leases WHERE lease_id = ?", lease), [(None,)])
+        self.assertEqual((job.lookup()["members"], self.audit("dispatch_result"), journal.get("settled")), ([], [], None))
+
+    def test_cancel_after_pre_spawn_crash_releases_a_proven_unlaunched_job(self):
+        job = self.cancel_after_crash("spawning", "unstarted")
+        dispatch = job.read("journal.json")["dispatch"]
+        intents = self.audit("dispatch_authorized")
+        restarted = self.live_supervisor()
+        self.assertEqual(restarted.recover()[MAIN], "cancelled")
+        journal = job.read("journal.json")
+        lease = journal["grant"]["lease"]["lease_id"]
+        self.assertEqual(self.rows("SELECT release_reason FROM leases WHERE lease_id = ? AND released_at IS NOT NULL", lease), [("cancelled",)])
+        self.assertTrue((job.dir / "abandoned").exists())
+        self.assertTrue(journal["unlaunched"])
+        self.assertEqual((journal["settled"], restarted.incidents(), self.audit("dispatch_result")), ("cancelled", [], []))
+        self.assertEqual((journal["dispatch"], self.audit("dispatch_authorized")), (dispatch, intents))
+        self.assertEqual(self.audit("dispatch_stopped"), [{"admission_ref": dispatch["admission_ref"], "charge_minor_units": 400}])
+
     def spawned(self, job):
         return (job.dir / "spawn.json").exists()
 
@@ -668,7 +709,8 @@ class CollectionRefusal(RealRoute):
                         self.assertEqual(supervisor.advance(MAIN), "unknown_unresolved")
                         cancel = self.router.request_cancel({"invocation_id": MAIN, "requested_by": "operator", "reason": "stop"})
                         self.assertEqual(cancel["status"], "recorded")
-                LiveStart.drive(self, supervisor)
+                with unittest.mock.patch.object(docker_cli, "contain_job"):
+                    LiveStart.drive(self, supervisor)
                 if vanished:
                     self.assertEqual(job.lookup()["members"], [])
                     lease = job.read("journal.json")["grant"]["lease"]["lease_id"]
@@ -679,7 +721,8 @@ class CollectionRefusal(RealRoute):
                 if vanished:
                     (incident,) = supervisor.incidents()
                     self.assertEqual(incident["unknown_episode"], 1)
-                    recovery = self.recover_end(supervisor, job)
+                    with unittest.mock.patch.object(docker_cli, "contain_job"):
+                        recovery = self.recover_end(supervisor, job)
                     self.assertEqual((recovery["status"], recovery["outcome"], self.end_state(job)), ("resumed", "stalled", before))
                 if after:
                     if case == "already terminal":

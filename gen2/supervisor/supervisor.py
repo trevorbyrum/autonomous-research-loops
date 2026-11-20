@@ -730,16 +730,21 @@ class Supervisor:
             pending.extend(node.values() if isinstance(node, dict) else node if isinstance(node, list) else ())
         return [found[h] for h in sorted(found)]
 
+    def _contain_backend(self, job: jobs.Job, journal: dict) -> bool:
+        if docker_cli._read(job, "docker-plan.json") is not None:   # (present-invalid counts: contain_job then holds) a Docker-managed container is not in the job's process group: kill and remove what the job created
+            try:
+                docker_cli.contain_job(job)
+            except LiveProfileRefused:
+                return False
+            journal["backend_contained"] = True
+        return True
+
     def _terminate(self, job: jobs.Job, order: dict, journal: dict, view: dict, reason: str) -> None:
         """End the execution group (timeout or cancellation) and record it;
         the termination is kept before its record is staged (A4)."""
         ended = self._end_group(job, view["identity"])
-        if docker_cli._read(job, "docker-plan.json") is not None:   # (present-invalid counts: contain_job then holds) a Docker-managed container is not in the job's process group: kill and remove what the job created
-            try:
-                docker_cli.contain_job(job)
-                journal["backend_contained"] = True
-            except LiveProfileRefused:
-                ended = {**ended, "confirmed": False}   # a container that could not be ended leaves the end unconfirmed, so capacity is not released (L-7)
+        if not self._contain_backend(job, journal):
+            ended["confirmed"] = False   # a container that could not be ended leaves the end unconfirmed, so capacity is not released (L-7)
         observation = {"process": self._process(view["identity"]), "exit": job.read("exit.json"), "termination": {"reason": reason},
                        "descendants": self._handled(ended),
                        "output": {"status": "not_collected", "content_hash": None, "size_bytes": None, "declared_digest": None, "detail": None},
@@ -1140,7 +1145,8 @@ class Supervisor:
         view = job.lookup()
         if view["verdict"] == "exited" and not journal.get("collected"):
             self._collect(job, order, journal, view)
-        if (collected := journal.get("collected")) is not None:
+        collected = journal.get("collected")
+        if collected is not None:
             observation = collected["observation"]
             if collected.get("rehandled") and observation["descendants"]["handling"] == "unconfirmed":
                 observation = {**observation, "descendants": collected["rehandled"]["descendants"]}
@@ -1167,6 +1173,7 @@ class Supervisor:
         if view["verdict"] in ("not_started", "unstarted"):
             if view["verdict"] == "unstarted" and not job.abandon():  # a launcher got the lock first: its identity is next
                 self._unresolved(job, journal, status, "a launcher took the lock before the start could be abandoned")
+            journal["unlaunched"] = True
             if cancel:  # the group is confirmed empty: no launcher ever ran, and the abandoned mark keeps a late one from starting
                 return self._reconcile(job, order, journal, grant, status, "terminated_group", "execution_group_termination",
                                        {**self._unrun(None, "cancelled; the launcher never started and the job is abandoned: nothing was signalled"),
@@ -1183,6 +1190,8 @@ class Supervisor:
         # running under cancellation or past its deadline, or vanished leaving members: end the group, then reconcile by termination
         reason = "cancellation" if cancel else ("timeout" if self._past(order["deadline_at"]) else "reconciliation")
         ended = self._end_group(job, view["identity"])
+        if cancel and not self._contain_backend(job, journal):
+            self._unresolved(job, journal, status, "backend containment after cancellation is not confirmed")
         if not ended["confirmed"]:
             self._unresolved(job, journal, status, f"the group's termination ({reason}) is not confirmed")
         observation = {**self._unrun({"cancellation": None, "timeout": "timeout"}.get(reason, "no_exit_record"), None),
@@ -1196,7 +1205,8 @@ class Supervisor:
         kept = journal.get("pending") if (journal.get("pending") or {}).get("purpose") == purpose else None  # a request already fixed is sent as it was
         resolution = kept["resolution"] if kept is not None else resolution
         if resolution != "found_running" and not journal.get("unlaunched"):
-            plan, collected = docker_cli._read(job, "docker-plan.json"), journal.get("collected")
+            plan = docker_cli._read(job, "docker-plan.json")
+            collected = journal.get("collected")
             if (journal.get("dispatch") or (plan is not None and collected is not None)) and not authenticated_end(job, plan, collected):
                 self._unresolved(job, journal, status, "backend end not authenticated")
             self._record_dispatch(job, journal, grant, collected)
