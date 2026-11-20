@@ -25,7 +25,7 @@ GEN2_TEST_WORKERS ?= 8
 GEN2_CC_MAX_FUNCTION = 48
 GEN2_CC_MAX_AVERAGE = 10
 
-.PHONY: gen2-check gen2-accept gen2-campaign gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-traceability gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-gateway
+.PHONY: gen2-check gen2-accept gen2-campaign gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-traceability gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-gateway gen2-affected
 
 gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-size
 	@echo "gen2-check: all checks passed"
@@ -147,6 +147,13 @@ gen2-catalog-check: gen2-venv
 # unittest's own.
 gen2-test: gen2-venv
 	$(PYTHON) tools/gen2_test.py $(GEN2_TEST_ARGS)
+
+# The per-PR affected set (tools/gen2_affected.py): only the test modules that
+# import the change, through the existing runner; the full gate when FULL.
+HEAD ?= HEAD
+gen2-affected: gen2-venv
+	@sel="$$($(PYTHON) tools/gen2_affected.py $(or $(BASE),$(GEN2_BASE)) $(HEAD))" || exit 1; echo "$$sel"; \
+	case "$$sel" in FULL*) $(MAKE) gen2-accept;; NONE*) ;; *) $(MAKE) gen2-test GEN2_TEST_ARGS="--modules $$sel";; esac
 
 # Acceptance mutates changed production lines against the explicit merge-base.
 gen2-mutation: gen2-venv

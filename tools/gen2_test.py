@@ -51,6 +51,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--shard", type=shard_spec, default=(1, 1))
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--modules", nargs="+", help="run only these test modules (make gen2-affected)")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if not 1 <= args.workers <= 64 or (args.workers > 1 and args.shard != (1, 1)):
@@ -106,6 +107,8 @@ def main() -> int:
             if baseline:
                 baseline.start()
             suite = unittest.defaultTestLoader.discover(str(ROOT / "gen2" / "tests"), pattern="test_*.py")
+            if args.modules:
+                suite = unittest.TestSuite(t for t in tests(suite) if t.__class__.__module__ in args.modules)
             expected = [test.id() for test in tests(suite)]
             # Existing discovery includes re-exported TestCase classes. Keep
             # every occurrence, as the original runner does; comparison uses
