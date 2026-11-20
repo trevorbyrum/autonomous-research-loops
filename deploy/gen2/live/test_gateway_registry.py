@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
-from deploy.gen2.live import build, gateway_registry as g
+from deploy.gen2.live import build, fixture, gateway_registry as g, q_net
 
 ROOT = Path(__file__).parent
 PUBLIC, Q = g.read_inputs()
@@ -111,6 +111,13 @@ def render(*files):
 
 
 class Overlay(unittest.TestCase):
+    def test_the_rendered_fixture_default_starts_a_case_the_native_qualification_producer_needs(self):
+        command = render()["services"]["fixture"]["command"]
+        self.assertIn(command[0], fixture.CASES)
+        self.assertEqual(fixture.operands(["fixture", *command])[:2], (command[0], 0))
+        first = fixture.response(command[0], 1, q_net.model_request("a" * 32))   # the tools-on producer: a tool call, answered only for the schema-bearing request
+        self.assertIn(b"custom_tool_call", first[2])
+
     def test_pinned_merged_render_and_frozen_offline_profile(self):
         base, merged = render(), render("compose.gateway.yaml")
         services = base["services"]

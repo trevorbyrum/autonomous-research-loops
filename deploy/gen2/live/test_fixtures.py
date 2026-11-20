@@ -50,11 +50,11 @@ class Fixtures(unittest.TestCase):
             with self.assertRaises(ValueError):
                 fixture.operands(argv)
 
-    def exchange(self, case, ordinal, request, now=0, reply=None):
+    def exchange(self, case, ordinal, request, now=0, reply=None, command="POST", path="/v1/responses", auth=True):
         """Run the real handler with an in-memory HTTP writer and a simulated clock."""
         writes, flushed = [], []
-        body = json.dumps(request).encode()
-        headers = {"Authorization": "Bearer 2e1-fixture-accepted", "X-Request-ID": "a" * 32, "Content-Length": str(len(body))}
+        body = json.dumps(request).encode() if request is not None else b""
+        headers = {"X-Request-ID": "a" * 32, "Content-Length": str(len(body))} | ({"Authorization": "Bearer 2e1-fixture-accepted"} if auth else {})
         server = SimpleNamespace(case=case, count=ordinal - 1, deadline=600, hold_seconds=30, raw=io.StringIO(), record=io.StringIO(), requests=[])
 
         def write(data):
@@ -70,8 +70,8 @@ class Fixtures(unittest.TestCase):
 
         handler = object.__new__(fixture.Handler)
         handler.headers = SimpleNamespace(get=headers.get, get_all=lambda k: [headers[k]] if k in headers else None)
-        handler.__dict__.update(server=server, command="POST", path="/v1/responses", connection=None,
-                                requestline="POST /v1/responses HTTP/1.1", request_version="HTTP/1.1",
+        handler.__dict__.update(server=server, command=command, path=path, connection=None,
+                                requestline=f"{command} {path} HTTP/1.1", request_version="HTTP/1.1",
                                 rfile=io.BytesIO(body), wfile=SimpleNamespace(write=write, flush=lambda: None))
         response = patch.object(fixture, "response", return_value=reply) if reply is not None else nullcontext()
         with (
@@ -85,6 +85,15 @@ class Fixtures(unittest.TestCase):
         status = int(http_head.split()[1]) if http_head else None
         first_body_receipt = body_writes[0][1] if body_writes else None
         return status, [data for data, _ in body_writes], flushed[-1], first_body_receipt
+
+    def test_the_source_case_serves_one_unauthenticated_get_and_refuses_everything_else(self):
+        status, writes, receipt, _ = self.exchange("source", 1, None, command="GET", path="/fixture", auth=False)
+        self.assertEqual((status, writes, receipt["status"]), (200, [fixture.SOURCE], 200))
+        for refused in (dict(command="POST", path="/fixture", auth=False), dict(command="GET", path="/v1/responses", auth=False),
+                        dict(command="GET", path="/fixture", auth=True)):
+            with self.subTest(refused=refused):
+                status, writes, receipt, _ = self.exchange("source", 1, None, **refused)
+                self.assertEqual((status, receipt["status"], writes), (None, 400, []))   # refused and recorded before any reply
 
     def test_hold_first_holds_only_its_first_accepted_request(self):
         bare, tooled = dict(model="gpt-6.1-terra", stream=True, input=[]), q_net.model_request("a" * 32)

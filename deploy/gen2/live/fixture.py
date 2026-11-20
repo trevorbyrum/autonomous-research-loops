@@ -8,20 +8,19 @@ import time
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+CASES = {"source", "accepted", "rejected", "tool-less", "hold", "hold-first", "limited"}
 SOURCE = b'{"records":[{"id":"q1","title":"2e1 fixture"}],"total":1}\n'
 COMMAND = "python3 /inputs/tool_probe.py"
 TOOLS_SHA = "b7bde2c6481df2ab8cb4b3fec1abff18b48630540c05840137d643568560aadb"
 
 
-def tool_schema(request, enabled=False):
+def tool_schema(request):
+    """Only the tools-on cases (accepted, hold) read tool content; the tool-less cases answer any well-formed request."""
     inputs = request.get("input", [])
     if "tools" in request or not isinstance(inputs, list) or any(not isinstance(x, dict) for x in inputs):
         raise ValueError("tool envelope")
     schemas = [x for x in inputs if x.get("type") == "additional_tools"]
-    if not enabled:
-        if schemas:
-            raise ValueError("tool-less request required")
-    elif len(schemas) != 1 or schemas[0].get("role") != "developer" or hashlib.sha256(
+    if len(schemas) != 1 or schemas[0].get("role") != "developer" or hashlib.sha256(
             json.dumps(schemas[0].get("tools"), sort_keys=True, separators=(",", ":")).encode()).hexdigest() != TOOLS_SHA:
         raise ValueError("advertised tools differ")
 
@@ -34,8 +33,8 @@ def response(case, ordinal, request, *, subscription=False):
     case = {"hold": "accepted", "hold-first": "tool-less"}.get(case, case)
     if request.get("model") != "gpt-6.1-terra" or request.get("stream") is not True or (subscription and case == "accepted"):
         raise ValueError("model/stream/subscription policy")
-    if subscription or case in {"accepted", "tool-less"}:
-        tool_schema(request, case == "accepted")
+    if case == "accepted":
+        tool_schema(request)
     if case == "limited" and ordinal == 1:
         return 429, "application/json", b'{"error":{"type":"usage_limit_reached","resets_at":253402300799}}\n'
     if case == "rejected" and ordinal == 1:
@@ -158,7 +157,7 @@ if __name__ == "__main__":
     case, hold_seconds, lifetime = operands(sys.argv)
     tls = Path("/certs").is_dir()
     address = ("172.31.251.3", 18081) if case == "source" else ("172.31.252.3", 443 if tls else 8081)
-    if case not in {"source", "accepted", "rejected", "tool-less", "hold", "hold-first", "limited"}:
+    if case not in CASES:
         raise ValueError("fixture case")
     with HTTPServer(address, Handler) as server, open("/evidence/fixture.json", "x+") as record, open("/evidence/raw.jsonl", "x") as raw:
         if tls:

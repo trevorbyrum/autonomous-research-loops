@@ -2,7 +2,7 @@
 
 Pure functions over bytes already collected and staged (docker_cli.EvidenceBatch);
 nothing here launches, reads files or grants Router authority. Oracle: the
-conjunction of v7 §4 ("negative oracle"), never runner text. Anything missing,
+conjunction of v7 §4 ("negative oracle"): our own relay row plus a non-zero runner exit, never runner text. Anything missing,
 extra, malformed or conflicting is `unknown`, which the caller treats as fixed
 U / permanent stop. Limits: no claim that every silently lost log row is
 detected; a real route is attested by deployment provenance, not by this file.
@@ -19,7 +19,6 @@ LOG_KEYS = ("v", "id", "src", "port", "conn", "ordinal", "listener", "server_por
             "upstream", "status", "upstream_status", "complete", "at")
 MODEL_ROW = {"v": 3, "src": "172.31.254.3", "ordinal": "1", "listener": "model", "server_port": "8080",
              "method": "POST", "route": "model", "upstream": "172.31.252.3:8081", "complete": "OK"}
-EVENTS = frozenset({"thread.started", "turn.started", "error", "turn.failed"})
 TRANSPORT = frozenset({"429", "502", "503", "504"})
 
 
@@ -75,24 +74,22 @@ def _fixture(data, row, model):
     return sent[0] == {"id": row["id"], "route": "/v1/responses", "model": model, "credential": "rejected"}
 
 
-def classify(access, events, fixture, exit_code, *, model, route="fixture", upstream=None):
-    """Return {"disposition", "reason"} from log, fixture record, runner events and exit code. A fixture route's single row is checked against the
+def classify(access, fixture, exit_code, *, model, route="fixture", upstream=None):
+    """Return {"disposition", "reason"} from the log, the fixture record and the runner's exit code; CLI events are never read. A fixture route's single row is checked against the
     fixture's own upstream and the fixture's request record; a real route's against the PLAN's upstream and with NO fixture (a fixture label can
     never stand for real provenance: the real route's attestation is deployment provenance, not a file the job can write)."""
     try:
         if (route == "real") != (fixture is None) or route not in ("fixture", "real") or (route == "real" and not upstream):
             raise Unknown("route_evidence")
         rows = _rows(access)
-        failed = _jsonl(events, "events")
         if len(rows) != 1:
             raise Unknown("access_missing" if not rows else "access_extra_request")
         row = rows[0]
         wanted = {**MODEL_ROW, **({"upstream": upstream} if route == "real" else {})}
         if any(row[key] != value for key, value in wanted.items()):
             raise Unknown("access_tuple")
-        types = [event.get("type") for event in failed]
-        if not set(types) <= EVENTS or types.count("turn.failed") != 1 or exit_code != 1:
-            raise Unknown("runner_not_failed_turn")
+        if type(exit_code) is not int or exit_code == 0:
+            raise Unknown("runner_not_failed")
         if row["upstream_status"] in TRANSPORT:
             return {"disposition": "transport_failed", "reason": "upstream_" + row["upstream_status"]}
         if row["status"] != "401" or row["upstream_status"] != "401":

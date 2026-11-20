@@ -98,7 +98,7 @@ class LivePolicy(unittest.TestCase):
                 if value:
                     self.assertNotIn(value.decode(errors="replace") if isinstance(value, bytes) else str(value), diagnostic)
 
-    def test_tool_less_fixture_completes_once_and_refuses_tools_or_more_sends(self):
+    def test_tool_less_fixture_completes_once_and_never_reads_tools(self):
         request = dict(model="gpt-6.1-terra", stream=True, input=[])
         self.assertEqual(fixture.credential("tool-less"), "accepted")
         self.assertEqual(fixture.response("limited", 1, request)[0], 429)
@@ -108,11 +108,13 @@ class LivePolicy(unittest.TestCase):
         self.assertEqual(events[0]["item"]["type"], "message")
         self.assertEqual(events[1]["response"]["status"], "completed")
         self.assertEqual(fixture.response("tool-less", 1, request)[0], 200)
-        for case in ("accepted", "tool-less", "rejected", "limited"):
-            with self.subTest(subscription=case), self.assertRaises(ValueError):
-                fixture.response(case, 1, request if case == "accepted" else q_net.model_request("a" * 32), subscription=True)
-        for ordinal, change in ((2, {}), (1, {"tools": None}), (1, {"tools": []}), (1, {"input": q_net.model_request("a" * 32)["input"]}),
-                                (1, {"input": [{"role": "user", "content": "prefix"}, {"type": "additional_tools", "tools": []}]}), (1, {"tools": [{"name": "exec_command"}]}), (1, {"model": "other"})):
+        with self.assertRaises(ValueError):
+            fixture.response("accepted", 1, q_net.model_request("a" * 32), subscription=True)
+        odd = request | {"tools": [{"name": "exec_command"}], "input": [None, {"type": "additional_tools", "tools": 7}]}
+        for case in ("tool-less", "hold-first", "rejected", "limited"):
+            with self.subTest(subscription=case):
+                self.assertEqual(fixture.response(case, 1, odd, subscription=True)[0], fixture.response(case, 1, request)[0])
+        for ordinal, change in ((2, {}), (1, {"model": "other"}), (1, {"stream": False})):
             with self.subTest(ordinal=ordinal, change=change), self.assertRaises(ValueError):
                 fixture.response("tool-less", ordinal, request | change)
 
