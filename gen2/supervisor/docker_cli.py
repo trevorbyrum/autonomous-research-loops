@@ -14,6 +14,7 @@ import selectors
 import subprocess
 import time
 from datetime import datetime
+from ipaddress import IPv4Network
 from pathlib import Path
 
 from gen2.core.instants import utc_instant_ns
@@ -285,12 +286,7 @@ class DockerCLI:
             self.deadline = self.absolute   # the model turn is over: its final inspect and the whole tail run under the order's deadline
         original, observed = self.job.read(role + "-start.json"), self.inspect(cid)
         require(original is not None, "end_original")
-        actual, expected = _binding(observed), _binding(original)
-        if role == "relay" and self.plan.get("route") == "real":
-            name = self.job.read("network-upstream.json")["Name"]
-            if name not in actual[1]:
-                expected[1].pop(name)
-        require(actual == expected, "end_binding")
+        require(_binding(observed) == _binding(original), "end_binding")
         state = observed["State"]
         require(state.get("StartedAt") == original["State"]["StartedAt"] and state.get("Status") == "exited" and type(state.get("Pid")) is int and state["Pid"] == 0
                 and state.get("Error") == "" and all(state.get(k) is False for k in ("Running", "Restarting", "Paused", "OOMKilled")), "end_state")
@@ -304,6 +300,10 @@ class DockerCLI:
         with self.job.hold(self.deadline, .01):
             original = self.job.read("network-upstream.json")
             name = original["Name"]
+            # N10 Revision 2 (OPERATIONS row 27) supplies the properties absent from the protected ID operand.
+            ipam = {"Subnet": "172.31.244.0/29", "Gateway": "172.31.244.1"}
+            subnet = IPv4Network(ipam["Subnet"])
+            relay_ip = str(subnet[2])
             expected = _binding(ended)
             expected[1].pop(name, None)
             receipt = {"network_id": network, "relay_id": cid, "confirmed": False}
@@ -319,6 +319,10 @@ class DockerCLI:
                     binding[1].pop(name, None)
                     require(binding == expected and relay["State"] == ended["State"], "egress_relay_changed")
                     members, endpoint = bridge.get("Containers"), networks.get(name)
+                    require(bridge["Id"] == network and bridge["Name"] == "gen2-2e1-live-provider-a6c5f6513f18415d294eeea44e652b69"
+                            and bridge["Driver"] == "bridge" and bridge["Scope"] == "local" and bridge["Internal"] is False
+                            and bridge["EnableIPv4"] is True and bridge["EnableIPv6"] is False and bridge["IPAM"]["Config"] == [ipam]
+                            and bridge["Options"].get("com.docker.network.bridge.gateway_mode_ipv4") == "nat", "egress_bridge_properties")
                     require({k: v for k, v in bridge.items() if k not in {"Containers", "Status"}} ==
                             {k: v for k, v in original.items() if k not in {"Containers", "Status"}}, "egress_bridge_changed")
                     require(isinstance(members, dict) and set(members) <= {cid}, "egress_members")
@@ -326,9 +330,9 @@ class DockerCLI:
                                                       and endpoint["IPAddress"] == "" and endpoint["GlobalIPv6Address"] == "")
                     if phase == "before" and members:
                         endpoint_id = self.job.read("relay-start.json")["NetworkSettings"]["Networks"][name]["EndpointID"]
-                        require(endpoint and endpoint["NetworkID"] == network and members[cid]["IPv4Address"] == "172.31.244.2/29"
+                        require(endpoint and endpoint["NetworkID"] == network and members[cid]["IPv4Address"] == f"{relay_ip}/{subnet.prefixlen}"
                                 and CID.fullmatch(endpoint_id) and endpoint["EndpointID"] == members[cid]["EndpointID"] == endpoint_id
-                                and endpoint["IPAddress"] == "172.31.244.2", "egress_endpoint")
+                                and endpoint["IPAddress"] == relay_ip, "egress_endpoint")
                         self.endpoint("disconnect", network, cid)
                     else:
                         require(not members and absent, "egress_not_empty")
