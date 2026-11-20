@@ -285,7 +285,12 @@ class DockerCLI:
             self.deadline = self.absolute   # the model turn is over: its final inspect and the whole tail run under the order's deadline
         original, observed = self.job.read(role + "-start.json"), self.inspect(cid)
         require(original is not None, "end_original")
-        require(_binding(observed) == _binding(original), "end_binding")
+        actual, expected = _binding(observed), _binding(original)
+        if role == "relay" and self.plan.get("route") == "real":
+            name = self.job.read("network-upstream.json")["Name"]
+            if name not in actual[1]:
+                expected[1].pop(name)
+        require(actual == expected, "end_binding")
         state = observed["State"]
         require(state.get("StartedAt") == original["State"]["StartedAt"] and state.get("Status") == "exited" and type(state.get("Pid")) is int and state["Pid"] == 0
                 and state.get("Error") == "" and all(state.get(k) is False for k in ("Running", "Restarting", "Paused", "OOMKilled")), "end_state")
@@ -293,6 +298,43 @@ class DockerCLI:
         require(type(state.get("ExitCode")) is int and waited == str(state["ExitCode"]).encode(), "end_unconfirmed")
         self.job.write(role + "-end.json", observed)
         return observed
+
+    def _end_egress(self, network, cid, ended):
+        """Prove the original pair is clear before publishing any reusable end."""
+        with self.job.hold(self.deadline, .01):
+            original = self.job.read("network-upstream.json")
+            name = original["Name"]
+            expected = _binding(ended)
+            expected[1].pop(name, None)
+            receipt = {"network_id": network, "relay_id": cid, "confirmed": False}
+            try:
+                for phase in ("before", "after"):
+                    pair = receipt[phase] = {}
+                    views = json.loads(self._command(("network", "inspect", network)))
+                    require(isinstance(views, list) and len(views) == 1 and isinstance(views[0], dict), "egress_inspect")
+                    bridge = pair["bridge"] = views[0]
+                    relay = self.inspect(cid)
+                    networks = pair["relay_networks"] = relay["NetworkSettings"]["Networks"]
+                    binding = _binding(relay)
+                    binding[1].pop(name, None)
+                    require(binding == expected and relay["State"] == ended["State"], "egress_relay_changed")
+                    members, endpoint = bridge.get("Containers"), networks.get(name)
+                    require({k: v for k, v in bridge.items() if k not in {"Containers", "Status"}} ==
+                            {k: v for k, v in original.items() if k not in {"Containers", "Status"}}, "egress_bridge_changed")
+                    require(isinstance(members, dict) and set(members) <= {cid}, "egress_members")
+                    absent = name not in networks or (endpoint["NetworkID"] == network and endpoint["EndpointID"] == ""
+                                                      and endpoint["IPAddress"] == "" and endpoint["GlobalIPv6Address"] == "")
+                    if phase == "before" and members:
+                        endpoint_id = self.job.read("relay-start.json")["NetworkSettings"]["Networks"][name]["EndpointID"]
+                        require(endpoint and endpoint["NetworkID"] == network and members[cid]["IPv4Address"] == "172.31.244.2/29"
+                                and CID.fullmatch(endpoint_id) and endpoint["EndpointID"] == members[cid]["EndpointID"] == endpoint_id
+                                and endpoint["IPAddress"] == "172.31.244.2", "egress_endpoint")
+                        self.endpoint("disconnect", network, cid)
+                    else:
+                        require(not members and absent, "egress_not_empty")
+                receipt["confirmed"] = True
+            finally:
+                self.job.write("containment.json", {"egress": receipt})
 
     def close_admission(self):
         """The sole launcher's own durable seal, after the last permitted start; every later start refuses it. A failed write contains and keeps uncertainty."""
@@ -430,7 +472,10 @@ class DockerCLI:
                 and network not in {n["NetworkID"] for n in self.inspect(runner)["NetworkSettings"]["Networks"].values()}, "ingress_not_closed")
         self.drain()
         self.contain(relay, role="relay")
-        require(self.end(relay, "relay")["State"]["ExitCode"] == 0, "relay_stop_failed")
+        relay_end = self.end(relay, "relay")
+        if real:
+            self._end_egress(upstream, relay, relay_end)
+        require(relay_end["State"]["ExitCode"] == 0, "relay_stop_failed")
         refs = []
         if not real:
             self.contain(fixture["Id"], role="fixture")
@@ -638,7 +683,18 @@ def contain_job(job, *, execute=capture, now=time.monotonic, clock=time.time) ->
     except LiveProfileRefused:
         limit = None
     late = limit is None or any(e["role"] == "relay" and e.get("at", start) > limit for e in outcomes)
-    job.write("containment.json", {"outcomes": outcomes, "limit": limit, "late": late})
+    record = {"outcomes": outcomes, "limit": limit, "late": late}
+    if plan and plan.get("route") == "real":
+        receipt = (_read(job, "containment.json") or {}).get("egress")
+        if receipt is not None:
+            record["egress"] = receipt
+        # A connect intent can have taken effect even if the CLI never reported success.
+        for entry in (journal or {}).values() if not unknown else ():
+            intent = entry["intent"]
+            if intent[3:5] == ["network", "connect"]:
+                failed = failed or not (isinstance(receipt, dict) and receipt.get("confirmed") is True
+                                        and [receipt.get("network_id"), receipt.get("relay_id")] == intent[-2:])
+    job.write("containment.json", record)
     if failed:
         raise ContainFailed(outcomes)
     if plan and plan.get("origin") and not late:
