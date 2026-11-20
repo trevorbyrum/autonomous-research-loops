@@ -735,19 +735,11 @@ class DockerBoundary(unittest.TestCase):
                 self.assertIsInstance(error, LiveProfileRefused)
                 self.assertEqual((self.job.dir / "docker-complete.json").read_text(), raw)
 
-    def test_a_failed_exit_never_opens_the_answer_file_and_a_success_without_one_is_refused(self):
+    def test_a_failed_exit_never_opens_the_answer_file(self):
         cli, egress, relay, record = self.real_world()
         refs, batch, *_ = self.real_run(cli, egress, relay, record, code=2)
         self.assertEqual(len(refs), 4)                                              # events, diagnostics, access, usage: no judgment ref
         self.assertEqual([c.kwargs["kind"] for c in batch.collect.call_args_list], ["access"])
-        for reason in ("collection_absent", "collection_empty"):                    # exit 0 is success only with a non-empty answer: anything else refuses
-            self.fresh()
-            def refuse(slot_fd, generation, identity, *, writers_ended, kind, reason=reason):
-                if kind == "judgment":
-                    raise LiveProfileRefused(reason)
-                return {"content_hash": "sha256:" + CID}
-            error, *_ = self.real_run(*self.real_world(), collect=refuse, code=0)
-            self.assertRegex(str(error), "^" + reason + "$")
 
     def retained(self, *, judgment, code=1, access=None, events=b"", kind="out"):
         """A real route run over real scratch files and the real EvidenceBatch: `judgment` None = no leaf, b"" = the 0.169 convention (its destination is
@@ -794,17 +786,11 @@ class DockerBoundary(unittest.TestCase):
                                     *((f"canonical + {extra}", canonical + jl(extra), 1) for extra in extras)):   # F-1: a list-valued type once raised TypeError
             with self.subTest(label):
                 self.fresh()
-                staged = []
-                real = d.rejection.usage_record
-                def spy(*args, **kwargs):
-                    staged.append(real(*args, **kwargs))
-                    return staged[-1]
-                with mock.patch.object(d.rejection, "usage_record", spy):
-                    _, _, done = self.retained(judgment=None, code=code, events=events)
+                _, batch, done = self.retained(judgment=None, code=code, events=events)
                 self.assertEqual(done["disposition"]["disposition"], "credentials_rejected")
                 self.assertEqual(done["usage"], "recorded")
                 if "usage" not in label:   # no well-formed completed turn: every staged count is unknown, none invented
-                    counts = staged[0]["usage"]
+                    counts = json.loads(batch.spool.read(done["refs"][-1]["content_hash"], topic_id="fleet:real"))["usage"]   # the published usage artifact, not the call's return value
                     self.assertEqual({k: counts[k]["state"] for k in ("input_tokens", "output_tokens", "cached_tokens")}, dict.fromkeys(("input_tokens", "output_tokens", "cached_tokens"), "unknown"))
 
     def test_a_successful_exit_collects_a_nonempty_answer_and_refuses_an_empty_or_missing_one(self):

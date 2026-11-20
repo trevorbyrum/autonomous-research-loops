@@ -9,21 +9,6 @@ from unittest.mock import MagicMock, patch
 from deploy.gen2.live import fixture, q_net, qualify
 
 class Qualification(unittest.TestCase):
-    def test_the_pinned_producers_request_is_accepted_by_the_verifier(self):
-        """The request an unchanged (ac16139) runner sends, written here independently of q_net.model_request."""
-        nonce = "a" * 32
-        schema = json.loads(Path(q_net.__file__).with_name("fixtures").joinpath("catalog/tools.json").read_bytes())
-        schema["tools"] = [ns for ns in schema["tools"] if ns["name"] == "functions"]
-        sent = dict(model="gpt-6.1-terra", stream=True, input=[schema, dict(role="user", content=nonce)])
-        self.assertEqual(q_net.model_request(nonce), sent)
-        qualify.relay_response(dict(nonce=nonce, connected=True, status=200, media="text/event-stream", body=fixture.response("accepted", 1, sent)[2].hex()))
-        raw = json.dumps(dict(ordinal=1, method="POST", route="/v1/responses", status=200, case="accepted", id="c" * 32, request=sent)).encode()
-        independent = json.dumps({"v": 1, "requests": [dict(id="c" * 32, route="/v1/responses", model="gpt-6.1-terra", credential="accepted")]}).encode()
-        qualify.relay_record(dict(nonce=nonce), raw, independent)
-        tool_less = json.dumps(dict(json.loads(raw), request=dict(sent, input=sent["input"][1:]))).encode()
-        with self.assertRaisesRegex(ValueError, "relay_fixture_request"):
-            qualify.relay_record(dict(nonce=nonce), tool_less, independent)
-
     def test_service_and_counter_refusals(self):
         before = dict.fromkeys(qualify.OBSERVERS, 0)
         qualify.delivery_delta(before, before | {"resolver": 1}, ["resolver"])
@@ -42,15 +27,18 @@ class Qualification(unittest.TestCase):
 
     def test_fixed_post_and_independent_fixture_record(self):
         nonce = "a" * 32
+        schema = json.loads(Path(q_net.__file__).with_name("fixtures").joinpath("catalog/tools.json").read_bytes())
+        schema["tools"] = [ns for ns in schema["tools"] if ns["name"] == "functions"]
+        sent = dict(model="gpt-6.1-terra", stream=True, input=[schema, dict(role="user", content=nonce)])   # the pinned (ac16139) producer's request, written independently of q_net
         connection = MagicMock()
         connection.getresponse.return_value.status = 200
         connection.getresponse.return_value.getheader.return_value = "text/event-stream"
-        connection.getresponse.return_value.read.return_value = fixture.response("accepted", 1, q_net.model_request(nonce))[2]
+        connection.getresponse.return_value.read.return_value = fixture.response("accepted", 1, sent)[2]
         output = io.StringIO()
         with patch.object(q_net.http.client, "HTTPConnection", return_value=connection), contextlib.redirect_stdout(output):
             q_net.relay(nonce)
         method, route, body, headers = connection.request.call_args.args
-        self.assertEqual((method, route, json.loads(body)), ("POST", "/v1/responses", q_net.model_request(nonce)))
+        self.assertEqual((method, route, json.loads(body)), ("POST", "/v1/responses", sent))
         self.assertEqual(headers["Authorization"], "Bearer 2e1-fixture-accepted")
         answer = json.loads(output.getvalue())
         qualify.relay_response(answer)
@@ -65,13 +53,15 @@ class Qualification(unittest.TestCase):
         for change in (dict(status=403), dict(body=b"denied".hex())):
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, "relay_ingress"):
                 qualify.relay_response(answer | change)
-        request = q_net.model_request(nonce)
-        raw = json.dumps(dict(ordinal=1, method="POST", route="/v1/responses", status=200, case="accepted", id="c" * 32, request=request)).encode()
+        raw = json.dumps(dict(ordinal=1, method="POST", route="/v1/responses", status=200, case="accepted", id="c" * 32, request=sent)).encode()
         independent = json.dumps({"v": 1, "requests": [dict(id="c" * 32, route="/v1/responses", model="gpt-6.1-terra", credential="accepted")]}).encode()
         qualify.relay_record(dict(nonce=nonce), raw, independent)
         for changed in (b'{"v":1,"requests":[]}', independent.replace(b"accepted", b"rejected")):
             with self.subTest(independent=changed), self.assertRaisesRegex(ValueError, "relay_fixture_record"):
                 qualify.relay_record(dict(nonce=nonce), raw, changed)
+        stripped = json.dumps(dict(json.loads(raw), request=dict(sent, input=sent["input"][1:]))).encode()
+        with self.assertRaisesRegex(ValueError, "relay_fixture_request"):
+            qualify.relay_record(dict(nonce=nonce), stripped, independent)
 
     def test_bracket_rejects_missing_observation_and_runner_access(self):
         """Own receipt operands exercise the predicate; native identities require the Q run."""

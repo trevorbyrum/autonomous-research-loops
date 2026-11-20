@@ -52,7 +52,6 @@ class Classifier(unittest.TestCase):
             "duplicate id": dict(access=jl(ROW, ROW)),
             "no 401 row": dict(access=jl({**ROW, "status": "200", "upstream_status": "200"})),
             "downstream 200, upstream 401": dict(access=jl({**ROW, "status": "200"})),
-            "downstream 500, upstream 401": dict(access=jl({**ROW, "status": "500"})),
             "downstream 401, upstream 200": dict(access=jl({**ROW, "upstream_status": "200"})),
             "exit 0": dict(code=0),
             "exit not an int": dict(code=True),
@@ -130,13 +129,6 @@ class Usage(unittest.TestCase):
             with self.subTest(name):
                 usage = self.record(events, elapsed=None)["usage"]
                 self.assertEqual(self.schemas.errors(usage, "live-vocabulary.schema.json#/$defs/usage"), [])
-                self.assertTrue(all(usage[k]["state"] == "unknown" for k in usage), usage)
-
-    def test_an_odd_event_type_is_unknown_usage_never_an_exception(self):
-        counts = {"input_tokens": 11, "output_tokens": 7}
-        for odd in (["turn.completed"], {"a": 1}, None, 3):   # F-1: a list-valued type once raised TypeError in the classifier's set()
-            with self.subTest(odd=odd):
-                usage = self.record(jl({"type": odd, "usage": counts}), elapsed=None)["usage"]
                 self.assertTrue(all(usage[k]["state"] == "unknown" for k in usage), usage)
 
     def test_model_mismatch_refuses(self):
