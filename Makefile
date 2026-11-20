@@ -25,7 +25,7 @@ GEN2_TEST_WORKERS ?= 8
 GEN2_CC_MAX_FUNCTION = 48
 GEN2_CC_MAX_AVERAGE = 10
 
-.PHONY: gen2-check gen2-accept gen2-campaign gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-traceability gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-auth-demo gen2-gateway
+.PHONY: gen2-check gen2-accept gen2-campaign gen2-venv gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-traceability gen2-schemas gen2-ddl gen2-catalog gen2-catalog-check gen2-test gen2-mutation gen2-mutation-report gen2-size gen2-linecount gen2-gateway
 
 gen2-check: gen2-sqlite gen2-sqlite-native gen2-boundaries gen2-complexity gen2-debt gen2-locators gen2-schemas gen2-ddl gen2-catalog-check gen2-test gen2-size
 	@echo "gen2-check: all checks passed"
@@ -167,15 +167,6 @@ gen2-size: gen2-venv
 # Full report, including the like-for-like gen-1 recount.
 gen2-linecount: gen2-venv
 	$(PYTHON) tools/gen2_linecount.py --gen1-baseline
-
-# The DEPLOYMENT-CONTRACT §4 auth-volume demonstrations (task 1f;
-# docs/gen2/AUTH-DEMO.md): builds the engine image (deploy/gen2/Dockerfile),
-# runs the compose slice (deploy/gen2/compose.yaml) under its own project
-# name, and asserts each demonstration mechanically. Needs Docker with
-# Compose; not part of gen2-check. DEMOS=a,b,c,c-control,d1,d2a,d2b,e runs a
-# subset. Exit status is the demonstrations' own: no pipe.
-gen2-auth-demo: gen2-venv
-	$(PYTHON) deploy/gen2/demo/auth_demo.py $(if $(DEMOS),--only $(DEMOS))
 
 # The gateway repairs of task 2b (tools/gen2_gateway_check.py): the gateway's own
 # suite, again on a throwaway PostgreSQL cluster (a temporary directory, a Unix socket,

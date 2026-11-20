@@ -64,10 +64,7 @@ class _Owned:
     """The station as the operator service sees it: only the operations its
     routes call (core.control.OperatorBackend's, the COMMANDS table's) — the
     router's, and the supervisor's recovery of a stalled job (STATION) — each
-    run on the owner thread and its answer returned here; and the station's
-    capability probe (task 1f), whose runner runs on the caller's thread,
-    holding nothing of the router's, and whose observation is recorded on
-    the owner thread: so two probes run their runners at once. Nothing else
+    run on the owner thread and its answer returned here. Nothing else
     of the router or the supervisor — the store least of all — is reachable
     through it."""
 
@@ -80,10 +77,6 @@ class _Owned:
     def __getattr__(self, name: str):
         if name not in self.OPERATIONS:
             raise AttributeError(f"{name} is not an operation of the operator surface")
-        if name == "probe_capability":
-            record = self._station.router.record_capability_probe
-            return lambda request: self._station.probe.run(
-                request, record=lambda observation: self._owner.submit(record, observation).result(timeout=ANSWER_TIMEOUT_S))
         if name == "walk":   # one driver tick, on the owner thread; without a walker the engine says so
             method = self._walker.walk if self._walker is not None else (lambda request: {"status": "refused", "reason": "walk_unavailable"})
             return lambda *args: self._owner.submit(method, *args).result(timeout=ANSWER_TIMEOUT_S)
@@ -234,9 +227,7 @@ def _handler(service: OperatorService, log: Callable[[str], None]):
 
 def main(argv: list[str] | None = None, environ=os.environ) -> int:
     """`python -m gen2.app.engine --root DIR --station-id S --host-id H
-    [--bundle FILE] [--create] [--auth-root DIR]`: serve until interrupted.
-    --auth-root holds one auth home per provider (<DIR>/<provider>,
-    DEPLOYMENT-CONTRACT.md §4), which probe_capability probes. Secrets and the
+    [--bundle FILE] [--create]`: serve until interrupted. Secrets and the
     listen address come from the deployment contract's environment names
     (GEN2_SECRETS, GEN2_OPERATOR_TOKENS, GEN2_SECRET_EXPORTER_TOKEN,
     GEN2_OPERATOR_LISTEN); the state directory holds the store, the spool and
@@ -248,7 +239,6 @@ def main(argv: list[str] | None = None, environ=os.environ) -> int:
     parser.add_argument("--host-id", required=True)
     parser.add_argument("--bundle", help="the mounted config-bundle/1 file; without it, the active bundle is restored")
     parser.add_argument("--create", action="store_true", help="create the store (first start only)")
-    parser.add_argument("--auth-root", help="the mounted auth homes, one per provider (task 1f)")
     args = parser.parse_args(argv)
     host, _, port = environ.get("GEN2_OPERATOR_LISTEN", "0.0.0.0:8770").rpartition(":")
     try:
@@ -257,7 +247,7 @@ def main(argv: list[str] | None = None, environ=os.environ) -> int:
         composition = compose.Composition()
         authority = composition.authority(Path(args.root) / "jobs", environ)   # None unless a verified qualification record is named: live stays closed
         engine = Engine(lambda: composition.bind(open_station(args.root, station_id=args.station_id, host_id=args.host_id, clock=utc_now,
-                                                              config_bundle=bundle, create=args.create, auth_root=args.auth_root,
+                                                              config_bundle=bundle, create=args.create,
                                                               router_options={"gateway_captures": composition.captures, "dispatch_authority": authority},
                                                               supervisor_options={"recorders": composition.recorders(), "dispatch": authority})).station,
                         credentials, listen=(host, int(port)),

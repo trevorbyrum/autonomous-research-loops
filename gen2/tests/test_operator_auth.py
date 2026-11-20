@@ -475,8 +475,6 @@ class WireReplyTest(WireClient, of.OperatorTestCase):
              b'{"detail": "operation refused", "reason": "request_invalid", "status": "refused"}'),
             ("GET", "/v1/status?topic=fleet:caller-chosen-topic", None,
              b'{"detail": "operation refused", "reason": "unknown_topic", "status": "refused"}'),
-            ("POST", "/v1/commands/probe_capability", {"provider": "%5Cu006eABCDEFGHIJKLMNO"},
-             b'{"detail": "operation refused", "reason": "unknown_provider", "status": "refused"}'),
             ("POST", "/v1/commands/request_cancel", {"invocation_id": "inv_CALLER123", "reason": "caller reason"},
              b'{"detail": "operation refused", "reason": "unknown_invocation", "status": "refused"}')):
             with self.subTest(path=path):

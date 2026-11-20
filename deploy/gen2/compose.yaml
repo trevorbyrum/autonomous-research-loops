@@ -1,6 +1,6 @@
 # The gen-2 minimal deployment slice (task 1f): the engine alone — router,
 # station supervisor and operator listener — with its control-store volume,
-# one provider auth volume, its mounted config bundle and its env secrets.
+# its mounted config bundle and its env secrets.
 # No gateway, exporter, tier0 or research workflow.
 #
 # Trace: docs/gen2/DEPLOYMENT-CONTRACT.md §1 (the `engine` service; the
@@ -8,8 +8,8 @@
 # 0.0.0.0:8770 in its container; published on host loopback only, the port
 # checked free on the deploying host), §1.2 (healthcheck: the image's), §2
 # (config mounted read-only; restart, not rebuild), §3.1 (env secrets from
-# one file, never in the repository), §4 (one auth volume per provider at a
-# fixed path, service-owned, 0700, surviving restart and replacement).
+# one file, never in the repository). The provider auth volume and the
+# capability probe that read it are retired (S14 D4; DEBT-065).
 #
 # Every deployment-specific value comes from the environment, and each
 # required one fails the command when unset:
@@ -32,15 +32,14 @@ services:
       context: ../..
       dockerfile: deploy/gen2/Dockerfile
     command: ["--root", "/var/lib/gen2/state", "--station-id", "station-1", "--host-id", "${GEN2_HOST_ID:?set GEN2_HOST_ID}",
-              "--bundle", "/etc/gen2/bundle.json", "--auth-root", "/auth"]
+              "--bundle", "/etc/gen2/bundle.json"]
     env_file: ["${GEN2_ENV_FILE:?set GEN2_ENV_FILE to the secrets file}"]
     ports: ["127.0.0.1:${GEN2_ENGINE_PORT:-8770}:8770"]
     volumes:
       - state:/var/lib/gen2/state
-      - auth-codex:/auth/codex
       - ${GEN2_BUNDLE:?set GEN2_BUNDLE to the config bundle}:/etc/gen2/bundle.json:ro
     read_only: true
-    tmpfs: ["/tmp:mode=1777"]  # the probes' fresh workspaces
+    tmpfs: ["/tmp:mode=1777"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     init: true          # PID 1 forwards the stop signal and reaps
@@ -62,4 +61,3 @@ services:
 
 volumes:
   state: {}       # the control store, spool and jobs: the engine's alone
-  auth-codex: {}  # the codex auth home: credential state and what the runner keeps beside it
