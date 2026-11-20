@@ -209,10 +209,8 @@ class BudgetFaults:
         self.assertEqual(self.value("SELECT failure_class FROM invocations WHERE invocation_id = ?", MAIN), "timeout")
 
     def test_a_reconciliation_record_that_cannot_be_written_keeps_the_termination(self) -> None:
-        """Delivery phase: the launcher vanishes, the group is terminated to
-        reconcile the episode, and the reconciliation's record cannot be
-        staged. The episode stays open under its hold meanwhile; recovery
-        reconciles it with the termination's own facts."""
+        """A vanished launcher's retained termination cannot be staged.
+        Recovery reconciles the held episode with the original observation."""
         self.assertEqual(self.submit(HANG_WITH_DESCENDANT), "running")
         self.wait_for_file("scratch/descendant.pid")
         identity = self.job_file("identity.json")
@@ -224,15 +222,15 @@ class BudgetFaults:
         self.spool.quota_bytes = self.spool.usage()
         outcomes = [self.supervisor.advance(MAIN) for _ in range(4)]
         self.assertEqual(outcomes, ["write_failed"] * 3 + ["stalled"])
-        self.assertEqual(self.incident("durable_write_failed")["phase"], "delivery")
+        self.assertEqual(self.incident("durable_write_failed")["phase"], "collection")
         self.assertEqual(jobs.members(identity), [])
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "outcome_unknown")
-        pending = self.journal()["pending"]
-        self.assertEqual((pending["purpose"], pending["resolution"], pending["record"]), ("reconcile:1", "terminated_group", None))
+        kept = self.journal()["observing"]
+        self.assertEqual((kept["terminated"], kept["method"]), ("reconciliation", "execution_group_termination"))
         self.spool.quota_bytes = 1 << 30
         self.assertEqual(self.supervisor.recover()[MAIN], "failed")
         self.assertEqual(self.ended()["reconciliations"], ["terminated_group"])
-        self.assertEqual(self.evidence_record()["descendants"], pending["observation"]["descendants"])
+        self.assertEqual(self.evidence_record()["descendants"], kept["observation"]["descendants"])
 
     def test_a_journal_that_cannot_be_written_is_an_out_of_band_control_failure(self) -> None:
         """The journal is where the job's incident lives: when it cannot be
@@ -392,7 +390,7 @@ class BudgetFaults:
         self.refused_write_stalls(self.make_supervisor(control=refusing), refusing, "reconcile")
         self.unknown_held()
         self.assertEqual(self.make_supervisor().recover()[MAIN], "failed")
-        self.ended_reconciled("confirmed_failed")  # the first attempt ended the group; each refusal lets the next decide afresh
+        self.ended_reconciled()  # the recovered write uses the retained termination
 
     def test_a_refused_cancellation_of_unlaunched_work_is_budgeted_too(self) -> None:
         """Launch admission refuses (the lease is not current), so the
@@ -436,15 +434,19 @@ class BudgetFaults:
         with unconfirmed.patched():
             outcomes = [self.supervisor.advance(MAIN) for _ in range(7)]
             self.assertEqual(outcomes, ["unknown_unresolved"] * 5 + ["stalled"] * 2)
-            self.assertEqual(unconfirmed.calls, 6)  # the budget (5), then the one that stalled; nothing after
+            self.assertEqual(unconfirmed.calls, 1)
             found = self.incident("outcome_unknown_unresolved")
             self.assertEqual({k: found[k] for k in ("budget", "unknown_episode", "last_finding")},
-                             {"budget": "unknown", "unknown_episode": 1, "last_finding": "the group's termination (reconciliation) is not confirmed"})
+                             {"budget": "unknown", "unknown_episode": 1, "last_finding": "the collected end's descendants are not confirmed ended"})
             self.unknown_held()
             self.stalled_unchanged(self.control, lambda: unconfirmed.calls)
         self.assertNotEqual(jobs.members(identity), [])  # the group was never ended meanwhile
-        self.assertEqual(self.make_supervisor().recover()[MAIN], "failed")  # the group can be ended: recovery reconciles the episode
+        reply = self.make_supervisor().recover_incident({"invocation_id": MAIN, "incident_since": found["since"],
+                                                         "requested_by": "operator", "reason": "end the group"})
+        self.assertEqual(reply["outcome"], "failed")
         self.ended_reconciled()
+        journal = self.journal()
+        self.assertEqual((journal.get("incident"), journal.get("unresolved"), journal["budgets"].get("unknown")), (None, None, None))
         self.assertEqual(jobs.members(identity), [])
 
     def test_an_unresolved_unknown_episode_is_also_bounded_in_time(self) -> None:
@@ -455,18 +457,8 @@ class BudgetFaults:
             since = self.journal()["unresolved"]["since"]
             self.clock.set("2026-09-27T10:20:00Z")  # past the unknown window (600 s), one attempt into a budget of five
             self.assertEqual(self.supervisor.advance(MAIN), "stalled")
-            self.assertEqual((unconfirmed.calls, self.incident("outcome_unknown_unresolved")["unresolved_since"]), (2, since))
+            self.assertEqual((unconfirmed.calls, self.incident("outcome_unknown_unresolved")["unresolved_since"]), (1, since))
             self.unknown_held()
-
-    def test_an_unknown_episode_reconciled_within_its_budget_refunds_it(self) -> None:
-        self.vanished()
-        unconfirmed = Unconfirmed()
-        with unconfirmed.patched():
-            self.assertEqual([self.supervisor.advance(MAIN) for _ in range(2)], ["unknown_unresolved"] * 2)
-        self.assertEqual(self.supervisor.advance(MAIN), "failed")  # the group ends now: the episode is reconciled
-        journal = self.journal()
-        self.assertEqual((journal.get("incident"), journal.get("unresolved"), journal["budgets"].get("unknown")), (None, None, None))
-        self.ended_reconciled()
 
 
 class ResearchPassBudgetTest(BudgetFaults, SupervisedTestCase):
