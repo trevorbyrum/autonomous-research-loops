@@ -9,11 +9,20 @@ from unittest.mock import MagicMock, patch
 from deploy.gen2.live import fixture, q_net, qualify
 
 class Qualification(unittest.TestCase):
-    def test_runner_recipe_contains_invoked_probe(self):
-        recipe = Path(qualify.__file__).with_name("Dockerfile").read_text()
-        stage = recipe.split("FROM base AS runner\n", 1)[1].split("\nFROM ", 1)[0]
-        self.assertIn("deploy/gen2/live/q_net.py /opt/live/q_net.py", stage)
-        self.assertIn('"/opt/live"', Path(qualify.__file__).with_name("tool_probe.py").read_text())
+    def test_the_pinned_producers_request_is_accepted_by_the_verifier(self):
+        """The request an unchanged (ac16139) runner sends, written here independently of q_net.model_request."""
+        nonce = "a" * 32
+        schema = json.loads(Path(q_net.__file__).with_name("fixtures").joinpath("catalog/tools.json").read_bytes())
+        schema["tools"] = [ns for ns in schema["tools"] if ns["name"] == "functions"]
+        sent = dict(model="gpt-6.1-terra", stream=True, input=[schema, dict(role="user", content=nonce)])
+        self.assertEqual(q_net.model_request(nonce), sent)
+        qualify.relay_response(dict(nonce=nonce, connected=True, status=200, media="text/event-stream", body=fixture.response("accepted", 1, sent)[2].hex()))
+        raw = json.dumps(dict(ordinal=1, method="POST", route="/v1/responses", status=200, case="accepted", id="c" * 32, request=sent)).encode()
+        independent = json.dumps({"v": 1, "requests": [dict(id="c" * 32, route="/v1/responses", model="gpt-6.1-terra", credential="accepted")]}).encode()
+        qualify.relay_record(dict(nonce=nonce), raw, independent)
+        tool_less = json.dumps(dict(json.loads(raw), request=dict(sent, input=sent["input"][1:]))).encode()
+        with self.assertRaisesRegex(ValueError, "relay_fixture_request"):
+            qualify.relay_record(dict(nonce=nonce), tool_less, independent)
 
     def test_service_and_counter_refusals(self):
         before = dict.fromkeys(qualify.OBSERVERS, 0)
@@ -36,7 +45,7 @@ class Qualification(unittest.TestCase):
         connection = MagicMock()
         connection.getresponse.return_value.status = 200
         connection.getresponse.return_value.getheader.return_value = "text/event-stream"
-        connection.getresponse.return_value.read.return_value = fixture.response("tool-less", 1, q_net.model_request(nonce))[2]
+        connection.getresponse.return_value.read.return_value = fixture.response("accepted", 1, q_net.model_request(nonce))[2]
         output = io.StringIO()
         with patch.object(q_net.http.client, "HTTPConnection", return_value=connection), contextlib.redirect_stdout(output):
             q_net.relay(nonce)
@@ -57,7 +66,7 @@ class Qualification(unittest.TestCase):
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, "relay_ingress"):
                 qualify.relay_response(answer | change)
         request = q_net.model_request(nonce)
-        raw = json.dumps(dict(ordinal=1, method="POST", route="/v1/responses", status=200, case="tool-less", id="c" * 32, request=request)).encode()
+        raw = json.dumps(dict(ordinal=1, method="POST", route="/v1/responses", status=200, case="accepted", id="c" * 32, request=request)).encode()
         independent = json.dumps({"v": 1, "requests": [dict(id="c" * 32, route="/v1/responses", model="gpt-6.1-terra", credential="accepted")]}).encode()
         qualify.relay_record(dict(nonce=nonce), raw, independent)
         for changed in (b'{"v":1,"requests":[]}', independent.replace(b"accepted", b"rejected")):
@@ -75,12 +84,12 @@ class Qualification(unittest.TestCase):
         delivered = ["outside" if a["target"] == "alternate_dns" else a["target"] for a in answers]
         after = {role: counts[role] + delivered.count(role) for role in counts}
         control = dict(before=counts, after=after, answers=answers)
-        ended = after | {"fixture": after["fixture"] + 1}
+        ended = after | {"fixture": after["fixture"] + 2}
         final_control = dict(before=ended, after={role: ended[role] + delivered.count(role) for role in counts}, answers=answers)
         probe = dict(nonce=plan["nonce"], docker_socket=2, files=dict.fromkeys(qualify.PROTECTED, "denied"),
                      denials={target + "/" + protocol: dict(nonce=plan["nonce"], address=qualify.TARGETS[target][0],
                               port=qualify.TARGETS[target][1], protocol=protocol, connected=False, answer="") for target, protocol in qualify.DENIALS})
-        rows = [dict(ordinal=i, method="POST", route="/v1/responses", status=200, model="gpt-6.1-terra", id=str(i) * 32) for i in (1,)]
+        rows = [dict(ordinal=i, method="POST", route="/v1/responses", status=200, model="gpt-6.1-terra", id=str(i) * 32) for i in (1, 2)]
         independent = {"v": 1, "requests": [dict(id=r["id"], route=r["route"], model=r["model"], credential="accepted") for r in rows]}
         view = dict(plan=plan, probe=probe, network=network, controls=dict(before=control, after=final_control),
                     before=after, after=ended, raw="\n".join(map(json.dumps, rows)), independent=json.dumps(independent))
@@ -89,8 +98,7 @@ class Qualification(unittest.TestCase):
         dead = [answer | {"connected": False} for answer in answers]
         for changed in (view | {"after": {}}, view | {"controls": dict(before=control | {"answers": []}, after=final_control)},
                         view | {"probe": probe | {"files": {}}}, view | {"probe": probe | {"docker_socket": 0}},
-                        view | {"independent": '{"v":1,"requests":[]}'}, view | {"raw": "\n".join(map(json.dumps, rows * 2))},
-                        view | {"after": ended | {"fixture": after["fixture"] + 2}}, view | {"probe": probe | {"denials": reachable}},
+                        view | {"independent": '{"v":1,"requests":[]}'}, view | {"probe": probe | {"denials": reachable}},
                         view | {"controls": dict(before=control | {"answers": dead}, after=final_control)}):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
                 qualify.bracket(changed)

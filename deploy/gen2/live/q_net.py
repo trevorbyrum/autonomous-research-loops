@@ -19,7 +19,9 @@ TARGETS = ROLES | {"host_alias": ("10.0.2.2", 18870), "local_dns": ("127.0.0.1",
 
 
 def model_request(nonce):
-    return dict(model="gpt-6.1-terra", stream=True, input=[dict(role="user", content=nonce)])
+    schema = json.loads((Path(__file__).parent / "fixtures/catalog/tools.json").read_bytes())
+    schema["tools"] = [ns for ns in schema["tools"] if ns["name"] == "functions"]
+    return dict(model="gpt-6.1-terra", stream=True, input=[schema, dict(role="user", content=nonce)])
 
 
 def relay(nonce):

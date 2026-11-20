@@ -75,7 +75,7 @@ services:
     <<: *service
     profiles: [offline]
     image: sha256:${GEN2_FIXTURE_ID:?64-hex fixture image ID}
-    command: [tool-less]
+    command: [accepted]
     mem_limit: 128m
     memswap_limit: 128m
     cpus: 0.25

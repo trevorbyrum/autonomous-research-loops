@@ -45,7 +45,7 @@ def delivery_delta(before, after, delivered):
 def relay_response(answer):
     request = model_request(answer["nonce"])
     require(answer.get("connected") and answer.get("status") == 200 and answer.get("media") == "text/event-stream"
-            and bytes.fromhex(answer.get("body", "")) == fixture.response("tool-less", 1, request)[2], "relay_ingress")
+            and bytes.fromhex(answer.get("body", "")) == fixture.response("accepted", 1, request)[2], "relay_ingress")
 
 
 def relay_record(answer, raw, independent):
@@ -53,7 +53,7 @@ def relay_record(answer, raw, independent):
     require(len(rows) == 1, "relay_fixture_count")
     row = rows[0]
     require(row["ordinal"] == 1 and row["method"] == "POST" and row["route"] == "/v1/responses"
-            and row["status"] == 200 and row["case"] == "tool-less" and row["request"] == model_request(answer["nonce"])
+            and row["status"] == 200 and row["case"] == "accepted" and row["request"] == model_request(answer["nonce"])
             and bool(re.fullmatch("[0-9a-f]{32}", row["id"])) and row["id"] != answer["nonce"], "relay_fixture_request")
     require(record == {"v": 1, "requests": [dict(id=row["id"], route="/v1/responses", model="gpt-6.1-terra", credential="accepted")]}, "relay_fixture_record")
 
@@ -105,9 +105,9 @@ def bracket(view):
             and all(value == "denied" for value in probe["files"].values()), "runner_isolation")
     require(view["before"] == view["controls"]["before"]["after"] and view["after"] == view["controls"]["after"]["before"], "bracket_order")
     raw, independent = [json.loads(line) for line in view["raw"].splitlines()], json.loads(view["independent"])
-    require(len(raw) == 1 and [r["ordinal"] for r in raw] == [1]
+    require(len(raw) == 2 and len({r["id"] for r in raw}) == 2 and [r["ordinal"] for r in raw] == [1, 2]
             and all(r["method"] == "POST" and r["route"] == "/v1/responses" and r["status"] == 200
                     and r["model"] == "gpt-6.1-terra" and re.fullmatch("[0-9a-f]{32}", r["id"]) for r in raw), "relay_fixture_request")
     require(independent == {"v": 1, "requests": [dict(id=r["id"], route=r["route"], model=r["model"], credential="accepted") for r in raw]}, "relay_fixture_record")
-    delivery_delta(view["before"], view["after"], ["fixture"])
+    delivery_delta(view["before"], view["after"], ["fixture", "fixture"])
     return dict(qualification=None, namespace_review_required=True, probe=probe, network=network, fixture_record=independent)

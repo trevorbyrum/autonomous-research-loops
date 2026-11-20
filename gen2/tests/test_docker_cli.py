@@ -786,13 +786,26 @@ class DockerBoundary(unittest.TestCase):
                     self.assertEqual(done["refs"], refs)
 
     def test_the_rejection_does_not_depend_on_what_the_cli_printed(self):
-        for label, events in (("none", b""), ("unfamiliar", jl({"type": "warning"}, {"type": "turn.failed"}, {"type": "turn.failed"})),
-                              ("list type", jl({"type": ["turn.failed"]}, {"type": {"a": 1}})), ("not json", b"{not json")):   # F-1: a list-valued type once raised TypeError
+        canonical = jl({"type": "thread.started"}, {"type": "turn.started"}, {"type": "turn.failed", "error": {"message": "401"}})
+        extras = ({"type": "warning"}, {"type": "turn.completed", "usage": {"input_tokens": 3}}, {"type": ["turn.failed"]},
+                  {"type": "item.completed", "item": {"type": "agent_message", "text": "ok"}}, {"unrelated": 1}, {"type": "turn.failed"})
+        for label, events, code in (("none", b"", 2), ("unfamiliar", jl({"type": "warning"}, {"type": "turn.failed"}, {"type": "turn.failed"}), 2),
+                                    ("list type", jl({"type": ["turn.failed"]}, {"type": {"a": 1}}), 2), ("not json", b"{not json", 2),
+                                    *((f"canonical + {extra}", canonical + jl(extra), 1) for extra in extras)):   # F-1: a list-valued type once raised TypeError
             with self.subTest(label):
                 self.fresh()
-                _, _, done = self.retained(judgment=None, code=2, events=events)
+                staged = []
+                real = d.rejection.usage_record
+                def spy(*args, **kwargs):
+                    staged.append(real(*args, **kwargs))
+                    return staged[-1]
+                with mock.patch.object(d.rejection, "usage_record", spy):
+                    _, _, done = self.retained(judgment=None, code=code, events=events)
                 self.assertEqual(done["disposition"]["disposition"], "credentials_rejected")
-                self.assertEqual(done["usage"], "recorded")                         # unknown usage, never an exception
+                self.assertEqual(done["usage"], "recorded")
+                if "usage" not in label:   # no well-formed completed turn: every staged count is unknown, none invented
+                    counts = staged[0]["usage"]
+                    self.assertEqual({k: counts[k]["state"] for k in ("input_tokens", "output_tokens", "cached_tokens")}, dict.fromkeys(("input_tokens", "output_tokens", "cached_tokens"), "unknown"))
 
     def test_a_successful_exit_collects_a_nonempty_answer_and_refuses_an_empty_or_missing_one(self):
         self.fresh()

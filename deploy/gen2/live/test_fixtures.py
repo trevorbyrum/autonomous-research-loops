@@ -15,6 +15,10 @@ from unittest.mock import patch
 
 from deploy.gen2.live import build, fixture, initialize, qualify, runner, q_net
 
+CONTINUATION = dict(type="custom_tool_call_output", call_id="call_2e1", output=[
+    dict(type="input_text", text="Script completed\nWall time 1.0 seconds\nOutput:\n"),
+    dict(type="input_text", text=json.dumps(dict(exit_code=0, output="2e1-tool-ok")))])
+
 KEEPALIVE = b'event: response.in_progress\ndata: {"type":"response.in_progress"}\n\n'
 
 CAPTURE = Path(__file__).with_name("fixtures") / "cli"
@@ -35,20 +39,22 @@ class Fixtures(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def test_fixture_operands(self):
-        self.assertEqual(fixture.operands(["f", "hold-first", "300"]), ("hold-first", 300, 1800))
-        self.assertEqual(fixture.operands(["f", "tool-less"]), ("tool-less", 0, 1800))
+        self.assertEqual(fixture.operands(["f", "hold", "300"]), ("hold", 300, 1800))
+        self.assertEqual(fixture.operands(["f", "hold", "181"])[1], 181)
+        self.assertEqual(fixture.operands(["f", "accepted"]), ("accepted", 0, 1800))
+        self.assertEqual(fixture.operands(["f", "hold", "30", "600"]), ("hold", 30, 600))
         self.assertEqual(fixture.operands(["f", "hold-first", "30", "600"]), ("hold-first", 30, 600))
-        self.assertEqual(fixture.operands(["f", "tool-less", "5"]), ("tool-less", 0, 5))
-        for argv in (["f", "tool-less", "0"],
+        self.assertEqual(fixture.operands(["f", "accepted", "5"]), ("accepted", 0, 5))
+        for argv in (["f", "hold", "0"], ["f", "hold", "301"], ["f", "hold", "30", "89"], ["f", "hold", "30", "1801"], ["f", "accepted", "0"],
                      ["f", "hold-first", "0"], ["f", "hold-first", "301"], ["f", "hold-first", "30", "89"], ["f", "hold-first", "30", "1801"]):
             with self.assertRaises(ValueError):
                 fixture.operands(argv)
 
-    def exchange(self, case, ordinal, request, now=0, reply=None):
+    def exchange(self, case, ordinal, request, now=0, reply=None, command="POST", path="/v1/responses", auth=True):
         """Run the real handler with an in-memory HTTP writer and a simulated clock."""
         writes, flushed = [], []
-        body = json.dumps(request).encode()
-        headers = {"Authorization": "Bearer 2e1-fixture-accepted", "X-Request-ID": "a" * 32, "Content-Length": str(len(body))}
+        body = json.dumps(request).encode() if request is not None else b""
+        headers = {"X-Request-ID": "a" * 32, "Content-Length": str(len(body))} | ({"Authorization": "Bearer 2e1-fixture-accepted"} if auth else {})
         server = SimpleNamespace(case=case, count=ordinal - 1, deadline=600, hold_seconds=30, raw=io.StringIO(), record=io.StringIO(), requests=[])
 
         def write(data):
@@ -64,8 +70,8 @@ class Fixtures(unittest.TestCase):
 
         handler = object.__new__(fixture.Handler)
         handler.headers = SimpleNamespace(get=headers.get, get_all=lambda k: [headers[k]] if k in headers else None)
-        handler.__dict__.update(server=server, command="POST", path="/v1/responses", connection=None,
-                                requestline="POST /v1/responses HTTP/1.1", request_version="HTTP/1.1",
+        handler.__dict__.update(server=server, command=command, path=path, connection=None,
+                                requestline=f"{command} {path} HTTP/1.1", request_version="HTTP/1.1",
                                 rfile=io.BytesIO(body), wfile=SimpleNamespace(write=write, flush=lambda: None))
         response = patch.object(fixture, "response", return_value=reply) if reply is not None else nullcontext()
         with (
@@ -80,11 +86,24 @@ class Fixtures(unittest.TestCase):
         first_body_receipt = body_writes[0][1] if body_writes else None
         return status, [data for data, _ in body_writes], flushed[-1], first_body_receipt
 
+    def test_the_source_case_serves_one_unauthenticated_get_and_refuses_everything_else(self):
+        status, writes, receipt, _ = self.exchange("source", 1, None, command="GET", path="/fixture", auth=False)
+        self.assertEqual((status, writes, receipt["status"]), (200, [fixture.SOURCE], 200))
+        for refused in (dict(command="POST", path="/fixture", auth=False), dict(command="GET", path="/v1/responses", auth=False),
+                        dict(command="GET", path="/fixture", auth=True)):
+            with self.subTest(refused=refused):
+                status, writes, receipt, _ = self.exchange("source", 1, None, **refused)
+                self.assertEqual((status, receipt["status"], writes), (None, 400, []))   # refused and recorded before any reply
+
     def test_hold_first_holds_only_its_first_accepted_request(self):
-        bare = dict(model="gpt-6.1-terra", stream=True, input=[])
+        bare, tooled = dict(model="gpt-6.1-terra", stream=True, input=[]), q_net.model_request("a" * 32)
+        continued = tooled | dict(input=tooled["input"] + [CONTINUATION])
         for case, ordinal, request, now, held in (
             ("hold-first", 1, bare, 0, 30),
             ("hold-first", 1, bare, 569, 30),
+            ("hold", 1, tooled, 0, 0),
+            ("hold", 1, tooled, 599, 0),
+            ("hold", 2, continued, 0, 30),
             ("tool-less", 1, bare, 0, 0),
         ):
             with self.subTest(case=case, ordinal=ordinal, now=now):
@@ -97,8 +116,11 @@ class Fixtures(unittest.TestCase):
                     self.assertEqual((receipt["case"], receipt["ordinal"], receipt["status"]), ("hold-first", 1, 200))
 
         limited = fixture.response("limited", 1, bare)
-        status, writes, _, _ = self.exchange("hold-first", 1, bare, reply=limited)
-        self.assertEqual((status, writes), (429, [limited[2]]))
+        for case, ordinal, request in (("hold-first", 1, bare), ("hold", 2, continued)):
+            with self.subTest(case=case, ordinal=ordinal, status=429):
+                status, writes, _, _ = self.exchange(case, ordinal, request, reply=limited)
+                self.assertEqual(status, 429)
+                self.assertEqual(writes, [limited[2]])
 
         for ordinal, now, recorded_request in ((2, 0, bare), (1, 570, {}), (1, 571, {})):
             with self.subTest(ordinal=ordinal, now=now, refused=True):
@@ -318,20 +340,39 @@ class Fixtures(unittest.TestCase):
             self.assertIn('{"topic":"fixture"}', runner.work_prompt(7))
             self.assertEqual([call.args[1] for call in read.call_args_list], ["prompt.md", "input.json"])
 
-    def test_the_reply_is_chosen_by_case_and_tool_content_is_never_read(self):
+    def test_two_sends_and_rejected_branch(self):
         request = q_net.model_request("a" * 32)
-        status, _, data = fixture.response("tool-less", 1, request)
-        self.assertEqual(status, 200)
-        self.assertIn(b"2e1 complete", data)
-        odd = request | {"tools": [{"name": "x"}], "input": [None, {"type": "additional_tools", "tools": 7}]}
-        self.assertEqual(fixture.response("tool-less", 1, odd), (status, "text/event-stream", data))
-        self.assertEqual(fixture.response("hold-first", 1, odd)[2], data)
-        self.assertEqual(fixture.response("rejected", 1, odd)[0], 401)
-        self.assertEqual(fixture.response("limited", 1, odd)[0], 429)
-        for case, ordinal, change in (("tool-less", 2, {}), ("hold-first", 2, {}), ("rejected", 2, {}), ("accepted", 1, {}), ("hold", 1, {}),
-                                      ("tool-less", 1, {"model": "other"}), ("tool-less", 1, {"stream": False}), ("tool-less", 1, {"stream": None})):
+        status, _, data = fixture.response("accepted", 1, request)
+        event = json.loads(data.decode().split("data: ")[1].split("\n")[0])
+        self.assertEqual((status, event["item"]["name"], event["item"]["call_id"]), (200, "exec", "call_2e1"))
+        self.assertEqual(event["item"]["type"], "custom_tool_call")
+        self.assertIn("tools.exec_command", event["item"]["input"])
+        self.assertNotEqual({t.get("name") for t in request.get("tools", [])}, {"exec_command", "write_stdin", "apply_patch"})
+        request["input"].append(CONTINUATION)
+        self.assertIn(b"2e1 complete", fixture.response("accepted", 2, request)[2])
+        self.assertEqual(fixture.response("rejected", 1, request)[0], 401)
+        for case, ordinal, change in (("accepted", 3, {}), ("rejected", 2, {}), ("accepted", 1, {"tools": []}),
+                                      ("accepted", 2, {"input": []}), ("accepted", 1, {"model": "other"})):
             with self.subTest(case=case, ordinal=ordinal, change=change), self.assertRaises(ValueError):
                 fixture.response(case, ordinal, request | change)
+
+    def test_retained_lite_schema_and_continuation_refusals(self):
+        request = q_net.model_request("a" * 32)
+        native = json.loads((CAPTURE.parent / "catalog/tools.json").read_bytes())
+        for old, new in (("exec", "wrong"), ("custom", "function"), ("grammar", "text"),
+                         ("apply_patch", "missing_patch"), ("exec_command", "missing_shell"), ("write_stdin", "missing_stdin")):
+            changed = json.loads(json.dumps(request).replace(old, new))
+            with self.subTest(wrapper_or_operation=old), self.assertRaises(ValueError):
+                fixture.response("accepted", 1, changed)
+        schema = request["input"][0]
+        for inputs in ([native], [schema, schema], [schema | {"tools": schema["tools"] * 2}], [schema | {"role": "user"}], [schema | {"tools": []}], [schema | {"tools": [schema["tools"][0] | {"tools": schema["tools"][0]["tools"][:1]}]}], [None], None):
+            with self.subTest(inputs=inputs), self.assertRaises(ValueError):
+                fixture.response("accepted", 1, request | dict(input=inputs))
+        for output in (CONTINUATION | dict(type="function_call_output"), CONTINUATION | dict(call_id="wrong"), CONTINUATION | dict(output=None),
+                       CONTINUATION | dict(output=[dict(type="input_text", text="Script running with cell ID 1\n"), CONTINUATION["output"][1]]),
+                       CONTINUATION | dict(output=[CONTINUATION["output"][0], dict(type="input_text", text=json.dumps(dict(exit_code=1, output="2e1-tool-ok")))])):
+            with self.subTest(output=output), self.assertRaises(ValueError):
+                fixture.response("accepted", 2, request | dict(input=[schema, output]))
 
     def test_seed_read_refuses_link_and_bound(self):
         with tempfile.TemporaryDirectory() as directory:
