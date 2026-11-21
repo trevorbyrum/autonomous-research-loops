@@ -54,7 +54,7 @@ RUN python3 -m venv /opt/gen2/venv \
 COPY --from=runner /codex /codex-code-mode-host /usr/local/bin/
 COPY gen2/ /opt/gen2/src/gen2/
 # the mount points, owned by the service user, 0700: a fresh named volume takes them over (§4, §5)
-RUN install -d -o "${GEN2_UID}" -g "${GEN2_GID}" -m 0700 /var/lib/gen2/state /auth/codex \
+RUN install -d -o "${GEN2_UID}" -g "${GEN2_GID}" -m 0700 /var/lib/gen2/state \
  && /opt/gen2/venv/bin/python -c "import sqlite3, sys; print('python', sys.version.split()[0], 'sqlite', sqlite3.sqlite_version)"
 ENV PYTHONPATH=/opt/gen2/src PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 GEN2_OPERATOR_LISTEN=0.0.0.0:8770
 LABEL org.opencontainers.image.title="gen2-engine" \
