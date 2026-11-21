@@ -687,6 +687,7 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: Supervisor lane, sequenced after T10 attempt 4 and before the Claude runner (S14 D4). The capability probe runs the pinned runner against the provider auth root in the engine, and the live engine image has no runner binary and no auth home, so on the deployed engine it can only answer `runner_error`. Retire `history: gen2/supervisor/probe.py`, the `probe_capability` command and its station wiring, with the AUTH-DEMO configuration; the Router's capability facts keep their producer (rejection facts). Amends the BOUNDARIES Station supervisor text, DEP §4 and the INVARIANTS H-2 wording (about −262 production, −731 tests, −833 configuration lines). Touch rule: Any brief that touches the probe, the Station probe wiring or the demo deployment takes this item; the Claude runner brief drops its probe row.
 - source: Gate S #14 (2026-11-16) §4 item 6 and D4; Trevor's ruling of the same date.
 - removal: the probe and AUTH-DEMO are deleted and the amended text is merged.
+- progress (2026-11-20): PR #201 merged at `a6f6f962` (production −293, tests −538, demo −836, docs −317, tooling −9). The log lists "the DEBT-065 closure" as a follow-up and does not record the removal criterion as met, so the item stays open. Follow-ups noted by Astra for a later small Router-scoped PR: the stale hold guidance at `capabilities.py:194`, two stale comments, `probe_timeout_s`, and the Dockerfile `/auth/codex`.
 
 ### DEBT-066 - option-C after-window timing (Phase 2)
 - kind: obligation
