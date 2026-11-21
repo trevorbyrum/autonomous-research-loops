@@ -30,6 +30,9 @@ REAL_CONTAIN = docker_cli.contain_job   # before any test patches it
 MANIFEST = b'{"profile": "fixture-only"}'
 SCOPE = ["model", "delegates", "retries", "verification", "gateway", "maintenance"]
 
+EGRESS = {"network_id": "c" * 64, "name": "example-egress", "subnet": "192.0.2.0/29", "gateway": "192.0.2.1"}
+EGRESS_TEMPLATE = {"egress_" + key: value for key, value in EGRESS.items()}
+
 
 def record_doc(root, route="fixture", **over):
     doc = {"record_version": auth.RECORD, "state": "qualified", "route": route, "manifest_pin": canonical.bytes_digest(MANIFEST), "backend": "docker-cli/1",
@@ -146,17 +149,17 @@ class PlanAndGate(LiveWorld):
                 self.assertNotEqual(outcome, "running")
                 self.assertEqual(((job.dir / "docker-plan.json").read_text(), (job.dir / "spawn.json").exists()), (raw, False))   # never rewritten, never spawned
 
-    def test_a_real_route_plan_carries_the_protected_egress_network_id_and_never_a_name(self):
-        from pathlib import Path
+    def test_a_real_route_plan_carries_the_protected_egress_operands(self):
         base = record_doc(self.root, "real")
-        for case, template, ok in (("an id", {**base["plan"], "egress_network_id": "c" * 64}, True), ("a name", {**base["plan"], "egress_network_id": "gen2-egress"}, False),
-                                   ("none", base["plan"], False)):
+        approved = {**base["plan"], **EGRESS_TEMPLATE}
+        for case, template, ok in (("approved", approved, True), ("name as ID", {**approved, "egress_network_id": "example-egress"}, False),
+                                   ("ID only", {**base["plan"], "egress_network_id": EGRESS["network_id"]}, False), ("none", base["plan"], False)):
             with self.subTest(case):
                 data, pin = sealed({**base, "plan": template})
                 real = auth.QualifiedAuthority(self.root / "jobs", record=data, pin=pin, manifest=MANIFEST, stage=self.spool.stage)
                 order = {"invocation_id": MAIN, "topic_id": rf.TOPIC, "config_bundle_hash": rf.CONFIG}
                 if ok:
-                    self.assertEqual(real.plan(order)["egress"], {"network_id": "c" * 64})
+                    self.assertEqual(real.plan(order)["egress"], EGRESS)
                 else:
                     with self.assertRaises(LiveProfileRefused):
                         real.plan(order)
@@ -168,7 +171,7 @@ class PlanAndGate(LiveWorld):
 
     def test_the_relays_provider_files_come_only_from_the_protected_template_real_route_only(self):
         base = record_doc(self.root, "real")
-        base["plan"]["egress_network_id"] = "c" * 64
+        base["plan"].update(EGRESS_TEMPLATE)
         order = {"invocation_id": MAIN, "topic_id": rf.TOPIC, "config_bundle_hash": rf.CONFIG}
         plan = lambda doc: auth.QualifiedAuthority(self.root / "jobs", record=sealed(doc)[0], pin=sealed(doc)[1], manifest=MANIFEST, stage=self.spool.stage)
         planned = plan(base).plan(order)
@@ -331,7 +334,7 @@ class CrashBoundaries(LiveWorld):
 
 class RealRoute(LiveWorld):
     CHANGE = {"route": "real", "plan": {"engine_jobs": "", "host_jobs": "/host/jobs", "slots": {"out": "/host/out", "evidence": "/host/ev"}, "seed": "/host/seed",
-                                        "upstream": "203.0.113.7:443", "egress_network_id": "c" * 64,
+                                        "upstream": "203.0.113.7:443", **EGRESS_TEMPLATE,
                                         "provider_auth": "/host/relay/provider-auth.conf", "provider_ca": "/host/relay/provider-ca.pem"}}
 
     def make_router(self, **overrides):
@@ -344,7 +347,7 @@ class RealRoute(LiveWorld):
     def test_the_real_plan_carries_the_upstream_the_judgment_output_and_the_bridge_id(self):
         plan = self.prepare(self.live_supervisor()).read("docker-plan.json")
         self.assertEqual((plan["route"], plan["output"], plan["upstream"], plan["egress"], plan["origin"]["deployment_id"]),
-                         ("real", "judgment", "203.0.113.7:443", {"network_id": "c" * 64}, "dep-1"))
+                         ("real", "judgment", "203.0.113.7:443", EGRESS, "dep-1"))
 
     def test_a_rejected_credential_end_carries_the_routers_rejection_operands_from_the_backends_own_records(self):
         supervisor = self.live_supervisor()

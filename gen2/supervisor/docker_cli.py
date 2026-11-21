@@ -14,6 +14,7 @@ import selectors
 import subprocess
 import time
 from datetime import datetime
+from ipaddress import IPv4Address, IPv4Network
 from pathlib import Path
 
 from gen2.core.instants import utc_instant_ns
@@ -39,11 +40,25 @@ RESERVE_S, LATE_END_S = 90, 50   # the runner's allowance ends RESERVE_S before 
 RELAY_PROVIDER = {"provider_auth": "etc/gen2/provider-auth.conf", "provider_ca": "etc/gen2/provider-ca.pem"}
 MODEL = "gpt-6.1-terra"
 NETWORKS = {"job": "172.31.254.0/29", "fixture": "172.31.252.0/29"}
+EGRESS_FIELDS = ("network_id", "name", "subnet", "gateway")
 
 
 def require(ok, reason):
     if not ok:
         raise LiveProfileRefused(reason)
+
+
+def validate_egress(egress):
+    """Refuse an incomplete or inconsistent approved bridge before any Docker action."""
+    reason = "profile_egress_network"
+    require(isinstance(egress, dict) and all(isinstance(egress.get(k), str) for k in EGRESS_FIELDS), reason)
+    require(CID.fullmatch(egress["network_id"]) and re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", egress["name"]), reason)
+    try:
+        subnet, gateway = IPv4Network(egress["subnet"]), IPv4Address(egress["gateway"])
+    except ValueError:
+        raise LiveProfileRefused(reason) from None
+    require(str(subnet) == egress["subnet"] and subnet.prefixlen <= 30
+            and subnet.network_address < gateway < subnet.broadcast_address and gateway != subnet[2], reason)
 
 
 def _binding(record):
@@ -294,6 +309,51 @@ class DockerCLI:
         self.job.write(role + "-end.json", observed)
         return observed
 
+    def _end_egress(self, network, cid, ended):
+        """Prove the original pair is clear before publishing any reusable end."""
+        with self.job.hold(self.deadline, .01):
+            original = self.job.read("network-upstream.json")
+            approval = self.plan["egress"]
+            name = approval["name"]
+            ipam = {"Subnet": approval["subnet"], "Gateway": approval["gateway"]}
+            subnet = IPv4Network(ipam["Subnet"])
+            relay_ip = str(subnet[2])
+            expected = _binding(ended)
+            expected[1].pop(name, None)
+            receipt = {"network_id": network, "relay_id": cid, "confirmed": False}
+            try:
+                for phase in ("before", "after"):
+                    pair = receipt[phase] = {}
+                    views = json.loads(self._command(("network", "inspect", network)))
+                    require(isinstance(views, list) and len(views) == 1 and isinstance(views[0], dict), "egress_inspect")
+                    bridge = pair["bridge"] = views[0]
+                    relay = self.inspect(cid)
+                    networks = pair["relay_networks"] = relay["NetworkSettings"]["Networks"]
+                    binding = _binding(relay)
+                    binding[1].pop(name, None)
+                    require(binding == expected and relay["State"] == ended["State"], "egress_relay_changed")
+                    members, endpoint = bridge.get("Containers"), networks.get(name)
+                    require(bridge["Id"] == network and bridge["Name"] == name
+                            and bridge["Driver"] == "bridge" and bridge["Scope"] == "local" and bridge["Internal"] is False
+                            and bridge["EnableIPv4"] is True and bridge["EnableIPv6"] is False and bridge["IPAM"]["Config"] == [ipam]
+                            and bridge["Options"].get("com.docker.network.bridge.gateway_mode_ipv4") == "nat", "egress_bridge_properties")
+                    require({k: v for k, v in bridge.items() if k not in {"Containers", "Status"}} ==
+                            {k: v for k, v in original.items() if k not in {"Containers", "Status"}}, "egress_bridge_changed")
+                    require(isinstance(members, dict) and set(members) <= {cid}, "egress_members")
+                    absent = name not in networks or (endpoint["NetworkID"] == network and endpoint["EndpointID"] == ""
+                                                      and endpoint["IPAddress"] == "" and endpoint["GlobalIPv6Address"] == "")
+                    if phase == "before" and members:
+                        endpoint_id = self.job.read("relay-start.json")["NetworkSettings"]["Networks"][name]["EndpointID"]
+                        require(endpoint and endpoint["NetworkID"] == network and members[cid]["IPv4Address"] == f"{relay_ip}/{subnet.prefixlen}"
+                                and CID.fullmatch(endpoint_id) and endpoint["EndpointID"] == members[cid]["EndpointID"] == endpoint_id
+                                and endpoint["IPAddress"] == relay_ip, "egress_endpoint")
+                        self.endpoint("disconnect", network, cid)
+                    else:
+                        require(not members and absent, "egress_not_empty")
+                receipt["confirmed"] = True
+            finally:
+                self.job.write("containment.json", {"egress": receipt})
+
     def close_admission(self):
         """The sole launcher's own durable seal, after the last permitted start; every later start refuses it. A failed write contains and keeps uncertainty."""
         with self.job.hold(self.deadline, .01):
@@ -348,6 +408,8 @@ class DockerCLI:
         route = self.plan.get("route", "fixture")
         real = route == "real"
         require(route == self.manifest["route"], "plan_route")
+        if real:
+            validate_egress(self.plan.get("egress"))
         require(self.plan["binds"]["out"] == str(Path(self.plan["slots"]["out"]) / self.plan["generation"]), "backend_output_generation")
         identity = self.job.read("identity.json")
         require(identity is not None and os.getpid() in jobs.members(identity), "backend_unsupervised")
@@ -372,7 +434,6 @@ class DockerCLI:
         network = self.network(self.plan["generation"])
         if real:
             upstream = self.plan["egress"]["network_id"]
-            require(CID.fullmatch(upstream), "egress_identity")
             view = json.loads(self._command(("network", "inspect", upstream)))[0]
             require(view["Id"] == upstream and not view["Internal"] and not view["Containers"], "egress_original")   # the persistent bridge, empty between jobs
         else:   # the fixture's network is lane C's, per attempt: the fixture was created ON it at .3 (a `none`-mode container can join nothing), and only the relay joins
@@ -430,7 +491,10 @@ class DockerCLI:
                 and network not in {n["NetworkID"] for n in self.inspect(runner)["NetworkSettings"]["Networks"].values()}, "ingress_not_closed")
         self.drain()
         self.contain(relay, role="relay")
-        require(self.end(relay, "relay")["State"]["ExitCode"] == 0, "relay_stop_failed")
+        relay_end = self.end(relay, "relay")
+        if real:
+            self._end_egress(upstream, relay, relay_end)
+        require(relay_end["State"]["ExitCode"] == 0, "relay_stop_failed")
         refs = []
         if not real:
             self.contain(fixture["Id"], role="fixture")
@@ -638,13 +702,29 @@ def contain_job(job, *, execute=capture, now=time.monotonic, clock=time.time) ->
     except LiveProfileRefused:
         limit = None
     late = limit is None or any(e["role"] == "relay" and e.get("at", start) > limit for e in outcomes)
-    job.write("containment.json", {"outcomes": outcomes, "limit": limit, "late": late})
+    record = {"outcomes": outcomes, "limit": limit, "late": late}
+    if plan and plan.get("route") == "real":
+        failed = _retain_egress_receipt(job, record, journal, unknown, failed)
+    job.write("containment.json", record)
     if failed:
         raise ContainFailed(outcomes)
     if plan and plan.get("origin") and not late:
         job.create("docker-complete.json", {"origin": plan["origin"], "refs": [], "usage": "refused",
                                             "disposition": {"disposition": "unknown", "reason": "contained_without_collection"}})
     return outcomes
+
+
+def _retain_egress_receipt(job, record, journal, unknown, failed):
+    receipt = (_read(job, "containment.json") or {}).get("egress")
+    if receipt is not None:
+        record["egress"] = receipt
+    # A connect intent can have taken effect even if the CLI never reported success.
+    for entry in (journal or {}).values() if not unknown else ():
+        intent = entry["intent"]
+        if intent[3:5] == ["network", "connect"]:
+            failed = failed or not (isinstance(receipt, dict) and receipt.get("confirmed") is True
+                                    and [receipt.get("network_id"), receipt.get("relay_id")] == intent[-2:])
+    return failed
 
 
 def _history(journal):

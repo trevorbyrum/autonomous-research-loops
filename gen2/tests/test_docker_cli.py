@@ -19,6 +19,7 @@ from gen2.supervisor.isolation import LiveProfileRefused
 from gen2.supervisor.spool import Spool, SpoolConflict
 
 CID, NET, GENERATION = "a" * 64, "b" * 64, "c" * 32
+EGRESS = {"name": "example-egress", "subnet": "192.0.2.0/29", "gateway": "192.0.2.1"}
 
 
 class DockerBoundary(unittest.TestCase):
@@ -679,6 +680,7 @@ class DockerBoundary(unittest.TestCase):
                     self.assertEqual(self.job.read("fixture-start.json"), fixture)
                     self.assertEqual(self.job.read("fixture-end.json"), final)
                     self.assertEqual(actual_batch.held["fixture"], (fixture_directory / "fixture.json").read_bytes())
+                    self.assertIsNone(self.job.read("containment.json"))
                 if fixture_directory.is_symlink(): fixture_directory.unlink()
                 saved = fixture_directory.with_name("saved")
                 if saved.exists():
@@ -689,7 +691,7 @@ class DockerBoundary(unittest.TestCase):
                 self.job.write("relay.json", record)
 
     def real_world(self):
-        """A real-route cli: manifest without the fixture role, the plan's route, egress bridge ID and upstream, output = judgment."""
+        """A real-route cli: manifest without the fixture role, the plan's route, approved egress bridge and upstream, output = judgment."""
         manifest = {**self.manifest, "route": "real", "images": {r: v for r, v in self.manifest["images"].items() if r != "fixture"},
                     "configurations": {r: v for r, v in self.manifest["configurations"].items() if r != "fixture"}}
         cli = d.DockerCLI(self.job, manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10, clock=lambda: 1000.0)
@@ -698,40 +700,145 @@ class DockerBoundary(unittest.TestCase):
             (Path(path) / GENERATION).mkdir(parents=True, exist_ok=True)
         egress = "9" * 64
         cli.plan.update(generation=GENERATION, slots=slots, binds={"out": str(Path(slots["out"]) / GENERATION)}, route="real", output="judgment",
-                        egress={"network_id": egress}, upstream="203.0.113.7:443")
+                        egress={"network_id": egress, **EGRESS}, upstream="203.0.113.7:443")
         self.job.write("identity.json", {"pid": os.getpid()})
+        self.job.write("docker-plan.json", cli.plan)
+        self.job.write("docker.json", {})
         relay = "e" * 64
         record = {"Id": relay, "Image": "sha256:" + CID, "Config": {}, "HostConfig": {}, "NetworkSettings": {"Networks": {}}}
         self.job.write("relay.json", record)
         return cli, egress, relay, record
 
-    def real_run(self, cli, egress, relay, record, *, collect=None, end_error=None, batch=None, logs=(b"events", b"diagnostics"), code=1):
-        self.job.write("network-job.json", {"Id": NET, "Name": "gen2-2e1-live-job-" + GENERATION})
-        connected = {**record, "NetworkSettings": {"Networks": {"gen2-2e1-live-job-" + GENERATION: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.254.2"}},
-                                                               "egress": {"NetworkID": "", "IPAMConfig": None}}}}   # created, not started: names and addresses, no IDs
+    def real_run(self, cli, egress, relay, record, *, collect=None, end_error=None, batch=None, logs=(b"events", b"diagnostics"), code=1, egress_case=None):
+        job_name = "gen2-2e1-live-job-" + GENERATION
+        self.job.write("network-job.json", {"Id": NET, "Name": job_name})
+        connected = {**record, "NetworkSettings": {"Networks": {job_name: {"NetworkID": "", "IPAMConfig": {"IPv4Address": "172.31.254.2"}},
+                                                               EGRESS["name"]: {"NetworkID": "", "IPAMConfig": None}}}}
+        # Project the N10 handoff inspect and the retained Docker start/end probe onto this attempt's IDs.
+        bridge = {"Id": egress, "Name": EGRESS["name"], "Internal": False, "Scope": "local", "Driver": "bridge",
+                  "EnableIPv4": True, "EnableIPv6": egress_case == "ipv6", "IPAM": {"Config": [{"Subnet": "192.0.2.0/29", "Gateway": "192.0.2.1"}]},
+                  "Options": {"com.docker.network.bridge.gateway_mode_ipv4": "nat"}, "Containers": {}}
+        states = json.loads((Path(__file__).parent / "fixtures/docker_inspect/log-probe-20261110.json").read_bytes())
+        endpoint = {"NetworkID": egress, "IPAMConfig": None, "EndpointID": "7" * 64, "IPAddress": "192.0.2.2", "GlobalIPv6Address": ""}
+        started = {**record, "State": states["started"]["State"], "NetworkSettings": {"Networks": {
+            job_name: {**connected["NetworkSettings"]["Networks"][job_name], "NetworkID": NET}, EGRESS["name"]: endpoint}}}
+        self.job.write("relay-start.json", started)
+        (self.job.dir / "relay.cid").write_text(relay)
+        member = {"EndpointID": endpoint["EndpointID"], "IPv4Address": "192.0.2.2/29"}
+        foreign = "8" * 64
+        stopped = disconnected = False
+        relay_reads = 0
+
+        def execute(job, argv, env, deadline, bounds):
+            nonlocal stopped, disconnected, relay_reads
+            args = argv[3:]
+            shown = {"Id": CID, "NetworkSettings": {"Networks": {}}}
+            if args == ("wait", relay):
+                stopped = True
+                bridge["Containers"] = {foreign: member} if egress_case == "foreign" else {relay: member} if egress_case in ("clean", "stale", "failed", "ipv6") else {}
+                return 0, b"0", b""
+            if args == ("network", "disconnect", egress, relay):
+                self.assertEqual(bridge["Containers"], {relay: member})
+                bridge["Containers"].pop(relay)
+                disconnected = True
+            if args == ("inspect", relay):
+                shown = connected
+                if stopped:
+                    relay_reads += 1
+                    if disconnected and egress_case == "failed":
+                        return 1, b"", b"inspect failed"
+                    networks = dict(started["NetworkSettings"]["Networks"])
+                    if disconnected and egress_case != "stale":
+                        del networks[EGRESS["name"]]
+                    elif egress_case in (None, "already empty", "foreign", "name", "ipam") or (egress_case == "empty then stale" and relay_reads < 3):
+                        networks[EGRESS["name"]] = {**endpoint, "EndpointID": "", "IPAddress": ""}
+                    shown = {**started, "State": states["ended"]["State"], "NetworkSettings": {"Networks": networks}}
+            if args[:2] == ("network", "inspect"):
+                shown = bridge if args[-1] == egress else {"Id": NET, "Containers": {relay: {}}}
+            if args[0] == "inspect" or args[:2] == ("network", "inspect"):
+                return 0, json.dumps([shown]).encode(), b""
+            return 0, b"", b""
+
         if batch is None:
             batch = mock.Mock()
             batch.held = {"access": b"", "events": b"", "judgment": b'{"judgment_version": "x"}'}
             batch.collect.side_effect = collect or (lambda *a, **k: {"content_hash": "sha256:" + CID})
             batch.stage.return_value = {"content_hash": "sha256:" + CID}
-        ends = [{"State": {"ExitCode": 0}}, {"State": {"ExitCode": 0}}, {"State": {"ExitCode": 0}}]
-        egress_view = json.dumps([{"Id": egress, "Name": "egress", "Internal": False, "Containers": {}}]).encode()
-        ingress = json.dumps([{"Id": NET, "Containers": {relay: {}}}]).encode()
+        relay_end = cli.end
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(d.jobs, "members", return_value=[os.getpid()]))
-            actions = {"create_auxiliary": [CID, relay], "start": None, "end": end_error or [ends[0], {"State": {"ExitCode": code}}, ends[2]], "network": [NET], "endpoint": None,
-                       "create_runner": CID, "inspect": [connected, {"NetworkSettings": {"Networks": {}}}], "contain": None, "logs": logs,
-                       "runtime": None, "close_admission": None, "drain": None, "_command": [egress_view, ingress]}
+            stack.enter_context(mock.patch.object(d.Path, "read_bytes", autospec=True, side_effect=lambda p: b"pinned" if str(p) == d.CLI else self.real_read_bytes(p)))
+            stack.enter_context(mock.patch.object(d, "CLI_SHA", hashlib.sha256(b"pinned").hexdigest()))
+            self.execute.reset_mock(side_effect=True)
+            self.execute.side_effect = execute
+            actions = {"create_auxiliary": [CID, relay], "start": None, "end": end_error or (lambda cid, role="runner": relay_end(cid, role)
+                       if role == "relay" else {"State": {"ExitCode": code if role == "runner" else 0}}), "network": [NET],
+                       "create_runner": CID, "contain": None, "logs": logs, "runtime": None, "drain": None}
             watch = mock.Mock()
             for name, result in actions.items():
-                patched = stack.enter_context(mock.patch.object(cli, name, **({"side_effect": result} if isinstance(result, list) or isinstance(result, BaseException) else {"return_value": result})))
+                patched = stack.enter_context(mock.patch.object(cli, name, **({"side_effect": result} if isinstance(result, (list, BaseException)) or callable(result) else {"return_value": result})))
                 watch.attach_mock(patched, name)
-            contained = stack.enter_context(mock.patch.object(d, "contain_job"))
+            watch.attach_mock(stack.enter_context(mock.patch.object(cli, "endpoint", wraps=cli.endpoint)), "endpoint")
+            contained = stack.enter_context(mock.patch.object(d, "contain_job", wraps=d.contain_job if egress_case else None))
             try:
                 refs = cli.run(batch)
             except BaseException as error:
                 return error, batch, watch, contained
             return refs, batch, watch, contained
+
+    def test_real_route_reuse_requires_the_original_bridge_and_relay_readbacks(self):
+        mismatches = {"name": {"name": "approved-egress"}, "ipam": {"subnet": "192.0.2.8/29", "gateway": "192.0.2.9"}}
+        for case in ("clean", "already empty", "ipv6", "stale", "empty then stale", "failed", "foreign", *mismatches):
+            with self.subTest(case=case):
+                self.fresh()
+                cli, egress, relay, record = self.real_world()
+                cli.plan["egress"].update(mismatches.get(case, {}))
+                result, batch, _, contained = self.real_run(cli, egress, relay, record, egress_case=case)
+                calls = [call.args[1][3:] for call in self.execute.call_args_list]
+                disconnect = ("network", "disconnect", egress, relay)
+                pair = [("network", "inspect", egress), ("inspect", relay)]
+                mutation = [disconnect] if case in ("clean", "stale", "failed") else []
+                expected = pair + mutation + ([] if case in ("foreign", "ipv6", *mismatches) else pair)
+                tail = calls[calls.index(("wait", relay)) + 2:]
+                self.assertEqual(tail[:len(expected)], expected)
+                self.assertEqual(calls.count(disconnect), len(mutation))
+                receipt = (self.job.read("containment.json") or {}).get("egress")
+                self.assertIsNotNone(receipt)
+                self.assertEqual(receipt["confirmed"], case in ("clean", "already empty"))
+                if case in ("failed", "stale", "empty then stale"):
+                    self.assertEqual(receipt["after"]["bridge"]["Containers"], {})
+                    self.assertEqual("relay_networks" in receipt["after"], case != "failed")
+                if receipt["confirmed"]:
+                    self.assertEqual(receipt["after"]["bridge"]["Containers"], {})
+                    self.assertFalse(receipt["after"]["relay_networks"].get(EGRESS["name"], {}).get("EndpointID"))
+                    self.assertEqual(self.job.read("docker-complete.json")["refs"], result)
+                    contained.assert_not_called()
+                else:
+                    self.assertIsNone(self.job.read("docker-complete.json"))
+                    self.assertIsInstance(result, d.ContainFailed)
+                    batch.collect.assert_not_called()
+                    if case == "ipv6":
+                        self.assertIs(self.job.read("network-upstream.json")["EnableIPv6"], True)
+                        self.assertIs(receipt["before"]["bridge"]["EnableIPv6"], True)
+                    if case in ("ipv6", *mismatches):
+                        self.assertEqual(str(result.__context__), "egress_bridge_properties")
+                        self.assertIsNotNone(self.job.read(d.SEAL))
+                    if case == "foreign":
+                        self.assertEqual(set(receipt["before"]["bridge"]["Containers"]), {"8" * 64})
+                        self.assertFalse(any("8" * 64 in args for args in calls))
+
+    def test_invalid_egress_approval_refuses_before_network_actions(self):
+        for change in ({"gateway": None}, {"subnet": "192.0.2.1/29"}, {"gateway": "192.0.2.2"}):
+            with self.subTest(change=change):
+                self.fresh()
+                cli, egress, relay, record = self.real_world()
+                cli.plan["egress"] = {k: v for k, v in (cli.plan["egress"] | change).items() if v is not None}
+                error, _, watch, _ = self.real_run(cli, egress, relay, record)
+                self.assertIsInstance(error, LiveProfileRefused)
+                self.assertEqual(str(error), "profile_egress_network")
+                self.assertEqual(watch.mock_calls, [])
+                self.execute.assert_not_called()
+                self.assertIsNone(self.job.read("docker-attempt.json"))
 
     def test_a_real_route_run_has_no_fixture_joins_the_egress_bridge_by_id_and_collects_the_judgment(self):
         cli, egress, relay, record = self.real_world()
@@ -784,7 +891,7 @@ class DockerBoundary(unittest.TestCase):
         return result, batch, self.job.read("docker-complete.json")
 
     def fresh(self):
-        for name in ("docker-attempt.json", "docker-complete.json", "docker-generations.json"):
+        for name in ("docker-attempt.json", "docker-complete.json", "docker-generations.json", "containment.json", d.SEAL):
             (self.job.dir / name).unlink(missing_ok=True)
         for leaf in (self.root / "out" / GENERATION / "judgment.json", self.root / "evidence" / GENERATION / "access.jsonl"):
             leaf.unlink(missing_ok=True)
@@ -865,16 +972,24 @@ class DockerBoundary(unittest.TestCase):
         self.assertIsInstance(refs, list)
         self.assertEqual(done["disposition"]["disposition"], "transport_failed")
 
-    def test_a_real_route_needs_an_empty_egress_bridge_a_manifest_and_plan_that_agree_and_contains_a_partial_start(self):
+    def test_real_route_refuses_plan_mismatch_and_withholds_completion_after_partial_start(self):
         cli, egress, relay, record = self.real_world()
         cli.plan["route"] = "fixture"
         error, *_ = self.real_run(cli, egress, relay, record)
         self.assertRegex(str(error), "plan_route")
         (self.job.dir / "docker-attempt.json").unlink(missing_ok=True)
         cli, egress, relay, record = self.real_world()
-        error, batch, watch, contained = self.real_run(cli, egress, relay, record, end_error=[{"State": {"ExitCode": 0}}, LiveProfileRefused("end_unconfirmed")])
-        self.assertRegex(str(error), "end_unconfirmed")
-        contained.assert_called_once()                                              # whatever was started is ended before the failure leaves
+        error, batch, watch, contained = self.real_run(cli, egress, relay, record, egress_case="pre-receipt",
+                                                      end_error=[{"State": {"ExitCode": 0}}, LiveProfileRefused("end_unconfirmed")])
+        self.assertIn(mock.call.endpoint("connect", egress, relay, None), watch.mock_calls)
+        self.assertIsInstance(error, d.ContainFailed)
+        self.assertEqual(str(error.__context__), "end_unconfirmed")
+        contained.assert_called_once()
+        self.assertEqual(self.job.read("containment.json")["outcomes"][0]["rm"], "ok")
+        self.assertNotIn("egress", self.job.read("containment.json"))
+        self.assertIsNotNone(self.job.read(d.SEAL))
+        self.assertIsNone(self.job.read("docker-complete.json"))
+        batch.collect.assert_not_called()
 
     def test_the_real_daemons_two_start_transitions_are_accepted_and_nothing_else_is(self):
         """Replays the retained created/started/ended inspect records of the T9 log probe (host-T9/reuse-20261110T090130Z, CID 53bcee86...)."""
