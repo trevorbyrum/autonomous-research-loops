@@ -704,15 +704,7 @@ def contain_job(job, *, execute=capture, now=time.monotonic, clock=time.time) ->
     late = limit is None or any(e["role"] == "relay" and e.get("at", start) > limit for e in outcomes)
     record = {"outcomes": outcomes, "limit": limit, "late": late}
     if plan and plan.get("route") == "real":
-        receipt = (_read(job, "containment.json") or {}).get("egress")
-        if receipt is not None:
-            record["egress"] = receipt
-        # A connect intent can have taken effect even if the CLI never reported success.
-        for entry in (journal or {}).values() if not unknown else ():
-            intent = entry["intent"]
-            if intent[3:5] == ["network", "connect"]:
-                failed = failed or not (isinstance(receipt, dict) and receipt.get("confirmed") is True
-                                        and [receipt.get("network_id"), receipt.get("relay_id")] == intent[-2:])
+        failed = _retain_egress_receipt(job, record, journal, unknown, failed)
     job.write("containment.json", record)
     if failed:
         raise ContainFailed(outcomes)
@@ -720,6 +712,19 @@ def contain_job(job, *, execute=capture, now=time.monotonic, clock=time.time) ->
         job.create("docker-complete.json", {"origin": plan["origin"], "refs": [], "usage": "refused",
                                             "disposition": {"disposition": "unknown", "reason": "contained_without_collection"}})
     return outcomes
+
+
+def _retain_egress_receipt(job, record, journal, unknown, failed):
+    receipt = (_read(job, "containment.json") or {}).get("egress")
+    if receipt is not None:
+        record["egress"] = receipt
+    # A connect intent can have taken effect even if the CLI never reported success.
+    for entry in (journal or {}).values() if not unknown else ():
+        intent = entry["intent"]
+        if intent[3:5] == ["network", "connect"]:
+            failed = failed or not (isinstance(receipt, dict) and receipt.get("confirmed") is True
+                                    and [receipt.get("network_id"), receipt.get("relay_id")] == intent[-2:])
+    return failed
 
 
 def _history(journal):
