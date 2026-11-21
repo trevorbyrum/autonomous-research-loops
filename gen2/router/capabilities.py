@@ -6,12 +6,10 @@ transaction (the core's: `_guarded`) that fences and writes.
 Trace: DEPLOYMENT-CONTRACT.md §4 (testing requirement (d): a revoked or
 expired credential produces a dated capability fact and a typed capability
 hold, not a silent zero-result pass), §1.2 (a dependency's failure is a
-capability fact, never an unhealthy container); BOUNDARIES.md Station
-supervisor (it runs and classifies capability probes) and Router (the sole
-writer; holds typed, owned, deadlined); INVARIANTS H-2, H-3, RG-3, G-13.
+capability fact, never an unhealthy container); BOUNDARIES.md Router (the
+sole writer; holds typed, owned, deadlined); INVARIANTS H-2, H-3, RG-3, G-13.
 
-The station supervisor probes a capability and classifies what it saw; this records it. One observation, one
-transaction:
+One observation, one transaction:
   * it is kept whole as an audit event under its probe id: the same
     observation again replays the answer it got; another under that id is a
     conflict;
