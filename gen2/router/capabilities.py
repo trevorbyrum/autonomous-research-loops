@@ -10,8 +10,7 @@ capability fact, never an unhealthy container); BOUNDARIES.md Station
 supervisor (it runs and classifies capability probes) and Router (the sole
 writer; holds typed, owned, deadlined); INVARIANTS H-2, H-3, RG-3, G-13.
 
-The station supervisor probes a capability and classifies what it saw
-(gen2/supervisor/probe.py); this records it. One observation, one
+The station supervisor probes a capability and classifies what it saw; this records it. One observation, one
 transaction:
   * it is kept whole as an audit event under its probe id: the same
     observation again replays the answer it got; another under that id is a
@@ -191,8 +190,8 @@ class Capabilities:
                         cause=f"{capability} {req['outcome']}: {req['detail']}"[:500],
                         recoverability="needs_remediation" if req["outcome"] in ("unusable_credential", "declared_expired") else "unknown",
                         required_authority="operator", owner="operator", deadline_at=_after(now, policy["hold_window_s"]),
-                        clears_when=f"an operator hold_clearance, once a probe records {capability} usable (for a credential: refreshed "
-                                       "in its auth volume; for the runner: repaired by an image release)",
+                        clears_when="an operator hold_clearance once remediated (a credential: refreshed in its auth volume; the runner: "
+                                       "repaired by an image release); clearance follows router/service.py's rules, BOUNDARIES 384",
                         capability_fact_id=current["fact_id"], created_at=now)
                 self._core._store.insert("holds", hold)
                 hold = {"hold_id": hold["hold_id"], "opened": True}

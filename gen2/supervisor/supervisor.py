@@ -75,7 +75,7 @@ class Policy:
     term_grace_s: float = 2.0      # SIGTERM -> SIGKILL
     kill_grace_s: float = 2.0      # SIGKILL -> the group confirmed empty, or not
     poll_s: float = 0.02
-    probe_timeout_s: float = 30.0  # each run of a capability probe's pinned runner (probe.py)
+    probe_timeout_s: float = 30.0  # unused since the probe's retirement; kept so bundles that name it still load
 
 
 def supervisor_policy(bundle: Mapping) -> Policy:
