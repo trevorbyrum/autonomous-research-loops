@@ -103,9 +103,9 @@ def manifest_gate(manifest, retained, tree):
     require(manifest.get("socket") == SOCKET and manifest.get("cli_sha256") == CLI_SHA, "manifest_runtime")
     require(manifest.get("platform") == "linux/amd64" and manifest.get("route") in ("fixture", "real"), "manifest_route")
     roles = ROLES if manifest["route"] == "fixture" else ROLES - {"fixture"}   # a real route has no fixture container, so no fixture image or configuration
-    # Seam e: productive dispatch needs a supervised profile with a pinned qualified claim; a claim is not proof (v7 §2).
+    # Seam e: productive dispatch needs a supervised profile with a pinned qualification claim; a claim is not proof (v7 §2).
     require(manifest.get("supervision") == "supervised", "manifest_not_supervised")
-    require(manifest.get("qualification_state") == "qualified" and isinstance(manifest.get("qualification_ref"), str)
+    require(manifest.get("qualification_state") in ("qualified", "rejection_experiment") and isinstance(manifest.get("qualification_ref"), str)
             and bool(PIN.fullmatch(manifest["qualification_ref"])), "manifest_not_qualified")
     for key in ("daemon_version", "credential_ref", "credential_version"):
         require(isinstance(manifest.get(key), str) and manifest[key] not in PLACEHOLDERS, "manifest_" + key)
@@ -187,7 +187,8 @@ class DockerCLI:
         self.manifest = manifest_gate(manifest, retained, tree)
         self.job, self.execute, self.now, self.sleep, self.clock = job, execute, now, sleep, clock
         self.plan = _read(job, "docker-plan.json")
-        require(isinstance(self.plan, dict) and bool(self.plan.get("origin")), "launch_originals")   # absent, null, malformed or origin-less: no launch
+        require(isinstance(self.plan, dict) and isinstance(self.plan.get("origin"), dict) and self.plan["origin"], "launch_originals")   # absent, null, malformed or origin-less: no launch
+        require(self.plan["origin"].get("qualification_state", "qualified") == self.manifest["qualification_state"], "plan_qualification_state")
         remaining = _deadline(job) - self.clock()   # the pinned order's absolute deadline, as time left now
         require(remaining > RESERVE_S, "backend_deadline_passed")
         self.absolute = now() + remaining

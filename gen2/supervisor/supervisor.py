@@ -941,7 +941,7 @@ class Supervisor:
                 return self._cancel_self(job, journal, grant, "dispatch refused: incomplete_live_preparation")
             job.write("docker-plan.json", order["plan"])
         if "admission_ref" not in journal.get("dispatch", {}):
-            if not self.dispatch.qualified:   # a retired or unverified record: no new start, whatever was prepared earlier
+            if not self.dispatch.admits(grant["invocation_id"]):
                 journal["unlaunched"] = True      # nothing was started and nothing will be: its cancellation has no backend end to confirm
                 return self._cancel_self(job, journal, grant, "dispatch refused: profile_qualification_unavailable")
             request = {"capability_id": grant["capability_id"], "invocation_id": grant["invocation_id"], "run_id": self.dispatch.run_id, "attempt": 1}
