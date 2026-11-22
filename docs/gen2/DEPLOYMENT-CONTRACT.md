@@ -550,6 +550,7 @@ nothing hashes itself. The operator sets its byte pin in the engine environment 
 authorization proves who approved the experiment. It is never a witness receipt and never fills a witness row.
 
 **Scope.** The authority supplies a plan, an admission and a current-start answer only for the one bound invocation, with the bound topic and configuration bundle, inside `[not_before, policy.deadline_at)`, in the engine process that loaded it.
+The release binds that order as a tool-less diagnostic order on a dedicated disposable topic; a real research topic or order is refused. Any accepted response stays experiment evidence only and has no effect on productive research.
 Each of those three answers is checked before its action. Every other order is refused as if no record were loaded. The Router's own predicates still apply unchanged: one concurrent attempt, one total attempt in the store, the ceiling, the
 deadline, the route-wide rejection block and the trial stop. The experiment runs in a control store with no prior dispatch facts.
 
