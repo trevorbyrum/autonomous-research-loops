@@ -535,6 +535,32 @@ allowlist. The invocation ID is passed in, and it is the same one the whole
 chain carries (flow §4.1: router → station → delegate → gateway lane → decision
 layer → commit receipt).
 
+### 4.2 The rejection experiment authority (operator ruling 2026-11-22)
+
+§4(d)'s residual needs a real invocation before any qualified real record can exist. One separately typed authority permits exactly that invocation and nothing else. This section is the sole exception to §4(d)'s prequalification requirement.
+
+**Record.** A `qualification-record/1` document with `state: "rejection_experiment"`. It is never `qualified` and no reader of a qualified record accepts it. It carries exactly one row per required witness. Q1, Q2, Q3 (and Q8 on the real route)
+are literal `passed: true` with a receipt pin. The DEBT-004 row is exactly `{"name": "DEBT-004", "passed": false}`: no receipt key, no other key. Its `experiment` object has exactly the keys `invocation_id`, `topic_id`, `config_bundle_hash` and
+`not_before`, each a non-empty string. Its policy has `max_attempts` 1 and `ceiling_minor_units` equal to `upper_minor_units` (one U). `policy.deadline_at` is the end of the window. The `credential_ref` names a disposable login session.
+
+**Manifest.** The deployment manifest claims `qualification_state: "rejection_experiment"`. The record and manifest must agree on route and on this state. The backend refuses a plan whose experiment marking differs from its manifest's state.
+
+**Authorization.** A third protected file, `rejection-experiment-authorization/1`, holds `record_pin`, `manifest_pin`, a copy of the record's `experiment` object, `ruling_ref` and `approved_at`. It names the pair; the pair never names it, so
+nothing hashes itself. The operator sets its byte pin in the engine environment independently, as for the record. With the authorization absent, unpinned, mismatched on either pin, or unequal in scope, no authority loads at all. The
+authorization proves who approved the experiment. It is never a witness receipt and never fills a witness row.
+
+**Scope.** The authority supplies a plan, an admission and a current-start answer only for the one bound invocation, with the bound topic and configuration bundle, inside `[not_before, policy.deadline_at)`, in the engine process that loaded it.
+Each of those three answers is checked before its action. Every other order is refused as if no record were loaded. The Router's own predicates still apply unchanged: one concurrent attempt, one total attempt in the store, the ceiling, the
+deadline, the route-wide rejection block and the trial stop. The experiment runs in a control store with no prior dispatch facts.
+
+**Outcomes.** DEBT-004 passes only when the independent verifier accepts a receipt showing, for that one invocation on the real route: exactly one relay row to the pinned upstream with status 401 from upstream; a non-zero runner exit; a
+confirmed end; a current-origin `dispatch_result` carrying the rejection and charging U; the dated `failing` fact; the owned typed hold; and terminal FAILED with retained evidence. Any other end leaves DEBT-004 open: an accepted credential, a
+transport failure, an unknown or ambiguous end, a classified rejection the Router did not record, any fixture-route run, the authorization itself, and loading the record. An accepted credential retains the observed outcome and the full U,
+consumes the attempt, and ends the experiment. A further attempt needs a new record, a new authorization, a new engine process and a new send release. Unknown or ambiguous ends keep §4.1's fixed-U stop.
+
+**After a pass.** The route stays blocked under §4.1 and DEBT-053. A qualified real record may carry `DEBT-004 passed: true` only with the pin of the verifier's accepted receipt. Every real origin carries `qualification_ref`, the byte pin of the
+loaded record. Remediation releases the rejection only for the exact approved manifest, credential and qualification pins; a changed pin stays blocked.
+
 ---
 
 ## 5. Control-store backup, restore, and the restore drill
