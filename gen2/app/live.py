@@ -50,7 +50,11 @@ def agent_for(directory: Path, env: Mapping[str, str], *, execute=docker_cli.cap
         raise Refused("the live runner entrance is closed: a model purpose needs an injected agent step")
     if not all(env.get(name) for name in names):
         raise Refused("the live backend's protected paths are not set")
-    manifest = canonical.parse_json_strict(Path(env["GEN2_MANIFEST"]).read_bytes())
+    manifest_bytes = Path(env["GEN2_MANIFEST"]).read_bytes()
+    origin = plan.get("origin") if isinstance(plan, dict) else None
+    if not isinstance(origin, dict) or canonical.bytes_digest(manifest_bytes) != origin.get("manifest_ref"):   # the bytes consumed here are the plan's own manifest
+        raise Refused("the live manifest is not the one the durable plan names")
+    manifest = canonical.parse_json_strict(manifest_bytes)
     retained_dir = Path(env["GEN2_RETAINED_DIR"])
     retained = lambda pin: (retained_dir / pin.removeprefix("sha256:")).read_bytes()
 

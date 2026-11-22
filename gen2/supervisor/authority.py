@@ -7,8 +7,8 @@ own bytes against the pin the operator set in the engine's environment, and the 
 the backend's own `docker-complete.json` for an end. Limits: it verifies pins, the state and the named witnesses' presence and
 `passed` flags; it does not re-run a witness, and the receipts' content is lane C's and the verifier's to attest. An unreadable,
 stale or mismatched record means no admission at all (None), never a default. Cost is never estimated: `actual_minor_units` is None
-until a trusted source exists (the DEBT-052 amendment then charges the configured worst case U). The rejection mapping is the real
-route's classifier and lands with it (PR-L2); until then a rejected run reads as an unknown end and stops the trial, fail closed.
+until a trusted source exists (the DEBT-052 amendment then charges the configured worst case U). The real route's classifier supplies
+the rejection evidence. DEPLOYMENT-CONTRACT §4.2 binds experiment permission to a separately pinned authorization and window.
 """
 from __future__ import annotations
 
@@ -16,14 +16,20 @@ import hashlib
 import re
 import uuid
 from pathlib import Path
+from time import time_ns
 from typing import Callable, Mapping
 
 from gen2.core import canonical
+from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import jobs
 from gen2.supervisor.docker_cli import EGRESS_FIELDS, RELAY_PROVIDER, _read, validate_egress
 from gen2.supervisor.isolation import LiveProfileRefused
 
 RECORD = "qualification-record/1"
+EXPERIMENT = "rejection_experiment"
+AUTHORIZATION = "rejection-experiment-authorization/1"
+ORDER_PINS = ("invocation_id", "topic_id", "config_bundle_hash")
+PENDING = {"name": "DEBT-004", "passed": False}
 WITNESSES = ("Q1", "Q2", "Q3")
 REAL_WITNESSES = (*WITNESSES, "DEBT-004", "Q8")   # Q8: the daemon end proof qualified natively on the installed runtime (Gate S #7c)
 Stage = Callable[[str, bytes, str], Mapping]
@@ -50,22 +56,28 @@ def authenticated_end(job: jobs.Job, plan: dict | None, collected: dict | None) 
 
 def verify_record(record: bytes, pin: str, manifest: bytes) -> Mapping | None:
     """The parsed record if it is qualified for exactly this manifest and the operator's pin; otherwise None."""
+    return _verify_record(record, pin, manifest, "qualified")
+
+
+def _verify_record(record: bytes, pin: str, manifest: bytes, state: str) -> Mapping | None:
     try:
         if canonical.bytes_digest(record) != pin:
             return None
         doc = canonical.parse_json_strict(record)
         real = doc["route"] == "real"
         named = {w["name"]: w for w in doc["witnesses"]}
-        text = lambda value: isinstance(value, str) and bool(value)
-        path = lambda value: text(value) and value.startswith("/") and ".." not in value.split("/")
+        path = lambda value: _text(value) and value.startswith("/") and ".." not in value.split("/")
         plan, policy = doc["plan"], doc["policy"]
-        ok = (doc["record_version"] == RECORD and doc["state"] == "qualified" and doc["route"] in ("fixture", "real")
+        required = REAL_WITNESSES if real else WITNESSES
+        if state == EXPERIMENT:
+            required = tuple(name for name in required if name != PENDING["name"])
+        ok = (doc["record_version"] == RECORD and doc["state"] == state and doc["route"] in ("fixture", "real")
               and doc["manifest_pin"] == canonical.bytes_digest(manifest)
-              and all(named.get(n, {}).get("passed") is True and PIN.fullmatch(str(named[n].get("receipt"))) for n in (REAL_WITNESSES if real else WITNESSES))
-              and (not real or (all(text(doc.get(k)) for k in ("deployment_id", "provider_route", "runner_version")) and UPSTREAM.fullmatch(str(plan.get("upstream"))) and all(path(plan.get(k)) for k in RELAY_PROVIDER)
-                                and isinstance(doc.get("affected_lanes"), list) and len(doc["affected_lanes"]) <= 20 and all(text(x) for x in doc["affected_lanes"])))
+              and all(named.get(n, {}).get("passed") is True and PIN.fullmatch(str(named[n].get("receipt"))) for n in required)
+              and (not real or (all(_text(doc.get(k)) for k in ("deployment_id", "provider_route", "runner_version")) and UPSTREAM.fullmatch(str(plan.get("upstream"))) and all(path(plan.get(k)) for k in RELAY_PROVIDER)
+                                and isinstance(doc.get("affected_lanes"), list) and len(doc["affected_lanes"]) <= 20 and all(_text(x) for x in doc["affected_lanes"])))
               and (real or not any(k in plan for k in RELAY_PROVIDER))
-              and text(doc["backend"]) and text(doc["credential_ref"]) and isinstance(policy, dict) and text(policy.get("run_id"))
+              and _text(doc["backend"]) and _text(doc["credential_ref"]) and isinstance(policy, dict) and _text(policy.get("run_id"))
               and type(doc["upper_minor_units"]) is int and doc["upper_minor_units"] >= 0
               and all(path(plan.get(k)) for k in ("engine_jobs", "host_jobs", "seed")) and isinstance(plan.get("slots"), dict)
               and all(path(plan["slots"].get(k)) for k in ("out", "evidence")))
@@ -74,19 +86,67 @@ def verify_record(record: bytes, pin: str, manifest: bytes) -> Mapping | None:
         return None
 
 
+def _text(value: object) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
+def verify_experiment(record: bytes, pin: str, manifest: bytes, authorization: bytes | None, authorization_pin: str | None) -> Mapping | None:
+    """The §4.2 record if the protected authorization binds this exact pair and scope."""
+    if authorization is None or canonical.bytes_digest(authorization) != authorization_pin:
+        return None
+    doc = _verify_record(record, pin, manifest, EXPERIMENT)
+    if doc is None:
+        return None
+    try:
+        scope, policy = doc["experiment"], doc["policy"]
+        pending = [w for w in doc["witnesses"] if w["name"] == PENDING["name"]]
+        deployment = canonical.parse_json_strict(manifest)
+        approval = canonical.parse_json_strict(authorization)
+        witnesses = REAL_WITNESSES if doc["route"] == "real" else (*WITNESSES, PENDING["name"])
+        ok = (len(doc["witnesses"]) == len(witnesses) and pending == [PENDING] and pending[0]["passed"] is False
+              and isinstance(scope, dict) and scope.keys() == {*ORDER_PINS, "not_before"} and all(_text(v) for v in scope.values())
+              and type(policy["max_attempts"]) is int and policy["max_attempts"] == 1
+              and type(policy["ceiling_minor_units"]) is int and policy["ceiling_minor_units"] == doc["upper_minor_units"]
+              and utc_instant_ns(scope["not_before"]) < utc_instant_ns(policy["deadline_at"])
+              and deployment["qualification_state"] == EXPERIMENT and deployment["route"] == doc["route"]
+              and deployment["credential_ref"] == doc["credential_ref"]
+              and approval.keys() == {"authorization_version", "record_pin", "manifest_pin", "experiment", "ruling_ref", "approved_at"}
+              and approval["authorization_version"] == AUTHORIZATION and _text(approval["ruling_ref"])
+              and approval["record_pin"] == pin and approval["manifest_pin"] == doc["manifest_pin"] and approval["experiment"] == scope)
+        if ok:
+            utc_instant_ns(approval["approved_at"])
+            return doc
+    except (ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return None
+
+
 class QualifiedAuthority:
     def __init__(self, jobs_root: str | Path, *, record: bytes, pin: str, manifest: bytes, stage: Stage, read: Callable[[str, str], bytes | None] | None = None,
-                 epoch: str | None = None) -> None:
+                 epoch: str | None = None, authorization: bytes | None = None, authorization_pin: str | None = None) -> None:
         self.epoch = epoch or uuid.uuid4().hex   # fixed for this process, so a restart is a new epoch (no admission survives it unchecked)
         self._jobs, self._stage, self._read = Path(jobs_root), stage, read
         self._record_bytes, self._manifest = record, manifest
         self._doc = verify_record(record, pin, manifest)
+        self._scope = None
+        if self._doc is None and (doc := verify_experiment(record, pin, manifest, authorization, authorization_pin)) is not None:
+            self._doc, self._scope = doc, doc["experiment"]
+            self._window = (utc_instant_ns(self._scope["not_before"]), utc_instant_ns(doc["policy"]["deadline_at"]))
+        self._pin = pin
         self.run_id = self._doc["policy"]["run_id"] if self._doc else ""   # fixed at load, so a retired record still names the run it refused
         self._manifest_ref = canonical.bytes_digest(manifest)
 
     @property
     def qualified(self) -> bool:
-        return self._doc is not None
+        return self._doc is not None and self._scope is None
+
+    def admits(self, invocation_id: str) -> bool:
+        """The supervisor's per-invocation check before requesting admission."""
+        return self._doc is not None and (self._scope is None or invocation_id == self._scope["invocation_id"])
+
+    def _in_scope(self, subject: Mapping) -> bool:
+        return (self._scope is None or (all(subject.get(key) == self._scope[key] for key in ORDER_PINS)
+                                       and self._window[0] <= time_ns() < self._window[1]))
 
     def retire(self) -> None:
         """Invalidate the loaded record (a later start then reads `is_current` false); a new record needs a new process."""
@@ -97,14 +157,16 @@ class QualifiedAuthority:
 
     def plan(self, order: Mapping) -> dict:
         """The backend's plan for one live order, from the protected template in the record and this job's own facts."""
-        if self._doc is None:
+        if self._doc is None or not self._in_scope(order):
             raise LiveProfileRefused("profile_qualification_unavailable")
         doc, template, invocation = self._doc, self._doc["plan"], order["invocation_id"]
         generation = hashlib.sha256(invocation.encode()).hexdigest()[:32]
         origin = {"invocation_id": invocation, "topic_id": order["topic_id"], "config_bundle_hash": order["config_bundle_hash"],
                   "job_handle": "job-" + invocation, "manifest_ref": self._manifest_ref, "credential_ref": doc["credential_ref"], "route": doc["route"],
                   "backend": doc["backend"], "evidence_generation": generation,
-                  **({"deployment_id": doc["deployment_id"], "provider_route": doc["provider_route"]} if doc["route"] == "real" else {})}
+                  **({"qualification_state": EXPERIMENT, "qualification_ref": self._pin} if self._scope is not None else {}),
+                  **({"deployment_id": doc["deployment_id"], "provider_route": doc["provider_route"], "qualification_ref": self._pin}
+                     if doc["route"] == "real" else {})}
         inputs = self._job("job-" + invocation).scratch / "inputs"
         prefix = Path(template["engine_jobs"])
         if prefix not in (inputs, *inputs.parents) or ".." in inputs.parts:
@@ -129,19 +191,25 @@ class QualifiedAuthority:
         return {**plan["origin"], "lease_id": grant["lease"]["lease_id"], "generation": grant["lease"]["generation"], "epoch": epoch or self.epoch}
 
     def admission(self, invocation_id: str, run_id: str, attempt: int) -> Mapping | None:
+        if not self.admits(invocation_id) or run_id != self.run_id:
+            return None
         job = self._job("job-" + invocation_id)
         origin, order = self._origin(job), job.read("order.json")
-        if self._doc is None or origin is None or order is None or run_id != self.run_id:
+        if origin is None or order is None or (self._scope is not None and not (self._in_scope(order) and self.is_current(origin))):
             return None
         refs = [dict(self._stage(order["topic_id"], data, "application/json")) for data in (self._manifest, self._record_bytes)]
         return {"origin": origin, "policy": {**self._doc["policy"], "topic_id": order["topic_id"], "max_concurrent_attempts": 1},
                 "upper_minor_units": self._doc["upper_minor_units"], "artifacts": refs}
 
     def is_current(self, origin: Mapping) -> bool:
-        """Local, no I/O: the loaded record still stands and the origin names its manifest, credential, route and this epoch."""
+        """Local, no I/O: the loaded record still stands and the origin names its manifest, credential, route and this epoch. An experiment origin also
+        names this very record (a persisted plan that names another is refused). Qualified origins are unchanged, so a legacy qualified plan, which
+        has no experiment state and may carry no such pin, still stands; no experiment plan predates this check."""
         doc = self._doc
         return (doc is not None and origin.get("epoch") == self.epoch and origin.get("manifest_ref") == self._manifest_ref
-                and origin.get("credential_ref") == doc["credential_ref"] and origin.get("route") == doc["route"])
+                and origin.get("credential_ref") == doc["credential_ref"] and origin.get("route") == doc["route"]
+                and origin.get("qualification_state", "qualified") == doc["state"] and self._in_scope(origin)
+                and (self._scope is None or origin.get("qualification_ref") == self._pin))
 
     def result(self, admission_ref: str, evidence_ref: str) -> Mapping | None:
         """The authenticated end of the job whose retained execution record is `evidence_ref`: the backend's own complete file, no estimate."""

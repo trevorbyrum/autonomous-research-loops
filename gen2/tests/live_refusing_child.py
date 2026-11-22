@@ -51,18 +51,26 @@ def transport(root):
     return run
 
 
+def manifest_for(**changes):
+    return {"version": 1, "tree": "t", "platform": "linux/amd64", "route": "real", "socket": docker_cli.SOCKET, "cli_sha256": FAKE_SHA, "daemon_version": "29.0.0",
+            "credential_ref": "dummy-seed", "credential_version": "v1", "supervision": "supervised", "qualification_state": "qualified", "qualification_ref": PIN,
+            "images": {r: {"pin": IMAGE, "kind": "engine-image-id"} for r in docker_cli.ROLES - {"fixture"}},
+            "configurations": {r: {"pin": PIN} for r in docker_cli.ROLES - {"fixture"}}, **changes}
+
+
+ACCEPTED = b"Diagnostic response from the offline double."
+
+
 def main(argv):
     directory = Path(argv[0]) if argv else Path.cwd()
     root = directory.parent.parent.parent
     job = jobs.Job(directory.parent.parent, directory.parent.name)
-    manifest = {"version": 1, "tree": "t", "platform": "linux/amd64", "route": "real", "socket": docker_cli.SOCKET, "cli_sha256": FAKE_SHA, "daemon_version": "29.0.0",
-                "credential_ref": "dummy-seed", "credential_version": "v1", "supervision": "supervised", "qualification_state": "qualified", "qualification_ref": PIN,
-                "images": {r: {"pin": IMAGE, "kind": "engine-image-id"} for r in docker_cli.ROLES - {"fixture"}},
-                "configurations": {r: {"pin": PIN} for r in docker_cli.ROLES - {"fixture"}}}
+    manifest_path = root / "manifest.json"
+    if not manifest_path.exists():
+        manifest_path.write_bytes(canonical.canonical_bytes(manifest_for()))
     retained = root / "retained"
     retained.mkdir(exist_ok=True)
     (retained / PIN.removeprefix("sha256:")).write_bytes(b"configuration")
-    (root / "manifest.json").write_bytes(canonical.canonical_bytes(manifest))
     inputs = directory / "inputs"
     inputs.mkdir(exist_ok=True)
     raw = canonical.canonical_bytes({"purpose": "scope", "limits": {"max_output_bytes": 1 << 20}})
@@ -77,25 +85,33 @@ def main(argv):
         cli = real(*args, **kwargs, clock=lambda: utc_instant_ns(job.read("order.json")["deadline_at"]) / 1e9 - 300)
         for name in ("out", "evidence"):
             (root / name / cli.plan["generation"]).mkdir(parents=True, exist_ok=True)
-        if rejected:   # what the backend leaves: the bound-but-unwritten judgment leaf, and the relay's own access row
-            (root / "out" / cli.plan["generation"] / "judgment.json").touch(mode=0o600)
-            (root / "evidence" / cli.plan["generation"] / "access.jsonl").write_bytes(jl({**ROW, "upstream": "203.0.113.7:443"}))
+        if rejected or accepted:   # the runner output and the relay's own access row
+            (root / "out" / cli.plan["generation"] / "judgment.json").write_bytes(b"" if rejected else ACCEPTED)
+            status = "401" if rejected else "200"
+            (root / "evidence" / cli.plan["generation"] / "access.jsonl").write_bytes(
+                jl({**ROW, "upstream": "203.0.113.7:443", "status": status, "upstream_status": status}))
         cli.plan.update(slots={n: str(root / n) for n in ("out", "evidence")}, binds={**cli.plan["binds"], "out": str(root / "out" / cli.plan["generation"])})
         return cli
     table = {"research_pass/scope": lambda stage, bytes_of: (lambda work, judgment: {})}
     create = jobs.Job.create
     rejected = (root / "rejected").exists()
+    accepted = (root / "accepted").exists()
+    def started(self, cid, role="runner"):   # the one place a container start is observable: counted, not parsed from argv
+        job.write(role + "-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10Z"}})
+        with (root / "starts").open("a") as log:
+            log.write(role + "\n")
     withhold = (root / "no-publish").exists()   # the counterfactual: the fallback end fact is never published
     with mock.patch.object(jobs.Job, "create", lambda self, name, value: True if withhold and name == "docker-complete.json" else create(self, name, value)), \
             mock.patch.object(docker_cli, "CLI_SHA", FAKE_SHA), \
             mock.patch.object(docker_cli.Path, "read_bytes", lambda path, real=Path.read_bytes: b"fake" if str(path) == docker_cli.CLI else real(path)), \
             mock.patch.object(docker_cli, "free_space"), mock.patch.object(docker_cli, "DockerCLI", build), \
             mock.patch.object(real, "network", lambda self, g: job.write("network-job.json", {"Id": NET, "Name": "gen2-2e1-live-job-" + g}) or NET), \
-            mock.patch.object(real, "runtime"), mock.patch.object(real, "endpoint"), mock.patch.object(real, "start"), mock.patch.object(real, "drain"), \
+            mock.patch.object(real, "runtime"), mock.patch.object(real, "endpoint"), mock.patch.object(real, "drain"), \
+            mock.patch.object(real, "start", started), \
             mock.patch.object(real, "logs", lambda self, *a, **k: (FAILED if rejected else b"events", b"diagnostics")), \
+            mock.patch.object(live, "agent_for", lambda directory, env, real_agent_for=live.agent_for: real_agent_for(directory, env, execute=transport(root))), \
             mock.patch.object(real, "end", lambda self, cid, role="runner": self.inspect(cid) if role == "relay" else {"State": {"ExitCode": int(rejected and role == "runner")}}):
-        agent = live.agent_for(directory, env, execute=transport(root))   # the production live agent; collection refuses because the out directory holds no judgment
-        return child.main([str(directory)], env=env, table=table, agent=agent)
+        return child.main([str(directory)], env=env, table=table)   # the production entrance builds the live agent itself, under main's handlers; collection refuses because the out directory holds no judgment
 
 
 if __name__ == "__main__":

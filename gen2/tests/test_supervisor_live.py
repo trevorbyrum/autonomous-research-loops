@@ -22,12 +22,12 @@ from gen2.core.evidence_media import evidence_name
 from gen2.core.instants import utc_instant_ns
 from gen2.supervisor import authority as auth, docker_cli, jobs
 from gen2.supervisor.isolation import LiveProfileRefused
-from gen2.tests import children, router_fixtures as rf
+from gen2.tests import children, live_refusing_child as child, router_fixtures as rf
 from gen2.tests.test_rejection import FAILED, ROW, jl
 from gen2.tests.supervisor_fixtures import AFTER_DEADLINE, MAIN, SupervisedTestCase, Unconfirmed, succeed
 
 REAL_CONTAIN = docker_cli.contain_job   # before any test patches it
-MANIFEST = b'{"profile": "fixture-only"}'
+MANIFEST = canonical.canonical_bytes(child.manifest_for())   # the bytes the live child reads: the plan's manifest_ref must name them
 SCOPE = ["model", "delegates", "retries", "verification", "gateway", "maintenance"]
 
 EGRESS = {"network_id": "c" * 64, "name": "example-egress", "subnet": "192.0.2.0/29", "gateway": "192.0.2.1"}

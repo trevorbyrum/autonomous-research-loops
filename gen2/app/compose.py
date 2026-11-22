@@ -61,12 +61,17 @@ class Composition:
         return type("Captures", (), {"read": lambda _, **key: self.exchanges(key["topic_id"]).read(**key)})()
 
     def authority(self, jobs_root, environ: Mapping[str, str]):
-        """The qualified dispatch authority, only if the record, its pin and the manifest are all named in the environment (the record and
-        the manifest are protected mounts; the pin is the operator's, apart from both). Otherwise None: every live order then refuses."""
+        """Load the protected dispatch record and manifest. An experiment also needs its independently pinned authorization."""
         names = ("GEN2_QUALIFICATION_RECORD", "GEN2_QUALIFICATION_PIN", "GEN2_MANIFEST")
         if not all(environ.get(name) for name in names):
             return None
-        return QualifiedAuthority(jobs_root, record=Path(environ[names[0]]).read_bytes(), pin=environ[names[1]], manifest=Path(environ[names[2]]).read_bytes(),
+        authorization_path = environ.get("GEN2_EXPERIMENT_AUTHORIZATION")
+        authorization_pin = environ.get("GEN2_EXPERIMENT_AUTHORIZATION_PIN")
+        try:
+            authorization = Path(authorization_path).read_bytes() if authorization_path and authorization_pin else None
+        except OSError:
+            authorization = None
+        return QualifiedAuthority(jobs_root, authorization=authorization, authorization_pin=authorization_pin, record=Path(environ[names[0]]).read_bytes(), pin=environ[names[1]], manifest=Path(environ[names[2]]).read_bytes(),
                                   stage=lambda topic, data, media: self.station.spool.stage(topic, data, media),
                                   read=lambda topic, digest: self.station.spool.read(digest, topic_id=topic))
 

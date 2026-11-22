@@ -40,9 +40,10 @@ class Agent(unittest.TestCase):
         root = Path(tmp.name)
         job = jobs.Job(root, "job-inv_live00001")
         job.prepare({"x": 1})
-        if plan:
-            job.write("docker-plan.json", {"origin": {"invocation_id": "inv_live00001"}, "generation": "g" * 32})
         (root / "manifest.json").write_text(json.dumps({"tree": "t"}))
+        if plan:
+            job.write("docker-plan.json", {"origin": {"invocation_id": "inv_live00001", "manifest_ref": canonical.bytes_digest((root / "manifest.json").read_bytes())},
+                                           "generation": "g" * 32})
         (root / "r").mkdir()
         env = {**self.ENV, "GEN2_MANIFEST": str(root / "manifest.json"), "GEN2_RETAINED_DIR": str(root / "r")}
         return job, job.scratch, env
