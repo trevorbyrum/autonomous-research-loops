@@ -109,9 +109,9 @@ def main(argv):
             mock.patch.object(real, "runtime"), mock.patch.object(real, "endpoint"), mock.patch.object(real, "drain"), \
             mock.patch.object(real, "start", started), \
             mock.patch.object(real, "logs", lambda self, *a, **k: (FAILED if rejected else b"events", b"diagnostics")), \
+            mock.patch.object(live, "agent_for", lambda directory, env, real_agent_for=live.agent_for: real_agent_for(directory, env, execute=transport(root))), \
             mock.patch.object(real, "end", lambda self, cid, role="runner": self.inspect(cid) if role == "relay" else {"State": {"ExitCode": int(rejected and role == "runner")}}):
-        agent = live.agent_for(directory, env, execute=transport(root))   # the production live agent; collection refuses because the out directory holds no judgment
-        return child.main([str(directory)], env=env, table=table, agent=agent)
+        return child.main([str(directory)], env=env, table=table)   # the production entrance builds the live agent itself, under main's handlers; collection refuses because the out directory holds no judgment
 
 
 if __name__ == "__main__":

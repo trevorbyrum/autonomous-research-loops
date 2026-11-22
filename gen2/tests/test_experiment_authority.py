@@ -241,8 +241,9 @@ class Experiment(sf.SupervisedTestCase):
         (self.root / "manifest.json").write_bytes(canonical.canonical_bytes(self.manifest | {"credential_version": "v2"}))   # same state and route, other pins
         self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
         job = supervisor.job(MAIN)
-        supervisor._children[job.handle].wait(timeout=10)
-        self.assertEqual(job.read("exit.json"), {"code": 1, "signal": None})
+        self.wait_for_file("exit.json")
+        self.assertEqual(job.read("exit.json"), {"code": 2, "signal": None})   # an ordinary refusal under child.main, not the credential-rejection exit 1
+        self.assertIn("gen2.app.child: Refused: the live manifest is not the one the durable plan names", (job.dir / "executor.log").read_text())
         self.assertFalse((self.root / "calls.jsonl").exists())
         self.assertIsNone(job.read("docker-attempt.json"))
 
