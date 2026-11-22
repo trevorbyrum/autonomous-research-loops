@@ -53,16 +53,18 @@ class Operands(unittest.TestCase):
                 with self.subTest(key=key, replacement=replacement), self.assertRaisesRegex(ValueError, "provider file operand"):
                     operands.pack(view | {"record": record | {"plan": record["plan"] | {key: replacement}}})
 
-
-    def test_experiment_authorization_binds_exact_bytes_and_pair(self):
+    def test_experiment_authorization_binds_exact_bytes_pair_and_state(self):
         view = experiment_view()
         data, pin = operands.pack(view)
         self.assertEqual((data, pin), (canonical.canonical_bytes(view["record"]), canonical.bytes_digest(data)))
+        record = dict(view["record"], state="qualified", witnesses=view["record"]["witnesses"][:-1])
         for field in ("authorization", "authorization_pin"):
             with self.subTest(missing=field), self.assertRaisesRegex(ValueError, "stale authorization"):
                 operands.pack({key: value for key, value in view.items() if key != field})
+            with self.subTest(unexpected=field), self.assertRaisesRegex(ValueError, "requires an experiment record"):
+                operands.pack(dict(record=record, manifest=view["manifest"], receipts=view["receipts"], **{field: view[field]}))
         for change in ({"authorization": None}, {"authorization": view["authorization"] + b" "},
-                       {"manifest": view["manifest"] + b" "}, {"receipts": {ref: raw + b" " for ref, raw in view["receipts"].items()}}):
+                       {"receipts": {ref: raw + b" " for ref, raw in view["receipts"].items()}}):
             with self.subTest(field=next(iter(change))), self.assertRaisesRegex(ValueError, "stale"):
                 operands.pack(view | change)
         approval = json.loads(view["authorization"])
@@ -101,6 +103,7 @@ class Operands(unittest.TestCase):
         env.update({f"GEN2_{role}_EVIDENCE": "/data/" + role.lower() for role in ("RELAY", "FIXTURE", "SOURCE")})
         pin = experiment_view()["authorization_pin"]
         target = "/etc/gen2/qualification-record-authorization.json"
+        source = "/cfg/qualification-record-authorization.json"
         for profile, authorization_pin in ((["--profile", "offline"], pin), (["--profile", "offline"], ""), ([], pin)):
             with self.subTest(profile=profile, authorization_pin=authorization_pin):
                 render_env = env | ({"GEN2_EXPERIMENT_AUTHORIZATION_PIN": authorization_pin} if authorization_pin else {})
@@ -119,10 +122,11 @@ class Operands(unittest.TestCase):
                 binds = [mount for mount in engine["volumes"] if mount["target"].startswith("/etc/gen2/qualification-record")]
                 expected = [("/cfg/qualification-record.json", "/etc/gen2/qualification-record.json", True)]
                 if authorization_pin:
-                    expected.append(("/cfg/qualification-record-authorization.json", target, True))
-                self.assertEqual([(m["source"], m["target"], m["read_only"]) for m in binds], expected)
+                    expected.append((source, target, True))
+                self.assertCountEqual([(m["source"], m["target"], m["read_only"]) for m in binds], expected)
                 self.assertFalse(any(m["source"] == env["GEN2_FIXTURE_EVIDENCE"] for m in engine["volumes"]))
-                self.assertFalse(any(m["target"] == target for name, service in services.items() if name != "engine" for m in service.get("volumes", ())))
+                self.assertFalse(any(m["source"] == source or m["target"] == target
+                                     for name, service in services.items() if name != "engine" for m in service.get("volumes", ())))
 
 
 def experiment_view(manifest=b'{"route":"fixture","qualification_state":"rejection_experiment","credential_ref":"session"}', **changes):

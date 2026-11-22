@@ -59,6 +59,8 @@ def pack(view):
     experiment = record.get("state") == "rejection_experiment"
     if experiment:
         _check_experiment(view, record_pin)
+    elif "authorization" in view or "authorization_pin" in view:
+        raise ValueError("authorization operand requires an experiment record")
     for witness in record["witnesses"]:
         if experiment and witness["name"] == "DEBT-004":
             continue
