@@ -96,6 +96,10 @@ def main(argv):
     create = jobs.Job.create
     rejected = (root / "rejected").exists()
     accepted = (root / "accepted").exists()
+    def started(self, cid, role="runner"):   # the one place a container start is observable: counted, not parsed from argv
+        job.write(role + "-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10Z"}})
+        with (root / "starts").open("a") as log:
+            log.write(role + "\n")
     withhold = (root / "no-publish").exists()   # the counterfactual: the fallback end fact is never published
     with mock.patch.object(jobs.Job, "create", lambda self, name, value: True if withhold and name == "docker-complete.json" else create(self, name, value)), \
             mock.patch.object(docker_cli, "CLI_SHA", FAKE_SHA), \
@@ -103,8 +107,7 @@ def main(argv):
             mock.patch.object(docker_cli, "free_space"), mock.patch.object(docker_cli, "DockerCLI", build), \
             mock.patch.object(real, "network", lambda self, g: job.write("network-job.json", {"Id": NET, "Name": "gen2-2e1-live-job-" + g}) or NET), \
             mock.patch.object(real, "runtime"), mock.patch.object(real, "endpoint"), mock.patch.object(real, "drain"), \
-            mock.patch.object(real, "start", lambda self, cid, role="runner": job.write(
-                role + "-start.json", {"State": {"StartedAt": "2026-09-27T10:00:10Z"}})), \
+            mock.patch.object(real, "start", started), \
             mock.patch.object(real, "logs", lambda self, *a, **k: (FAILED if rejected else b"events", b"diagnostics")), \
             mock.patch.object(real, "end", lambda self, cid, role="runner": self.inspect(cid) if role == "relay" else {"State": {"ExitCode": int(rejected and role == "runner")}}):
         agent = live.agent_for(directory, env, execute=transport(root))   # the production live agent; collection refuses because the out directory holds no judgment

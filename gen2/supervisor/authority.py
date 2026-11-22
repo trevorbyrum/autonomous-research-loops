@@ -164,7 +164,7 @@ class QualifiedAuthority:
         origin = {"invocation_id": invocation, "topic_id": order["topic_id"], "config_bundle_hash": order["config_bundle_hash"],
                   "job_handle": "job-" + invocation, "manifest_ref": self._manifest_ref, "credential_ref": doc["credential_ref"], "route": doc["route"],
                   "backend": doc["backend"], "evidence_generation": generation,
-                  **({"qualification_state": EXPERIMENT} if self._scope is not None else {}),
+                  **({"qualification_state": EXPERIMENT, "qualification_ref": self._pin} if self._scope is not None else {}),
                   **({"deployment_id": doc["deployment_id"], "provider_route": doc["provider_route"], "qualification_ref": self._pin}
                      if doc["route"] == "real" else {})}
         inputs = self._job("job-" + invocation).scratch / "inputs"
@@ -202,11 +202,14 @@ class QualifiedAuthority:
                 "upper_minor_units": self._doc["upper_minor_units"], "artifacts": refs}
 
     def is_current(self, origin: Mapping) -> bool:
-        """Local, no I/O: the loaded record still stands and the origin names its manifest, credential, route and this epoch."""
+        """Local, no I/O: the loaded record still stands and the origin names its manifest, credential, route and this epoch. An experiment origin also
+        names this very record (a persisted plan that names another is refused). Qualified origins are unchanged, so a legacy qualified plan, which
+        has no experiment state and may carry no such pin, still stands; no experiment plan predates this check."""
         doc = self._doc
         return (doc is not None and origin.get("epoch") == self.epoch and origin.get("manifest_ref") == self._manifest_ref
                 and origin.get("credential_ref") == doc["credential_ref"] and origin.get("route") == doc["route"]
-                and origin.get("qualification_state", "qualified") == doc["state"] and self._in_scope(origin))
+                and origin.get("qualification_state", "qualified") == doc["state"] and self._in_scope(origin)
+                and (self._scope is None or origin.get("qualification_ref") == self._pin))
 
     def result(self, admission_ref: str, evidence_ref: str) -> Mapping | None:
         """The authenticated end of the job whose retained execution record is `evidence_ref`: the backend's own complete file, no estimate."""

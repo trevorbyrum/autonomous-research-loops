@@ -891,19 +891,26 @@ class Supervisor:
         self._fault("launch_recorded")
         return self._launching(job, order, journal, grant, self._status(job, journal, grant))
 
+    def _unlaunchable(self, order, status) -> bool:
+        refused = status["launch_admission"]
+        return bool(status["cancel_requested"] or self._past(order["deadline_at"]) or (refused and refused["reason"] == "deadline_passed"))
+
     def _launching(self, job, order, journal, grant, status) -> str:
         view = job.lookup()
         if view["verdict"] == "not_started":  # launch intent is recorded and no start has happened: start it now
             live = bool(order.get("live")) or job.read("docker-plan.json") is not None   # the order itself says it is live; the plan file alone also does
             if live and self.dispatch is None:
                 refuse_live_profile()   # no authority wired: closed, before anything else is read
-            refused = status["launch_admission"]  # the router's current launch-admission check, read before every actual start (L-7)
-            if status["cancel_requested"] or self._past(order["deadline_at"]) or (refused and refused["reason"] == "deadline_passed"):
+            if self._unlaunchable(order, status):  # the router's current launch-admission check, read before every actual start (L-7)
                 return self._end_unlaunched(job, order, journal, grant, status)
             if live:   # the authority's gate, after a cancellation (which it may itself request) is honoured
                 gate = self._live_gate(job, order, journal, grant)
                 if gate is not None:
                     return gate
+                status = self._status(job, journal, grant)   # the gate may just have made the intent durable: the Router's own start check now covers it
+                if self._unlaunchable(order, status):
+                    return self._end_unlaunched(job, order, journal, grant, status)
+            refused = status["launch_admission"]
             if refused is not None:  # recorded launch intent is not renewed authority: a recovery or a retried start is checked again
                 return self._refused_launch(job, journal, grant, refused["reason"])
             if not self._spend(job, journal, "spawn"):

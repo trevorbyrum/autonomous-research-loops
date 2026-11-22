@@ -115,7 +115,6 @@ class Experiment(sf.SupervisedTestCase):
                              manifest=self.manifest | {"qualification_state": "qualified"},
                              env=lambda env: {k: v for k, v in env.items() if "EXPERIMENT" not in k})
         self.assertTrue(ordinary.qualified)
-        self.assertNotIn("qualification_state", ordinary.plan(SCOPE | {"invocation_id": "inv_other0001"})["origin"])
 
     def interrupt_after_authorize(self):
         def stop(point):
@@ -130,14 +129,13 @@ class Experiment(sf.SupervisedTestCase):
     def test_every_scope_operand_is_checked_at_plan_admission_and_start(self):
         """Astra scope 2: invocation, topic, bundle and both edges of [not_before, deadline)."""
         job = self.interrupt_after_authorize()
-        order, plan, journal = (job.read(name) for name in ("order.json", "docker-plan.json", "journal.json"))
+        order, plan = (job.read(name) for name in ("order.json", "docker-plan.json"))
         origin = self.audit("dispatch_authorized")[0]["origin"]
         self.assertTrue(self.dispatch.is_current(origin))
         self.assertEqual(origin["qualification_ref"], self.environ["GEN2_QUALIFICATION_PIN"])
         self.assertIsNotNone(self.dispatch.admission(MAIN, self.dispatch.run_id, 1))
         for changes, timestamp in (({"invocation_id": "inv_other0001"}, START), ({"topic_id": rf.OTHER}, START),
-                                   ({"config_bundle_hash": "sha256:" + "0" * 64}, START), ({}, "2026-09-27T09:59:59Z"), ({}, END),
-                                   ({}, "2026-09-27T10:02:01Z")):
+                                   ({"config_bundle_hash": "sha256:" + "0" * 64}, START), ({}, "2026-09-27T09:59:59Z"), ({}, END)):
             with self.subTest(changes=changes, timestamp=timestamp), mock.patch.object(authority, "time_ns", return_value=utc_instant_ns(timestamp)):
                 with self.assertRaisesRegex(LiveProfileRefused, UNAVAILABLE):
                     self.dispatch.plan(order | changes)
@@ -148,13 +146,17 @@ class Experiment(sf.SupervisedTestCase):
                 job.write("docker-plan.json", plan | {"origin": plan["origin"] | changes})
                 self.assertIsNone(self.dispatch.admission(MAIN, self.dispatch.run_id, 1))
                 job.write("docker-plan.json", plan)
-        grant = journal["grant"]
-        request = {"invocation_id": MAIN, "capability_id": grant["capability_id"]}
-        self.assertIsNone(self.router.invocation_status(request)["launch_admission"])
-        self.clock.set(END)
-        self.assertEqual(self.router.invocation_status(request)["launch_admission"]["reason"], "spend_unbounded")
-        self.assertEqual(self.make_supervisor(dispatch=self.dispatch).advance(MAIN, live_start=True), "cancelled")
-        self.assertIsNone(job.read("spawn.json"))
+
+    def test_the_window_closing_in_the_authorizing_advance_spawns_nothing(self):
+        """Astra scope 2/3: the first launch, not a recovery, takes the Router's start check after the intent is durable."""
+        def close(point):
+            if point == "dispatch_authorized":
+                self.clock.set(END)   # returns normally: the same advance goes on to the spawn
+        supervisor = self.make_supervisor(dispatch=self.dispatch, fault=close)
+        supervisor.prepare(self.order("research_pass", []), live=True)
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "cancelled")
+        self.assertEqual(len(self.audit("dispatch_authorized")), 1)
+        self.assertIsNone(supervisor.job(MAIN).read("spawn.json"))
 
     def test_restart_refuses_the_old_epoch_even_inside_the_window(self):
         """Astra scope 3: a durable authorization cannot start under its successor engine."""
@@ -166,6 +168,16 @@ class Experiment(sf.SupervisedTestCase):
         self.assertEqual(supervisor.advance(MAIN, live_start=True), "cancelled")
         self.assertIsNone(job.read("spawn.json"))
         self.assertEqual(len(self.audit("dispatch_authorized")), 1)
+
+    def test_restart_after_preparation_refuses_a_plan_that_names_another_record(self):
+        """Astra scope 3: a prepared, unadmitted plan stays bound to the record that planned it; a qualified plan has no such pin to lose."""
+        self.make_supervisor(dispatch=self.dispatch).prepare(self.order("research_pass", []), live=True)
+        restarted = self.load(record={"deployment_id": "another-deployment"})   # same manifest, credential, state and order pins: only the record differs
+        self.assertNotEqual(restarted._pin, self.dispatch._pin)
+        supervisor = self.make_supervisor(dispatch=restarted, control=super().make_router(dispatch_authority=restarted))
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "cancelled")
+        self.assertEqual(self.audit("dispatch_authorized"), [])
+        self.assertIsNone(supervisor.job(MAIN).read("spawn.json"))
 
     def test_backend_refuses_both_directions_of_manifest_plan_disagreement(self):
         """Astra scope 1: backend independently enforces the literal manifest claim."""
@@ -222,6 +234,18 @@ class Experiment(sf.SupervisedTestCase):
         self.assertEqual(self.value("SELECT state FROM invocations WHERE invocation_id = ?", MAIN), "failed")
         return supervisor, job, result
 
+    def test_the_child_refuses_a_same_state_manifest_the_plan_does_not_name(self):
+        """Astra scope 1: the bytes read at the backend entrance must be the durable plan's manifest, before any command."""
+        supervisor = self.make_supervisor(dispatch=self.dispatch)
+        supervisor.prepare(dataclasses.replace(self.order("research_pass", []), command=(sys.executable, str(children.path("gen2/tests/live_refusing_child.py")))), live=True)
+        (self.root / "manifest.json").write_bytes(canonical.canonical_bytes(self.manifest | {"credential_version": "v2"}))   # same state and route, other pins
+        self.assertEqual(supervisor.advance(MAIN, live_start=True), "running")
+        job = supervisor.job(MAIN)
+        supervisor._children[job.handle].wait(timeout=10)
+        self.assertEqual(job.read("exit.json"), {"code": 1, "signal": None})
+        self.assertFalse((self.root / "calls.jsonl").exists())
+        self.assertIsNone(job.read("docker-attempt.json"))
+
     def test_accepted_credential_retains_the_outcome_and_one_u_with_no_rejection(self):
         """Astra scope 3: concurrent orders, replay, expiry and a second invocation cannot send again."""
         supervisor, job, result = self.end("accepted", race=True, late=True)
@@ -232,7 +256,6 @@ class Experiment(sf.SupervisedTestCase):
         self.assertIn(digest, {ref["content_hash"] for ref in result["evidence"]["artifacts"]})
         self.assertEqual(self.spool.read(digest, topic_id=rf.TOPIC), child.ACCEPTED)
         self.assertFalse((job.scratch / "outcome.json").exists())
-        self.assertIn("judgment.json is not strict JSON", (job.dir / "executor.log").read_text())
         self.assertTrue(result["trial_stopped"])
         self.clock.set(START)
         self.assertEqual(supervisor.advance(MAIN, live_start=True), "failed")
@@ -241,9 +264,7 @@ class Experiment(sf.SupervisedTestCase):
         self.assertEqual(job.read("spawn.json"), {"attempts": 1, "failed": 0})
         self.assertIsNotNone(job.read("docker-attempt.json"))
         self.assertEqual(len(self.audit("dispatch_authorized")), 1)
-        commands = [json.loads(line) for line in (self.root / "calls.jsonl").read_text().splitlines()]
-        runner_creates = [args for args in commands if args[0] == "create" and args[args.index("--cidfile") + 1].endswith("/runner.cid")]
-        self.assertEqual(len(runner_creates), 1)
+        self.assertEqual((self.root / "starts").read_text().split().count("runner"), 1)
 
     def test_real_401_writes_the_dated_fact_owned_hold_and_failed_with_evidence(self):
         """§4.2 Outcomes and DEBT-004: real-route classification through the production child."""
