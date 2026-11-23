@@ -512,6 +512,86 @@ class DockerBoundary(unittest.TestCase):
             with self.subTest(label):
                 self.refused(lambda: self.cli.create_auxiliary("relay", NET), "relay_provider_files")
 
+    def test_capture_gate_admits_a_present_null_state_on_the_fixture_route_only_when_asked(self):
+        """Seam e: an explicit constructor opt-in swaps the claimed state for a present null; retained bytes are still fetched and hashed."""
+        null, gate = {**self.manifest, "qualification_state": None}, lambda m, **kw: d.manifest_gate(m, lambda pin: b"configuration", "reviewed-tree", **kw)
+        self.assertEqual(gate(null, capture=True), null)
+        self.refused(lambda: gate(null), "manifest_not_qualified")                                            # the default gate still refuses null
+        real = {**null, "route": "real", "images": {r: v for r, v in self.manifest["images"].items() if r != "fixture"},
+                "configurations": {r: v for r, v in self.manifest["configurations"].items() if r != "fixture"}}
+        missing = {k: v for k, v in null.items() if k != "qualification_state"}
+        for label, bad in (("real", real), ("missing", missing), ("qualified", self.manifest), ("experiment", {**null, "qualification_state": "rejection_experiment"}),
+                           ("empty", {**null, "qualification_state": ""}), ("unpinned", {**null, "qualification_ref": "dummy"}), ("no claim", {**null, "qualification_ref": None})):
+            with self.subTest(label):
+                self.refused(lambda: gate(bad, capture=True), "manifest_not_qualified")
+        self.refused(lambda: d.manifest_gate(null, lambda pin: b"changed", "reviewed-tree", capture=True), "manifest_retained")
+        self.assertEqual(d.manifest_gate(self.manifest, lambda pin: b"configuration", "reviewed-tree"), self.manifest)   # the default qualified path is unchanged
+
+    def test_the_capture_constructor_binds_the_plan_origin_to_the_manifest_state_in_both_directions(self):
+        null = {**self.manifest, "qualification_state": None}
+        def build(manifest, origin, reason=None, **kw):
+            self.job.write("docker-plan.json", {"origin": origin})
+            with self.assertRaisesRegex(LiveProfileRefused, reason) if reason else contextlib.nullcontext():
+                return d.DockerCLI(self.job, manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10, clock=lambda: 1000.0, **kw)
+        self.assertTrue(build(null, {"invocation": "x", "qualification_state": None}, capture_mode=True).capture_mode)
+        build(null, {"invocation": "x"}, "plan_qualification_state", capture_mode=True)                                          # omitted origin means qualified
+        build(self.manifest, {"invocation": "x", "qualification_state": None}, "plan_qualification_state")
+        build(null, {"invocation": "x", "qualification_state": None}, "manifest_not_qualified")
+        self.assertFalse(build(self.manifest, {"invocation": "x"}).capture_mode)                                                 # ordinary omission still means qualified
+
+    def test_the_productive_child_never_opts_in_so_a_bound_null_manifest_refuses_before_any_docker_call(self):
+        from gen2.app import live
+        from gen2.core import canonical
+        from gen2.exec.common import Refused
+        manifest = json.dumps({**self.manifest, "qualification_state": None}).encode()
+        (self.root / "manifest.json").write_bytes(manifest)
+        (self.root / "retained").mkdir()
+        self.job.write("docker-plan.json", {"origin": {"invocation_id": "inv_live00001", "manifest_ref": canonical.bytes_digest(manifest), "qualification_state": None}})
+        env = {"GEN2_MANIFEST": str(self.root / "manifest.json"), "GEN2_RETAINED_DIR": str(self.root / "retained")}
+        out = self.job.scratch / "out"
+        out.mkdir(exist_ok=True)
+        with mock.patch.object(live.docker_cli, "capture") as docker, mock.patch.object(d.DockerCLI, "__init__", autospec=True, side_effect=d.DockerCLI.__init__) as built:
+            with self.assertRaisesRegex(Refused, "manifest_not_qualified"):
+                live.agent_for(self.job.scratch, env, execute=docker)(b"", b"", out)
+        docker.assert_not_called()
+        self.assertEqual(built.call_args.kwargs.get("capture_mode", False), False)
+
+    def test_the_capture_relay_alone_mounts_the_two_dummy_files_on_the_fixture_route(self):
+        self.cli.plan.update(generation=GENERATION, slots={"out": "/slots/out", "evidence": "/slots/evidence"}, relay_config="/reviewed/nginx.conf", route="fixture")
+        self.job.write("network-job.json", {"Id": NET})
+        dummies = {"dummy_auth": "/stage/relay/dummy-auth.conf", "dummy_ca": "/stage/relay/dummy-ca.pem"}
+        providers = {"provider_auth": "/protected/provider-auth.conf", "provider_ca": "/protected/provider-ca.pem"}
+        real = {"provider_auth": "/protected/provider-auth.conf", "provider_ca": "/protected/provider-ca.pem"}
+
+        def create(plan, capture, role="relay"):
+            self.cli.plan = {**{k: v for k, v in self.cli.plan.items() if k not in (*dummies, *providers)}, **plan}
+            self.cli.capture_mode = capture
+            self.job.write("docker.json", {})
+            (self.job.dir / (role + ".cid")).unlink(missing_ok=True)
+            with mock.patch.object(self.cli, "_create") as made:
+                self.cli.create_auxiliary(role, NET if role == "relay" else None)
+            return " ".join(made.call_args.args[1])
+        plain = create({}, False)
+        self.assertEqual(create({}, True), plain)                                                    # capture without dummy keys changes nothing
+        self.assertNotIn("provider-", plain)
+        argv = create(dummies, True)
+        mounts = [m for m in argv.split("--mount ")[1:]]
+        self.assertEqual([m.split(",dst=")[1].split()[0].removesuffix(",readonly") for m in mounts], [f"/evidence", "/etc/nginx/nginx.conf", "/etc/gen2/provider-auth.conf", "/etc/gen2/provider-ca.pem"])
+        self.assertIn("src=/stage/relay/dummy-auth.conf,dst=/etc/gen2/provider-auth.conf,readonly", argv)
+        self.assertIn("src=/stage/relay/dummy-ca.pem,dst=/etc/gen2/provider-ca.pem,readonly", argv)
+        self.assertNotIn("/etc/gen2", create(dummies, True, "initializer"))                         # the initializer never sees them
+        self.assertIn("src=/protected/provider-auth.conf", create({"route": "real", **real}, False))
+        for label, plan, capture in (("no capture argument", dummies, False), ("one", {"dummy_auth": dummies["dummy_auth"]}, True), ("swapped", {"dummy_auth": dummies["dummy_ca"], "dummy_ca": dummies["dummy_auth"]}, True),
+                                     ("provider names", {"dummy_auth": providers["provider_auth"], "dummy_ca": providers["provider_ca"]}, True), ("null", {**dummies, "dummy_ca": None}, True),
+                                     ("empty", {**dummies, "dummy_ca": ""}, True), ("relative", {**dummies, "dummy_ca": "relay/dummy-ca.pem"}, True), ("comma", {**dummies, "dummy_ca": "/s,x/dummy-ca.pem"}, True),
+                                     ("provider key beside dummies", {**dummies, "provider_ca": providers["provider_ca"]}, True), ("provider key null", {"provider_auth": None}, True),
+                                     ("real with dummies", {"route": "real", **real, **dummies}, True), ("real with dummies only", {"route": "real", **dummies}, True),
+                                     ("real with one", {"route": "real", "provider_auth": real["provider_auth"]}, True), ("real with null", {"route": "real", **real, "provider_ca": None}, True)):
+            with self.subTest(label):
+                self.cli.plan = {**{k: v for k, v in self.cli.plan.items() if k not in (*dummies, *providers)}, "route": "fixture", **plan}
+                self.cli.capture_mode = capture
+                self.refused(lambda: self.cli.create_auxiliary("relay", NET), "relay_provider_files|auxiliary_bind_path")
+
     def test_start_projection_private_pid_namespace_seal_and_capture_recovery_rows(self):
         """L/F1: expected settings, a pinned private PID namespace, the seal, and original start; mocked inspection, no daemon."""
         record = {"Id": CID, "Image": "sha256:" + CID, "Config": {"User": "10001:10001"}, "HostConfig": {"ReadonlyRootfs": True, "PidMode": ""}, "NetworkSettings": {"Networks": {}}, "State": {"StartedAt": self.STARTED}}
