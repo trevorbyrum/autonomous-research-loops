@@ -395,14 +395,16 @@ class DockerCLI:
         files = {}
         if role == "relay":   # presence decides, never value: real carries exactly the two provider files; a fixture none, or (capture only) exactly both stand-ins
             here = {k for k in (*RELAY_PROVIDER, *RELAY_DUMMY) if k in self.plan}
-            stand_in = self.capture_mode and self.plan.get("route") == self.manifest["route"] == "fixture"
-            require(here == (set(RELAY_PROVIDER) if self.plan.get("route") == "real" else set(RELAY_DUMMY) if stand_in and here else set()), "relay_provider_files")
+            route = self.plan.get("route", "fixture")   # an omitted route is the ordinary fixture; it must be the admitted manifest's
+            require(route == self.manifest["route"], "plan_route")
+            stand_in = self.capture_mode and self.plan.get("route") == "fixture"   # stand-ins need an explicit fixture route
+            require(here == (set(RELAY_PROVIDER) if route == "real" else set(RELAY_DUMMY) if stand_in and here else set()), "relay_provider_files")
             require(all(isinstance(self.plan[k], str) for k in here)
                     and all(Path(self.plan[k]).name == name for k, (name, _) in RELAY_DUMMY.items() if k in here), "relay_provider_files")
             files = {dst: self.plan[key] for key, dst in (*RELAY_PROVIDER.items(), *((k, v[1]) for k, v in RELAY_DUMMY.items())) if key in here}
         mounts = slots if role == "initializer" else {"evidence": str(Path(slots["evidence"]) / generation), "etc/nginx/nginx.conf": self.plan["relay_config"], **files}
         for name, source in mounts.items():
-            require(Path(source).is_absolute() and "," not in source, "auxiliary_bind_path")
+            require(Path(source).is_absolute() and "," not in source and "\0" not in source, "auxiliary_bind_path")
             args.extend(("--mount", f"type=bind,src={source},dst=/{name}" + (",readonly" if name.startswith("etc/") else "")))
         if role == "initializer":
             args.extend(("--user", "0:0", "--cap-add", "CHOWN", "--entrypoint", "/usr/local/bin/python",   # the engine image's own ENTRYPOINT is gen2.app.engine

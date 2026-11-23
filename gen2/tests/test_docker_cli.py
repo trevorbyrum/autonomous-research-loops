@@ -501,6 +501,7 @@ class DockerBoundary(unittest.TestCase):
         self.assertEqual(initializer[-3:], ("-m", "gen2.supervisor.docker_cli", GENERATION))
         fixture_relay = argv("relay", {"route": "fixture"})
         self.assertNotIn("provider", " ".join(fixture_relay))
+        self.cli.manifest = {**self.cli.manifest, "route": "real"}   # the plan's real route must be the admitted manifest's
         real_relay = argv("relay", {"route": "real", **files})
         for destination, source in (("etc/gen2/provider-auth.conf", files["provider_auth"]), ("etc/gen2/provider-ca.pem", files["provider_ca"])):
             self.assertIn(f"type=bind,src={source},dst=/{destination},readonly", real_relay)
@@ -510,7 +511,14 @@ class DockerBoundary(unittest.TestCase):
             self.cli.plan = {k: v for k, v in self.cli.plan.items() if k not in files}
             self.cli.plan.update(plan)
             with self.subTest(label):
-                self.refused(lambda: self.cli.create_auxiliary("relay", NET), "relay_provider_files")
+                self.refused(lambda: self.cli.create_auxiliary("relay", NET), "relay_provider_files|plan_route")
+        (self.job.dir / "relay.cid").unlink(missing_ok=True)
+        self.cli.manifest = {**self.cli.manifest, "route": "fixture"}
+        self.cli.plan = {k: v for k, v in self.cli.plan.items() if k not in files}
+        for label, plan in (("real-marked plan with provider files on a fixture manifest", {"route": "real", **files}), ("real-marked plan, no files", {"route": "real"})):
+            self.cli.plan = {**{k: v for k, v in self.cli.plan.items() if k not in (*files, "route")}, **plan}
+            with self.subTest(label):
+                self.refused(lambda: self.cli.create_auxiliary("relay", NET), "plan_route")
 
     def test_capture_gate_admits_a_present_null_state_on_the_fixture_route_only_when_asked(self):
         """Seam e: an explicit constructor opt-in swaps the claimed state for a present null; retained bytes are still fetched and hashed."""
@@ -525,7 +533,15 @@ class DockerBoundary(unittest.TestCase):
             with self.subTest(label):
                 self.refused(lambda: gate(bad, capture=True), "manifest_not_qualified")
         self.refused(lambda: d.manifest_gate(null, lambda pin: b"changed", "reviewed-tree", capture=True), "manifest_retained")
-        self.assertEqual(d.manifest_gate(self.manifest, lambda pin: b"configuration", "reviewed-tree"), self.manifest)   # the default qualified path is unchanged
+        blobs = {r: r.encode() for r in d.ROLES}
+        pins = {r: "sha256:" + hashlib.sha256(b).hexdigest() for r, b in blobs.items()}
+        distinct = {**null, "configurations": {r: {"pin": p} for r, p in pins.items()}}
+        by_pin = {p: blobs[r] for r, p in pins.items()}
+        self.assertEqual(d.manifest_gate(distinct, by_pin.get, "reviewed-tree", capture=True), distinct)
+        for role in d.ROLES:   # a withheld or altered entry for any one role refuses, so no role is skipped and no lookup ignores its pin
+            with self.subTest(role=role):
+                self.refused(lambda: d.manifest_gate(distinct, {k: v for k, v in by_pin.items() if k != pins[role]}.get, "reviewed-tree", capture=True), "manifest_retained")
+                self.refused(lambda: d.manifest_gate(distinct, {**by_pin, pins[role]: b"altered"}.get, "reviewed-tree", capture=True), "manifest_retained")
 
     def test_the_capture_constructor_binds_the_plan_origin_to_the_manifest_state_in_both_directions(self):
         null = {**self.manifest, "qualification_state": None}
@@ -535,6 +551,7 @@ class DockerBoundary(unittest.TestCase):
                 return d.DockerCLI(self.job, manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10, clock=lambda: 1000.0, **kw)
         self.assertTrue(build(null, {"invocation": "x", "qualification_state": None}, capture_mode=True).capture_mode)
         build(null, {"invocation": "x"}, "plan_qualification_state", capture_mode=True)                                          # omitted origin means qualified
+        build(null, {"invocation": "x", "qualification_state": "qualified"}, "plan_qualification_state", capture_mode=True)      # a present conflicting mark
         build(self.manifest, {"invocation": "x", "qualification_state": None}, "plan_qualification_state")
         build(null, {"invocation": "x", "qualification_state": None}, "manifest_not_qualified")
         self.assertFalse(build(self.manifest, {"invocation": "x"}).capture_mode)                                                 # ordinary omission still means qualified
@@ -546,51 +563,109 @@ class DockerBoundary(unittest.TestCase):
         manifest = json.dumps({**self.manifest, "qualification_state": None}).encode()
         (self.root / "manifest.json").write_bytes(manifest)
         (self.root / "retained").mkdir()
+        (self.root / "retained" / self.pin.removeprefix("sha256:")).write_bytes(b"configuration")   # otherwise valid: only the state refuses
         self.job.write("docker-plan.json", {"origin": {"invocation_id": "inv_live00001", "manifest_ref": canonical.bytes_digest(manifest), "qualification_state": None}})
         env = {"GEN2_MANIFEST": str(self.root / "manifest.json"), "GEN2_RETAINED_DIR": str(self.root / "retained")}
         out = self.job.scratch / "out"
         out.mkdir(exist_ok=True)
-        with mock.patch.object(live.docker_cli, "capture") as docker, mock.patch.object(d.DockerCLI, "__init__", autospec=True, side_effect=d.DockerCLI.__init__) as built:
+        with mock.patch.object(live.docker_cli, "capture") as docker:
             with self.assertRaisesRegex(Refused, "manifest_not_qualified"):
                 live.agent_for(self.job.scratch, env, execute=docker)(b"", b"", out)
         docker.assert_not_called()
-        self.assertEqual(built.call_args.kwargs.get("capture_mode", False), False)
 
-    def test_the_capture_relay_alone_mounts_the_two_dummy_files_on_the_fixture_route(self):
-        self.cli.plan.update(generation=GENERATION, slots={"out": "/slots/out", "evidence": "/slots/evidence"}, relay_config="/reviewed/nginx.conf", route="fixture")
+    def capture_backend(self, route="fixture", capture=True, plan=None):
+        """A real constructor over a manifest of the given route (null state under capture, qualified otherwise) and a plan carrying `plan`."""
+        manifest = {**self.manifest, "qualification_state": None if capture else "qualified", "route": route}
+        if route == "real":
+            manifest.update({k: {r: v for r, v in self.manifest[k].items() if r != "fixture"} for k in ("images", "configurations")})
+        origin = {"invocation": "fixture", "invocation_id": "inv_fixture0001", **({"qualification_state": None} if capture else {})}
+        self.job.write("docker-plan.json", {"origin": origin, "generation": GENERATION, "slots": {"out": "/slots/out", "evidence": "/slots/evidence"},
+                                            "relay_config": "/reviewed/nginx.conf", **(plan or {})})
         self.job.write("network-job.json", {"Id": NET})
+        self.job.write("docker.json", {})
+        return d.DockerCLI(self.job, manifest, lambda pin: b"configuration", "reviewed-tree", execute=self.execute, now=lambda: 10, clock=lambda: 1000.0, capture_mode=capture)
+
+    def relay_mounts(self, cli, role="relay"):
+        with mock.patch.object(cli, "_create") as made:
+            cli.create_auxiliary(role, NET if role == "relay" else None)
+        args = made.call_args.args[1]
+        return [a for p, a in zip(args, args[1:]) if p == "--mount"]
+
+    def test_the_capture_relay_alone_mounts_the_two_dummy_files_on_a_matched_fixture_route(self):
         dummies = {"dummy_auth": "/stage/relay/dummy-auth.conf", "dummy_ca": "/stage/relay/dummy-ca.pem"}
         providers = {"provider_auth": "/protected/provider-auth.conf", "provider_ca": "/protected/provider-ca.pem"}
-        real = {"provider_auth": "/protected/provider-auth.conf", "provider_ca": "/protected/provider-ca.pem"}
-
-        def create(plan, capture, role="relay"):
-            self.cli.plan = {**{k: v for k, v in self.cli.plan.items() if k not in (*dummies, *providers)}, **plan}
-            self.cli.capture_mode = capture
-            self.job.write("docker.json", {})
-            (self.job.dir / (role + ".cid")).unlink(missing_ok=True)
-            with mock.patch.object(self.cli, "_create") as made:
-                self.cli.create_auxiliary(role, NET if role == "relay" else None)
-            return " ".join(made.call_args.args[1])
-        plain = create({}, False)
-        self.assertEqual(create({}, True), plain)                                                    # capture without dummy keys changes nothing
-        self.assertNotIn("provider-", plain)
-        argv = create(dummies, True)
-        mounts = [m for m in argv.split("--mount ")[1:]]
-        self.assertEqual([m.split(",dst=")[1].split()[0].removesuffix(",readonly") for m in mounts], [f"/evidence", "/etc/nginx/nginx.conf", "/etc/gen2/provider-auth.conf", "/etc/gen2/provider-ca.pem"])
-        self.assertIn("src=/stage/relay/dummy-auth.conf,dst=/etc/gen2/provider-auth.conf,readonly", argv)
-        self.assertIn("src=/stage/relay/dummy-ca.pem,dst=/etc/gen2/provider-ca.pem,readonly", argv)
-        self.assertNotIn("/etc/gen2", create(dummies, True, "initializer"))                         # the initializer never sees them
-        self.assertIn("src=/protected/provider-auth.conf", create({"route": "real", **real}, False))
-        for label, plan, capture in (("no capture argument", dummies, False), ("one", {"dummy_auth": dummies["dummy_auth"]}, True), ("swapped", {"dummy_auth": dummies["dummy_ca"], "dummy_ca": dummies["dummy_auth"]}, True),
-                                     ("provider names", {"dummy_auth": providers["provider_auth"], "dummy_ca": providers["provider_ca"]}, True), ("null", {**dummies, "dummy_ca": None}, True),
-                                     ("empty", {**dummies, "dummy_ca": ""}, True), ("relative", {**dummies, "dummy_ca": "relay/dummy-ca.pem"}, True), ("comma", {**dummies, "dummy_ca": "/s,x/dummy-ca.pem"}, True),
-                                     ("provider key beside dummies", {**dummies, "provider_ca": providers["provider_ca"]}, True), ("provider key null", {"provider_auth": None}, True),
-                                     ("real with dummies", {"route": "real", **real, **dummies}, True), ("real with dummies only", {"route": "real", **dummies}, True),
-                                     ("real with one", {"route": "real", "provider_auth": real["provider_auth"]}, True), ("real with null", {"route": "real", **real, "provider_ca": None}, True)):
+        evidence, config = f"type=bind,src=/slots/evidence/{GENERATION},dst=/evidence", "type=bind,src=/reviewed/nginx.conf,dst=/etc/nginx/nginx.conf,readonly"
+        provider = lambda src, dst: f"type=bind,src={src},dst=/etc/gen2/provider-{dst},readonly"
+        plain = [evidence, config]
+        for label, cli, expected in (
+                ("capture with the pair", self.capture_backend(plan={"route": "fixture", **dummies}), [*plain, provider(dummies["dummy_auth"], "auth.conf"), provider(dummies["dummy_ca"], "ca.pem")]),
+                ("capture without keys", self.capture_backend(plan={"route": "fixture"}), plain), ("capture, route omitted, no keys", self.capture_backend(), plain),
+                ("qualified fixture", self.capture_backend(capture=False, plan={"route": "fixture"}), plain),
+                ("matched real", self.capture_backend("real", False, {"route": "real", **providers}), [*plain, provider(providers["provider_auth"], "auth.conf"), provider(providers["provider_ca"], "ca.pem")])):
             with self.subTest(label):
-                self.cli.plan = {**{k: v for k, v in self.cli.plan.items() if k not in (*dummies, *providers)}, "route": "fixture", **plan}
-                self.cli.capture_mode = capture
-                self.refused(lambda: self.cli.create_auxiliary("relay", NET), "relay_provider_files|auxiliary_bind_path")
+                self.assertEqual(self.relay_mounts(cli), expected)
+        self.assertEqual(self.relay_mounts(self.capture_backend(plan={"route": "fixture", **dummies}), "initializer"), ["type=bind,src=/slots/evidence,dst=/evidence", "type=bind,src=/slots/out,dst=/out"])
+        for label, route, capture, plan in (
+                ("dummies without the capture argument", "fixture", False, {"route": "fixture", **dummies}), ("dummies on an omitted route", "fixture", True, dummies),
+                ("one dummy", "fixture", True, {"route": "fixture", "dummy_auth": dummies["dummy_auth"]}),
+                ("swapped", "fixture", True, {"route": "fixture", "dummy_auth": dummies["dummy_ca"], "dummy_ca": dummies["dummy_auth"]}),
+                ("provider file names", "fixture", True, {"route": "fixture", "dummy_auth": providers["provider_auth"], "dummy_ca": providers["provider_ca"]}),
+                *((f"{k} {bad!r}", "fixture", True, {"route": "fixture", **dummies, "dummy_ca": bad}) for k, bad in (("null", None), ("empty", ""), ("relative", "relay/dummy-ca.pem"),
+                  ("comma", "/s,x/dummy-ca.pem"), ("NUL", "/s\0x/dummy-ca.pem"))),
+                ("provider key beside the pair", "fixture", True, {"route": "fixture", **dummies, "provider_ca": providers["provider_ca"]}),
+                ("null provider key", "fixture", True, {"route": "fixture", "provider_auth": None}),
+                ("real with the pair", "real", False, {"route": "real", **providers, **dummies}), ("real with one file", "real", False, {"route": "real", "provider_auth": providers["provider_auth"]}),
+                ("real with a null file", "real", False, {"route": "real", **providers, "provider_ca": None}), ("real with a NUL file", "real", False, {"route": "real", **providers, "provider_ca": "/p\0q"})):
+            with self.subTest(label):
+                cli = self.capture_backend(route, capture, plan)
+                with mock.patch.object(cli, "_create") as made, self.assertRaisesRegex(LiveProfileRefused, "relay_provider_files|auxiliary_bind_path"):
+                    cli.create_auxiliary("relay", NET)
+                made.assert_not_called()
+        for label, route, capture, plan in (("real-marked plan with provider files on a capture fixture manifest", "fixture", True, {"route": "real", **providers}),
+                                            ("the same on a qualified fixture manifest", "fixture", False, {"route": "real", **providers}),
+                                            ("a fixture plan on a real manifest", "real", False, {"route": "fixture"}), ("an omitted route on a real manifest", "real", False, {}),
+                                            ("a real-marked plan with dummies on a capture fixture manifest", "fixture", True, {"route": "real", **dummies})):
+            with self.subTest(label):
+                cli = self.capture_backend(route, capture, plan)
+                with mock.patch.object(cli, "_create") as made, self.assertRaisesRegex(LiveProfileRefused, "plan_route"):
+                    cli.create_auxiliary("relay", NET)
+                made.assert_not_called()
+
+    def test_capture_run_reaches_the_relay_create_with_four_mounts_and_an_invalid_pair_reaches_none(self):
+        upstream, fixture_id = "d" * 64, "f" * 64
+        for slot in ("out", "evidence"):
+            (self.root / slot / GENERATION).mkdir(parents=True)
+        fixture_directory = self.root / "evidence" / ("4" * 32)
+        fixture_directory.mkdir()
+        fixture = {"Id": fixture_id, "Image": "sha256:" + CID, "Config": {}, "NetworkSettings": {"Networks": {"up": {"NetworkID": upstream, "IPAMConfig": {"IPv4Address": "172.31.252.3"}}}},
+                   "Mounts": [{"Type": "bind", "Source": str(fixture_directory), "Destination": "/evidence"}],
+                   "HostConfig": {"PidMode": "", "RestartPolicy": {"Name": "no", "MaximumRetryCount": 0}, "Mounts": [{"Type": "bind", "Source": str(fixture_directory), "Target": "/evidence"}]},
+                   "State": {"StartedAt": "2026-11-13T01:00:00Z"}}
+        view = {"Id": upstream, "Name": "up", "Internal": True, "EnableIPv6": False, "Driver": "bridge", "IPAM": {"Config": [{"Subnet": d.NETWORKS["fixture"]}]}, "Containers": {fixture_id: {}}}
+        dummies = {"dummy_auth": "/stage/relay/dummy-auth.conf", "dummy_ca": "/stage/relay/dummy-ca.pem"}
+        self.job.write("identity.json", {"pid": os.getpid()})
+        for label, pair, wanted in (("valid pair", dummies, 4), ("swapped pair", {"dummy_auth": dummies["dummy_ca"], "dummy_ca": dummies["dummy_auth"]}, None)):
+            with self.subTest(label), contextlib.ExitStack() as stack:
+                for name in ("docker-attempt.json", "docker-generations.json", "docker-complete.json"):
+                    (self.job.dir / name).unlink(missing_ok=True)
+                cli = self.capture_backend(plan={"route": "fixture", "slots": {"out": str(self.root / "out"), "evidence": str(self.root / "evidence")}, "fixture": fixture,
+                                                 "binds": {"out": str(self.root / "out" / GENERATION)}, **pair})
+                created = []
+                class Stop(Exception):
+                    pass
+                stack.enter_context(mock.patch.object(d.jobs, "members", return_value=[os.getpid()]))
+                stack.enter_context(mock.patch.object(d, "contain_job"))
+                stack.enter_context(mock.patch.object(cli, "_create", side_effect=lambda role, args: (created.append((role, args)), CID)[1]))
+                for name, result in {"runtime": None, "start": None, "end": {"State": {"ExitCode": 0}}, "network": NET, "inspect": fixture, "_command": json.dumps([view]).encode(),
+                                     "endpoint": Stop()}.items():
+                    stack.enter_context(mock.patch.object(cli, name, **({"side_effect": result} if isinstance(result, BaseException) else {"return_value": result})))
+                with self.assertRaises(Stop if wanted else LiveProfileRefused):
+                    cli.run(mock.Mock())
+                relays = [args for role, args in created if role == "relay"]
+                self.assertEqual(len(relays), 1 if wanted else 0)
+                if wanted:
+                    self.assertEqual(len([a for p, a in zip(relays[0], relays[0][1:]) if p == "--mount"]), wanted)
+                    self.assertIn(f"type=bind,src={dummies['dummy_ca']},dst=/etc/gen2/provider-ca.pem,readonly", relays[0])
 
     def test_start_projection_private_pid_namespace_seal_and_capture_recovery_rows(self):
         """L/F1: expected settings, a pinned private PID namespace, the seal, and original start; mocked inspection, no daemon."""
