@@ -169,14 +169,6 @@ class PlanAndGate(LiveWorld):
             auth.QualifiedAuthority(self.root / "jobs", record=data, pin=pin, manifest=MANIFEST, stage=self.spool.stage).plan(
                 {"invocation_id": MAIN, "topic_id": rf.TOPIC, "config_bundle_hash": rf.CONFIG})
 
-    def test_a_fixture_template_carrying_dummy_relay_keys_projects_a_plan_without_them(self):
-        fixture = record_doc(self.root)
-        fixture["plan"].update(dummy_auth="/host/relay/dummy-auth.conf", dummy_ca="/host/relay/dummy-ca.pem")
-        data, pin = sealed(fixture)
-        planned = auth.QualifiedAuthority(self.root / "jobs", record=data, pin=pin, manifest=MANIFEST, stage=self.spool.stage).plan(
-            {"invocation_id": MAIN, "topic_id": rf.TOPIC, "config_bundle_hash": rf.CONFIG})
-        self.assertFalse({"dummy_auth", "dummy_ca", *auth.RELAY_PROVIDER} & set(planned))
-
     def test_the_relays_provider_files_come_only_from_the_protected_template_real_route_only(self):
         base = record_doc(self.root, "real")
         base["plan"].update(EGRESS_TEMPLATE)
@@ -193,6 +185,8 @@ class PlanAndGate(LiveWorld):
         fixture = record_doc(self.root)
         data, pin = sealed({**fixture, "plan": {**fixture["plan"], "provider_ca": "/host/relay/provider-ca.pem"}})
         self.assertIsNone(auth.verify_record(data, pin, MANIFEST))                                # a fixture route has no provider files
+        planned = plan({**fixture, "plan": {**fixture["plan"], "dummy_auth": "/host/relay/dummy-auth.conf", "dummy_ca": "/host/relay/dummy-ca.pem"}}).plan(order)
+        self.assertFalse({"dummy_auth", "dummy_ca", *auth.RELAY_PROVIDER} & set(planned))        # dummy keys in a fixture template are never projected
 
     def test_a_job_directory_outside_the_mapped_prefix_cannot_be_planned(self):
         data, pin = sealed(record_doc(self.root, plan={**record_doc(self.root)["plan"], "engine_jobs": "/somewhere/else"}))
