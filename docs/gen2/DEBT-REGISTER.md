@@ -804,3 +804,19 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: The previous fixture image `488b76e1…` is no longer in the daemon after the 2026-11-19 fixture rebuild, so there is no rollback image; the accepted witnesses rest on their receipts. File: not recorded. Owner lane: not recorded.
 - source: gen2-fixture-rebuild-verifier-20261119.md (note that the old fixture image is gone).
 - removal: not recorded.
+
+### DEBT-080 - Gate S deletion pass before the R2 live record, including the manifest-claim requirement (Phase 2)
+- kind: obligation
+- status: open
+- owner: phase 2
+- what: The 2026-11-22 delegated ruling allows production to grow to 18,100 for the rejection-experiment lane only (the 18,000 trigger stays in force elsewhere) on the condition that a fresh Gate S deletion pass finishes before the R2 live record is published. The pass does not block R0, R1 or the attended send. If production is at or over 18,000 after it, the live start waits for Trevor, and the allowance ends at the live start. On 2026-11-23 the manifest-claim requirement was added to this pass: every pre-record manifest since T9 claimed `qualification_state: qualified` before any witness (capture-only; the T9 record, the d66fa79 acceptance and the S9 prep report are corrected by #214's pre-record capture path). File: not recorded. Owner lane: not recorded. Owning task: not recorded in the source (the `phase 2` owner field is only the register's required container, matching this entry's heading).
+- source: rulings log 2026-11-22T23:06Z (the delegated Overwatch rulings, item 6) and 2026-11-23T23:16Z (records owed, the deletion pass).
+- removal: a fresh Gate S deletion pass has finished and its result is recorded before the R2 live record is published; the manifest-claim requirement is covered by it.
+
+### DEBT-081 - R2 remediation evidence has no invocation-free staging path (Phase 2)
+- kind: obligation
+- status: open
+- owner: phase 2
+- what: Astra's 2026-11-22 read found that neither revision of the real-route plan has a path to stage and register remediation artifacts for a topic outside an invocation; the database requires a recording invocation from the rejection's topic. Astra recorded this as an R2 remediation-staging blocker. The smallest addition it proposed (a proposed implementation, not a decision) is a local evidence invocation through the existing supervisor and Router, about +55 to +90 production lines, over P2's +40 condition, so P2 is sized under the normal rule (Astra and Fable, under 300). Real-origin validation needs tightening, and the global capability hold needs separate clearance before topic completion. R2-only; sequenced after the immediate path (R0, R1, the attended send). File: not recorded. Owner lane: not recorded. Owning task: not recorded in the source (the `phase 2` owner field is only the register's required container, matching this entry's heading).
+- source: rulings log 2026-11-22T23:13Z (R2 remediation staging read).
+- removal: not recorded.
