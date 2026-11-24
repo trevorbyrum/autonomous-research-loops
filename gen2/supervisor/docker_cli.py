@@ -38,6 +38,8 @@ SEAL = "admission-closed.json"
 RESERVE_S, LATE_END_S = 90, 50   # the runner's allowance ends RESERVE_S before the order's deadline (a normal-path reserve for the tail, not a guarantee); a relay removed later than LATE_END_S past it is outside the qualified send window
 # The relay's real-route files, plan key -> destination (relay only, read-only): its key include and its CA bundle. Destinations are lane C's D16 contract.
 RELAY_PROVIDER = {"provider_auth": "etc/gen2/provider-auth.conf", "provider_ca": "etc/gen2/provider-ca.pem"}
+# The fixture relay's capture-only stand-ins for those two files: plan key -> (required file name, destination). Same destinations, never the provider keys.
+RELAY_DUMMY = {"dummy_auth": ("dummy-auth.conf", "etc/gen2/provider-auth.conf"), "dummy_ca": ("dummy-ca.pem", "etc/gen2/provider-ca.pem")}
 MODEL = "gpt-6.1-terra"
 NETWORKS = {"job": "172.31.254.0/29", "fixture": "172.31.252.0/29"}
 EGRESS_FIELDS = ("network_id", "name", "subnet", "gateway")
@@ -96,8 +98,9 @@ def _when(text, reason):
     return moment
 
 
-def manifest_gate(manifest, retained, tree):
-    """Check retained operands, not qualification. Live admission still refuses."""
+def manifest_gate(manifest, retained, tree, *, capture=False):
+    """Check retained operands, not qualification. Live admission still refuses. `capture` (an operator-released pre-record fixture capture only; no
+    deployment passes it) swaps the claimed state for a present JSON null on the fixture route; it grants no admission."""
     require(isinstance(manifest, dict), "manifest_shape")
     require(manifest.get("version") == 1 and manifest.get("tree") == tree, "manifest_tree")
     require(manifest.get("socket") == SOCKET and manifest.get("cli_sha256") == CLI_SHA, "manifest_runtime")
@@ -105,7 +108,8 @@ def manifest_gate(manifest, retained, tree):
     roles = ROLES if manifest["route"] == "fixture" else ROLES - {"fixture"}   # a real route has no fixture container, so no fixture image or configuration
     # Seam e: productive dispatch needs a supervised profile with a pinned qualification claim; a claim is not proof (v7 §2).
     require(manifest.get("supervision") == "supervised", "manifest_not_supervised")
-    require(manifest.get("qualification_state") in ("qualified", "rejection_experiment") and isinstance(manifest.get("qualification_ref"), str)
+    require((("qualification_state" in manifest and manifest["qualification_state"] is None and manifest["route"] == "fixture") if capture
+             else manifest.get("qualification_state") in ("qualified", "rejection_experiment")) and isinstance(manifest.get("qualification_ref"), str)
             and bool(PIN.fullmatch(manifest["qualification_ref"])), "manifest_not_qualified")
     for key in ("daemon_version", "credential_ref", "credential_version"):
         require(isinstance(manifest.get(key), str) and manifest[key] not in PLACEHOLDERS, "manifest_" + key)
@@ -183,8 +187,9 @@ def capture(job, argv, env, deadline, bounds):
 
 
 class DockerCLI:
-    def __init__(self, job, manifest, retained, tree, *, execute=capture, now=time.monotonic, sleep=time.sleep, clock=time.time):
-        self.manifest = manifest_gate(manifest, retained, tree)
+    def __init__(self, job, manifest, retained, tree, *, execute=capture, now=time.monotonic, sleep=time.sleep, clock=time.time, capture_mode=False):
+        self.manifest = manifest_gate(manifest, retained, tree, capture=capture_mode)
+        self.capture_mode = capture_mode
         self.job, self.execute, self.now, self.sleep, self.clock = job, execute, now, sleep, clock
         self.plan = _read(job, "docker-plan.json")
         require(isinstance(self.plan, dict) and isinstance(self.plan.get("origin"), dict) and self.plan["origin"], "launch_originals")   # absent, null, malformed or origin-less: no launch
@@ -387,12 +392,19 @@ class DockerCLI:
                 "--memory-swap", "128m", "--cpus", ".25", "--no-healthcheck", "--ipc=private", "--cgroupns=private",
                 "--log-driver", "local", "--log-opt", "max-size=4m", "--log-opt", "max-file=1", "--log-opt", "compress=false",
                 "--tmpfs", "/tmp:rw,nodev,nosuid,size=16m,mode=0700,uid=10001,gid=10001", "--network", "none" if role == "initializer" else network]
-        real = self.plan.get("route") == "real"
-        require(role == "initializer" or {k for k in RELAY_PROVIDER if k in self.plan} == (set(RELAY_PROVIDER) if real else set()), "relay_provider_files")
-        mounts = slots if role == "initializer" else {"evidence": str(Path(slots["evidence"]) / generation), "etc/nginx/nginx.conf": self.plan["relay_config"],
-                                                      **{dst: self.plan[key] for key, dst in RELAY_PROVIDER.items() if key in self.plan}}
+        files = {}
+        if role == "relay":   # presence decides, never value: real carries exactly the two provider files; a fixture none, or (capture only) exactly both stand-ins
+            here = {k for k in (*RELAY_PROVIDER, *RELAY_DUMMY) if k in self.plan}
+            route = self.plan.get("route", "fixture")   # an omitted route is the ordinary fixture; it must be the admitted manifest's
+            require(route == self.manifest["route"], "plan_route")
+            stand_in = self.capture_mode and self.plan.get("route") == "fixture"   # stand-ins need an explicit fixture route
+            require(here == (set(RELAY_PROVIDER) if route == "real" else set(RELAY_DUMMY) if stand_in and here else set()), "relay_provider_files")
+            require(all(isinstance(self.plan[k], str) for k in here)
+                    and all(Path(self.plan[k]).name == name for k, (name, _) in RELAY_DUMMY.items() if k in here), "relay_provider_files")
+            files = {dst: self.plan[key] for key, dst in (*RELAY_PROVIDER.items(), *((k, v[1]) for k, v in RELAY_DUMMY.items())) if key in here}
+        mounts = slots if role == "initializer" else {"evidence": str(Path(slots["evidence"]) / generation), "etc/nginx/nginx.conf": self.plan["relay_config"], **files}
         for name, source in mounts.items():
-            require(Path(source).is_absolute() and "," not in source, "auxiliary_bind_path")
+            require(Path(source).is_absolute() and "," not in source and "\0" not in source, "auxiliary_bind_path")
             args.extend(("--mount", f"type=bind,src={source},dst=/{name}" + (",readonly" if name.startswith("etc/") else "")))
         if role == "initializer":
             args.extend(("--user", "0:0", "--cap-add", "CHOWN", "--entrypoint", "/usr/local/bin/python",   # the engine image's own ENTRYPOINT is gen2.app.engine

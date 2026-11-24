@@ -185,6 +185,8 @@ class PlanAndGate(LiveWorld):
         fixture = record_doc(self.root)
         data, pin = sealed({**fixture, "plan": {**fixture["plan"], "provider_ca": "/host/relay/provider-ca.pem"}})
         self.assertIsNone(auth.verify_record(data, pin, MANIFEST))                                # a fixture route has no provider files
+        planned = plan({**fixture, "plan": {**fixture["plan"], "dummy_auth": "/host/relay/dummy-auth.conf", "dummy_ca": "/host/relay/dummy-ca.pem"}}).plan(order)
+        self.assertFalse({"dummy_auth", "dummy_ca", *auth.RELAY_PROVIDER} & set(planned))        # dummy keys in a fixture template are never projected
 
     def test_a_job_directory_outside_the_mapped_prefix_cannot_be_planned(self):
         data, pin = sealed(record_doc(self.root, plan={**record_doc(self.root)["plan"], "engine_jobs": "/somewhere/else"}))
