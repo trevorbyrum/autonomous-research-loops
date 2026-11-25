@@ -820,3 +820,19 @@ Before this entry, the operator had accepted no mitigation. The record: the two 
 - what: Astra's 2026-11-22 read found that neither revision of the real-route plan has a path to stage and register remediation artifacts for a topic outside an invocation; the database requires a recording invocation from the rejection's topic. Astra recorded this as an R2 remediation-staging blocker. The smallest addition it proposed (a proposed implementation, not a decision) is a local evidence invocation through the existing supervisor and Router, about +55 to +90 production lines, over P2's +40 condition, so P2 is sized under the normal rule (Astra and Fable, under 300). Real-origin validation needs tightening, and the global capability hold needs separate clearance before topic completion. R2-only; sequenced after the immediate path (R0, R1, the attended send). File: not recorded. Owner lane: not recorded. Owning task: not recorded in the source (the `phase 2` owner field is only the register's required container, matching this entry's heading).
 - source: rulings log 2026-11-22T23:13Z (R2 remediation staging read).
 - removal: not recorded.
+
+### DEBT-082 - S2 test independence: recorded families beyond the W5 batch (Phase 2)
+- kind: obligation
+- status: open
+- owner: phase 2
+- what: Overwatch's 2026-11-24 triage of Astra's test-independence families in the private operator set's tests found that none blocks W1 or W2–W4. Three small items (the observer nonce and whole argument list; pinning the accepted-hold native record; a W5 positive through the manifest gate) are scheduled before W5 and are not part of this debt. Recorded as debt: (1) manifest tree and claim, apart from the W5 positive; (2) image and configuration pins; (3) generated fixture identity and paths; (4) the helper's published input and mounts; (5) accepted-hold replay, apart from the native-record pin (the pointer-map point); (6) engine path translation, in the T10 flow; (7) the validator environment name, in the publication lane; (8) retained verifier expectations; (9) additional shared expectations, including the egress and runbook lanes. The T10, publication, egress and runbook parts carry the note "revisit before R0". Two acting observations were named for Trevor and not fixed: the fixture hostname and evidence check compares two values from one source, and the helper's mount check collapses duplicates. Overwatch inferred that neither can change anything outside the window's own new objects, and labelled the families in unread lanes inferred. File: not recorded. Owner lane: not recorded. Owning task: not recorded in the source (the `phase 2` owner field is only the register's required container, matching this entry's heading).
+- source: the 2026-11-24 Overwatch test-independence triage (rulings log 2026-11-24T23:04Z), accepted as option A by Trevor's "Recs are accepted" (2026-11-25T00:43Z).
+- removal: not recorded.
+
+### DEBT-083 - The operator set cannot remove a started container whose only recorded origin is from before the start (Phase 2)
+- kind: obligation
+- status: open
+- owner: phase 2
+- what: The set's container-removal entry compares the whole recorded binding, including the host configuration and the network identity, against the live container. Docker changes these when a container starts, so when every retained record is from before the start, the entry refuses any container that has ever started (seen on the W1 rerun, 2026-11-25; nothing was removed). It is worked around by the precedent removal by exact ID. File: not recorded. Owner lane: not recorded. Owning task: not recorded in the source (the `phase 2` owner field is only the register's required container, matching this entry's heading).
+- source: rulings log 2026-11-25T18:37Z (the W1 rerun removal refusal).
+- removal: not recorded.
