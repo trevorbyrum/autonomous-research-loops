@@ -4396,3 +4396,61 @@ Transcribed from `gen2-sprint-records-pending-20261107.md` (entries after the #1
 
 - **Rebuild at `37a76392` (2026-11-23).** Engine and fixture rebuilt; runner, gateway and relay carried identical; all four pinned renders pass; an independent rebuild verifier: GO. The previous engine and fixture IDs no longer resolved (they were image-index digests referencing a missing provenance payload); the runtime content survived and was reloaded under dedicated rollback tags with manifests, configs and layers matching the earlier build receipts. No delete or prune.
 - **Rebuild at `b24e80a8` (2026-11-24).** Engine and fixture rebuilt after #214; runner, gateway and relay carried; rollback tags for the previous pair; receipt checksums and four renders pass; an independent rebuild verifier: **GO**. Re-attestation needed: W1 to W5 and T10 on the rebuilt engine. **Before R0:** the row 31 imports on the rebuilt engine and the row 26 primitives on the changed fixture operands, with fresh releases. **Before R1:** qualified T10 and the row 44 run_topic settlement.
+
+## 2026-11-24/25: records PR #215, the S2 set apply and the r15 rounds, the first W1 runs and the container removal
+
+*Records transcribe and decide nothing. A field the source does not give is "not recorded". At the time of this entry a **new W1 rerun release is pending with Trevor**. **Pending in order:** W1, then W2–W4, then the W5 test batch and its scoped Astra read, then W5. Private evidence is summarized, not copied. One line per event; each line with a catch names the check that made it.*
+
+### Trevor's rulings, by date
+
+- **2026-11-24T13:56Z, "I'm fine with all three."** (1) The S2 acting stop is raised to 1,870 (measured 1,860; the prep builder's measured size is accepted). (2) The egress (b) custody watcher ends gracefully through its finish marker. (3) The W5 decisions as recommended: its own W5 claim; delete the two unused child positive rows; the three read-only preflights, including one namespace entry; the killed-unit recovery page may be run only by the host operator with Trevor's OK at the time; and the lock and load waits move before the 30-minute unit starts.
+- **2026-11-24T14:02Z, the W1 release approval** (a direct question): approved.
+- **2026-11-25T00:43Z, "Recs are accepted".** (1) Overwatch option A: verify r15d, apply it, rerun W1, then W2–W4; the W5 batch (three test items, about 8–12 lines, stop at 25) after W4 with one last scoped Astra read; the rest recorded as named test debt (DEBT-082). Convergence rule: Astra's test question becomes whether a defect would pass the test **and** the runtime gate **and** the offline verifier; residuals after that read go to Trevor as named items. (2) Remove W1's leftover container by exact ID with the set's recovery entry. The W1 rerun release is still approved separately at release time.
+- **2026-11-25T00:52Z, the W1 rerun release approval** ("Approve W1 rerun").
+- **2026-11-25, about 18:37Z, "Precedent rm, then W1".** Remove the leftover container by the 2026-11-23 cleanup precedent (non-forced removal by exact ID under the heavy lock, with reads before and after and the creation records cited), then the one W1 import launch and the verifier within the same release. That release had already expired (below).
+
+### Records PR #215
+
+- **Review rounds:** Astra's accuracy and leak read: **FIX FIRST** (a superseded R0 prerequisite list shown as current; two FIX FIRST verdicts omitted; the r7 size stop misstated; an unsupported owner on DEBT-080/081; no leaks). The fixes were pushed (the DEBT-080/081 owner field is `phase 2`, a checker constraint, with "not recorded" in the text).
+- **Merge:** Astra's re-check **PASS**; verifier **GREEN** (`gen2-accept` exit 0, 3,528 tests, 1,051 s); Jenkins SUCCESS; merge-tree clean; merged 2026-11-24.
+
+### The r14 apply and the windows' groundwork, 2026-11-24
+
+- **r14 apply package:** the first draft lacked gates (load, git-clean, marker, and the post-apply sandboxed set test and reference check with automatic rollback) because the orchestrator's brief had omitted them (the catching check is not recorded); they were restored, and a rehearsal on a throwaway copy showed apply, rollback and automatic rollback on a forced gate failure, with the real set untouched.
+- **r14 applied** (13:58Z, after the ruling) by the gated apply script: 170 of 170 members (38 written, 1 removed); readbacks before and after OK; the sandboxed set test and reference check exit 0.
+- **Custody watcher ended** gracefully (13:58Z): its end record was written with no custody loss, and its unit is inactive. A read-only reading had found that it watches only protected configuration and env files, not containers, and was a window-scoped leftover still running.
+- **W5:** the design (no set or production code change planned) named the risk that a unit killed after the gateway swap strands the live gateway; the W5 prep was then drafted, and the set's own test run **failed on the W5 prep** (the tests hard-coded the older claim, child row and accepted-hold record), a set test change with acting code unaffected. It was held for the W1 diagnosis.
+
+### The W1 first run and its diagnosis, 2026-11-24
+
+- **First launch attempt:** the **load gate** held it (load5 11.03 against the required below 8); nothing was launched.
+- **First run: FAILED, an acting-side stop** (the import unit ended held with "start outcome unknown"): all three cases failed with `python3` not found; one exited container was left, held; the verifier refused. No re-run under the S16 stop rules.
+- **Diagnosis** (a fresh read-only review): **a witness defect.** The standalone import container was started through an environment-clearing wrapper that dropped `PATH`, so the launch shim fell back to a path without the image's Python; production keeps `PATH` and is not shown broken (the same payload passed four earlier native runs in a running engine, not yet on this engine image). A second, smaller defect: a clean exit 1 was classed as an unknown start. The next attempt needs a set change, an Astra read, a fresh window and a new release; no production change, rebuild or new prep. Native success of the fix is not yet observed.
+
+### The set rounds r15 to r15d, 2026-11-24
+
+- **r15** (the W1 witness fix, the exit classification and W5 test compatibility): gates pass, 306 of 306 mutants killed. **Astra: FIX FIRST, tests only** (the W1 launch and exit-1 cleanup approved for verification; the accepted-hold round trip copied every candidate pin into the expected manifest; a weak observer-row negative; the campaign ran against one prep only).
+- **r15b** (set tests only; campaigns on both preps, 306 of 306 each): **Astra: FIX FIRST** (the observer test accepted the older prep's prefix on a W5 row; an unknown prep passed as the older one).
+- **r15c** (set tests only): **Astra: FIX FIRST** (the older prep's observer test accepted a wrong script path and substituted it before use). This was the third test-only round to find one more "normalise before assert" instance, so r15d had to sweep for the whole class.
+- **r15d gates:** the coder's own gates failed the set test on the older prep (the new exact check rejected a historical build path in its observer row, which the old bypass had hidden); fixed with a literal expected script per prep and negatives on both, plus the class sweep.
+- **r15d landed** (set tests only; acting 1,861 against the 1,870 stop, total 3,871; 306 of 306 mutants killed on each prep). **Astra: FIX FIRST** (the observer path closed; asked to list every remaining instance at once, Astra listed about ten test-independence families across the whole set test, most older than r15). This fourth test-only round was the Gate S trigger.
+
+### Gate S: the Overwatch test-independence triage, 2026-11-24
+
+- **Result:** none of the ten families blocks W1 or W2–W4; only the import witness had changed in acting code since the applied r14 set, and the real tree, claim and nonce values in both nominated preps were correct (measured). Three small test items are owed before W5; the rest is test debt (DEBT-082). The cause named: a review question with no last answer ("can any wrong input pass?") over a suite built on a simulator. **Recommendation: option A** (Trevor accepted it, above). Nothing was run in that review, and three lane placements are inferred.
+
+### The r15d verifier, re-pin and apply, 2026-11-24/25
+
+- **r15d verifier: RED** only on the prep validator ("draft differs from the validated operands"): the W1 window draft still pinned the r14 set, so the **window drafts were stale**, not the set. Everything else was green (integrity, the set test on both preps, the unknown-prep refusal, 306 of 306 mutants on each, and the controls).
+- **Re-pin (records and data only):** a copy of the prep package with the four W1–W4 window drafts re-pinned to r15d, its checksums regenerated and a new nomination record. **Narrow verifier: GREEN** (the validator passes with 14 items plus the one expected W5 policy refusal; the set test passes 35 of 35).
+- **r15d applied** (2026-11-25, 00:50Z): rehearsed on a throwaway copy (refusal without authorization, refusal while the window marker is set, apply, identical rollback, automatic rollback on a forced gate failure); real apply 170 of 170 members (2 written: the import witness and the set test); the sandboxed set test and reference check exit 0.
+
+### The W1 rerun and the leftover container, 2026-11-25
+
+- **W1 rerun frozen**, its release written and approved (above).
+- **Run:** the identity step **passed**; the set's removal entry **refused by design** before any removal (cleanup snapshots show no difference), so nothing was removed and nothing was launched.
+- **Cause** (an orchestrator offline check under the sandbox): every retained record of the leftover container was taken before it started; the set's binding comparison takes the whole host configuration and network identity, which Docker changes at start. So that entry cannot remove a container that ever started when its only recorded origin is from before the start (DEBT-083). Not re-run.
+- **Release expired unused:** the orchestrator asked Trevor a blocking question about the refusal (about 00:5xZ), which stayed open until about 18:37Z, past the release's end at 02:57:35Z. An earlier record blamed message delivery; that was corrected (the operator received the continuation within a minute). This is the known "ask after dispatch" trap.
+- **First removal attempt:** the **exact pre-read checks** stopped it with nothing removed; both failed items were the orchestrator's wording errors (a truncated finish time, and "no mounts" not allowing a temporary filesystem identical to the creation record); all other facts held.
+- **Removed** (about 19:10Z) by the precedent path: all exact pre-read facts held; one non-forced removal by full ID, exit 0, and the post-read reports no such object. The script then **stopped on its own listing comparison** (two containers listed the same networks in a different order); an independent orchestrator diff of the saved listings showed only the removed row gone (25 to 24 containers; networks and images unchanged). The first start had held at the load gate. The window marker was cleared and the lock is free.
+- **Pending with Trevor:** a new W1 release (the same frozen window, a fresh identity step first).
